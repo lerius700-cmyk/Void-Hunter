@@ -402,17 +402,16 @@ class GameplayRuntime:
                     continue
                 if pr.colliderect(e.hitbox()):
                     killed = e.apply_damage(p.damage)
+                    self._emit_burst(p.x, p.y, count=3, kind="spark")
+                    if killed:
+                        self._on_enemy_killed(e)
                     # Piercing bullets keep going until pierce_hits >= pierce
                     if p.pierce > 0 and p.pierce_hits < p.pierce:
                         p.pierce_hits += 1
                     else:
                         p.active = False
                         self._bullets.pool.release(p)
-                    # Hit feedback
-                    self._emit_burst(p.x, p.y, count=3, kind="spark")
-                    if killed:
-                        self._on_enemy_killed(e)
-                    break
+                        break
         # Player bullets ↔ boss
         if self._is_boss and self._boss is not None and self._boss.active:
             boss_hit = self._boss.hitbox()

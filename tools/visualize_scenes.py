@@ -66,27 +66,43 @@ def main() -> int:
     game.scenes.transition_to(GameState.GAMEPLAY)
     render_and_save(game, "03_gameplay_idle", ticks=30)
 
-    # 04 — GAMEPLAY (player moving right)
-    print("Rendering GAMEPLAY (moving)...")
+    # 04 — GAMEPLAY (player firing and moving)
+    print("Rendering GAMEPLAY (combat)...")
     gp = game.scenes.scenes[GameState.GAMEPLAY]
-    gp._player.input_right = True
-    for _ in range(60):
+    # Monkey-patch input reader so we can control inputs
+    gp._rt._read_input = lambda: None
+    # Fire + move right
+    gp._rt._player.input_fire = True
+    gp._rt._player.input_right = True
+    for _ in range(120):  # 1 second of fire + movement
+        gp._rt._player.input_fire = True
         gp.update(FIXED_DT)
     game.internal.fill((0, 0, 0))
     game.scenes.draw(game.internal)
     pygame.image.save(game.internal, str(OUT / "04_gameplay_moving.png"))
     print(f"  -> {OUT / '04_gameplay_moving.png'}")
-    gp._player.input_right = False
+    gp._rt._player.input_right = False
+    gp._rt._player.input_fire = False
 
     # 05 — BOSS_INTRO
     print("Rendering BOSS_INTRO...")
     game.scenes.transition_to(GameState.BOSS_INTRO)
     render_and_save(game, "05_boss_intro", ticks=30)
 
-    # 06 — BOSS_FIGHT
+    # 06 — BOSS_FIGHT (real boss with attacks)
     print("Rendering BOSS_FIGHT...")
     game.scenes.transition_to(GameState.BOSS_FIGHT)
-    render_and_save(game, "06_boss_fight", ticks=30)
+    bf = game.scenes.scenes[GameState.BOSS_FIGHT]
+    bf._rt._read_input = lambda: None
+    # Tick a few seconds to let boss fire
+    for _ in range(240):
+        bf._rt._player.input_fire = True
+        bf.update(FIXED_DT)
+    game.internal.fill((0, 0, 0))
+    game.scenes.draw(game.internal)
+    pygame.image.save(game.internal, str(OUT / "06_boss_fight.png"))
+    print(f"  -> {OUT / '06_boss_fight.png'}")
+    bf._rt._player.input_fire = False
 
     # 07 — ACT_CLEARED
     print("Rendering ACT_CLEARED...")
