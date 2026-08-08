@@ -136,8 +136,10 @@ def _cmd_play(duration: int) -> int:
             while game._accumulator >= (1.0 / 120):
                 game.scenes.update(1.0 / 120)
                 game._accumulator -= 1.0 / 120
-            game.scenes.draw(game.screen)
-            pygame.display.flip()
+            # Clear internal, draw scenes to internal, scale to display
+            game.internal.fill((0, 0, 0))
+            game.scenes.draw(game.internal)
+            game._present()
     except KeyboardInterrupt:
         pass
     finally:

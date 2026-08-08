@@ -42,16 +42,41 @@ class Game:
     def __init__(self) -> None:
         if not pygame.get_init():
             pygame.init()
-        self.screen: pygame.Surface = pygame.display.set_mode(
-            (WINDOW_W, WINDOW_H),
-            pygame.SCALED | pygame.RESIZABLE,
-        )
+        # Display surface: WINDOW_W x WINDOW_H (960x1440 = 4x scaled).
+        # All game scenes draw to a 240x360 INTERNAL surface, which we then
+        # blit scaled to the display. This is the standard "low-res internal,
+        # high-res display" pattern (Celeste, Shovel Knight, etc.) — avoids
+        # integer-coordinate drift at 4x and keeps all game logic in one
+        # coordinate system.
+        try:
+            self.screen: pygame.Surface = pygame.display.set_mode(
+                (WINDOW_W, WINDOW_H),
+                pygame.SCALED | pygame.RESIZABLE,
+            )
+        except pygame.error:
+            self.screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
+        # Internal rendering surface: 240x360 (INTERNAL_W x INTERNAL_H).
+        # This is what every scene draws to.
+        from src.core.settings import INTERNAL_H as _IH, INTERNAL_W as _IW
+        self.internal: pygame.Surface = pygame.Surface((_IW, _IH))
         pygame.display.set_caption(WINDOW_TITLE)
         self.clock: pygame.time.Clock = pygame.time.Clock()
         self.scenes: SceneManager = SceneManager()
         self._register_scenes()
         self._running: bool = True
         self._accumulator: float = 0.0
+
+    def _present(self) -> None:
+        """Scale the internal 240x360 surface to the display and present."""
+        # Clear the display first (in case of window resize artifacts)
+        self.screen.fill((0, 0, 0))
+        # Scale internal to display
+        scaled = pygame.transform.scale(
+            self.internal,
+            (self.screen.get_width(), self.screen.get_height()),
+        )
+        self.screen.blit(scaled, (0, 0))
+        pygame.display.flip()
 
     def _register_scenes(self) -> None:
         """Wire up all 9 game state scenes + PAUSE overlay."""
@@ -94,9 +119,12 @@ class Game:
                 while self._accumulator >= FIXED_DT:
                     self.scenes.update(FIXED_DT)
                     self._accumulator -= FIXED_DT
-                # Render
-                self.scenes.draw(self.screen)
-                pygame.display.flip()
+                # Clear internal surface
+                self.internal.fill((0, 0, 0))
+                # Draw scenes to the 240x360 internal surface
+                self.scenes.draw(self.internal)
+                # Scale internal to display and present
+                self._present()
         except KeyboardInterrupt:
             pass
         finally:

@@ -1,4 +1,8 @@
-﻿"""Concrete scenes for the 9 game states (BLOQUE 14)."""
+﻿"""Concrete scenes for the 9 game states (BLOQUE 14).
+
+All fonts are sized for the 240x360 internal surface (the screen is
+scaled 4x to 960x1440 by Game._present). 240px width is the hard cap.
+"""
 from __future__ import annotations
 
 from typing import Callable, Optional
@@ -11,6 +15,48 @@ from src.utils.palette import PALETTE
 
 # Type alias for scene constructor
 TransitionFn = Callable[[GameState], None]
+
+
+def _center_blit(
+    target: pygame.Surface,
+    text_surface: pygame.Surface,
+    y: int,
+) -> None:
+    """Blit a surface centered horizontally at the given y on target."""
+    x = target.get_width() // 2 - text_surface.get_width() // 2
+    target.blit(text_surface, (x, y))
+
+
+def _wrap_text(text: str, font: pygame.font.Font, max_width: int) -> list[str]:
+    """Wrap text to fit max_width, breaking on spaces or at hard char limits."""
+    if font.size(text)[0] <= max_width:
+        return [text]
+    words = text.split(" ")
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = (current + " " + word).strip()
+        if font.size(candidate)[0] <= max_width:
+            current = candidate
+        else:
+            if current:
+                lines.append(current)
+            # Hard-break words longer than max_width
+            while font.size(word)[0] > max_width and len(word) > 1:
+                # Binary search largest prefix that fits
+                lo, hi = 1, len(word)
+                while lo < hi:
+                    mid = (lo + hi + 1) // 2
+                    if font.size(word[:mid])[0] <= max_width:
+                        lo = mid
+                    else:
+                        hi = mid - 1
+                lines.append(word[:lo])
+                word = word[lo:]
+            current = word
+    if current:
+        lines.append(current)
+    return lines
 
 
 class TitleScene(Scene):
@@ -33,19 +79,19 @@ class TitleScene(Scene):
 
     def draw(self, target: pygame.Surface) -> None:
         target.fill((0, 0, 0))
-        # Title text
-        font = pygame.font.Font(None, 64)
+        # Title — 32px sized to fit "VOID HUNTER" in 240px
+        font = pygame.font.Font(None, 32)
         title = font.render("VOID HUNTER", True, (220, 220, 255))
-        target.blit(title, (target.get_width() // 2 - title.get_width() // 2, 100))
+        _center_blit(target, title, 100)
         # Subtitle
-        font2 = pygame.font.Font(None, 24)
+        font2 = pygame.font.Font(None, 14)
         sub = font2.render("PRESS ENTER TO START", True, (180, 180, 200))
         # Blink
         if int(self._t * 2) % 2 == 0:
-            target.blit(sub, (target.get_width() // 2 - sub.get_width() // 2, 220))
+            _center_blit(target, sub, 200)
         # Credits hint
         sub2 = font2.render("C: CREDITS", True, (120, 120, 140))
-        target.blit(sub2, (target.get_width() // 2 - sub2.get_width() // 2, 260))
+        _center_blit(target, sub2, 230)
 
 
 class ActIntroScene(Scene):
@@ -70,14 +116,14 @@ class ActIntroScene(Scene):
 
     def draw(self, target: pygame.Surface) -> None:
         target.fill((0, 0, 0))
-        font = pygame.font.Font(None, 56)
+        font = pygame.font.Font(None, 40)
         text = font.render(f"ACT {self._act}", True, (255, 220, 100))
-        target.blit(text, (target.get_width() // 2 - text.get_width() // 2, 120))
-        # Boss name
-        font2 = pygame.font.Font(None, 28)
+        _center_blit(target, text, 120)
+        # Boss name — 18px fits "GOLIATH AWAITS" comfortably
+        font2 = pygame.font.Font(None, 18)
         boss_names = {1: "GOLIATH AWAITS", 2: "HYDRA EMERGES", 3: "PHANTOM & NEMESIS"}
         sub = font2.render(boss_names.get(self._act, ""), True, (220, 80, 80))
-        target.blit(sub, (target.get_width() // 2 - sub.get_width() // 2, 200))
+        _center_blit(target, sub, 200)
 
 
 class GameplayScene(Scene):
@@ -158,10 +204,15 @@ class BossIntroScene(Scene):
 
     def draw(self, target: pygame.Surface) -> None:
         target.fill((40, 0, 0))
-        # Warning
-        font = pygame.font.Font(None, 64)
+        # Warning — 18px to fit "WARNING: <boss_name>" in 240px
+        font = pygame.font.Font(None, 18)
         text = font.render(f"WARNING: {self._boss_name}", True, (255, 220, 100))
-        target.blit(text, (target.get_width() // 2 - text.get_width() // 2, 140))
+        _center_blit(target, text, 140)
+        # Subtitle (blinking)
+        font2 = pygame.font.Font(None, 12)
+        if int(self._t * 2) % 2 == 0:
+            sub = font2.render("INCOMING HOSTILE", True, (255, 100, 100))
+            _center_blit(target, sub, 200)
 
 
 class BossFightScene(Scene):
@@ -179,9 +230,12 @@ class BossFightScene(Scene):
 
     def draw(self, target: pygame.Surface) -> None:
         target.fill((20, 0, 0))
-        font = pygame.font.Font(None, 32)
-        text = font.render("BOSS FIGHT (stub — full integration in BLOQUE 16)", True, (255, 100, 100))
-        target.blit(text, (target.get_width() // 2 - text.get_width() // 2, 100))
+        # Two wrapped lines, 14px, fit in 240px
+        font = pygame.font.Font(None, 14)
+        line1 = font.render("BOSS FIGHT", True, (255, 220, 100))
+        line2 = font.render("(stub — full integration in BLOQUE 16)", True, (255, 100, 100))
+        _center_blit(target, line1, 120)
+        _center_blit(target, line2, 145)
 
 
 class ActClearedScene(Scene):
@@ -205,12 +259,13 @@ class ActClearedScene(Scene):
 
     def draw(self, target: pygame.Surface) -> None:
         target.fill((0, 0, 0))
-        font = pygame.font.Font(None, 64)
+        # 28px fits "ACT CLEARED!" (12 chars) in 240px
+        font = pygame.font.Font(None, 28)
         text = font.render("ACT CLEARED!", True, (255, 220, 100))
-        target.blit(text, (target.get_width() // 2 - text.get_width() // 2, 100))
-        font2 = pygame.font.Font(None, 28)
+        _center_blit(target, text, 100)
+        font2 = pygame.font.Font(None, 18)
         sub = font2.render("+25000 PTS", True, (255, 180, 40))
-        target.blit(sub, (target.get_width() // 2 - sub.get_width() // 2, 200))
+        _center_blit(target, sub, 200)
 
 
 class GameOverScene(Scene):
@@ -234,9 +289,10 @@ class GameOverScene(Scene):
 
     def draw(self, target: pygame.Surface) -> None:
         target.fill((40, 0, 0))
-        font = pygame.font.Font(None, 72)
+        # 32px fits "GAME OVER" (9 chars) in 240px
+        font = pygame.font.Font(None, 32)
         text = font.render("GAME OVER", True, (255, 60, 40))
-        target.blit(text, (target.get_width() // 2 - text.get_width() // 2, 140))
+        _center_blit(target, text, 140)
 
 
 class VictoryScene(Scene):
@@ -257,9 +313,10 @@ class VictoryScene(Scene):
 
     def draw(self, target: pygame.Surface) -> None:
         target.fill((40, 30, 0))
-        font = pygame.font.Font(None, 80)
+        # 40px fits "VICTORY!" (8 chars) in 240px
+        font = pygame.font.Font(None, 40)
         text = font.render("VICTORY!", True, (255, 220, 100))
-        target.blit(text, (target.get_width() // 2 - text.get_width() // 2, 140))
+        _center_blit(target, text, 140)
 
 
 class CreditsScene(Scene):
@@ -277,26 +334,33 @@ class CreditsScene(Scene):
 
     def draw(self, target: pygame.Surface) -> None:
         target.fill((0, 0, 0))
-        font = pygame.font.Font(None, 36)
-        lines = [
-            "VOID HUNTER",
-            "",
+        # Title (small)
+        title_font = pygame.font.Font(None, 20)
+        title = title_font.render("VOID HUNTER", True, (255, 220, 100))
+        _center_blit(target, title, 30)
+        # Body — wrap to fit 240px
+        body_font = pygame.font.Font(None, 12)
+        body_lines = [
             "A shmup by Lerius",
             "",
             "Built on Pygame 2.6 + Python 3.11",
             "120 FPS lock",
-            "Zero external deps (numpy/scipy prohibited)",
+            "Zero external deps",
+            "(numpy/scipy prohibited)",
             "",
-            "Thanks to: Cave, Touhou, Ikaruga, DoDonPachi,",
-            "Gradius, R-Type, Metal Slug, Devil May Cry",
+            "Thanks to: Cave, Touhou, Ikaruga,",
+            "DoDonPachi, Gradius, R-Type,",
+            "Metal Slug, Devil May Cry",
             "",
             f"Run time: {int(self._t)}s",
             "",
-            "PRESS ENTER TO RETURN TO TITLE",
+            "PRESS ENTER FOR TITLE",
         ]
-        for i, line in enumerate(lines):
-            text = font.render(line, True, (200, 200, 220))
-            target.blit(text, (target.get_width() // 2 - text.get_width() // 2, 60 + i * 40))
+        y = 70
+        for line in body_lines:
+            text = body_font.render(line, True, (200, 200, 220))
+            _center_blit(target, text, y)
+            y += 16
 
 
 class PauseScene(Scene):
@@ -315,10 +379,10 @@ class PauseScene(Scene):
         dim = pygame.Surface(target.get_size(), pygame.SRCALPHA)
         dim.fill((0, 0, 0, 128))
         target.blit(dim, (0, 0))
-        font = pygame.font.Font(None, 64)
+        # 48px fits "PAUSED" (6 chars) in 240px
+        font = pygame.font.Font(None, 48)
         text = font.render("PAUSED", True, (255, 255, 255))
-        target.blit(text, (target.get_width() // 2 - text.get_width() // 2, 140))
-        font2 = pygame.font.Font(None, 24)
+        _center_blit(target, text, 140)
+        font2 = pygame.font.Font(None, 14)
         sub = font2.render("ESC to resume", True, (200, 200, 200))
-        target.blit(sub, (target.get_width() // 2 - sub.get_width() // 2, 220))
-
+        _center_blit(target, sub, 220)
