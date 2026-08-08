@@ -22,7 +22,7 @@ from typing import Optional
 
 import pygame
 
-from src.core.settings import INTERNAL_H, INTERNAL_W
+from src.core.settings import INTERNAL_H, INTERNAL_W, FIXED_DT
 from src.systems.pool import Pool
 
 
@@ -220,6 +220,64 @@ class Enemy:
             self.on_death = True
             return True
         return False
+
+    def update(self, dt: float, player_x: float, player_y: float) -> None:
+        """Advance movement, sine wobble, homing, fire cooldown, cull offscreen.
+
+        Fires are reported via self.on_fire=True (caller spawns bullets).
+        """
+        if not self.active or dt <= 0.0 or self.state == EnemyState.DEAD:
+            return
+        cfg = ENEMY_CONFIGS[self.kind]
+        # Sine wobble (Scout)
+        if cfg.sine_wobble:
+            self.sine_t += dt
+            self.x = self.sine_origin_x + math.sin(self.sine_t * cfg.sine_freq_hz * 2.0 * math.pi) * cfg.sine_amplitude
+        # Homing (Kamikaze) — steer toward player
+        if cfg.homing and (self.homing_target is None or self.sine_t % 1.0 < dt):
+            self.homing_target = (player_x, player_y)
+        if cfg.homing and self.homing_target is not None:
+            tx, ty = self.homing_target
+            dx = tx - self.x
+            dy = ty - self.y
+            dist = math.hypot(dx, dy)
+            if dist > 0.01:
+                # Current velocity points down (+y). Steer toward target.
+                target_angle = math.atan2(dy, dx)
+                # Convert current angle to homing
+                desired_vx = math.cos(target_angle) * cfg.speed
+                desired_vy = math.sin(target_angle) * cfg.speed
+                # Turn rate (deg/s -> rad/s)
+                turn = math.radians(cfg.homing_turn_rate) * dt
+                # Blend current vx/vy toward desired
+                self.vx += (desired_vx - self.vx) * min(1.0, turn)
+                self.vy += (desired_vy - self.vy) * min(1.0, turn)
+            else:
+                self.vx = 0.0
+                self.vy = cfg.speed
+        # Apply velocity
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        # Spawn timer (Drone / Carrier)
+        if cfg.spawns_mini_on_timer or cfg.spawns_carrier_children:
+            self.spawn_timer += dt
+            if self.spawn_timer >= 3.0:
+                self.spawn_timer = 0.0
+                if cfg.spawns_carrier_children:
+                    self.pending_spawn_count = max(self.pending_spawn_count, 2)
+                else:
+                    self.pending_spawn_count = max(self.pending_spawn_count, cfg.mini_spawn_count)
+        # Fire cooldown (skip if anchored w/ laser telegraph; skip if no fire_cooldown)
+        if cfg.fire_cooldown_s > 0.0:
+            if self.fire_cd > 0.0:
+                self.fire_cd -= dt
+            if self.fire_cd <= 0.0:
+                self.fire_cd = cfg.fire_cooldown_s
+                self.on_fire = True
+        # Anchored enemies don't move vertically (already at vy=0)
+        # Cull offscreen
+        if self.y > INTERNAL_H + 20 or self.x < -20 or self.x > INTERNAL_W + 20:
+            self.state = EnemyState.DEAD
 
 
 def create_enemy(kind: EnemyKind, x: float, y: float) -> Enemy:

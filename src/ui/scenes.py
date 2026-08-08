@@ -127,59 +127,29 @@ class ActIntroScene(Scene):
 
 
 class GameplayScene(Scene):
-    """GAMEPLAY — main action scene. Wires up pools + systems + player.
+    """GAMEPLAY — main action scene. Delegates to GameplayRuntime.
 
-    For BLOQUE 14, this is a stub that draws the player and ticks the
-    fixed timestep. Full integration (enemies, waves, scoring) lands
-    in BLOQUE 16.
+    Runtime handles: bullets, enemies, waves, score, particles, HUD,
+    boss transitions, collisions, hitstop, shake, slowmo.
     """
 
-    def __init__(self, transition_to: TransitionFn) -> None:
+    def __init__(self, transition_to: TransitionFn, act: int = 1) -> None:
         self._transition_to = transition_to
-        from src.entities.player import Player
-        from src.systems.parallax import ParallaxBackground
-        self._player = Player()
-        self._bg = ParallaxBackground(rng_seed=42)
-        self._t: float = 0.0
+        self._act = act
+        from src.ui.gameplay_runtime import GameplayRuntime
+        self._rt = GameplayRuntime(transition_to, is_boss=False, act=act)
 
     def on_enter(self) -> None:
-        self._player.reset()
-        self._t = 0.0
+        self._rt.on_enter()
+
+    def on_exit(self) -> None:
+        self._rt.on_exit()
 
     def update(self, dt: float) -> None:
-        self._t += dt
-        # Input
-        keys = pygame.key.get_pressed()
-        self._player.input_left = keys[pygame.K_a] or keys[pygame.K_LEFT]
-        self._player.input_right = keys[pygame.K_d] or keys[pygame.K_RIGHT]
-        for event in pygame.event.get(pygame.KEYDOWN):
-            if event.key == pygame.K_j:
-                self._player.input_fire = True
-            elif event.key == pygame.K_k:
-                self._player.input_dash = True
-            elif event.key == pygame.K_l:
-                self._player.input_bomb = True
-            elif event.key == pygame.K_ESCAPE:
-                self._transition_to(GameState.PAUSE)
-        # Update systems
-        self._player.update(dt)
-        self._bg.update(dt)
-        # Reset one-shot inputs
-        self._player.input_fire = False
-        self._player.input_dash = False
-        self._player.input_bomb = False
+        self._rt.update(dt)
 
     def draw(self, target: pygame.Surface) -> None:
-        # Background
-        self._bg.draw(target)
-        # Player
-        surf = pygame.Surface((18, 16), pygame.SRCALPHA)
-        pygame.draw.polygon(surf, (220, 240, 255), [(9, 0), (0, 16), (18, 16)])
-        pygame.draw.polygon(surf, (255, 100, 100), [(9, 4), (4, 14), (14, 14)])
-        # Apply tilt
-        rotated = pygame.transform.rotate(surf, -self._player.current_tilt)
-        rect = rotated.get_rect(center=(int(self._player.x), int(self._player.y)))
-        target.blit(rotated, rect)
+        self._rt.draw(target)
 
 
 class BossIntroScene(Scene):
@@ -216,26 +186,29 @@ class BossIntroScene(Scene):
 
 
 class BossFightScene(Scene):
-    """BOSS_FIGHT — boss arena. Stub for BLOQUE 14; full integration later."""
+    """BOSS_FIGHT — boss arena. Delegates to GameplayRuntime in boss mode."""
 
-    def __init__(self, transition_to: TransitionFn) -> None:
+    def __init__(self, transition_to: TransitionFn, act: int = 1) -> None:
         self._transition_to = transition_to
+        self._act = act
+        from src.ui.gameplay_runtime import GameplayRuntime
+        self._rt = GameplayRuntime(transition_to, is_boss=True, act=act)
+
+    def on_enter(self) -> None:
+        self._rt.on_enter()
+
+    def on_exit(self) -> None:
+        self._rt.on_exit()
 
     def update(self, dt: float) -> None:
+        # ESC to pause; otherwise full runtime
         for event in pygame.event.get(pygame.KEYDOWN):
             if event.key == pygame.K_ESCAPE:
                 self._transition_to(GameState.PAUSE)
-            elif event.key == pygame.K_RETURN:
-                self._transition_to(GameState.ACT_CLEARED)
+        self._rt.update(dt)
 
     def draw(self, target: pygame.Surface) -> None:
-        target.fill((20, 0, 0))
-        # Two wrapped lines, 14px, fit in 240px
-        font = pygame.font.Font(None, 14)
-        line1 = font.render("BOSS FIGHT", True, (255, 220, 100))
-        line2 = font.render("(stub — full integration in BLOQUE 16)", True, (255, 100, 100))
-        _center_blit(target, line1, 120)
-        _center_blit(target, line2, 145)
+        self._rt.draw(target)
 
 
 class ActClearedScene(Scene):
