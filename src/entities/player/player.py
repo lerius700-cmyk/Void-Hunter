@@ -422,12 +422,21 @@ class Player:
         self.state = PlayerState.DASH
         self.state_timer = 0.0
         self.dash_iframes_left = PLAYER_DASH_IFRAMES
-        # Direction: lateral input wins, else up
+        # Direction priority:
+        #   1. Active lateral input (player is holding A/D when dashing)
+        #   2. Last horizontal velocity (player is in motion — dash continues that way)
+        #   3. UP (stationary, default per GDD §5; "o up si neutral")
+        # This keeps dash feeling intentional: dash continues the player's
+        # current motion rather than suddenly flying upward into enemy fire.
         left = self.input_left
         right = self.input_right
         if left and not right:
             self.dash_dir_x, self.dash_dir_y = -1.0, 0.0
         elif right and not left:
+            self.dash_dir_x, self.dash_dir_y = 1.0, 0.0
+        elif self.vx < -10.0:
+            self.dash_dir_x, self.dash_dir_y = -1.0, 0.0
+        elif self.vx > 10.0:
             self.dash_dir_x, self.dash_dir_y = 1.0, 0.0
         else:
             self.dash_dir_x, self.dash_dir_y = 0.0, -1.0
