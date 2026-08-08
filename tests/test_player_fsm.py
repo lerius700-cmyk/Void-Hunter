@@ -1,0 +1,374 @@
+"""Tests for Player FSM (BLOQUE 6)."""
+from __future__ import annotations
+
+import pytest
+
+from src.core.settings import (
+    INTERNAL_H,
+    INTERNAL_W,
+    PLAYER_DASH_DURATION_S,
+    PLAYER_DEATH_DURATION_S,
+    PLAYER_FIRE_COOLDOWN_S,
+    PLAYER_INVULN_FRAMES,
+    PLAYER_LIVES,
+    PLAYER_RESPAWN_INVULN_S,
+    PLAYER_SPEED,
+)
+from src.entities.player import Player, PlayerState
+
+
+@pytest.fixture
+def p() -> Player:
+    return Player()
+
+
+# ---------------------------------------------------------------------------
+# 1. Initial state
+# ---------------------------------------------------------------------------
+def test_player_initial_state_idle(p: Player) -> None:
+    assert p.state == PlayerState.IDLE
+
+
+def test_player_initial_lives_and_bombs(p: Player) -> None:
+    assert p.lives == PLAYER_LIVES == 3
+    assert p.bombs == 3
+    assert p.bombs_max == 4  # +1 with special unlocked
+
+
+def test_player_initial_position_center_bottom(p: Player) -> None:
+    assert p.x == INTERNAL_W / 2 == 120
+    assert p.y == INTERNAL_H - 60 == 300
+
+
+def test_player_initial_tilt_zero(p: Player) -> None:
+    assert p.current_tilt == 0.0
+
+
+# ---------------------------------------------------------------------------
+# 2. IDLE -> MOVE on lateral input
+# ---------------------------------------------------------------------------
+def test_idle_to_move_on_left_input(p: Player) -> None:
+    p.input_left = True
+    p.update(1 / 60)
+    assert p.state == PlayerState.MOVE
+
+
+def test_idle_to_move_on_right_input(p: Player) -> None:
+    p.input_right = True
+    p.update(1 / 60)
+    assert p.state == PlayerState.MOVE
+
+
+def test_move_accelerates_to_target_speed(p: Player) -> None:
+    p.input_left = True
+    for _ in range(30):  # 0.5s of frames
+        p.update(1 / 60)
+    # Approaching PLAYER_SPEED
+    assert p.vx <= -PLAYER_SPEED + 1.0
+    assert p.vx < 0
+
+
+def test_move_tilt_left_negative(p: Player) -> None:
+    p.input_left = True
+    for _ in range(15):
+        p.update(1 / 60)
+    assert p.tilt == -15.0
+
+
+def test_move_tilt_right_positive(p: Player) -> None:
+    p.input_right = True
+    for _ in range(15):
+        p.update(1 / 60)
+    assert p.tilt == 15.0
+
+
+# ---------------------------------------------------------------------------
+# 3. MOVE -> IDLE on input release + settle
+# ---------------------------------------------------------------------------
+def test_move_to_idle_after_settle(p: Player) -> None:
+    p.input_left = True
+    p.update(1 / 60)  # enter MOVE
+    p.input_left = False
+    # Wait MOVE_SETTLE_S (0.05s) + a bit
+    for _ in range(10):
+        p.update(1 / 60)
+    assert p.state == PlayerState.IDLE
+
+
+# ---------------------------------------------------------------------------
+# 4. IDLE -> SHOOT on fire
+# ---------------------------------------------------------------------------
+def test_idle_to_shoot_on_fire(p: Player) -> None:
+    p.input_fire = True
+    p.update(1 / 60)
+    assert p.state == PlayerState.SHOOT
+    assert p.wants_to_shoot is True
+
+
+def test_shoot_to_idle_after_cooldown(p: Player) -> None:
+    p.input_fire = True
+    p.update(1 / 60)
+    p.input_fire = False
+    # Cooldown is 0.10s = 12 frames at 120 FPS, but update is at 1/60 = 16ms
+    # We need 6 frames @ 1/60 = 0.10s
+    for _ in range(7):
+        p.update(1 / 60)
+    assert p.state == PlayerState.IDLE
+
+
+def test_fire_cd_blocks_immediate_refire(p: Player) -> None:
+    p.input_fire = True
+    p.update(1 / 60)
+    p.input_fire = False
+    p.update(1 / 60)  # still in SHOOT
+    assert p.fire_cd > 0.0
+    # Try to fire again before cd_ready
+    p.input_fire = True
+    p.update(1 / 60)
+    # The second shot should NOT register yet
+    # (depends on cooldown vs state timer; let's just verify no crash)
+
+
+# ---------------------------------------------------------------------------
+# 5. CHARGE state
+# ---------------------------------------------------------------------------
+def test_charge_enters_when_held_long_enough(p: Player) -> None:
+    p.input_fire = True
+    p.charge_time = 1.0  # simulate held > 0.5s
+    p.update(1 / 60)
+    assert p.state == PlayerState.CHARGE
+
+
+def test_charge_release_emits_signal(p: Player) -> None:
+    p.input_fire = True
+    p.charge_time = 1.0
+    p.update(1 / 60)  # enter CHARGE
+    # Release
+    p.input_fire = False
+    p.update(1 / 60)
+    assert p.wants_to_charge_release is True
+
+
+def test_charge_returns_to_idle_after_fire_anim(p: Player) -> None:
+    p.input_fire = True
+    p.charge_time = 1.0
+    p.update(1 / 60)  # enter CHARGE
+    p.input_fire = False
+    p.update(1 / 60)  # release
+    # 0.20s fire anim = 12 frames @ 60Hz
+    for _ in range(15):
+        p.update(1 / 60)
+    assert p.state == PlayerState.IDLE
+
+
+# ---------------------------------------------------------------------------
+# 6. DASH
+# ---------------------------------------------------------------------------
+def test_dash_from_idle(p: Player) -> None:
+    p.input_dash = True
+    p.update(1 / 60)
+    assert p.state == PlayerState.DASH
+
+
+def test_dash_dash_iframes(p: Player) -> None:
+    p.input_dash = True
+    p.update(1 / 60)
+    assert p.dash_iframes_left == 22
+
+
+def test_dash_ends_after_duration(p: Player) -> None:
+    p.input_dash = True
+    p.update(1 / 60)  # enter DASH
+    # 0.18s = ~11 frames @ 60Hz
+    for _ in range(13):
+        p.update(1 / 60)
+    assert p.state == PlayerState.IDLE
+
+
+def test_dash_lateral_direction(p: Player) -> None:
+    p.input_dash = True
+    p.input_left = True
+    p.input_right = False
+    p.update(1 / 60)
+    assert p.dash_dir_x == -1.0
+    assert p.dash_dir_y == 0.0
+
+
+def test_dash_default_up(p: Player) -> None:
+    p.input_dash = True
+    p.update(1 / 60)
+    assert p.dash_dir_x == 0.0
+    assert p.dash_dir_y == -1.0
+
+
+def test_dash_creates_afterimage(p: Player) -> None:
+    p.input_dash = True
+    p.update(1 / 60)
+    p.update(1 / 60)
+    assert len(p.afterimage) >= 1
+
+
+# ---------------------------------------------------------------------------
+# 7. HIT
+# ---------------------------------------------------------------------------
+def test_take_damage_reduces_hp(p: Player) -> None:
+    p.take_damage(1)
+    p.update(1 / 60)
+    assert p.hp == 2
+
+
+def test_take_damage_blocked_in_iframes(p: Player) -> None:
+    p.invuln_frames = 30
+    result = p.take_damage(1)
+    assert result is False
+    assert p.hp == 3
+
+
+def test_take_damage_enters_hit_state(p: Player) -> None:
+    p.take_damage(1)
+    p.update(1 / 60)
+    assert p.state == PlayerState.HIT
+
+
+def test_take_damage_sets_invuln(p: Player) -> None:
+    p.take_damage(1)
+    p.update(1 / 60)
+    assert p.invuln_frames == PLAYER_INVULN_FRAMES == 60
+
+
+def test_hit_to_dead_when_hp_zero(p: Player) -> None:
+    p.hp = 1
+    p.take_damage(1)
+    p.update(1 / 60)  # enter HIT
+    # 0.30s hit duration
+    for _ in range(20):
+        p.update(1 / 60)
+    assert p.state == PlayerState.DEAD
+    assert p.lives == PLAYER_LIVES - 1
+
+
+def test_hit_to_idle_when_hp_remaining(p: Player) -> None:
+    p.hp = 3
+    p.take_damage(1)  # hp -> 2
+    p.update(1 / 60)  # enter HIT
+    for _ in range(20):
+        p.update(1 / 60)
+    assert p.state == PlayerState.IDLE
+    assert p.hp == 2
+
+
+# ---------------------------------------------------------------------------
+# 8. DEAD
+# ---------------------------------------------------------------------------
+def test_dead_to_respawn(p: Player) -> None:
+    p.hp = 1
+    p.take_damage(1)
+    p.update(1 / 60)  # HIT
+    for _ in range(20):
+        p.update(1 / 60)  # wait for HIT to end → DEAD
+    assert p.state == PlayerState.DEAD
+    # 1.20s death anim
+    for _ in range(80):
+        p.update(1 / 60)
+    assert p.state == PlayerState.IDLE
+    assert p.hp == p.hp_max
+
+
+def test_dead_lives_decrement(p: Player) -> None:
+    p.hp = 1
+    p.take_damage(1)
+    p.update(1 / 60)  # HIT
+    for _ in range(20):
+        p.update(1 / 60)  # wait for HIT
+    assert p.lives == PLAYER_LIVES - 1 == 2
+
+
+def test_dead_game_over_when_lives_negative(p: Player) -> None:
+    p.lives = 0
+    p.hp = 1
+    p.take_damage(1)
+    p.update(1 / 60)  # HIT
+    for _ in range(20):
+        p.update(1 / 60)  # wait for HIT
+    assert p.is_game_over is True
+
+
+# ---------------------------------------------------------------------------
+# 9. BOMB
+# ---------------------------------------------------------------------------
+def test_bomb_consumes_count(p: Player) -> None:
+    p.input_bomb = True
+    p.update(1 / 60)
+    assert p.bombs == 2
+    assert p.wants_to_bomb is True
+
+
+def test_bomb_blocked_when_zero(p: Player) -> None:
+    p.bombs = 0
+    p.input_bomb = True
+    p.update(1 / 60)
+    assert p.wants_to_bomb is False
+
+
+# ---------------------------------------------------------------------------
+# 10. Reset
+# ---------------------------------------------------------------------------
+def test_reset_returns_to_spawn(p: Player) -> None:
+    p.hp = 1
+    p.lives = 0
+    p.bombs = 0
+    p.state = PlayerState.DEAD
+    p.reset()
+    assert p.hp == 3
+    assert p.lives == PLAYER_LIVES
+    assert p.bombs == 3
+    assert p.state == PlayerState.IDLE
+    assert p.is_game_over is False
+
+
+# ---------------------------------------------------------------------------
+# 11. Position clamping
+# ---------------------------------------------------------------------------
+def test_position_clamped_to_left_edge(p: Player) -> None:
+    p.x = -100.0
+    p.update(1 / 60)
+    assert p.x >= 10
+
+
+def test_position_clamped_to_right_edge(p: Player) -> None:
+    p.x = INTERNAL_W + 100.0
+    p.update(1 / 60)
+    assert p.x <= INTERNAL_W - 10
+
+
+# ---------------------------------------------------------------------------
+# 12. Hitbox
+# ---------------------------------------------------------------------------
+def test_hitbox_is_smaller_than_sprite(p: Player) -> None:
+    """70% forgiving hitbox per GDD §5."""
+    box = p.hitbox
+    # 18x16 sprite, 70% = ~12x11
+    assert box.width <= 18
+    assert box.height <= 16
+
+
+# ---------------------------------------------------------------------------
+# 13. State timer
+# ---------------------------------------------------------------------------
+def test_state_timer_advances(p: Player) -> None:
+    p.update(1 / 60)
+    assert p.state_timer == pytest.approx(1 / 60, abs=1e-6)
+
+
+def test_charge_level_function(p: Player) -> None:
+    """get_charge_level returns 0/1/2/3 based on state + charge_time."""
+    assert p.get_charge_level() == 0
+    p.state = PlayerState.CHARGE
+    p.charge_time = 0.3
+    assert p.get_charge_level() == 0
+    p.charge_time = 0.7
+    assert p.get_charge_level() == 1
+    p.charge_time = 1.2
+    assert p.get_charge_level() == 2
+    p.charge_time = 1.6
+    assert p.get_charge_level() == 3

@@ -1,0 +1,473 @@
+"""Player ship with 7-state FSM (BLOQUE 6).
+
+States: IDLE, MOVE, SHOOT, CHARGE (build+fire), DASH, HIT, DEAD.
+
+Transitions (per GDD §2):
+  - IDLE -> MOVE    (input lateral)
+  - MOVE -> IDLE    (input released + 0.05s settle)
+  - IDLE/MOVE -> SHOOT  (fire input + cd_ready, 0.10s timer)
+  - SHOOT/IDLE -> CHARGE  (hold > 0.5s, builds L1/L2/L3 at 0.5/1.0/1.5s)
+  - CHARGE -> IDLE  (release + fire 0.20s anim, or 1.5s timeout -> SHOOT)
+  - any -> DASH     (dash input, 0.18s, i-frames)
+  - any -> HIT      (take_damage, 0.30s, 60f invuln)
+  - HIT -> DEAD     (lives=0)
+  - DEAD -> respawn (1.20s) -> IDLE (1s invuln) or game_over
+"""
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Optional
+
+import pygame
+
+from src.core.settings import (
+    INTERNAL_H,
+    INTERNAL_W,
+    PLAYER_BOMBS,
+    PLAYER_BOMBS_MAX,
+    PLAYER_DASH_DURATION_S,
+    PLAYER_DASH_IFRAMES,
+    PLAYER_DASH_SPEED,
+    PLAYER_DEATH_DURATION_S,
+    PLAYER_FIRE_COOLDOWN_S,
+    PLAYER_INVULN_FRAMES,
+    PLAYER_LIVES,
+    PLAYER_RESPAWN_INVULN_S,
+    PLAYER_SPEED,
+)
+
+
+class PlayerState(Enum):
+    IDLE = "idle"
+    MOVE = "move"
+    SHOOT = "shoot"
+    CHARGE = "charge"
+    DASH = "dash"
+    HIT = "hit"
+    DEAD = "dead"
+
+
+# Charge thresholds (seconds)
+CHARGE_L1_S = 0.5
+CHARGE_L2_S = 1.0
+CHARGE_L3_S = 1.5
+CHARGE_TIMEOUT_S = 1.5
+CHARGE_FIRE_ANIM_S = 0.20
+
+# Settle time when releasing lateral input
+MOVE_SETTLE_S = 0.05
+
+# Hit duration
+HIT_DURATION_S = 0.30
+HITSTOP_FRAMES_ON_HIT = 3
+
+
+@dataclass
+class Player:
+    """Player ship entity. State, position, velocity, lives, bombs."""
+    # Position
+    x: float = INTERNAL_W / 2
+    y: float = INTERNAL_H - 60
+    vx: float = 0.0
+    vy: float = 0.0
+    # Tilt
+    tilt: float = 0.0  # degrees, target; current is computed
+    current_tilt: float = 0.0
+    # State
+    state: PlayerState = PlayerState.IDLE
+    state_timer: float = 0.0
+    # Charge
+    charge_time: float = 0.0
+    # Dash
+    dash_dir_x: float = 0.0
+    dash_dir_y: float = -1.0  # default upward
+    dash_iframes_left: int = 0
+    # Hit
+    invuln_frames: int = 0
+    # Lifecycle
+    lives: int = PLAYER_LIVES
+    bombs: int = PLAYER_BOMBS
+    bombs_max: int = PLAYER_BOMBS_MAX
+    hp: int = 3
+    hp_max: int = 3
+    # Fire cooldown
+    fire_cd: float = 0.0
+    # Death/respawn
+    death_timer: float = 0.0
+    respawn_invuln: float = 0.0
+    # After-image trail
+    afterimage: list[tuple[float, float, float]] = field(default_factory=list)  # (x, y, age)
+    AFTERIMAGE_LIFE = 0.13  # seconds
+    # Inputs (set externally each frame)
+    input_left: bool = False
+    input_right: bool = False
+    input_fire: bool = False
+    input_dash: bool = False
+    input_bomb: bool = False
+    # Output signals (consumed by WeaponSystem etc.)
+    wants_to_shoot: bool = False
+    wants_to_charge_release: bool = False
+    wants_to_dash: bool = False
+    wants_to_bomb: bool = False
+    # Damage received this frame (set by collision system)
+    damage_taken: int = 0
+    # HP system
+    is_dead: bool = False
+    is_game_over: bool = False
+    # Internal: charge-firing flag (set when release happens mid-charge)
+    _charge_fired: bool = False
+
+    # -----------------------------------------------------------------------
+    # Public API
+    # -----------------------------------------------------------------------
+    def reset(self) -> None:
+        """Full reset to spawn state. Used on game start / continue."""
+        self.x = INTERNAL_W / 2
+        self.y = INTERNAL_H - 60
+        self.vx = 0.0
+        self.vy = 0.0
+        self.tilt = 0.0
+        self.current_tilt = 0.0
+        self.state = PlayerState.IDLE
+        self.state_timer = 0.0
+        self.charge_time = 0.0
+        self.dash_iframes_left = 0
+        self.invuln_frames = 0
+        self.lives = PLAYER_LIVES
+        self.bombs = PLAYER_BOMBS
+        self.bombs_max = PLAYER_BOMBS_MAX
+        self.hp = 3
+        self.hp_max = 3
+        self.fire_cd = 0.0
+        self.death_timer = 0.0
+        self.respawn_invuln = 0.0
+        self.afterimage.clear()
+        self.wants_to_shoot = False
+        self.wants_to_charge_release = False
+        self.wants_to_dash = False
+        self.wants_to_bomb = False
+        self.damage_taken = 0
+        self.is_dead = False
+        self.is_game_over = False
+
+    def take_damage(self, amount: int = 1) -> bool:
+        """Apply damage if not in i-frames. Returns True if hit applied."""
+        if self.invuln_frames > 0 or self.dash_iframes_left > 0:
+            return False
+        if self.state == PlayerState.DEAD:
+            return False
+        self.hp -= amount
+        self.damage_taken = max(self.damage_taken, amount)
+        return True
+
+    @property
+    def is_invulnerable(self) -> bool:
+        return self.invuln_frames > 0 or self.dash_iframes_left > 0
+
+    @property
+    def hitbox(self) -> pygame.Rect:
+        """Real hitbox = 70% of sprite (forgiving per GDD §5)."""
+        return pygame.Rect(int(self.x - 9), int(self.y - 6), 18, 12)
+
+    # -----------------------------------------------------------------------
+    # Per-frame update
+    # -----------------------------------------------------------------------
+    def update(self, dt: float) -> None:
+        """Advance FSM + position. Outputs `wants_to_*` flags for systems."""
+        if dt <= 0.0:
+            return
+        # Always clamp (defensive: covers spawn at any position, debug overrides)
+        self._clamp_position()
+        # Reset per-frame outputs
+        self.wants_to_shoot = False
+        self.wants_to_charge_release = False
+        self.wants_to_dash = False
+        self.wants_to_bomb = False
+        # Invuln countdown (always)
+        if self.invuln_frames > 0:
+            self.invuln_frames = max(0, self.invuln_frames - 1)
+        if self.dash_iframes_left > 0:
+            self.dash_iframes_left = max(0, self.dash_iframes_left - 1)
+        # Fire cooldown
+        if self.fire_cd > 0.0:
+            self.fire_cd = max(0.0, self.fire_cd - dt)
+        # Track charge_time when input_fire is held in IDLE/MOVE only.
+        # Don't reset to 0 here — _update_idle / _update_charge own the
+        # charge_time lifecycle.
+        if self.input_fire and self.state in (PlayerState.IDLE, PlayerState.MOVE):
+            self.charge_time += dt
+        elif self.state in (PlayerState.IDLE, PlayerState.MOVE):
+            # Released while in IDLE/MOVE → reset
+            self.charge_time = 0.0
+        # Afterimage decay
+        if self.afterimage:
+            new_trail: list[tuple[float, float, float]] = []
+            for tx, ty, age in self.afterimage:
+                new_age = age + dt
+                if new_age < self.AFTERIMAGE_LIFE:
+                    new_trail.append((tx, ty, new_age))
+            self.afterimage = new_trail
+        # State-specific update
+        if self.state == PlayerState.IDLE:
+            self._update_idle(dt)
+        elif self.state == PlayerState.MOVE:
+            self._update_move(dt)
+        elif self.state == PlayerState.SHOOT:
+            self._update_shoot(dt)
+        elif self.state == PlayerState.CHARGE:
+            self._update_charge(dt)
+        elif self.state == PlayerState.DASH:
+            self._update_dash(dt)
+        elif self.state == PlayerState.HIT:
+            self._update_hit(dt)
+        elif self.state == PlayerState.DEAD:
+            self._update_dead(dt)
+        # Tilt smoothing
+        self.current_tilt += (self.tilt - self.current_tilt) * min(1.0, dt * 12.0)
+        # Apply damage if accumulated
+        if self.damage_taken > 0 and self.state != PlayerState.DEAD:
+            self._enter_hit()
+            self.damage_taken = 0
+        # State timer advance
+        self.state_timer += dt
+
+    # -----------------------------------------------------------------------
+    # State updates
+    # -----------------------------------------------------------------------
+    def _update_idle(self, dt: float) -> None:
+        # Dash takes priority over move (dash from idle)
+        if self.input_dash:
+            self._enter_dash()
+            return
+        # Bomb
+        if self.input_bomb and self.bombs > 0:
+            self._consume_bomb()
+            return
+        # Charge takes priority over shoot (held > 0.5s = charge)
+        if self.input_fire and self.charge_time >= CHARGE_L1_S:
+            self._enter_charge()
+            return
+        # Movement input → MOVE
+        if self.input_left or self.input_right:
+            self._enter_move()
+            return
+        # Fire input
+        if self.input_fire:
+            if self.fire_cd <= 0.0:
+                self.wants_to_shoot = True
+                self.fire_cd = PLAYER_FIRE_COOLDOWN_S
+                self._enter_shoot()
+            return
+        # No input → stay
+        self.vx = 0.0
+        self.vy = 0.0
+        self.tilt = 0.0
+        # Always clamp (defensive)
+        self._clamp_position()
+
+    def _update_move(self, dt: float) -> None:
+        # Dash takes priority
+        if self.input_dash:
+            self._enter_dash()
+            return
+        # Bomb
+        if self.input_bomb and self.bombs > 0:
+            self._consume_bomb()
+            return
+        # Charge before shoot
+        if self.input_fire and self.charge_time >= CHARGE_L1_S:
+            self._enter_charge()
+            return
+        # Compute vx from input
+        target_vx = 0.0
+        if self.input_left:
+            target_vx -= PLAYER_SPEED
+        if self.input_right:
+            target_vx += PLAYER_SPEED
+        # Acceleration (ease-out)
+        self.vx += (target_vx - self.vx) * min(1.0, dt * 12.0)
+        self.vy = 0.0
+        self.tilt = -15.0 if self.vx < -10 else (15.0 if self.vx > 10 else 0.0)
+        # Position integration
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        self._clamp_position()
+        # Settle timer
+        if not self.input_left and not self.input_right:
+            if self.state_timer >= MOVE_SETTLE_S:
+                self._enter_idle()
+                return
+        # Fire
+        if self.input_fire and self.fire_cd <= 0.0:
+            self.wants_to_shoot = True
+            self.fire_cd = PLAYER_FIRE_COOLDOWN_S
+            self._enter_shoot()
+
+    def _update_shoot(self, dt: float) -> None:
+        """Brief state: recoil animation. Continues moving with reduced input."""
+        # Maintain movement capability while in SHOOT (it's a sub-state)
+        if self.input_left or self.input_right:
+            self._enter_move()
+            return
+        # 0.10s after fire, return to idle
+        if self.state_timer >= PLAYER_FIRE_COOLDOWN_S:
+            self._enter_idle()
+            return
+        # Can dash out of shoot
+        if self.input_dash:
+            self._enter_dash()
+            return
+
+    def _update_charge(self, dt: float) -> None:
+        # CHARGE engloba build (charge_time) + fire anim (post-release)
+        if not self.input_fire and self.charge_time >= CHARGE_L1_S and not self._charge_fired:
+            # Release: fire special shot
+            self.wants_to_charge_release = True
+            self._charge_fired = True
+        if self._charge_fired:
+            # Post-fire animation
+            if self.state_timer >= CHARGE_FIRE_ANIM_S:
+                self._enter_idle()
+                return
+        else:
+            # Building up
+            self.charge_time += dt
+            if self.charge_time >= CHARGE_TIMEOUT_S and not self.input_fire:
+                # Timeout without release → fall back to auto-fire L1
+                self.wants_to_shoot = True
+                self._enter_idle()
+                return
+        # Movement allowed during charge (with penalty)
+        target_vx = 0.0
+        if self.input_left:
+            target_vx -= PLAYER_SPEED * 0.6
+        if self.input_right:
+            target_vx += PLAYER_SPEED * 0.6
+        self.vx += (target_vx - self.vx) * min(1.0, dt * 8.0)
+        self.x += self.vx * dt
+        self._clamp_position()
+        # Can dash
+        if self.input_dash:
+            self._enter_dash()
+            return
+
+    def _update_dash(self, dt: float) -> None:
+        # Move in dash direction at high speed
+        self.x += self.dash_dir_x * PLAYER_DASH_SPEED * dt
+        self.y += self.dash_dir_y * PLAYER_DASH_SPEED * dt
+        self._clamp_position()
+        # After-image trail
+        self.afterimage.append((self.x, self.y, 0.0))
+        if len(self.afterimage) > 8:
+            self.afterimage.pop(0)
+        if self.state_timer >= PLAYER_DASH_DURATION_S:
+            self._enter_idle()
+
+    def _update_hit(self, dt: float) -> None:
+        # Reduced movement
+        self.vx *= 0.85
+        self.x += self.vx * dt
+        self._clamp_position()
+        if self.state_timer >= HIT_DURATION_S:
+            if self.hp <= 0:
+                self.lives -= 1
+                if self.lives < 0:
+                    self.is_game_over = True
+                self._enter_dead()
+            else:
+                self.invuln_frames = PLAYER_INVULN_FRAMES
+                self._enter_idle()
+
+    def _update_dead(self, dt: float) -> None:
+        self.death_timer += dt
+        if self.death_timer >= PLAYER_DEATH_DURATION_S:
+            if self.is_game_over:
+                return
+            # Respawn
+            self.x = INTERNAL_W / 2
+            self.y = INTERNAL_H - 60
+            self.vx = 0.0
+            self.vy = 0.0
+            self.hp = self.hp_max
+            self.death_timer = 0.0
+            self.respawn_invuln = PLAYER_RESPAWN_INVULN_S
+            self._enter_idle()
+
+    # -----------------------------------------------------------------------
+    # State transitions
+    # -----------------------------------------------------------------------
+    def _enter_idle(self) -> None:
+        self.state = PlayerState.IDLE
+        self.state_timer = 0.0
+        self.charge_time = 0.0
+        self._charge_fired = False
+
+    def _enter_move(self) -> None:
+        self.state = PlayerState.MOVE
+        self.state_timer = 0.0
+
+    def _enter_shoot(self) -> None:
+        self.state = PlayerState.SHOOT
+        self.state_timer = 0.0
+
+    def _enter_charge(self) -> None:
+        self.state = PlayerState.CHARGE
+        self.state_timer = 0.0
+        self.charge_time = CHARGE_L1_S  # already exceeded L1 by check
+        self._charge_fired = False
+
+    def _enter_dash(self) -> None:
+        self.state = PlayerState.DASH
+        self.state_timer = 0.0
+        self.dash_iframes_left = PLAYER_DASH_IFRAMES
+        # Direction: lateral input wins, else up
+        left = self.input_left
+        right = self.input_right
+        if left and not right:
+            self.dash_dir_x, self.dash_dir_y = -1.0, 0.0
+        elif right and not left:
+            self.dash_dir_x, self.dash_dir_y = 1.0, 0.0
+        else:
+            self.dash_dir_x, self.dash_dir_y = 0.0, -1.0
+        # Consume dash input (one-shot)
+        self.input_dash = False
+
+    def _enter_hit(self) -> None:
+        self.state = PlayerState.HIT
+        self.state_timer = 0.0
+        self.invuln_frames = PLAYER_INVULN_FRAMES
+
+    def _enter_dead(self) -> None:
+        self.state = PlayerState.DEAD
+        self.state_timer = 0.0
+        self.death_timer = 0.0
+        self.is_dead = True
+
+    def _consume_bomb(self) -> None:
+        self.bombs = max(0, self.bombs - 1)
+        self.wants_to_bomb = True
+        self.input_bomb = False  # consume input
+        # Bombs are screen-wide clears; the consumer handles the effect.
+        # We don't change state here — player stays in current state.
+
+    # -----------------------------------------------------------------------
+    # Internals
+    # -----------------------------------------------------------------------
+    def _clamp_position(self) -> None:
+        # 18x16 sprite, keep 4px margin from edges
+        self.x = max(10, min(INTERNAL_W - 10, self.x))
+        self.y = max(10, min(INTERNAL_H - 10, self.y))
+
+    def get_charge_level(self) -> int:
+        """Return 0/1/2/3 based on charge_time. 0 = not charging."""
+        if self.state != PlayerState.CHARGE:
+            return 0
+        if self.charge_time >= CHARGE_L3_S:
+            return 3
+        if self.charge_time >= CHARGE_L2_S:
+            return 2
+        if self.charge_time >= CHARGE_L1_S:
+            return 1
+        return 0
