@@ -1,0 +1,96 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "void-hunter"
+version = "0.1.0"
+description = "Vertical shmup, 8-bit aesthetic with Metal Slug-grade juice. 120 FPS lock."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Lerius" }]
+keywords = ["shmup", "pygame", "arcade", "vertical-shooter", "8-bit"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: X11 Applications",
+    "Environment :: MacOS X",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment :: Arcade",
+]
+dependencies = [
+    "pygame>=2.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "mypy>=1.5",
+]
+
+[project.scripts]
+void-hunter = "main:main"
+
+# ---------------------------------------------------------------------------
+# Mypy strict — 0 errores requeridos (criterio §0)
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+plugins = []
+
+# ---------------------------------------------------------------------------
+# Pytest + coverage gate (criterio §0: gate 35% al release, 5% en BLOQUE 0)
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers --tb=short"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:pygame.*",
+    "ignore::DeprecationWarning",
+]
+
+# ---------------------------------------------------------------------------
+# Coverage
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/.pytest_cache/*",
+]
+branch = true
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "\\.\\.\\.",
+]

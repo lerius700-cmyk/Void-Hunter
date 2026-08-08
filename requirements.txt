@@ -1,0 +1,4 @@
+# VOID HUNTER — runtime dependencies
+# BLOQUE 0 baseline. Política: cero deps externas (numpy/scipy prohibidos por spec §0).
+# Stack cerrado: solo pygame (2.6+) + stdlib.
+pygame>=2.6.0
