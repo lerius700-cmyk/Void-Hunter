@@ -495,9 +495,11 @@ class Player:
     # Internals
     # -----------------------------------------------------------------------
     def _clamp_position(self) -> None:
-        # 18x16 sprite, keep 4px margin from edges
-        self.x = max(10, min(INTERNAL_W - 10, self.x))
-        self.y = max(10, min(INTERNAL_H - 10, self.y))
+        # 18x16 sprite. Allow center to reach the visible border edges
+        # (9px from each side for half-sprite) so the ship can use the
+        # entire 240x360 play area defined by the border frame.
+        self.x = max(9, min(INTERNAL_W - 9, self.x))
+        self.y = max(9, min(INTERNAL_H - 9, self.y))
 
     def get_charge_level(self) -> int:
         """Return 0/1/2/3 based on charge_time. 0 = not charging."""

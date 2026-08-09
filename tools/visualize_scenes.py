@@ -31,7 +31,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 
 from src.core.game import Game
 from src.core.scene_manager import GameState
-from src.core.settings import FIXED_DT
+from src.core.settings import FIXED_DT, INTERNAL_H, INTERNAL_W
 
 
 def render_and_save(game: Game, name: str, ticks: int = 30) -> None:
@@ -71,17 +71,17 @@ def main() -> int:
     gp = game.scenes.scenes[GameState.GAMEPLAY]
     # Monkey-patch input reader so we can control inputs
     gp._rt._read_input = lambda: None
-    # Fire + move right
+    # Place player at right edge to show wall indicator + fire
+    gp._rt._player.x = INTERNAL_W - 12
+    gp._rt._player.y = INTERNAL_H - 60
     gp._rt._player.input_fire = True
-    gp._rt._player.input_right = True
-    for _ in range(180):  # 1.5 seconds — more time for enemies + polish
+    for _ in range(180):  # 1.5 seconds
         gp._rt._player.input_fire = True
         gp.update(FIXED_DT)
     game.internal.fill((0, 0, 0))
     game.scenes.draw(game.internal)
     pygame.image.save(game.internal, str(OUT / "04_gameplay_moving.png"))
     print(f"  -> {OUT / '04_gameplay_moving.png'}")
-    gp._rt._player.input_right = False
     gp._rt._player.input_fire = False
 
     # 05 — BOSS_INTRO

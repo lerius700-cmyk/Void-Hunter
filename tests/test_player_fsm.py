@@ -332,13 +332,13 @@ def test_reset_returns_to_spawn(p: Player) -> None:
 def test_position_clamped_to_left_edge(p: Player) -> None:
     p.x = -100.0
     p.update(1 / 60)
-    assert p.x >= 10
+    assert p.x >= 9
 
 
 def test_position_clamped_to_right_edge(p: Player) -> None:
     p.x = INTERNAL_W + 100.0
     p.update(1 / 60)
-    assert p.x <= INTERNAL_W - 10
+    assert p.x <= INTERNAL_W - 9
 
 
 # ---------------------------------------------------------------------------

@@ -494,7 +494,9 @@ class GameplayRuntime:
                     continue
                 if pr.colliderect(e.hitbox()):
                     killed = e.apply_damage(p.damage)
-                    self._emit_burst(p.x, p.y, count=3, kind="spark")
+                    # Bigger impact burst (8 sparks instead of 3)
+                    self._emit_burst(p.x, p.y, count=8, kind="spark")
+                    self._emit_burst(p.x, p.y, count=3, kind="shrapnel")
                     # Hit feedback: flash white for 0.08s
                     self._enemy_flash[id(e)] = 0.08
                     if killed:
@@ -839,6 +841,13 @@ class GameplayRuntime:
         # Shake offset
         shx_f, shy_f = self._shake.get_offset()
         shx, shy = int(shx_f), int(shy_f)
+        # Player damage flash: red overlay right after taking a hit
+        if self._player.invuln_frames > 60 - 8 and self._player.invuln_frames > 0 \
+                and not self._player.is_dead:
+            # Brief red flash overlay (8 frames after hit)
+            flash = pygame.Surface(target.get_size(), pygame.SRCALPHA)
+            flash.fill((255, 60, 40, 100))
+            target.blit(flash, (0, 0))
         # Power-ups
         for p in self._powerups:
             alpha = max(0, min(255, int(255 * (p.life / 2.0))))
@@ -865,53 +874,112 @@ class GameplayRuntime:
         self._particles.draw(target, (shx, shy))
         # Score popups
         self._draw_score_popups(target, shx, shy)
+        # Wave/act indicator (top-center, small)
+        self._draw_wave_indicator(target)
         # Play-area frame (always on top so the border is visible)
         self._draw_play_area_frame(target)
         # HUD
         self._hud.draw(target, self._player, self._weapon, self._scoring)
 
+    def _draw_wave_indicator(self, target: pygame.Surface) -> None:
+        """Show ACT/WAVE label in the top-center between HUD sections."""
+        if self._is_boss:
+            label = f"ACT {self._act} - BOSS"
+        else:
+            wave_in_act = (self._wave_idx % 6) + 1
+            label = f"ACT {self._act} - WAVE {wave_in_act}/6"
+        font = pygame.font.Font(None, 12)
+        text = font.render(label, True, (200, 200, 220))
+        # Place at top-center, below the HUD
+        x = (target.get_width() - text.get_width()) // 2
+        y = 22  # just below HP/bombs row
+        # Background pill for legibility
+        pill_w = text.get_width() + 8
+        pill = pygame.Surface((pill_w, text.get_height() + 4), pygame.SRCALPHA)
+        pygame.draw.rect(pill, (0, 0, 0, 160), pill.get_rect(), border_radius=2)
+        target.blit(pill, (x - 4, y - 2))
+        target.blit(text, (x, y))
+
     def _draw_play_area_frame(self, target: pygame.Surface) -> None:
-        """Visible 1-2px border around the 240x360 play area."""
+        """Visible border around the 240x360 play area.
+
+        Border position matches the player's clamp exactly: the player
+        can move from (9, 9) to (231, 351), so the border sits at 0,0-240,360
+        with a bright inner edge that defines the play area clearly.
+        """
         w, h = target.get_size()
         # Outer dark border
         pygame.draw.rect(target, _BORDER_COLOR, (0, 0, w, h), 2)
         # Inner light edge for depth
         pygame.draw.rect(target, _BORDER_INNER, (1, 1, w - 2, h - 2), 1)
-        # Corner accents
-        for cx, cy in ((0, 0), (w - 4, 0), (0, h - 4), (w - 4, h - 4)):
-            pygame.draw.rect(target, (180, 180, 220), (cx, cy, 4, 4))
+        # Corner accents (brighter)
+        for cx, cy in ((0, 0), (w - 5, 0), (0, h - 5), (w - 5, h - 5)):
+            pygame.draw.rect(target, (200, 200, 240), (cx, cy, 5, 5))
+        # Wall-hit indicator: highlight the side the player is touching
+        if not self._player.is_dead:
+            px, py = self._player.x, self._player.y
+            highlight = 80  # extra bright edge
+            if px < 12:  # left wall
+                pygame.draw.rect(target, (255, 255, 255), (0, 0, 3, h), 1)
+            if px > 228:  # right wall
+                pygame.draw.rect(target, (255, 255, 255), (w - 3, 0, 3, h), 1)
+            if py < 12:  # top wall
+                pygame.draw.rect(target, (255, 255, 255), (0, 0, w, 3), 1)
+            if py > 348:  # bottom wall
+                pygame.draw.rect(target, (255, 255, 255), (0, h - 3, w, 3), 1)
 
     def _draw_bullets_with_glow(self, target: pygame.Surface, ox: int, oy: int) -> None:
-        """Draw bullets with a soft glow halo behind each one."""
+        """Draw bullets with a soft glow halo + trail behind each one."""
+        from src.systems.projectile import (
+            BULLET_BOSS, BULLET_ENEMY, BULLET_PLAYER, BULLET_PLAYER_CHARGED,
+        )
         # Glow pass: draw larger soft circles first (cheap halo via translucent surface)
         glow = pygame.Surface(target.get_size(), pygame.SRCALPHA)
+        # Trail pass: draw fading line segments behind each bullet
+        trail = pygame.Surface(target.get_size(), pygame.SRCALPHA)
         for p in self._bullets.pool:
             if not p.active:
                 continue
             cx, cy = int(p.x) + ox, int(p.y) + oy
-            # Glow color by bullet kind
-            from src.systems.projectile import (
-                BULLET_BOSS, BULLET_ENEMY, BULLET_PLAYER, BULLET_PLAYER_CHARGED,
-            )
+            # Glow color + radius by bullet kind
             if p.kind == BULLET_PLAYER:
-                glow_color = (255, 220, 100, 60)
+                glow_color = (255, 220, 100, 70)
                 radius = 5
+                trail_color = (255, 220, 100, 180)
             elif p.kind == BULLET_PLAYER_CHARGED:
-                glow_color = (255, 240, 200, 110)
+                glow_color = (255, 240, 200, 130)
                 radius = 8
+                trail_color = (255, 240, 200, 220)
             elif p.kind == BULLET_ENEMY:
-                glow_color = (255, 100, 100, 60)
+                glow_color = (255, 100, 100, 70)
                 radius = 5
+                trail_color = (255, 100, 100, 180)
             elif p.kind == BULLET_BOSS:
-                glow_color = (220, 120, 255, 80)
+                glow_color = (220, 120, 255, 90)
                 radius = 7
+                trail_color = (220, 120, 255, 200)
             else:
-                glow_color = (255, 255, 255, 60)
+                glow_color = (255, 255, 255, 70)
                 radius = 5
+                trail_color = (255, 255, 255, 180)
             pygame.draw.circle(glow, glow_color, (cx, cy), radius)
+            # Trail: a line from current position to (pos - vx*0.05, pos - vy*0.05)
+            # Inverted because the bullet is moving away from where it was
+            tx = int(p.x - p.vx * 0.04) + ox
+            ty = int(p.y - p.vy * 0.04) + oy
+            pygame.draw.line(trail, trail_color, (cx, cy), (tx, ty), 2)
+        target.blit(trail, (0, 0))
         target.blit(glow, (0, 0))
         # Solid bullets on top
         self._bullets.draw(target)
+        # Tiny bright center dot for visibility
+        center = pygame.Surface(target.get_size(), pygame.SRCALPHA)
+        for p in self._bullets.pool:
+            if not p.active:
+                continue
+            cx, cy = int(p.x) + ox, int(p.y) + oy
+            pygame.draw.circle(center, (255, 255, 255, 200), (cx, cy), 1)
+        target.blit(center, (0, 0))
 
     def _draw_score_popups(self, target: pygame.Surface, ox: int, oy: int) -> None:
         font = pygame.font.Font(None, 14)
@@ -978,8 +1046,17 @@ class GameplayRuntime:
         length = 4 + min(8, speed / 130.0 * 8)
         # Flicker the flame width using a sin
         flicker = 1.0 + 0.4 * math.sin(self._t * 40.0)
+        # Dash: longer flame
+        if self._player.state == PlayerState.DASH:
+            length *= 1.8
+            flicker *= 1.5
         # Three flame segments (yellow, orange, red) for a layered look
         # Drawn behind the ship (y direction = +y, ship points -y)
+        pygame.draw.polygon(target, (255, 240, 180), [
+            (px - 1, py + 8),
+            (px + 1, py + 8),
+            (px, py + 8 + length * flicker * 1.1),
+        ])
         pygame.draw.polygon(target, (255, 220, 80), [
             (px - 2, py + 8),
             (px + 2, py + 8),
@@ -995,6 +1072,17 @@ class GameplayRuntime:
             (px + 1.5, py + 8),
             (px, py + 8 + length * flicker * 0.4),
         ])
+        # Thrust particles — small sparks trailing the flame
+        # Spawn only when actually moving, throttled by frame counter
+        if speed > 30.0 and int(self._t * 60) % 3 == 0:
+            spread = (random.random() - 0.5) * 4.0
+            spark_x = px + spread
+            spark_y = py + 8 + length * flicker * 0.5
+            # Tiny SPARK particle drifting further back
+            from src.systems.particle_engine import P_SPARK
+            self._particles.emit(P_SPARK, spark_x, spark_y,
+                                  vx=spread * 5.0, vy=20.0,
+                                  life=0.15, radius=1.0)
 
     def _draw_charge_indicator(self, target: pygame.Surface, level: int, ox: int, oy: int) -> None:
         """Bright pulsing ring around the player when fully charged."""
