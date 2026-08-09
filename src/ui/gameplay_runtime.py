@@ -120,6 +120,23 @@ class Shockwave:
     max_life: float
 
 
+# BLOQUE 39: Homing missile spawned by the B key (replaces the L-key
+# screen-clear bomb). Tracks the current mouse position, accelerates
+# to top speed, rotates up to TURN_RATE_DEG_S, and explodes on first
+# contact (enemy, boss, enemy bullet, or screen edge).
+@dataclass
+class HomingMissile:
+    x: float
+    y: float
+    vx: float = 0.0
+    vy: float = 0.0
+    angle: float = 0.0           # visual rotation (deg), 0=up
+    speed: float = 0.0            # current speed
+    life: float = 0.0             # elapsed time
+    trail_timer: float = 0.0
+    active: bool = True
+
+
 class GameplayRuntime:
     """Owns the live action loop. One per GAMEPLAY or BOSS_FIGHT scene.
 
@@ -195,6 +212,8 @@ class GameplayRuntime:
         self._mouse_y: float = INTERNAL_H / 2
         self._mouse_held: bool = False  # BLOQUE 30: LMB held state
         self._mouse_r_held: bool = False  # BLOQUE 34: RMB held state (rapid fire)
+        # BLOQUE 39: active homing missiles (bomb B key)
+        self._missiles: list[HomingMissile] = []
         from src.core.settings import WINDOW_H, WINDOW_W
         self._game_screen_size: tuple[int, int] = (WINDOW_W, WINDOW_H)
         # BLOQUE 22: extra polish
@@ -268,6 +287,8 @@ class GameplayRuntime:
         self._powerups.clear()
         self._enemy_flash.clear()
         self._shockwaves.clear()
+        # BLOQUE 39: clear active homing missiles on scene enter
+        self._missiles.clear()
         self._screen_flash = 0.0
         # BLOQUE 22: reset polish state
         self._muzzle_flash = 0.0
@@ -363,6 +384,11 @@ class GameplayRuntime:
                 # BLOQUE 33: Shift left = dash (one-shot, consumed)
                 self._player.input_dash = True
             elif event.key == pygame.K_l:
+                # BLOQUE 39: L still triggers bomb (back-compat), but B
+                # is the new primary key. Both routed to the same path.
+                self._player.input_bomb = True
+            elif event.key == pygame.K_b:
+                # BLOQUE 39: B is the new bomb key (homing missile).
                 self._player.input_bomb = True
             elif event.key == pygame.K_j:
                 # Legacy: J also fires (for testing)
@@ -413,15 +439,12 @@ class GameplayRuntime:
         # Normal fire
         elif self._player.wants_to_shoot:
             self._weapon.request_fire(charge_level=0)
-        # Bomb
+        # BLOQUE 39: Bomb → spawn a homing missile (replaces screen-clear)
         if self._player.wants_to_bomb and self._player.bombs > 0:
             self._player._consume_bomb()
             self._scoring.on_bomb()
-            self._screen_clear_damage()
-            self._slowmo.trigger(0.50, 8)
-            self._shake.add_trauma(0.4)
-            self._emit_burst(self._player.x, self._player.y, count=24, kind="spark")
-            self._play_sfx("bomb", volume=0.9)
+            self._spawn_homing_missile()
+            self._play_sfx("bomb", volume=0.6)
         # Charge SFX: rising pitch as charge level increases
         if current_charge > self._last_charge_level:
             self._play_sfx("charge_loop", volume=0.5)
@@ -709,6 +732,253 @@ class GameplayRuntime:
                     pierce=spec.pierce, has_trail=spec.trail,
                     trail_color=spec.color,
                 )
+
+    # ------------------------------------------------------------------
+    # BLOQUE 39: homing missile (bomb = B key)
+    # ------------------------------------------------------------------
+    def _spawn_homing_missile(self) -> None:
+        """Spawn a homing missile at the player's nose aimed at the mouse."""
+        from src.core.settings import MISSILE_LIFE_S
+        # Initial direction = from player to mouse (so the missile starts
+        # already flying toward the cursor). Fall back to nose_angle if the
+        # mouse hasn't moved yet.
+        dx = self._mouse_x - self._player.x
+        dy = self._mouse_y - self._player.y
+        if abs(dx) < 1e-3 and abs(dy) < 1e-3:
+            nose_rad = math.radians(self._player.nose_angle)
+            dx = math.sin(nose_rad)
+            dy = -math.cos(nose_rad)
+        # Normalize and set initial velocity
+        dlen = math.sqrt(dx * dx + dy * dy)
+        if dlen > 0:
+            dx /= dlen
+            dy /= dlen
+        from src.core.settings import MISSILE_SPEED_PX_S
+        m = HomingMissile(
+            x=self._player.x,
+            y=self._player.y,
+            vx=dx * MISSILE_SPEED_PX_S * 0.5,  # start at half speed, accelerate
+            vy=dy * MISSILE_SPEED_PX_S * 0.5,
+            # Visual angle: 0°=up. atan2(dx, -dy) maps to the same convention.
+            angle=math.degrees(math.atan2(dx, -dy)) % 360.0,
+            speed=MISSILE_SPEED_PX_S * 0.5,
+            life=0.0,
+        )
+        m._max_life = MISSILE_LIFE_S  # type: ignore[attr-defined]
+        self._missiles.append(m)
+        # Tiny muzzle-style burst at the player nose so the launch reads.
+        self._emit_burst(self._player.x, self._player.y, count=6, kind="spark")
+
+    def _update_missiles(self, dt: float) -> None:
+        """BLOQUE 39: advance homing missiles, steer toward current mouse,
+        collide with enemies/boss/enemy bullets/screen edge, then explode.
+        """
+        from src.core.settings import (
+            MISSILE_ACCEL_PX_S2, MISSILE_BODY_RADIUS_PX,
+            MISSILE_EXPLOSION_RADIUS_PX, MISSILE_LIFE_S, MISSILE_SPEED_PX_S,
+            MISSILE_TRAIL_RATE_S, MISSILE_TURN_RATE_DEG_S,
+        )
+        if not self._missiles:
+            return
+        for m in self._missiles:
+            if not m.active:
+                continue
+            m.life += dt
+            if m.life >= MISSILE_LIFE_S:
+                # Time out: explode in place (small).
+                self._explode_missile(m, big=False)
+                continue
+            # Steer toward current mouse position (limit by TURN_RATE_DEG_S)
+            tdx = self._mouse_x - m.x
+            tdy = self._mouse_y - m.y
+            tlen = math.sqrt(tdx * tdx + tdy * tdy)
+            if tlen > 1e-3:
+                tdx /= tlen
+                tdy /= tlen
+            # Current heading (normalized)
+            if m.speed > 1e-3:
+                hdx = m.vx / m.speed
+                hdy = m.vy / m.speed
+            else:
+                hdx, hdy = tdx, tdy
+            # Cross product to determine turn sign (2D)
+            cross = hdx * tdy - hdy * tdx
+            dot = hdx * tdx + hdy * tdy
+            target_angle = math.degrees(math.atan2(tdx, -tdy)) % 360.0
+            current_angle = m.angle
+            # Shortest signed delta
+            delta = (target_angle - current_angle + 540.0) % 360.0 - 180.0
+            max_step = MISSILE_TURN_RATE_DEG_S * dt
+            if abs(delta) <= max_step:
+                new_angle = target_angle
+            elif delta > 0:
+                new_angle = current_angle + max_step
+            else:
+                new_angle = current_angle - max_step
+            m.angle = new_angle % 360.0
+            # New heading from the clamped angle
+            new_rad = math.radians(m.angle)
+            hdx2 = math.sin(new_rad)
+            hdy2 = -math.cos(new_rad)
+            # Accelerate
+            m.speed = min(MISSILE_SPEED_PX_S, m.speed + MISSILE_ACCEL_PX_S2 * dt)
+            m.vx = hdx2 * m.speed
+            m.vy = hdy2 * m.speed
+            # Move
+            m.x += m.vx * dt
+            m.y += m.vy * dt
+            # Trail particles
+            m.trail_timer += dt
+            if m.trail_timer >= MISSILE_TRAIL_RATE_S:
+                m.trail_timer = 0.0
+                self._emit_burst(m.x, m.y, count=1, kind="smoke")
+                self._emit_burst(m.x, m.y, count=1, kind="spark")
+            # Collisions
+            body_r = MISSILE_BODY_RADIUS_PX
+            # Screen edge: explode on leaving the play area
+            if (m.x < -body_r or m.x > INTERNAL_W + body_r
+                    or m.y < -body_r or m.y > INTERNAL_H + body_r):
+                self._explode_missile(m, big=False)
+                continue
+            # Enemies
+            hit = False
+            for e in self._enemies.pool:
+                if not e.active or e.state.name == "DEAD":
+                    continue
+                dx = e.x - m.x
+                dy = e.y - m.y
+                if dx * dx + dy * dy <= (body_r + 14) ** 2:
+                    self._explode_missile(m, big=True, hit_x=e.x, hit_y=e.y)
+                    hit = True
+                    break
+            if hit:
+                continue
+            # Boss
+            if self._is_boss and self._boss is not None and self._boss.active:
+                dx = self._boss.x - m.x
+                dy = self._boss.y - m.y
+                if dx * dx + dy * dy <= (body_r + 24) ** 2:
+                    self._explode_missile(m, big=True, hit_x=self._boss.x, hit_y=self._boss.y)
+                    continue
+            # Enemy bullets
+            for p in self._bullets.pool:
+                if not p.active or p.owner == OWNER_PLAYER:
+                    continue
+                dx = p.x - m.x
+                dy = p.y - m.y
+                if dx * dx + dy * dy <= (body_r + 4) ** 2:
+                    p.active = False
+                    self._bullets.pool.release(p)
+                    self._explode_missile(m, big=False, hit_x=p.x, hit_y=p.y)
+                    break
+
+    def _explode_missile(self, m: HomingMissile, big: bool, hit_x: float = 0.0, hit_y: float = 0.0) -> None:
+        """BLOQUE 39: missile detonation — damages enemies in radius, clears
+        nearby enemy bullets, applies screen flash + shockwave + slowmo.
+        """
+        from src.core.settings import (
+            MISSILE_EXPLOSION_DAMAGE, MISSILE_EXPLOSION_RADIUS_PX,
+        )
+        if not m.active:
+            return
+        m.active = False
+        cx, cy = m.x, m.y
+        if big:
+            cx, cy = hit_x, hit_y
+        rad = MISSILE_EXPLOSION_RADIUS_PX
+        # Damage enemies in radius
+        for e in self._enemies.pool:
+            if not e.active or e.state.name == "DEAD":
+                continue
+            dx = e.x - cx
+            dy = e.y - cy
+            if dx * dx + dy * dy <= rad * rad:
+                killed = e.apply_damage(MISSILE_EXPLOSION_DAMAGE)
+                self._emit_burst(e.x, e.y, count=8, kind="spark")
+                self._emit_burst(e.x, e.y, count=4, kind="shrapnel")
+                self._enemy_flash[id(e)] = 0.10
+                if killed:
+                    self._on_enemy_killed(e)
+        # Damage boss in radius
+        if self._is_boss and self._boss is not None and self._boss.active:
+            dx = self._boss.x - cx
+            dy = self._boss.y - cy
+            if dx * dx + dy * dy <= rad * rad:
+                self._boss.hp -= MISSILE_EXPLOSION_DAMAGE
+                # Phase change
+                cfg = BOSS_CONFIGS[self._boss.id]
+                new_phase = 1
+                for i, threshold in enumerate(cfg.phase_thresholds):
+                    if self._boss.hp / self._boss.max_hp <= threshold:
+                        new_phase = i + 2
+                if new_phase != self._boss.phase:
+                    self._boss.phase = new_phase
+                    self._emit_burst(self._boss.x, self._boss.y, count=24, kind="explosion")
+                    self._emit_burst(self._boss.x, self._boss.y, count=12, kind="spark")
+                    self._add_shockwave(self._boss.x, self._boss.y, 50.0)
+                    self._hitstop.trigger(6)
+                    self._shake.add_trauma(0.5)
+                    self._play_sfx("multiplier_up", volume=0.7)
+                if self._boss.hp <= 0:
+                    self._on_boss_killed()
+        # Clear enemy bullets in radius
+        for p in self._bullets.pool:
+            if not p.active or p.owner == OWNER_PLAYER:
+                continue
+            dx = p.x - cx
+            dy = p.y - cy
+            if dx * dx + dy * dy <= rad * rad:
+                p.active = False
+                self._bullets.pool.release(p)
+        # Visual: shockwave, particles, screen flash, slowmo
+        self._add_shockwave(cx, cy, max_radius=rad * 1.2)
+        self._emit_burst(cx, cy, count=24, kind="explosion")
+        self._emit_burst(cx, cy, count=12, kind="spark")
+        self._emit_burst(cx, cy, count=10, kind="debris")
+        self._screen_flash = max(self._screen_flash, 0.5)
+        self._slowmo.trigger(0.6, 6)
+        self._shake.add_trauma(0.35)
+        self._hitstop.trigger(5)
+        self._play_sfx("explode_medium", volume=0.7)
+
+    def _draw_missiles(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        """BLOQUE 39: render each missile as a small triangle pointing
+        along its travel direction, with a soft glow.
+        """
+        if not self._missiles:
+            return
+        w, h = target.get_size()
+        layer = pygame.Surface((w, h), pygame.SRCALPHA)
+        for m in self._missiles:
+            if not m.active:
+                continue
+            # Visual triangle: tip at +nose, tail behind
+            rad = math.radians(m.angle)
+            tip_x = m.x + math.sin(rad) * 8
+            tip_y = m.y - math.cos(rad) * 8
+            left_x = m.x + math.sin(rad + math.radians(140)) * 5
+            left_y = m.y - math.cos(rad + math.radians(140)) * 5
+            right_x = m.x + math.sin(rad - math.radians(140)) * 5
+            right_y = m.y - math.cos(rad - math.radians(140)) * 5
+            # Outer glow (yellow-cyan)
+            pygame.draw.polygon(layer, (255, 220, 120, 70), [
+                (int(tip_x + ox), int(tip_y + oy)),
+                (int(left_x + ox), int(left_y + oy)),
+                (int(right_x + ox), int(right_y + oy)),
+            ])
+            # Inner solid
+            inner = 0.55
+            pygame.draw.polygon(layer, (255, 250, 220, 230), [
+                (int(tip_x + ox), int(tip_y + oy)),
+                (int(m.x + math.sin(rad + math.radians(140)) * 5 * inner + ox),
+                 int(m.y - math.cos(rad + math.radians(140)) * 5 * inner + oy)),
+                (int(m.x + math.sin(rad - math.radians(140)) * 5 * inner + ox),
+                 int(m.y - math.cos(rad - math.radians(140)) * 5 * inner + oy)),
+            ])
+            # Bright tip
+            pygame.draw.circle(layer, (255, 255, 255, 255),
+                               (int(tip_x + ox), int(tip_y + oy)), 1)
+        target.blit(layer, (0, 0))
 
     def _screen_clear_damage(self) -> None:
         """Bomb: kill all enemy bullets and damage visible enemies."""
@@ -1180,6 +1450,7 @@ class GameplayRuntime:
             self._emit_burst(self._player.x, self._player.y, count=6, kind="smoke")
         self._handle_firing(effective_dt)
         self._bullets.update(effective_dt)
+        self._update_missiles(effective_dt)  # BLOQUE 39: homing missiles
         self._update_enemies(effective_dt)
         self._handle_collisions()
         self._spawn_pending(effective_dt)
@@ -1337,6 +1608,8 @@ class GameplayRuntime:
                 max_radius=s.max_radius, life=new_life, max_life=s.max_life,
             ))
         self._shockwaves = alive
+        # BLOQUE 39: clean up inactive missiles
+        self._missiles = [m for m in self._missiles if m.active]
 
     def _check_player_death_explosion(self) -> None:
         """One-shot multi-stage explosion when the player first dies.
@@ -1494,6 +1767,8 @@ class GameplayRuntime:
             target.blit(ring_surf, (sx - int(r) - 2, sy - int(r) - 2))
         # Bullets (with glow halo)
         self._draw_bullets_with_glow(target, shx, shy)
+        # BLOQUE 39: homing missiles (drawn after bullets, before player)
+        self._draw_missiles(target, shx, shy)
         # Player (only if not in DEAD state and not i-frames invisible)
         if not self._player.is_dead:
             self._draw_player(target, shx, shy)

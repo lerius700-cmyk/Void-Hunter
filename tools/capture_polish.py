@@ -258,6 +258,26 @@ def main() -> None:
     pygame.image.save(surf, str(out_dir / "polish_17b_rmb_muzzle.png"))
     print("saved polish_17b_rmb_muzzle.png (BLOQUE 38: orange RMB tint)")
 
+    # 17c. BLOQUE 39: homing missile in flight
+    from src.ui.gameplay_runtime import HomingMissile
+    rt17c = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt17c.on_enter()
+    rt17c._player.x, rt17c._player.y = INTERNAL_W / 2, INTERNAL_H - 60
+    rt17c._player.nose_angle = 45.0
+    rt17c._mouse_x = INTERNAL_W * 0.85
+    rt17c._mouse_y = INTERNAL_H * 0.30
+    # Manually spawn a missile mid-flight for visual
+    m = HomingMissile(
+        x=INTERNAL_W * 0.55, y=INTERNAL_H * 0.45,
+        vx=120.0, vy=-100.0, angle=320.0, speed=200.0,
+    )
+    rt17c._missiles.append(m)
+    # Also add a shockwave and particles to simulate explosion aftermath
+    rt17c._add_shockwave(INTERNAL_W * 0.20, INTERNAL_H * 0.50, 50.0)
+    rt17c.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_17c_homing_missile.png"))
+    print("saved polish_17c_homing_missile.png (BLOQUE 39: homing missile)")
+
     # 18. BLOQUE 37: continuous L3 plasma laser (multi-layer beam from muzzle to edge)
     from src.entities.player.player import PlayerState
     rt18 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)

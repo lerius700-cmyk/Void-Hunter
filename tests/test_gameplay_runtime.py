@@ -101,20 +101,107 @@ def test_charge_release_spawns_charged_bullet():
 # -----------------------------------------------------------------------
 # Bomb
 # -----------------------------------------------------------------------
-def test_bomb_clears_screen():
+def test_bomb_spawns_homing_missile():
+    """BLOQUE 39: B/L press spawns a HomingMissile (not a screen clear)."""
     rt = _make_runtime()
-    # Spawn a few enemies manually
-    rt._enemies.spawn(EnemyKind.SCOUT, 100, 50)
-    rt._enemies.spawn(EnemyKind.SCOUT, 60, 80)
-    # Trigger bomb
     rt._player.input_bomb = True
     rt._player.wants_to_bomb = True
     rt._player.bombs = 3
     rt._handle_firing(1.0 / 120.0)
-    # Bombs decremented
     assert rt._player.bombs == 2
-    # Both enemies should be killed (400 dmg to 1 HP enemies)
-    assert sum(1 for e in rt._enemies.pool if e.active and e.state.value != "dead") == 0
+    assert len(rt._missiles) == 1
+    m = rt._missiles[0]
+    assert m.active is True
+    assert m.life == 0.0
+    assert (m.vx, m.vy) != (0.0, 0.0)
+
+
+def test_missile_steers_toward_mouse():
+    """BLOQUE 39: when the mouse moves, the missile updates its heading."""
+    rt = _make_runtime()
+    rt._player.x = INTERNAL_W / 2
+    rt._player.y = INTERNAL_H / 2
+    # Initial mouse is straight up — missile points up
+    rt._mouse_x = rt._player.x
+    rt._mouse_y = rt._player.y - 100
+    rt._player.input_bomb = True
+    rt._player.wants_to_bomb = True
+    rt._player.bombs = 3
+    rt._handle_firing(1.0 / 120.0)
+    m = rt._missiles[0]
+    # Now move the mouse to the right
+    rt._mouse_x = rt._player.x + 100
+    rt._mouse_y = rt._player.y
+    # Run several updates — the missile should turn toward the new mouse pos
+    for _ in range(20):
+        rt._update_missiles(1.0 / 60.0)
+    # And the missile is now pointing roughly toward the mouse (right).
+    target = math.degrees(math.atan2(
+        rt._mouse_x - m.x, -(rt._mouse_y - m.y)
+    )) % 360.0
+    delta = (target - m.angle + 540.0) % 360.0 - 180.0
+    assert abs(delta) < 90.0, (
+        f"Missile should face the mouse after 20 updates; "
+        f"target={target:.1f} missile={m.angle:.1f} delta={delta:.1f}"
+    )
+
+
+def test_missile_explodes_on_enemy_collision():
+    """BLOQUE 39: missile detonates when it hits an enemy."""
+    rt = _make_runtime()
+    rt._player.x = INTERNAL_W / 2
+    rt._player.y = INTERNAL_H / 2
+    rt._mouse_x = rt._player.x
+    rt._mouse_y = rt._player.y - 100
+    rt._player.input_bomb = True
+    rt._player.wants_to_bomb = True
+    rt._player.bombs = 3
+    rt._handle_firing(1.0 / 120.0)
+    m = rt._missiles[0]
+    e = rt._enemies.spawn(EnemyKind.SCOUT, rt._player.x, rt._player.y - 30)
+    assert e is not None
+    for _ in range(60):
+        rt._update_missiles(1.0 / 60.0)
+        if not m.active:
+            break
+    assert m.active is False
+
+
+def test_missile_explodes_on_screen_edge():
+    """BLOQUE 39: missile that leaves the play area detonates (small)."""
+    rt = _make_runtime()
+    rt._player.x = INTERNAL_W / 2
+    rt._player.y = INTERNAL_H / 2
+    rt._mouse_x = INTERNAL_W + 200
+    rt._mouse_y = INTERNAL_H / 2
+    rt._player.input_bomb = True
+    rt._player.wants_to_bomb = True
+    rt._player.bombs = 3
+    rt._handle_firing(1.0 / 120.0)
+    m = rt._missiles[0]
+    for _ in range(60):
+        rt._update_missiles(1.0 / 60.0)
+        if not m.active:
+            break
+    assert m.active is False
+
+
+def test_missile_settings_constants_present():
+    """BLOQUE 39: missile tuning constants exist with sane values."""
+    from src.core.settings import (
+        MISSILE_ACCEL_PX_S2, MISSILE_BODY_RADIUS_PX, MISSILE_EXPLOSION_DAMAGE,
+        MISSILE_EXPLOSION_RADIUS_PX, MISSILE_KEY, MISSILE_LIFE_S,
+        MISSILE_SPEED_PX_S, MISSILE_TRAIL_RATE_S, MISSILE_TURN_RATE_DEG_S,
+    )
+    assert MISSILE_SPEED_PX_S > 100.0
+    assert MISSILE_ACCEL_PX_S2 > 0.0
+    assert MISSILE_TURN_RATE_DEG_S > 0.0
+    assert MISSILE_LIFE_S > 0.0
+    assert MISSILE_BODY_RADIUS_PX > 0
+    assert MISSILE_EXPLOSION_RADIUS_PX > MISSILE_BODY_RADIUS_PX
+    assert MISSILE_EXPLOSION_DAMAGE > 0
+    assert MISSILE_TRAIL_RATE_S > 0.0
+    assert MISSILE_KEY == ord('b')
 
 
 # -----------------------------------------------------------------------
@@ -890,12 +977,18 @@ def test_engine_smoke_stops_when_dead():
 
 
 def test_bomb_flash_triggers_on_bomb_use():
-    """BLOQUE 26: bomb use should set _bomb_flash."""
+    """BLOQUE 39: bomb use now spawns a missile (not a screen flash).
+    The missile detonation can still set _bomb_flash indirectly via the
+    explosion; what we verify here is that the bomb call now produces a
+    HomingMissile instead of a screen clear.
+    """
     rt = _make_runtime()
     rt._player.bombs = 3
     rt._player._consume_bomb()  # sets wants_to_bomb
     rt._handle_firing(0.016)
-    assert rt._bomb_flash > 0.0
+    # BLOQUE 39: a missile was spawned, not a screen flash
+    assert len(rt._missiles) == 1
+    assert rt._missiles[0].active is True
 
 
 def test_bomb_flash_decays():

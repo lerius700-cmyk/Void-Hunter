@@ -66,6 +66,16 @@ LASER_DAMAGE_PER_TICK: int = 4            # DPS at 20 Hz ≈ 80 dps, sustained
 LASER_HIT_RADIUS_PX: int = 6              # beam thickness for hit detection
 LASER_SPARK_RATE_S: float = 0.025         # ambient spark along the beam
 LASER_FADE_S: float = 0.18                # release-tail visual fade after LMB up
+# BLOQUE 39: homing missile bomb (B key, replaces L-key screen clear)
+MISSILE_SPEED_PX_S: float = 280.0         # top speed
+MISSILE_ACCEL_PX_S2: float = 1200.0        # initial acceleration
+MISSILE_TURN_RATE_DEG_S: float = 360.0    # how fast the missile can rotate
+MISSILE_LIFE_S: float = 3.0               # max flight time before despawn
+MISSILE_BODY_RADIUS_PX: int = 6          # hit radius for the missile itself
+MISSILE_EXPLOSION_RADIUS_PX: int = 60     # blast damage radius
+MISSILE_EXPLOSION_DAMAGE: int = 80        # damage to enemies in blast
+MISSILE_TRAIL_RATE_S: float = 0.02        # particle trail interval
+MISSILE_KEY: int = ord('b')               # rebind from K_l to B
 
 # ---------------------------------------------------------------------------
 # Bullet FX
