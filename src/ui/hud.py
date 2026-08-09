@@ -68,6 +68,8 @@ class HUD:
         self._draw_weapon(target, weapon, x=HUD_MARGIN, y=HUD_MARGIN + 36, t=t)
         # Multiplier
         self._draw_multiplier(target, scoring, x=HUD_MARGIN, y=HUD_MARGIN + 60, t=t)
+        # BLOQUE 26: kill counter
+        self._draw_kill_count(target, scoring, t=t)
         # Score (top-right)
         self._draw_score(target, scoring, x=INTERNAL_W - HUD_MARGIN, y=HUD_MARGIN, t=t)
 
@@ -174,6 +176,14 @@ class HUD:
             return
         text = self.font_large.render(f"{scoring.score:06d}", True, (255, 220, 100))
         target.blit(text, (x - text.get_width(), y))
+
+    def _draw_kill_count(self, target: pygame.Surface, scoring: ScoringSystem, t: float = 0.0) -> None:
+        """BLOQUE 26: small kill counter under score."""
+        if self.font_small is None:
+            return
+        # Format as "KILLS: 00042"
+        text = self.font_small.render(f"KILLS: {scoring.kills:05d}", True, (180, 200, 220))
+        target.blit(text, (INTERNAL_W - text.get_width() - HUD_MARGIN, HUD_MARGIN + 18))
 
 
 # ---------------------------------------------------------------------------

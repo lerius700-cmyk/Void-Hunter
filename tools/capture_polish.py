@@ -181,7 +181,58 @@ def main() -> None:
     pygame.image.save(surf, str(out_dir / "polish_12_hud_high_level.png"))
     print("saved polish_12_hud_high_level.png")
 
-    print("Done. Saved 12 frames in tools/playtest_out/")
+    # 13. BLOQUE 26: engine smoke + bomb flash
+    rt13 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt13.on_enter()
+    rt13._player.x = INTERNAL_W / 2
+    rt13._player.y = INTERNAL_H - 60
+    rt13._player.vx = 80.0
+    # Advance a few frames to spawn smoke
+    for _ in range(20):
+        rt13.update(1.0 / 60)
+    rt13.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_13_engine_smoke.png"))
+    print("saved polish_13_engine_smoke.png")
+
+    # 14. BLOQUE 26: dash stars + dash smoke
+    rt14 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt14.on_enter()
+    rt14._player.x = INTERNAL_W / 2
+    rt14._player.y = INTERNAL_H / 2
+    rt14._player.state = rt14._player.state.__class__.DASH  # type: ignore[attr-defined]
+    rt14._player.dash_dir_x = 1.0
+    rt14._player.dash_dir_y = 0.0
+    rt14._player.dash_iframes_left = 10
+    # Advance a few frames
+    for _ in range(5):
+        rt14.update(1.0 / 60)
+    rt14.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_14_dash_stars.png"))
+    print("saved polish_14_dash_stars.png")
+
+    # 15. BLOQUE 26: bomb flash overlay
+    rt15 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt15.on_enter()
+    rt15._bomb_flash = 0.8
+    rt15._screen_flash = 0.5
+    rt15.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_15_bomb_flash.png"))
+    print("saved polish_15_bomb_flash.png")
+
+    # 16. BLOQUE 26: kill counter + low HP smoke
+    rt16 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt16.on_enter()
+    rt16._scoring.kills = 42
+    rt16._player.hp = 1
+    rt16._t = 1.0
+    # Advance frames for damage smoke
+    for _ in range(15):
+        rt16.update(1.0 / 60)
+    rt16.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_16_kill_counter.png"))
+    print("saved polish_16_kill_counter.png")
+
+    print("Done. Saved 16 frames in tools/playtest_out/")
     pygame.quit()
 
 

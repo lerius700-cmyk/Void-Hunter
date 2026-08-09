@@ -193,6 +193,8 @@ class GameplayRuntime:
         self._pickup_flash: float = 0.0  # 0..1 alpha of green pickup flash overlay
         self._speed_line_t: float = 0.0  # accumulator for speed line drift
         self._level_up_flash: float = 0.0  # brief flash when weapon levels up
+        # BLOQUE 26: even more polish
+        self._bomb_flash: float = 0.0  # 0..1 white flash on the player after bomb use
 
     def _play_sfx(self, name: str, volume: float = 1.0) -> None:
         if self._audio is not None:
@@ -258,6 +260,8 @@ class GameplayRuntime:
         self._pickup_flash = 0.0
         self._speed_line_t = 0.0
         self._level_up_flash = 0.0
+        # BLOQUE 26: reset bomb flash
+        self._bomb_flash = 0.0
         self._t = 0.0
         self._wave_spawn_timer = 0.0
         self._is_wave_active = not self._is_boss
@@ -391,6 +395,8 @@ class GameplayRuntime:
         """Bomb: kill all enemy bullets and damage visible enemies."""
         # Full-screen white flash (decreases over time)
         self._screen_flash = 1.0
+        # BLOQUE 26: player also flashes white for a moment
+        self._bomb_flash = 1.0
         # Clear enemy bullets
         for p in self._bullets.pool:
             if p.active and p.owner in (OWNER_ENEMY, OWNER_BOSS):
@@ -812,8 +818,14 @@ class GameplayRuntime:
             self._pickup_flash = max(0.0, self._pickup_flash - effective_dt * 3.0)
         if self._level_up_flash > 0.0:
             self._level_up_flash = max(0.0, self._level_up_flash - effective_dt * 2.0)
+        # BLOQUE 26: bomb flash decay (faster than screen flash)
+        if self._bomb_flash > 0.0:
+            self._bomb_flash = max(0.0, self._bomb_flash - effective_dt * 4.0)
         # BLOQUE 24: speed line drift accumulator
         self._speed_line_t += effective_dt
+        # BLOQUE 26: continuous engine smoke + dash stars
+        if not self._player.is_dead:
+            self._emit_player_motion_particles(effective_dt)
         self._check_player_death_explosion()
         self._particles.update(effective_dt)
         self._hitstop.update()
@@ -868,6 +880,47 @@ class GameplayRuntime:
             if t > 0.0:
                 decayed[eid] = t
         self._enemy_flash = decayed
+
+    def _emit_player_motion_particles(self, dt: float) -> None:
+        """BLOQUE 26: continuous engine smoke + dash stars + low-HP smoke.
+
+        Emits small smoke particles behind the engine at all times, more
+        particles when dashing, and damage smoke when HP is critical.
+        """
+        from src.systems.particle_engine import P_DUST, P_SMOKE, P_SPARK
+        px, py = self._player.x, self._player.y
+        # Engine back: (px, py + 8) — same as flame origin
+        ex, ey = px, py + 8
+        # Throttle by frame: smoke every 4 frames when idle
+        is_dash = self._player.state == PlayerState.DASH
+        smoke_count = 1
+        if is_dash:
+            smoke_count = 3
+        # Spawn rate throttle
+        if int(self._t * 30) % (2 if is_dash else 5) != 0:
+            return
+        # Smoke spread
+        spread = (random.random() - 0.5) * 3.0
+        for _ in range(smoke_count):
+            self._particles.emit(P_SMOKE, ex + spread, ey,
+                                 vx=spread * 0.3, vy=15.0,
+                                 life=0.4, radius=1.5)
+        # Dash stars (bright sparks trailing)
+        if is_dash:
+            for _ in range(2):
+                sx = ex + (random.random() - 0.5) * 6
+                sy = ey + random.uniform(0, 6)
+                self._particles.emit(P_SPARK, sx, sy,
+                                      vx=-self._player.dash_dir_x * 30.0,
+                                      vy=-self._player.dash_dir_y * 30.0,
+                                      life=0.2, radius=1.0)
+        # Low-HP damage smoke (separate, red-ish)
+        if self._player.hp <= 1 and self._player.hp_max > 0 and int(self._t * 20) % 4 == 0:
+            dsx = px + (random.random() - 0.5) * 10
+            dsy = py - 4 + (random.random() - 0.5) * 4
+            self._particles.emit(P_DUST, dsx, dsy,
+                                  vx=(random.random() - 0.5) * 10.0,
+                                  vy=-15.0, life=0.5, radius=1.5)
 
     def _add_shockwave(self, x: float, y: float, max_radius: float = 60.0) -> None:
         """Add an expanding ring shockwave (bomb/charged-shot visual)."""
@@ -1050,6 +1103,12 @@ class GameplayRuntime:
         # Player (only if not in DEAD state and not i-frames invisible)
         if not self._player.is_dead:
             self._draw_player(target, shx, shy)
+        # BLOQUE 26: bomb flash overlay on the player
+        if self._bomb_flash > 0.0:
+            flash_alpha = int(220 * self._bomb_flash)
+            flash = pygame.Surface(target.get_size(), pygame.SRCALPHA)
+            flash.fill((255, 255, 255, flash_alpha))
+            target.blit(flash, (0, 0))
         # Particles
         self._particles.draw(target, (shx, shy))
         # Score popups
