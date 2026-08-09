@@ -31,7 +31,7 @@ from src.systems.pool import Pool
 # Bullet kinds
 BULLET_PLAYER = 0          # fast, friendly
 BULLET_PLAYER_CHARGED = 1  # glow halo, pierce
-BULLET_PLAYER_BEAM = 4     # BLOQUE 30: L3 charged beam — big, lots of particles
+BULLET_PLAYER_BEAM = 4     # BLOQUE 30: L3 charged beam — BLOQUE 36: recolored to plasma cyan
 BULLET_ENEMY = 2           # standard enemy shot
 BULLET_BOSS = 3            # boss shot, 1-frame anim (no flicker per spec)
 
@@ -69,7 +69,7 @@ DEFAULT_SPEEDS = {
 DEFAULT_COLORS = {
     BULLET_PLAYER: (255, 220, 100),       # warm gold (player plasma default)
     BULLET_PLAYER_CHARGED: (255, 240, 200),
-    BULLET_PLAYER_BEAM: (255, 255, 255),  # BLOQUE 30: white-hot beam
+    BULLET_PLAYER_BEAM: (140, 220, 255),  # BLOQUE 36: electric cyan plasma (was pure white)
     BULLET_ENEMY: (255, 100, 100),         # red-ish
     BULLET_BOSS: (220, 120, 255),          # purple-ish
 }
@@ -276,9 +276,10 @@ class ProjectilePool:
         sw = max(1, int(math.ceil(w * scale)))
         sh = max(1, int(h * scale))
         # Charged bullets get a +6px halo on each side.
-        # BLOQUE 30: beam bullets get a much larger halo for the "rayo" effect
+        # BLOQUE 36: beam halo dialed back (14→7) and softer alpha so the L3 shot
+        # reads as plasma, not a giant white rectangle.
         if kind == BULLET_PLAYER_BEAM:
-            halo = 14
+            halo = 7
         elif kind == BULLET_PLAYER_CHARGED:
             halo = 6
         else:
@@ -289,7 +290,8 @@ class ProjectilePool:
         # Halo (soft alpha falloff)
         if halo > 0:
             for r in range(halo, 0, -1):
-                a = int(60 * (r / halo)) if kind == BULLET_PLAYER_BEAM else int(40 * (r / halo))
+                # BLOQUE 36: beam halo alpha softened (60→42) and uses plasma cyan tint
+                a = int(42 * (r / halo)) if kind == BULLET_PLAYER_BEAM else int(40 * (r / halo))
                 pygame.draw.circle(
                     surf,
                     (color[0], color[1], color[2], a),
@@ -304,11 +306,13 @@ class ProjectilePool:
         if kind in (BULLET_PLAYER, BULLET_PLAYER_CHARGED, BULLET_PLAYER_BEAM):
             highlight = pygame.Rect(0, 0, max(1, sw // 2), max(1, sh // 3))
             highlight.center = rect.center
-            pygame.draw.rect(surf, (255, 255, 255), highlight)
-        # BLOQUE 30: beam gets extra inner ring for the "charged" feel
+            # BLOQUE 36: beam core highlight now cyan-white, not pure white
+            hl_color = (220, 245, 255) if kind == BULLET_PLAYER_BEAM else (255, 255, 255)
+            pygame.draw.rect(surf, hl_color, highlight)
+        # BLOQUE 36: beam inner ring — softer alpha and cyan-white (was 200 / pure white)
         if kind == BULLET_PLAYER_BEAM:
             pygame.draw.rect(
-                surf, (255, 255, 255, 200),
+                surf, (210, 240, 255, 150),
                 (canvas_w // 2 - sw // 4, canvas_h // 2 - sh // 4, sw // 2, sh // 2),
             )
         return surf

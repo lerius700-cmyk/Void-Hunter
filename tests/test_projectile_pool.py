@@ -268,6 +268,39 @@ def test_bullet_kinds_have_correct_size(pool: ProjectilePool) -> None:
     assert BULLET_SIZES[BULLET_BOSS] == (6, 6)
 
 
+def test_bullet_beam_color_is_plasma_cyan_not_white() -> None:
+    """BLOQUE 36: L3 beam no longer pure white (was too prominent)."""
+    from src.systems.projectile import BULLET_PLAYER_BEAM, DEFAULT_COLORS
+    r, g, b = DEFAULT_COLORS[BULLET_PLAYER_BEAM]
+    # The beam must NOT be pure white anymore (255, 255, 255).
+    assert (r, g, b) != (255, 255, 255), "L3 beam should not be pure white (BLOQUE 36)"
+    # And it should lean blue (cyan plasma): b > r and b > g.
+    assert b > r, f"L3 beam should be cyan-ish (b > r): got {(r, g, b)}"
+    assert b > g, f"L3 beam should be cyan-ish (b > g): got {(r, g, b)}"
+    # And the chosen color is (140, 220, 255).
+    assert (r, g, b) == (140, 220, 255)
+
+
+def test_bullet_beam_halo_dialed_back(pool: ProjectilePool) -> None:
+    """BLOQUE 36: L3 beam halo radius is 7 (was 14)."""
+    from src.systems.projectile import BULLET_PLAYER_BEAM
+    # The pooled frame for BULLET_PLAYER_BEAM is built in _init_frames using
+    # _make_bullet_sprite. The scale passed there is the pulse-anim scale
+    # (frame 0 = 0.9, frame 1 = 1.1). For BULLET_PLAYER_BEAM (9, 12):
+    #   frame 0: sw=ceil(9*0.9)=9, sh=int(12*0.9)=10 -> canvas 23x24
+    #   frame 1: sw=ceil(9*1.1)=10, sh=int(12*1.1)=13 -> canvas 24x27
+    # (was 37x40 with halo=14)
+    surf = pool._frames[(BULLET_PLAYER_BEAM, 0)]
+    cw, ch = surf.get_size()
+    assert cw == 23, f"beam frame 0 canvas width should be 23 (halo=7), got {cw}"
+    assert ch == 24, f"beam frame 0 canvas height should be 24 (halo=7), got {ch}"
+    # And the max frame (scale 1.1) should be smaller than the old 37x40:
+    surf_max = pool._frames[(BULLET_PLAYER_BEAM, 1)]
+    cw_max, ch_max = surf_max.get_size()
+    assert cw_max < 37, f"beam max canvas width should be < 37, got {cw_max}"
+    assert ch_max < 40, f"beam max canvas height should be < 40, got {ch_max}"
+
+
 # ---------------------------------------------------------------------------
 # 11. Performance smoke
 # ---------------------------------------------------------------------------

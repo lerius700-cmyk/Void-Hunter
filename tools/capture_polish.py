@@ -247,7 +247,7 @@ def main() -> None:
     pygame.image.save(surf, str(out_dir / "polish_17_starfox_player.png"))
     print("saved polish_17_starfox_player.png")
 
-    # 18. BLOQUE 30: charged beam fired (L3)
+    # 18. BLOQUE 30/36: charged beam fired (L3) — plasma cyan recolor
     rt18 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
     rt18.on_enter()
     rt18._player.x = INTERNAL_W / 2
@@ -259,7 +259,7 @@ def main() -> None:
         BULLET_PLAYER_BEAM,
         rt18._player.x, rt18._player.y - 16, 0.0, -700.0,
         damage=8, owner=0, pierce=99, has_trail=True,
-        trail_color=(255, 255, 255),
+        trail_color=(140, 220, 255),
     )
     rt18.draw(surf)
     pygame.image.save(surf, str(out_dir / "polish_18_charged_beam.png"))
