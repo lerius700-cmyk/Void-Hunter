@@ -5,7 +5,7 @@ scaled 4x to 960x1440 by Game._present). 240px width is the hard cap.
 """
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 import pygame
 
@@ -15,6 +15,9 @@ from src.utils.palette import PALETTE
 
 # Type alias for scene constructor
 TransitionFn = Callable[[GameState], None]
+
+if TYPE_CHECKING:
+    from src.audio.synth import AudioEngine
 
 
 def _center_blit(
@@ -133,11 +136,12 @@ class GameplayScene(Scene):
     boss transitions, collisions, hitstop, shake, slowmo.
     """
 
-    def __init__(self, transition_to: TransitionFn, act: int = 1) -> None:
+    def __init__(self, transition_to: "TransitionFn", act: int = 1,
+                 audio: Optional["AudioEngine"] = None) -> None:
         self._transition_to = transition_to
         self._act = act
         from src.ui.gameplay_runtime import GameplayRuntime
-        self._rt = GameplayRuntime(transition_to, is_boss=False, act=act)
+        self._rt = GameplayRuntime(transition_to, is_boss=False, act=act, audio=audio)
 
     def on_enter(self) -> None:
         self._rt.on_enter()
@@ -188,11 +192,12 @@ class BossIntroScene(Scene):
 class BossFightScene(Scene):
     """BOSS_FIGHT — boss arena. Delegates to GameplayRuntime in boss mode."""
 
-    def __init__(self, transition_to: TransitionFn, act: int = 1) -> None:
+    def __init__(self, transition_to: "TransitionFn", act: int = 1,
+                 audio: Optional["AudioEngine"] = None) -> None:
         self._transition_to = transition_to
         self._act = act
         from src.ui.gameplay_runtime import GameplayRuntime
-        self._rt = GameplayRuntime(transition_to, is_boss=True, act=act)
+        self._rt = GameplayRuntime(transition_to, is_boss=True, act=act, audio=audio)
 
     def on_enter(self) -> None:
         self._rt.on_enter()

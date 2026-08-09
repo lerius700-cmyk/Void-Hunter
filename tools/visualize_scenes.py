@@ -74,7 +74,7 @@ def main() -> int:
     # Fire + move right
     gp._rt._player.input_fire = True
     gp._rt._player.input_right = True
-    for _ in range(120):  # 1 second of fire + movement
+    for _ in range(180):  # 1.5 seconds — more time for enemies + polish
         gp._rt._player.input_fire = True
         gp.update(FIXED_DT)
     game.internal.fill((0, 0, 0))
@@ -94,10 +94,16 @@ def main() -> int:
     game.scenes.transition_to(GameState.BOSS_FIGHT)
     bf = game.scenes.scenes[GameState.BOSS_FIGHT]
     bf._rt._read_input = lambda: None
-    # Tick a few seconds to let boss fire
-    for _ in range(240):
+    # Set player at a survivable position to capture a clean combat frame
+    bf._rt._player.x = 60
+    bf._rt._player.y = 300
+    bf._rt._player.invuln_frames = 99999  # invulnerable for the capture
+    # Tick ~1.5s to let boss fire some attacks
+    for _ in range(180):
         bf._rt._player.input_fire = True
         bf.update(FIXED_DT)
+        if bf._rt._boss is None or not bf._rt._boss.active:
+            break
     game.internal.fill((0, 0, 0))
     game.scenes.draw(game.internal)
     pygame.image.save(game.internal, str(OUT / "06_boss_fight.png"))

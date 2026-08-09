@@ -22,9 +22,10 @@ sys.path.insert(0, str(ROOT))
 import pygame  # noqa: E402
 
 from src.core.scene_manager import GameState  # noqa: E402
+from src.core.settings import INTERNAL_H, INTERNAL_W  # noqa: E402
 from src.entities.enemies import EnemyKind  # noqa: E402
 from src.systems.projectile import BULLET_PLAYER, OWNER_PLAYER  # noqa: E402
-from src.ui.gameplay_runtime import GameplayRuntime  # noqa: E402
+from src.ui.gameplay_runtime import GameplayRuntime, PowerUp, ScorePopup  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -247,3 +248,160 @@ def test_player_death_transitions_to_game_over():
     rt._player.is_dead = True
     rt._check_player_death()
     assert state_holder["current"] == GameState.GAME_OVER
+
+
+# -----------------------------------------------------------------------
+# BLOQUE 18: 8-way dash
+# -----------------------------------------------------------------------
+def test_dash_8way_up():
+    from src.entities.player import Player
+    p = Player()
+    p._enter_idle()
+    p.input_dash = True
+    # No directional input -> UP per GDD
+    for _ in range(int(0.18 * 120)):
+        p.update(1.0 / 120)
+    assert p.dash_dir_y < 0  # up
+    assert p.dash_dir_x == 0
+
+
+def test_dash_8way_down():
+    from src.entities.player import Player
+    p = Player()
+    p._enter_idle()
+    p.input_dash = True
+    p.input_down = True
+    for _ in range(int(0.18 * 120)):
+        p.update(1.0 / 120)
+    assert p.dash_dir_y > 0  # down
+    assert p.dash_dir_x == 0
+
+
+def test_dash_8way_diagonal_up_left():
+    from src.entities.player import Player
+    p = Player()
+    p._enter_idle()
+    p.input_dash = True
+    p.input_left = True
+    p.input_up = True
+    for _ in range(int(0.18 * 120)):
+        p.update(1.0 / 120)
+    # Diagonal: normalized so |x| == |y| ≈ 0.707
+    assert p.dash_dir_x < 0
+    assert p.dash_dir_y < 0
+    assert abs(abs(p.dash_dir_x) - abs(p.dash_dir_y)) < 0.01
+
+
+def test_dash_8way_diagonal_down_right():
+    from src.entities.player import Player
+    p = Player()
+    p._enter_idle()
+    p.input_dash = True
+    p.input_right = True
+    p.input_down = True
+    for _ in range(int(0.18 * 120)):
+        p.update(1.0 / 120)
+    assert p.dash_dir_x > 0
+    assert p.dash_dir_y > 0
+
+
+# -----------------------------------------------------------------------
+# BLOQUE 18: Power-ups
+# -----------------------------------------------------------------------
+def test_powerup_bomb_drops_and_pickup():
+    rt = _make_runtime()
+    rt._spawn_powerup("bomb", 120, 100)
+    assert len(rt._powerups) == 1
+    # Move player to the powerup and update
+    rt._player.x = 120
+    rt._player.y = 100
+    rt._update_powerups(0.1)
+    assert len(rt._powerups) == 0  # picked up
+    assert rt._player.bombs == 4  # 3 + 1
+
+
+def test_powerup_score_drops_and_pickup():
+    rt = _make_runtime()
+    initial_score = rt._scoring.score
+    rt._spawn_powerup("score", 120, 100)
+    rt._player.x = 120
+    rt._player.y = 100
+    rt._update_powerups(0.1)
+    assert len(rt._powerups) == 0
+    assert rt._scoring.score > initial_score
+
+
+def test_powerup_drops_off_screen():
+    rt = _make_runtime()
+    rt._spawn_powerup("bomb", 120, 100)
+    # Move it well below the screen
+    rt._powerups[0].y = INTERNAL_H + 50
+    rt._update_powerups(0.016)
+    assert len(rt._powerups) == 0  # cleaned up
+
+
+# -----------------------------------------------------------------------
+# BLOQUE 18: Score popups
+# -----------------------------------------------------------------------
+def test_score_popup_floats_up_and_fades():
+    rt = _make_runtime()
+    rt._score_popups.append(ScorePopup(
+        x=100, y=100, vy=-30.0, text="+100", color=(255, 255, 255),
+        life=0.5, max_life=0.5,
+    ))
+    rt._update_score_popups(0.1)
+    assert len(rt._score_popups) == 1
+    p = rt._score_popups[0]
+    assert p.y < 100  # moved up
+    assert p.life < 0.5  # decremented
+    rt._update_score_popups(1.0)
+    assert len(rt._score_popups) == 0  # expired
+
+
+# -----------------------------------------------------------------------
+# BLOQUE 18: Enemy hit feedback
+# -----------------------------------------------------------------------
+def test_enemy_flash_on_hit():
+    rt = _make_runtime()
+    e = rt._enemies.spawn(EnemyKind.SCOUT, 100, 50)
+    assert e is not None
+    rt._bullets.spawn(BULLET_PLAYER, 100, 50, 0.0, -480.0, damage=99, owner=OWNER_PLAYER)
+    rt._handle_collisions()
+    assert id(e) in rt._enemy_flash  # flash timer set
+    assert rt._enemy_flash[id(e)] > 0.0
+    # Flash decays
+    rt._update_enemy_flash(0.05)
+    assert rt._enemy_flash.get(id(e), 0) < 0.08
+    rt._update_enemy_flash(0.5)
+    assert id(e) not in rt._enemy_flash
+
+
+# -----------------------------------------------------------------------
+# BLOQUE 18: Death explosion
+# -----------------------------------------------------------------------
+def test_player_death_triggers_explosion():
+    rt = _make_runtime()
+    initial_particles = sum(1 for p in rt._particles.pool if p.active)
+    rt._player.is_dead = True
+    rt._check_player_death_explosion()
+    after_particles = sum(1 for p in rt._particles.pool if p.active)
+    assert after_particles > initial_particles
+    assert rt._death_exploded is True
+    # Calling again should not add more particles
+    rt._check_player_death_explosion()
+    after2 = sum(1 for p in rt._particles.pool if p.active)
+    assert after2 == after_particles
+
+
+# -----------------------------------------------------------------------
+# BLOQUE 18: Draw methods run without error
+# -----------------------------------------------------------------------
+def test_draw_with_borders_and_polish_runs():
+    rt = _make_runtime()
+    rt._player.input_fire = True
+    for _ in range(60):
+        rt.update(1.0 / 120)
+    surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
+    rt.draw(surf)  # should not crash
+    # Verify surface was modified (some pixel was drawn)
+    assert surf.get_size() == (INTERNAL_W, INTERNAL_H)

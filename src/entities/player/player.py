@@ -103,6 +103,8 @@ class Player:
     # Inputs (set externally each frame)
     input_left: bool = False
     input_right: bool = False
+    input_up: bool = False
+    input_down: bool = False
     input_fire: bool = False
     input_dash: bool = False
     input_bomb: bool = False
@@ -419,27 +421,55 @@ class Player:
         self._charge_fired = False
 
     def _enter_dash(self) -> None:
+        """Enter DASH state with 8-way direction based on input.
+
+        Direction priority:
+          1. Active directional input (WASD or arrows when K is pressed)
+          2. Last horizontal velocity (continues motion)
+          3. UP (stationary, GDD default)
+
+        Combinations give 8 directions:
+          K alone          -> UP
+          K + A/D          -> LEFT/RIGHT
+          K + W            -> UP (same as K alone)
+          K + S            -> DOWN (escape move)
+          K + A + W        -> UP-LEFT
+          K + A + S        -> DOWN-LEFT
+          K + D + W        -> UP-RIGHT
+          K + D + S        -> DOWN-RIGHT
+        """
         self.state = PlayerState.DASH
         self.state_timer = 0.0
         self.dash_iframes_left = PLAYER_DASH_IFRAMES
-        # Direction priority:
-        #   1. Active lateral input (player is holding A/D when dashing)
-        #   2. Last horizontal velocity (player is in motion — dash continues that way)
-        #   3. UP (stationary, default per GDD §5; "o up si neutral")
-        # This keeps dash feeling intentional: dash continues the player's
-        # current motion rather than suddenly flying upward into enemy fire.
         left = self.input_left
         right = self.input_right
+        up = self.input_up
+        down = self.input_down
+        dx, dy = 0.0, 0.0
         if left and not right:
-            self.dash_dir_x, self.dash_dir_y = -1.0, 0.0
+            dx = -1.0
         elif right and not left:
-            self.dash_dir_x, self.dash_dir_y = 1.0, 0.0
-        elif self.vx < -10.0:
-            self.dash_dir_x, self.dash_dir_y = -1.0, 0.0
-        elif self.vx > 10.0:
-            self.dash_dir_x, self.dash_dir_y = 1.0, 0.0
-        else:
-            self.dash_dir_x, self.dash_dir_y = 0.0, -1.0
+            dx = 1.0
+        if up and not down:
+            dy = -1.0
+        elif down and not up:
+            dy = 1.0
+        # If no active directional input, fall back to vx
+        if dx == 0.0 and dy == 0.0:
+            if self.vx < -10.0:
+                dx = -1.0
+            elif self.vx > 10.0:
+                dx = 1.0
+            else:
+                dx = 0.0
+                dy = -1.0  # default UP per GDD
+        # Normalize diagonal so dash distance is consistent
+        if dx != 0.0 and dy != 0.0:
+            inv = 1.0 / math.sqrt(2.0)
+            dx *= inv
+            dy *= inv
+        self.dash_dir_x = dx
+        self.dash_dir_y = dy
         # Consume dash input (one-shot)
         self.input_dash = False
 

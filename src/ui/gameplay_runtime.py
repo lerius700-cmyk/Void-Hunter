@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import math
 import random
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 import pygame
@@ -24,11 +25,12 @@ import pygame
 from src.core.settings import INTERNAL_H, INTERNAL_W, FIXED_DT
 from src.entities.enemies import EnemyKind, EnemyPool, Enemy
 from src.entities.enemies.boss import Boss, BossId, BossPool, BOSS_CONFIGS
-from src.entities.player import Player
+from src.entities.player import Player, PlayerState
 from src.systems.hitstop import Hitstop
 from src.systems.parallax import ParallaxBackground
 from src.systems.particle_engine import (
-    P_DEBRIS, P_DUST, P_FIRE, P_FLASH, P_SHRAPNEL, P_SMOKE, P_SPARK, ParticleEngine,
+    P_DEBRIS, P_DUST, P_FIRE, P_FLASH, P_GLOW, P_ION, P_MUZZLE, P_SHRAPNEL,
+    P_SMOKE, P_SPARK, ParticleEngine,
 )
 from src.systems.projectile import (
     BULLET_BOSS, BULLET_ENEMY, BULLET_PLAYER, BULLET_PLAYER_CHARGED,
@@ -41,6 +43,7 @@ from src.systems.weapon_system import WeaponLevel, WeaponPath, WeaponSystem
 from src.ui.hud import HUD
 
 if TYPE_CHECKING:
+    from src.audio.synth import AudioEngine
     from src.systems.wave_manager import WaveManager
     from src.ui.scenes import TransitionFn
 
@@ -65,23 +68,63 @@ _BURST_KIND = {
     "debris": P_DEBRIS,
     "dust": P_DUST,
     "flash": P_FLASH,
+    "muzzle": P_MUZZLE,
+    "glow": P_GLOW,
+    "ion": P_ION,
 }
+
+# Power-up types
+POWERUP_BOMB = "bomb"
+POWERUP_POWER = "power"
+POWERUP_SCORE = "score"
+POWERUP_1UP = "1up"
+
+# Color the play-area frame uses (matches the parallax palette vibe)
+_BORDER_COLOR = (60, 60, 90)
+_BORDER_INNER = (140, 140, 180)
+
+
+# ---------------------------------------------------------------------------
+# Floating score popup
+# ---------------------------------------------------------------------------
+@dataclass
+class ScorePopup:
+    x: float
+    y: float
+    vy: float
+    text: str
+    color: tuple[int, int, int]
+    life: float
+    max_life: float
+
+
+@dataclass
+class PowerUp:
+    x: float
+    y: float
+    vy: float
+    kind: str
+    life: float
+    max_life: float
+    color: tuple[int, int, int]
 
 
 class GameplayRuntime:
     """Owns the live action loop. One per GAMEPLAY or BOSS_FIGHT scene.
 
     Public API:
-      __init__(transition_to, is_boss=False, act=1)
+      __init__(transition_to, is_boss=False, act=1, audio=None)
       on_enter() / on_exit()
       update(dt)  — call from scene.update
       draw(target) — call from scene.draw
     """
 
-    def __init__(self, transition_to: "TransitionFn", is_boss: bool = False, act: int = 1) -> None:
+    def __init__(self, transition_to: "TransitionFn", is_boss: bool = False, act: int = 1,
+                 audio: Optional["AudioEngine"] = None) -> None:
         self._transition_to = transition_to
         self._is_boss = is_boss
         self._act = act
+        self._audio = audio  # shared AudioEngine; may be None (muted)
 
         # Core
         self._player = Player()
@@ -114,6 +157,32 @@ class GameplayRuntime:
         self._pending_wave_spawns: list[tuple[float, EnemyKind, float, float]] = []
         self._is_wave_active: bool = True
         self._transition_pending: Optional[str] = None  # "boss_intro" or "act_cleared"
+
+        # Polish state
+        self._score_popups: list[ScorePopup] = []
+        self._powerups: list[PowerUp] = []
+        self._enemy_flash: dict[int, float] = {}  # id(e) -> flash_timer
+        self._dash_consumed: bool = False  # SFX dedup
+        self._last_charge_level: int = 0
+        self._death_exploded: bool = False
+        # BGM state
+        self._bgm_started: bool = False
+        # Player-state snapshot for transition SFX
+        self._prev_player_state: PlayerState = PlayerState.IDLE
+
+    def _play_sfx(self, name: str, volume: float = 1.0) -> None:
+        if self._audio is not None:
+            self._audio.play_sfx(name, volume)
+
+    def _start_bgm(self, name: str) -> None:
+        if self._audio is not None and not self._bgm_started:
+            self._audio.play_bgm(name)
+            self._bgm_started = True
+
+    def _stop_bgm(self) -> None:
+        if self._audio is not None:
+            self._audio.stop_bgm()
+        self._bgm_started = False
 
     # ------------------------------------------------------------------
     # Setup
@@ -150,13 +219,20 @@ class GameplayRuntime:
         self._bullets.release_all()
         self._enemies.release_all()
         self._particles.release_all()
+        self._score_popups.clear()
+        self._powerups.clear()
+        self._enemy_flash.clear()
         self._t = 0.0
         self._wave_spawn_timer = 0.0
         self._is_wave_active = not self._is_boss
         self._transition_pending = None
+        self._death_exploded = False
+        self._last_charge_level = 0
+        self._bgm_started = False
         if not self._is_boss:
             self._wave_mgr.start_wave(self._wave_idx)
             self._populate_spawn_queue()
+            self._start_bgm("act_normal")
         else:
             # Boss intro pose: player bottom-center, boss anchored
             self._player.x = INTERNAL_W / 2
@@ -167,12 +243,14 @@ class GameplayRuntime:
                 self._boss.y = cfg.anchor_y
                 self._boss.phase = 1
                 self._boss.hp = self._boss.max_hp
+            self._start_bgm("boss_fight")
 
     def on_exit(self) -> None:
         self._bullets.release_all()
         self._enemies.release_all()
         self._particles.release_all()
         self._bosses.release_all()
+        self._stop_bgm()
 
     # ------------------------------------------------------------------
     # Input
@@ -181,6 +259,8 @@ class GameplayRuntime:
         keys = pygame.key.get_pressed()
         self._player.input_left = keys[pygame.K_a] or keys[pygame.K_LEFT]
         self._player.input_right = keys[pygame.K_d] or keys[pygame.K_RIGHT]
+        self._player.input_up = keys[pygame.K_w] or keys[pygame.K_UP]
+        self._player.input_down = keys[pygame.K_s] or keys[pygame.K_DOWN]
         for event in pygame.event.get(pygame.KEYDOWN):
             if event.key == pygame.K_j:
                 self._player.input_fire = True
@@ -213,9 +293,19 @@ class GameplayRuntime:
             self._slowmo.trigger(0.50, 8)
             self._shake.add_trauma(0.4)
             self._emit_burst(self._player.x, self._player.y, count=24, kind="spark")
+            self._play_sfx("bomb", volume=0.9)
+        # Charge SFX: rising pitch as charge level increases
+        current_charge = self._player.get_charge_level()
+        if current_charge > self._last_charge_level:
+            self._play_sfx("charge_loop", volume=0.5)
+        self._last_charge_level = current_charge
         fire_now, special_now, charge_level = self._weapon.consume_pending()
         if fire_now or special_now:
             self._spawn_player_bullet(charge_level=charge_level)
+            if charge_level > 0:
+                self._play_sfx("shoot_charged", volume=0.6)
+            else:
+                self._play_sfx("shoot", volume=0.4)
         # Reset bomb output flag
         self._player.wants_to_bomb = False
 
@@ -224,6 +314,8 @@ class GameplayRuntime:
         # Base bullet position (at player nose)
         bx = self._player.x
         by = self._player.y - 8
+        # Muzzle flash particles at the player nose
+        self._emit_burst(bx, by - 2, count=3, kind="muzzle")
         # Single bullet or fan
         if spec.count == 1:
             kind = BULLET_PLAYER_CHARGED if charge_level > 0 else BULLET_PLAYER
@@ -403,6 +495,8 @@ class GameplayRuntime:
                 if pr.colliderect(e.hitbox()):
                     killed = e.apply_damage(p.damage)
                     self._emit_burst(p.x, p.y, count=3, kind="spark")
+                    # Hit feedback: flash white for 0.08s
+                    self._enemy_flash[id(e)] = 0.08
                     if killed:
                         self._on_enemy_killed(e)
                     # Piercing bullets keep going until pierce_hits >= pierce
@@ -447,21 +541,27 @@ class GameplayRuntime:
             if pr.colliderect(phb):
                 p.active = False
                 self._bullets.pool.release(p)
-                self._player.take_damage(p.damage)
+                took = self._player.take_damage(p.damage)
                 self._emit_burst(p.x, p.y, count=4, kind="spark")
                 self._shake.add_trauma(0.15)
+                if took:
+                    self._play_sfx("hit", volume=0.6)
+                    self._hitstop.trigger(2)
         # Enemies ↔ player (Kamikaze / contact)
         for e in self._enemies.pool:
             if not e.active or e.state.name == "DEAD":
                 continue
             if e.hitbox().colliderect(phb):
-                self._player.take_damage(1)
+                took = self._player.take_damage(1)
                 # Kamikaze dies on contact
                 if e.kind == EnemyKind.KAMIKAZE:
                     e.apply_damage(99)
                     self._on_enemy_killed(e)
                 self._emit_burst(e.x, e.y, count=6, kind="spark")
                 self._shake.add_trauma(0.2)
+                if took:
+                    self._play_sfx("hit", volume=0.6)
+                    self._hitstop.trigger(2)
 
     # ------------------------------------------------------------------
     # Kill handlers
@@ -475,10 +575,28 @@ class GameplayRuntime:
         self._weapon.on_kill(e.kind.value)
         # Particles
         self._emit_burst(e.x, e.y, count=14, kind="explosion")
+        # SFX
+        if e.kind in (EnemyKind.HEAVY, EnemyKind.CARRIER):
+            self._play_sfx("explode_medium", volume=0.7)
+        else:
+            self._play_sfx("explode_small", volume=0.5)
+        # Score popup (floats up)
+        self._score_popups.append(ScorePopup(
+            x=e.x, y=e.y - 4, vy=-30.0,
+            text=f"+{awarded}", color=(255, 240, 100),
+            life=1.0, max_life=1.0,
+        ))
+        # Multiplier up SFX
+        if self._scoring.on_max_multiplier:
+            self._play_sfx("multiplier_up", volume=0.6)
+            self._scoring.on_max_multiplier = False
         # Hitstop on tougher kills
         if e.kind in (EnemyKind.HEAVY, EnemyKind.CARRIER, EnemyKind.SNIPER):
             self._hitstop.trigger(3)
             self._shake.add_trauma(0.2)
+        # Power-up drop
+        if not self._is_boss:
+            self._maybe_drop_powerup(e)
         # Wave progress
         if not self._is_boss:
             self._wave_mgr.current.kills += 1
@@ -493,9 +611,20 @@ class GameplayRuntime:
         self._scoring.on_kill(score, is_boss=True)
         self._scoring.on_boss_defeated(BOSS_CONFIGS[self._boss.id].name)
         self._emit_burst(self._boss.x, self._boss.y, count=64, kind="explosion")
+        # Multi-stage explosion
+        for delay_frames in (0, 4, 10):
+            pass  # particles will continue across hitstop frames
         self._hitstop.trigger(20)
         self._shake.add_trauma(0.8)
         self._slowmo.trigger(0.30, 30)
+        self._play_sfx("explode_boss", volume=1.0)
+        self._play_sfx("act_clear", volume=0.8)
+        # Score popup
+        self._score_popups.append(ScorePopup(
+            x=self._boss.x, y=self._boss.y - 8, vy=-40.0,
+            text=f"+{score}", color=(255, 220, 100),
+            life=2.0, max_life=2.0,
+        ))
         self._bosses.release(self._boss)
         self._boss = None
         # Transition out
@@ -562,14 +691,23 @@ class GameplayRuntime:
         slowmo_factor = self._slowmo.get_factor()
         effective_dt = dt * slowmo_factor
         self._t += effective_dt
+        prev_player_state = self._player.state
         self._read_input()
         self._player.update(effective_dt)
+        # Dash SFX: detect DASH entry
+        if prev_player_state != PlayerState.DASH and self._player.state == PlayerState.DASH:
+            self._play_sfx("dash", volume=0.5)
+            self._emit_burst(self._player.x, self._player.y, count=6, kind="smoke")
         self._handle_firing(effective_dt)
         self._bullets.update(effective_dt)
         self._update_enemies(effective_dt)
         self._handle_collisions()
         self._spawn_pending(effective_dt)
         self._update_wave_state(effective_dt)
+        self._update_score_popups(effective_dt)
+        self._update_powerups(effective_dt)
+        self._update_enemy_flash(effective_dt)
+        self._check_player_death_explosion()
         self._particles.update(effective_dt)
         self._hitstop.update()
         self._shake.update(effective_dt)
@@ -582,6 +720,117 @@ class GameplayRuntime:
         self._player.input_bomb = False
 
     # ------------------------------------------------------------------
+    # Score popups, powerups, flash timers
+    # ------------------------------------------------------------------
+    def _update_score_popups(self, dt: float) -> None:
+        alive: list[ScorePopup] = []
+        for p in self._score_popups:
+            p.y += p.vy * dt
+            p.life -= dt
+            if p.life > 0.0:
+                alive.append(p)
+        self._score_popups = alive
+
+    def _update_powerups(self, dt: float) -> None:
+        """Power-ups drift down slowly; player touches to collect."""
+        alive: list[PowerUp] = []
+        phb = self._player.hitbox
+        for p in self._powerups:
+            p.y += p.vy * dt
+            p.life -= dt
+            if p.life <= 0.0 or p.y > INTERNAL_H + 10:
+                continue
+            # Player pickup
+            if not self._player.is_dead:
+                pr = pygame.Rect(int(p.x) - 4, int(p.y) - 4, 8, 8)
+                if pr.colliderect(phb):
+                    self._apply_powerup(p.kind)
+                    self._play_sfx("powerup", volume=0.7)
+                    self._emit_burst(p.x, p.y, count=8, kind="glow")
+                    continue  # consumed
+            alive.append(p)
+        self._powerups = alive
+
+    def _update_enemy_flash(self, dt: float) -> None:
+        """Decay the per-enemy white-flash timer (hit feedback)."""
+        if not self._enemy_flash:
+            return
+        decayed: dict[int, float] = {}
+        for eid, t in self._enemy_flash.items():
+            t -= dt
+            if t > 0.0:
+                decayed[eid] = t
+        self._enemy_flash = decayed
+
+    def _check_player_death_explosion(self) -> None:
+        """One-shot multi-stage explosion when the player first dies."""
+        if self._player.is_dead and not self._death_exploded:
+            self._death_exploded = True
+            self._emit_burst(self._player.x, self._player.y, count=24, kind="explosion")
+            self._emit_burst(self._player.x, self._player.y, count=16, kind="debris")
+            self._emit_burst(self._player.x, self._player.y, count=12, kind="smoke")
+            self._hitstop.trigger(8)
+            self._shake.add_trauma(0.5)
+            self._play_sfx("explode_boss", volume=0.5)
+            self._play_sfx("game_over", volume=0.7)
+
+    def _maybe_drop_powerup(self, e: Enemy) -> None:
+        """Roll for a power-up drop on enemy kill (per ENEMY_CONFIGS)."""
+        from src.entities.enemies.enemy import ENEMY_CONFIGS
+        cfg = ENEMY_CONFIGS.get(e.kind)
+        if cfg is None:
+            return
+        roll = random.random()
+        # Power-up priority: bomb > 1up > power > score
+        if roll < cfg.drop_bomb_pct and self._player.bombs_max > 0:
+            self._spawn_powerup(POWERUP_BOMB, e.x, e.y)
+        elif roll < cfg.drop_bomb_pct + cfg.drop_1up_pct and cfg.drop_1up_pct > 0:
+            self._spawn_powerup(POWERUP_1UP, e.x, e.y)
+        elif roll < cfg.drop_bomb_pct + cfg.drop_1up_pct + cfg.drop_powerup_pct:
+            # Power-up means a small score pickup
+            self._spawn_powerup(POWERUP_SCORE, e.x, e.y)
+
+    def _spawn_powerup(self, kind: str, x: float, y: float) -> None:
+        color_map = {
+            POWERUP_BOMB: (255, 180, 80),
+            POWERUP_POWER: (180, 220, 255),
+            POWERUP_SCORE: (255, 240, 100),
+            POWERUP_1UP: (120, 255, 180),
+        }
+        self._powerups.append(PowerUp(
+            x=x, y=y, vy=40.0, kind=kind, life=8.0, max_life=8.0,
+            color=color_map.get(kind, (255, 255, 255)),
+        ))
+
+    def _apply_powerup(self, kind: str) -> None:
+        if kind == POWERUP_BOMB:
+            self._player.bombs = min(self._player.bombs + 1, self._player.bombs_max)
+            self._score_popups.append(ScorePopup(
+                x=self._player.x, y=self._player.y - 16, vy=-40.0,
+                text="BOMB +1", color=(255, 180, 80), life=1.2, max_life=1.2,
+            ))
+        elif kind == POWERUP_SCORE:
+            self._scoring.on_kill(500)
+            self._score_popups.append(ScorePopup(
+                x=self._player.x, y=self._player.y - 16, vy=-40.0,
+                text="+500", color=(255, 240, 100), life=1.2, max_life=1.2,
+            ))
+        elif kind == POWERUP_1UP:
+            if self._player.lives < 9:
+                self._player.lives += 1
+            self._score_popups.append(ScorePopup(
+                x=self._player.x, y=self._player.y - 16, vy=-40.0,
+                text="1UP", color=(120, 255, 180), life=1.5, max_life=1.5,
+            ))
+        elif kind == POWERUP_POWER:
+            # "Power" = score bonus in this simplified game
+            self._scoring.on_kill(1000)
+            self._score_popups.append(ScorePopup(
+                x=self._player.x, y=self._player.y - 16, vy=-40.0,
+                text="+1000", color=(180, 220, 255), life=1.2, max_life=1.2,
+            ))
+
+    # ------------------------------------------------------------------
     # Drawing
     # ------------------------------------------------------------------
     def draw(self, target: pygame.Surface) -> None:
@@ -590,6 +839,16 @@ class GameplayRuntime:
         # Shake offset
         shx_f, shy_f = self._shake.get_offset()
         shx, shy = int(shx_f), int(shy_f)
+        # Power-ups
+        for p in self._powerups:
+            alpha = max(0, min(255, int(255 * (p.life / 2.0))))
+            rect = pygame.Rect(int(p.x) - 4 + shx, int(p.y) - 4 + shy, 8, 8)
+            s = pygame.Surface((8, 8), pygame.SRCALPHA)
+            pygame.draw.rect(s, (p.color[0], p.color[1], p.color[2], alpha),
+                             s.get_rect(), border_radius=2)
+            target.blit(s, rect)
+            # Inner dot
+            pygame.draw.rect(target, (255, 255, 255), (rect.x + 2, rect.y + 2, 4, 4))
         # Enemies
         for e in self._enemies.pool:
             if e.active:
@@ -597,23 +856,102 @@ class GameplayRuntime:
         # Boss
         if self._is_boss and self._boss is not None and self._boss.active:
             self._draw_boss(target, shx, shy)
-        # Bullets
-        self._bullets.draw(target)
+        # Bullets (with glow halo)
+        self._draw_bullets_with_glow(target, shx, shy)
         # Player (only if not in DEAD state and not i-frames invisible)
         if not self._player.is_dead:
             self._draw_player(target, shx, shy)
         # Particles
         self._particles.draw(target, (shx, shy))
+        # Score popups
+        self._draw_score_popups(target, shx, shy)
+        # Play-area frame (always on top so the border is visible)
+        self._draw_play_area_frame(target)
         # HUD
         self._hud.draw(target, self._player, self._weapon, self._scoring)
 
+    def _draw_play_area_frame(self, target: pygame.Surface) -> None:
+        """Visible 1-2px border around the 240x360 play area."""
+        w, h = target.get_size()
+        # Outer dark border
+        pygame.draw.rect(target, _BORDER_COLOR, (0, 0, w, h), 2)
+        # Inner light edge for depth
+        pygame.draw.rect(target, _BORDER_INNER, (1, 1, w - 2, h - 2), 1)
+        # Corner accents
+        for cx, cy in ((0, 0), (w - 4, 0), (0, h - 4), (w - 4, h - 4)):
+            pygame.draw.rect(target, (180, 180, 220), (cx, cy, 4, 4))
+
+    def _draw_bullets_with_glow(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        """Draw bullets with a soft glow halo behind each one."""
+        # Glow pass: draw larger soft circles first (cheap halo via translucent surface)
+        glow = pygame.Surface(target.get_size(), pygame.SRCALPHA)
+        for p in self._bullets.pool:
+            if not p.active:
+                continue
+            cx, cy = int(p.x) + ox, int(p.y) + oy
+            # Glow color by bullet kind
+            from src.systems.projectile import (
+                BULLET_BOSS, BULLET_ENEMY, BULLET_PLAYER, BULLET_PLAYER_CHARGED,
+            )
+            if p.kind == BULLET_PLAYER:
+                glow_color = (255, 220, 100, 60)
+                radius = 5
+            elif p.kind == BULLET_PLAYER_CHARGED:
+                glow_color = (255, 240, 200, 110)
+                radius = 8
+            elif p.kind == BULLET_ENEMY:
+                glow_color = (255, 100, 100, 60)
+                radius = 5
+            elif p.kind == BULLET_BOSS:
+                glow_color = (220, 120, 255, 80)
+                radius = 7
+            else:
+                glow_color = (255, 255, 255, 60)
+                radius = 5
+            pygame.draw.circle(glow, glow_color, (cx, cy), radius)
+        target.blit(glow, (0, 0))
+        # Solid bullets on top
+        self._bullets.draw(target)
+
+    def _draw_score_popups(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        font = pygame.font.Font(None, 14)
+        for p in self._score_popups:
+            alpha = max(0, min(255, int(255 * (p.life / p.max_life))))
+            text = font.render(p.text, True, p.color)
+            text.set_alpha(alpha)
+            target.blit(text, (int(p.x) - text.get_width() // 2 + ox,
+                                int(p.y) - text.get_height() // 2 + oy))
+
     def _draw_player(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        # Engine flame behind the ship — length scales with |vx|
+        self._draw_engine_flame(target, ox, oy)
         surf = pygame.Surface((18, 16), pygame.SRCALPHA)
-        # Flicker iframes
+        # Flicker iframes (every-other frame invisible during dash)
         if self._player.dash_iframes_left > 0 and (self._t * 30) % 2 < 1:
-            return
-        pygame.draw.polygon(surf, (220, 240, 255), [(9, 0), (0, 16), (18, 16)])
-        pygame.draw.polygon(surf, (255, 100, 100), [(9, 4), (4, 14), (14, 14)])
+            pass  # still draw so the trail is visible
+        # Ship body
+        body_color = (220, 240, 255)
+        if self._player.state == PlayerState.CHARGE:
+            # Tint based on charge level
+            level = self._player.get_charge_level()
+            if level >= 3:
+                body_color = (255, 255, 255)
+            elif level >= 2:
+                body_color = (200, 230, 255)
+            elif level >= 1:
+                body_color = (180, 220, 255)
+        pygame.draw.polygon(surf, body_color, [(9, 0), (0, 16), (18, 16)])
+        # Cockpit
+        cockpit_color = (255, 100, 100)
+        if self._player.state == PlayerState.CHARGE:
+            level = self._player.get_charge_level()
+            if level >= 3:
+                cockpit_color = (255, 200, 255)
+            elif level >= 2:
+                cockpit_color = (255, 150, 200)
+            elif level >= 1:
+                cockpit_color = (255, 120, 150)
+        pygame.draw.polygon(surf, cockpit_color, [(9, 4), (4, 14), (14, 14)])
         rotated = pygame.transform.rotate(surf, -self._player.current_tilt)
         rect = rotated.get_rect(center=(int(self._player.x + ox), int(self._player.y + oy)))
         target.blit(rotated, rect)
@@ -623,6 +961,73 @@ class GameplayRuntime:
             ghost = pygame.Surface((18, 16), pygame.SRCALPHA)
             pygame.draw.polygon(ghost, (220, 240, 255, alpha), [(9, 0), (0, 16), (18, 16)])
             target.blit(ghost, (int(tx - 9 + ox), int(ty - 8 + oy)))
+        # Charge indicator: a ring around the player that fills as charge builds
+        charge_level = self._player.get_charge_level()
+        if self._player.state == PlayerState.CHARGE and charge_level > 0:
+            self._draw_charge_indicator(target, charge_level, ox, oy)
+        elif self._player.input_fire and self._player.charge_time > 0.1:
+            # Building up — show dim ring
+            progress = min(1.0, self._player.charge_time / 0.5)
+            self._draw_charge_ring(target, progress, (180, 180, 200), ox, oy)
+
+    def _draw_engine_flame(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        """Draw an engine flame behind the player. Length scales with |vx|."""
+        px, py = self._player.x + ox, self._player.y + oy
+        speed = abs(self._player.vx)
+        # Base length 4; max length 12 when at full speed
+        length = 4 + min(8, speed / 130.0 * 8)
+        # Flicker the flame width using a sin
+        flicker = 1.0 + 0.4 * math.sin(self._t * 40.0)
+        # Three flame segments (yellow, orange, red) for a layered look
+        # Drawn behind the ship (y direction = +y, ship points -y)
+        pygame.draw.polygon(target, (255, 220, 80), [
+            (px - 2, py + 8),
+            (px + 2, py + 8),
+            (px, py + 8 + length * flicker),
+        ])
+        pygame.draw.polygon(target, (255, 140, 60), [
+            (px - 3, py + 8),
+            (px + 3, py + 8),
+            (px, py + 8 + length * flicker * 0.7),
+        ])
+        pygame.draw.polygon(target, (255, 80, 40), [
+            (px - 1.5, py + 8),
+            (px + 1.5, py + 8),
+            (px, py + 8 + length * flicker * 0.4),
+        ])
+
+    def _draw_charge_indicator(self, target: pygame.Surface, level: int, ox: int, oy: int) -> None:
+        """Bright pulsing ring around the player when fully charged."""
+        color_map = {1: (180, 220, 255), 2: (220, 230, 255), 3: (255, 255, 255)}
+        color = color_map.get(level, (180, 220, 255))
+        # Pulsing alpha
+        pulse = 128 + int(127 * math.sin(self._t * 12.0))
+        ring_surf = pygame.Surface((32, 32), pygame.SRCALPHA)
+        pygame.draw.circle(ring_surf, (*color, pulse), (16, 16), 14, 2)
+        target.blit(ring_surf, (int(self._player.x - 16 + ox),
+                                 int(self._player.y - 16 + oy)))
+
+    def _draw_charge_ring(self, target: pygame.Surface, progress: float,
+                          color: tuple[int, int, int], ox: int, oy: int) -> None:
+        """Dim partial ring while charge is building up."""
+        ring_surf = pygame.Surface((32, 32), pygame.SRCALPHA)
+        # Arc from -90deg clockwise
+        rect = pygame.Rect(1, 1, 30, 30)
+        start_angle = -math.pi / 2
+        end_angle = start_angle + 2 * math.pi * progress
+        # Draw arc as small line segments
+        steps = 24
+        for i in range(steps):
+            t = i / steps
+            a1 = start_angle + (end_angle - start_angle) * t
+            a2 = start_angle + (end_angle - start_angle) * ((t + 1.0 / steps))
+            x1 = 16 + math.cos(a1) * 14
+            y1 = 16 + math.sin(a1) * 14
+            x2 = 16 + math.cos(a2) * 14
+            y2 = 16 + math.sin(a2) * 14
+            pygame.draw.line(ring_surf, (*color, 200), (x1, y1), (x2, y2), 2)
+        target.blit(ring_surf, (int(self._player.x - 16 + ox),
+                                 int(self._player.y - 16 + oy)))
 
     def _draw_enemy(self, target: pygame.Surface, e: Enemy, ox: int, oy: int) -> None:
         from src.entities.enemies.enemy import ENEMY_CONFIGS
@@ -638,7 +1043,16 @@ class GameplayRuntime:
             color = (255, 100, 100)
         else:
             color = cfg.color
+        # Hit feedback: white flash for ~0.08s after a hit
+        flash_t = self._enemy_flash.get(id(e), 0.0)
+        if flash_t > 0.0:
+            color = (255, 255, 255)
         pygame.draw.rect(target, color, rect)
+        # Inner detail: a small darker rectangle for "eye/window"
+        if w >= 10 and h >= 6:
+            inner = rect.inflate(-max(2, w // 3), -max(2, h // 3))
+            inner_color = (max(0, color[0] - 60), max(0, color[1] - 60), max(0, color[2] - 60))
+            pygame.draw.rect(target, inner_color, inner)
         # Mini drones
         if cfg.is_mini:
             pygame.draw.rect(target, (180, 230, 255), rect.inflate(-2, -2))
@@ -653,7 +1067,20 @@ class GameplayRuntime:
             int(self._boss.y - h / 2 + oy),
             w, h,
         )
+        # Glow under boss
+        glow = pygame.Surface((w + 16, h + 16), pygame.SRCALPHA)
+        pygame.draw.rect(glow, (*cfg.color, 60), (0, 0, w + 16, h + 16), border_radius=4)
+        target.blit(glow, (rect.x - 8, rect.y - 8))
         pygame.draw.rect(target, cfg.color, rect)
+        # Boss "eye" detail
+        eye_w = max(4, w // 3)
+        eye_h = max(2, h // 4)
+        eye_rect = pygame.Rect(
+            rect.x + (w - eye_w) // 2,
+            rect.y + (h - eye_h) // 2,
+            eye_w, eye_h,
+        )
+        pygame.draw.rect(target, (255, 255, 255), eye_rect)
         # Phase border color
         border_color = (255, 220, 80) if self._boss.phase >= 2 else (180, 180, 220)
         pygame.draw.rect(target, border_color, rect, 1)

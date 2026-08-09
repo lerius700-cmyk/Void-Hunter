@@ -61,6 +61,12 @@ class Game:
         self.internal: pygame.Surface = pygame.Surface((_IW, _IH))
         pygame.display.set_caption(WINDOW_TITLE)
         self.clock: pygame.time.Clock = pygame.time.Clock()
+        # Audio: shared engine, null-safe if mixer fails to init
+        try:
+            from src.audio.synth import AudioEngine
+            self.audio: AudioEngine | None = AudioEngine()
+        except Exception:
+            self.audio = None
         self.scenes: SceneManager = SceneManager()
         self._register_scenes()
         self._running: bool = True
@@ -94,9 +100,9 @@ class Game:
 
         self.scenes.register_scene(GameState.TITLE, TitleScene(transition_to))
         self.scenes.register_scene(GameState.ACT_INTRO, ActIntroScene(transition_to, act=1))
-        self.scenes.register_scene(GameState.GAMEPLAY, GameplayScene(transition_to))
+        self.scenes.register_scene(GameState.GAMEPLAY, GameplayScene(transition_to, audio=self.audio))
         self.scenes.register_scene(GameState.BOSS_INTRO, BossIntroScene(transition_to))
-        self.scenes.register_scene(GameState.BOSS_FIGHT, BossFightScene(transition_to))
+        self.scenes.register_scene(GameState.BOSS_FIGHT, BossFightScene(transition_to, act=1, audio=self.audio))
         self.scenes.register_scene(GameState.ACT_CLEARED, ActClearedScene(transition_to))
         self.scenes.register_scene(GameState.GAME_OVER, GameOverScene(transition_to))
         self.scenes.register_scene(GameState.VICTORY, VictoryScene(transition_to))
