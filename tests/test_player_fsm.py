@@ -1,6 +1,8 @@
 """Tests for Player FSM (BLOQUE 6)."""
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from src.core.settings import (
@@ -373,3 +375,64 @@ def test_charge_level_function(p: Player) -> None:
     assert p.get_charge_level() == 2
     p.charge_time = 1.6
     assert p.get_charge_level() == 3
+
+# ---------------------------------------------------------------------------
+# BLOQUE 35: nose_angle short-path + clamp (regression for "360 spontaneous spin")
+# ---------------------------------------------------------------------------
+def test_nose_angle_short_path_359_to_1() -> None:
+    """359 -> 1 should be short-path diff of about +2 deg, NOT long-path -358.
+
+    Reproduces the "spontaneous 360 rotation" bug. With correct short-path
+    math, after one update step (28 deg/s * 0.1s = 2.8 deg), current_nose_angle
+    should move from 359 to about 1.8, NOT to about 357 via the long way.
+    """
+    p = Player()
+    p.current_nose_angle = 359.0
+    p.nose_angle = 1.0
+    p.update(0.1)
+    diff_to_target = abs((p.current_nose_angle - 1.0 + 540) % 360 - 180)
+    assert diff_to_target < 90.0, (
+        f"Long-path rotation detected: current_nose_angle={p.current_nose_angle}, "
+        f"target=1.0, diff={diff_to_target} (should be <90 for short-path)"
+    )
+
+
+def test_nose_angle_clamp_to_360_after_update() -> None:
+    """current_nose_angle must always be in [0, 360) after update()."""
+    p = Player()
+    p.current_nose_angle = 720.0
+    p.nose_angle = 0.0
+    p.update(0.1)
+    assert 0.0 <= p.current_nose_angle < 360.0, (
+        f"current_nose_angle out of range: {p.current_nose_angle}"
+    )
+
+
+def test_nose_angle_10_to_350_short_path() -> None:
+    """10 -> 350: short path is -20 deg (back), long path is +340 deg.
+
+    After 0.1s of update at 28 deg/s, the lerp should move ~2.8 deg toward
+    350 (i.e., from 10 to about 7.2 via the short path -2.8), NOT to about 12.8
+    via the long way around.
+    """
+    p = Player()
+    p.current_nose_angle = 10.0
+    p.nose_angle = 350.0
+    p.update(0.1)
+    assert p.current_nose_angle < 10.0, (
+        f"Long-path rotation: current_nose_angle={p.current_nose_angle} "
+        f"(expected < 10.0 for short-path back to 350)"
+    )
+
+
+def test_nose_angle_no_nan_or_inf() -> None:
+    """current_nose_angle must never become NaN or Inf."""
+    p = Player()
+    for target in (0.0, 45.0, 90.0, 180.0, 270.0, 359.0, 720.0, -100.0):
+        p.nose_angle = target
+        p.current_nose_angle = 0.0
+        p.update(0.1)
+        assert math.isfinite(p.current_nose_angle), (
+            f"current_nose_angle is not finite: {p.current_nose_angle} for target={target}"
+        )
+        assert 0.0 <= p.current_nose_angle < 360.0

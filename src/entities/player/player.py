@@ -238,6 +238,11 @@ class Player:
         # Fixes "weird 360° rotation" bug: now the visual matches the target
         # in ~15ms for small turns, so the ship ALWAYS faces where the bullets
         # are going. No more frozen-when-stopped disconnect.
+        # BLOQUE 35: defensive clamp — keep nose_angle and current_nose_angle
+        # in [0, 360) so out-of-range values (e.g. 720 or -100) don't propagate
+        # through the lerp math and corrupt the visual.
+        self.nose_angle = self.nose_angle % 360.0
+        self.current_nose_angle = self.current_nose_angle % 360.0
         target = self.nose_angle
         cur = self.current_nose_angle
         diff = (target - cur + 540.0) % 360.0 - 180.0  # signed shortest
@@ -263,11 +268,11 @@ class Player:
             self._update_dead(dt)
         # Tilt smoothing
         self.current_tilt += (self.tilt - self.current_tilt) * min(1.0, dt * 12.0)
-        # BLOQUE 29: nose angle smoothing
-        if hasattr(self, "nose_angle"):
-            self.current_nose_angle += (
-                (self.nose_angle - self.current_nose_angle) * min(1.0, dt * 12.0)
-            )
+        # BLOQUE 35: REMOVED the legacy BLOQUE 29 nose-angle smoothing that
+        # was running AFTER our short-path lerp and OVERWRITING it with a
+        # long-path linear interpolation. This was the actual cause of
+        # the "ship rotates 360 on its axis" bug — two competing lerps
+        # where the bad long-path one ran second and won.
         # Apply damage if accumulated
         if self.damage_taken > 0 and self.state != PlayerState.DEAD:
             self._enter_hit()

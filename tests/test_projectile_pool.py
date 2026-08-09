@@ -260,11 +260,12 @@ def test_pre_baked_frames_have_4_per_kind(pool: ProjectilePool) -> None:
 
 
 def test_bullet_kinds_have_correct_size(pool: ProjectilePool) -> None:
+    """BLOQUE 35: bullet sizes are 75% of pre-BLOQUE-35 values."""
     from src.systems.projectile import BULLET_SIZES
-    assert BULLET_SIZES[BULLET_PLAYER] == (4, 6)
-    assert BULLET_SIZES[BULLET_PLAYER_CHARGED] == (6, 10)
-    assert BULLET_SIZES[BULLET_ENEMY] == (4, 6)
-    assert BULLET_SIZES[BULLET_BOSS] == (8, 8)
+    assert BULLET_SIZES[BULLET_PLAYER] == (3, 5)
+    assert BULLET_SIZES[BULLET_PLAYER_CHARGED] == (5, 8)
+    assert BULLET_SIZES[BULLET_ENEMY] == (3, 5)
+    assert BULLET_SIZES[BULLET_BOSS] == (6, 6)
 
 
 # ---------------------------------------------------------------------------

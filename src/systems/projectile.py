@@ -45,12 +45,15 @@ FRAME_DURATION_S = 1.0 / 16.0
 NUM_FRAMES = 4
 
 # Pre-baked bullet sizes (per kind)
+# BLOQUE 35: visual ~75% scale (was 4x6 / 6x10 / 12x16 / 4x6 / 8x8).
+# Collision rects are hardcoded elsewhere (4x6) and NOT scaled — keeps
+# difficulty consistent with pre-BLOQUE-35 gameplay.
 BULLET_SIZES = {
-    BULLET_PLAYER: (4, 6),
-    BULLET_PLAYER_CHARGED: (6, 10),
-    BULLET_PLAYER_BEAM: (12, 16),  # BLOQUE 30: big L3 beam
-    BULLET_ENEMY: (4, 6),
-    BULLET_BOSS: (8, 8),
+    BULLET_PLAYER: (3, 5),             # was (4, 6)
+    BULLET_PLAYER_CHARGED: (5, 8),     # was (6, 10)
+    BULLET_PLAYER_BEAM: (9, 12),       # was (12, 16)
+    BULLET_ENEMY: (3, 5),              # was (4, 6)
+    BULLET_BOSS: (6, 6),               # was (8, 8)
 }
 
 # Default speeds (px/s) per kind

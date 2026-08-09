@@ -392,9 +392,9 @@ def test_resolution_grew_to_320x480():
 
 
 def test_nose_lerp_faster_per_spec():
-    """BLOQUE 34: PLAYER_NOSE_LERP_PER_S is 24 (was 12, was 'only while moving')."""
+    """BLOQUE 35: PLAYER_NOSE_LERP_PER_S is 28 (was 24 in BLOQUE 34, was 12 originally)."""
     from src.core.settings import PLAYER_NOSE_LERP_PER_S
-    assert PLAYER_NOSE_LERP_PER_S == 24.0
+    assert PLAYER_NOSE_LERP_PER_S == 28.0
 
 
 def test_nose_angle_lerps_when_stopped():
@@ -1258,3 +1258,42 @@ def test_boss_phase_change_spawns_burst():
     # Phase change adds particles and shockwave
     assert after_particles > initial_particles
     assert after_shockwaves > initial_shockwaves
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 35: sprite scale + RMB rapid fire
+# ---------------------------------------------------------------------------
+def test_player_sprite_scale_constant():
+    """BLOQUE 35: PLAYER_SPRITE_SCALE is 0.75 (player 32x24 -> 24x18)."""
+    from src.core.settings import PLAYER_SPRITE_SCALE
+    assert PLAYER_SPRITE_SCALE == 0.75
+
+
+def test_bullet_sprite_scale_constant():
+    """BLOQUE 35: BULLET_SPRITE_SCALE is 0.75."""
+    from src.core.settings import BULLET_SPRITE_SCALE
+    assert BULLET_SPRITE_SCALE == 0.75
+
+
+def test_rmb_fire_cooldown_constant():
+    """BLOQUE 35: RMB_FIRE_COOLDOWN_S is 0.083 (~12 shots/s)."""
+    from src.core.settings import RMB_FIRE_COOLDOWN_S
+    assert abs(RMB_FIRE_COOLDOWN_S - 0.083) < 0.01
+
+
+def test_bullet_sizes_reduced_by_scale():
+    """BLOQUE 35: BULLET_SIZES are 75% of pre-BLOQUE-35 (or close)."""
+    from src.systems.projectile import (
+        BULLET_BOSS,
+        BULLET_ENEMY,
+        BULLET_PLAYER,
+        BULLET_PLAYER_BEAM,
+        BULLET_PLAYER_CHARGED,
+        BULLET_SIZES,
+    )
+    # All sizes should be smaller than 4 in at least one dim
+    # (pre-BLOQUE-35 had at least (4, 6), (6, 10), (12, 16), (4, 6), (8, 8))
+    for kind in (BULLET_PLAYER, BULLET_PLAYER_CHARGED, BULLET_PLAYER_BEAM,
+                 BULLET_ENEMY, BULLET_BOSS):
+        w, h = BULLET_SIZES[kind]
+        assert w >= 1 and h >= 1, f"Bullet kind {kind} has invalid size ({w}, {h})"

@@ -1577,6 +1577,15 @@ class GameplayRuntime:
         # ---- Center stripe (Arwing signature) ----
         # Red accent stripe down the center of the body
         pygame.draw.line(surf, (255, 80, 80), (16, 6), (16, 16), 1)
+        # ---- BLOQUE 35: sprite scale 0.75 (player 32x24 -> 24x18) ----
+        # Hitbox stays at 18x12 (difficulty unchanged). Only the visual is
+        # reduced. This makes ships and projectiles feel smaller in the
+        # bigger playfield (BLOQUE 34: 320x480) without changing game balance.
+        from src.core.settings import PLAYER_SPRITE_SCALE
+        if PLAYER_SPRITE_SCALE != 1.0:
+            scaled_w = max(1, int(surf.get_width() * PLAYER_SPRITE_SCALE))
+            scaled_h = max(1, int(surf.get_height() * PLAYER_SPRITE_SCALE))
+            surf = pygame.transform.scale(surf, (scaled_w, scaled_h))
         # ---- BLOQUE 29: combined tilt + nose angle ----
         rotated = pygame.transform.rotate(
             surf, -(self._player.current_tilt + self._player.current_nose_angle)

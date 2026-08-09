@@ -52,8 +52,13 @@ PLAYER_DASH_IFRAMES: int = 22             # at base level
 PLAYER_INVULN_FRAMES: int = 60            # post-hit
 PLAYER_DEATH_DURATION_S: float = 1.20
 PLAYER_RESPAWN_INVULN_S: float = 1.0
-# BLOQUE 34: nose smoothing — fast snappy tracking (was 12, was broken "only while moving")
-PLAYER_NOSE_LERP_PER_S: float = 24.0  # higher = snappier; 24°/s catches up in ~15ms for small turns
+# BLOQUE 35: nose smoothing — even snappier (28°/s, was 24)
+PLAYER_NOSE_LERP_PER_S: float = 28.0
+# BLOQUE 35: sprite scale factors (visual reduction, hitbox unchanged)
+PLAYER_SPRITE_SCALE: float = 0.75   # player 32x24 -> 24x18
+BULLET_SPRITE_SCALE: float = 0.75   # player bullet 4x6 -> 3x5, etc.
+# BLOQUE 35: RMB rapid-fire cooldown (~12 shots/s, was 0 in BLOQUE 34 freeform)
+RMB_FIRE_COOLDOWN_S: float = 0.083
 
 # ---------------------------------------------------------------------------
 # Bullet FX
