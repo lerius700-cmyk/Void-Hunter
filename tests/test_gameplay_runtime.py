@@ -276,9 +276,10 @@ def test_kill_increments_score():
 
 def test_wave_clears_when_kill_target_reached():
     rt = _make_runtime()
-    # Wave 0 (Act 1, wave 1) has kill_target=6
-    assert rt._wave_mgr.scripts[0]["kill_target"] == 6
-    for _ in range(6):
+    # BLOQUE 45: Wave 0 (Act 1, wave 1) is now a LINE formation of 4 SCOUT,
+    # so kill_target is 4 (matches the formation count).
+    assert rt._wave_mgr.scripts[0]["kill_target"] == 4
+    for _ in range(4):
         e = rt._enemies.spawn(EnemyKind.SCOUT, 100, 50)
         if e is not None:
             rt._on_enemy_killed(e)

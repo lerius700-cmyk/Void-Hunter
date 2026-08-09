@@ -331,3 +331,124 @@ def test_all_default_waves_destructible() -> None:
         assert "indestructible" not in wave, f"wave {i} has indestructible flag"
         # Every wave has a kill_target > 0 (so they CAN be cleared)
         assert wave.get("kill_target", 0) > 0
+
+
+# ---------------------------------------------------------------------------
+# 9. BLOQUE 45: act 1 DEFAULT_WAVES use formations
+# ---------------------------------------------------------------------------
+def test_act1_wave1_is_line_formation() -> None:
+    """BLOQUE 45: Act 1, Wave 1 is a LINE formation of 4 SCOUT."""
+    from src.systems.wave_manager import DEFAULT_WAVES, parse_formation
+    wave = DEFAULT_WAVES[0]
+    assert wave["act"] == 1 and wave["wave"] == 1
+    f = parse_formation(wave["formation"])
+    assert f.formation_type == "line"
+    assert f.enemy_type == "SCOUT"
+    assert f.enemy_count == 4
+    assert f.telegraph_frames == 30
+    assert f.pattern_speed == 40
+
+
+def test_act1_wave2_is_v_formation() -> None:
+    """BLOQUE 45: Act 1, Wave 2 is a V formation of 5 SCOUT."""
+    from src.systems.wave_manager import DEFAULT_WAVES, parse_formation
+    wave = DEFAULT_WAVES[1]
+    f = parse_formation(wave["formation"])
+    assert f.formation_type == "v"
+    assert f.enemy_count == 5
+    assert f.enemy_type == "SCOUT"
+
+
+def test_act1_wave3_is_arc_formation() -> None:
+    """BLOQUE 45: Act 1, Wave 3 is an ARC formation of 5 CRUISER."""
+    from src.systems.wave_manager import DEFAULT_WAVES, parse_formation
+    wave = DEFAULT_WAVES[2]
+    f = parse_formation(wave["formation"])
+    assert f.formation_type == "arc"
+    assert f.enemy_count == 5
+    assert f.enemy_type == "CRUISER"
+    assert f.telegraph_frames == 45
+
+
+def test_act1_wave4_is_staircase_formation() -> None:
+    """BLOQUE 45: Act 1, Wave 4 is a STAIRCASE formation of 4 HEAVY."""
+    from src.systems.wave_manager import DEFAULT_WAVES, parse_formation
+    wave = DEFAULT_WAVES[3]
+    f = parse_formation(wave["formation"])
+    assert f.formation_type == "staircase"
+    assert f.enemy_count == 4
+    assert f.enemy_type == "HEAVY"
+    assert f.telegraph_frames == 60
+
+
+def test_act1_wave5_is_line_mixed() -> None:
+    """BLOQUE 45: Act 1, Wave 5 is a LINE formation of 6 enemies."""
+    from src.systems.wave_manager import DEFAULT_WAVES, parse_formation
+    wave = DEFAULT_WAVES[4]
+    f = parse_formation(wave["formation"])
+    assert f.formation_type == "line"
+    assert f.enemy_count == 6
+
+
+def test_act1_wave6_is_v_with_sub_boss_goliath() -> None:
+    """BLOQUE 45: Act 1, Wave 6 is a V formation triggering goliath boss."""
+    from src.systems.wave_manager import DEFAULT_WAVES, parse_formation
+    wave = DEFAULT_WAVES[5]
+    f = parse_formation(wave["formation"])
+    assert f.formation_type == "v"
+    assert f.enemy_count == 6
+    assert wave["sub_boss"] == "goliath"
+
+
+def test_act1_uses_all_4_formation_types() -> None:
+    """BLOQUE 45: act 1 uses all 4 formation types (LINE/V/ARC/STAIRCASE)."""
+    from src.systems.wave_manager import DEFAULT_WAVES
+    types = {DEFAULT_WAVES[i]["formation"]["formation_type"] for i in range(6)}
+    assert types == {"line", "v", "arc", "staircase"}, (
+        f"Act 1 should use all 4 types; got {types}"
+    )
+
+
+def test_act2_and_act3_still_use_mix_field() -> None:
+    """BLOQUE 45: act 2 & 3 keep `mix` (formation derived as LINE fallback)."""
+    from src.systems.wave_manager import DEFAULT_WAVES
+    for i in range(6, 18):
+        assert "mix" in DEFAULT_WAVES[i], (
+            f"act 2/3 wave {i} should still use mix field"
+        )
+        assert "formation" not in DEFAULT_WAVES[i], (
+            f"act 2/3 wave {i} should not have explicit formation yet"
+        )
+
+
+def test_wave_manager_validate_still_18_waves() -> None:
+    """BLOQUE 45: validate() must still pass: 18 waves, all kill_target > 0, all themes present."""
+    from src.systems.wave_manager import WaveManager
+    wm = WaveManager()
+    ok, msg = wm.validate()
+    assert ok, f"validate failed: {msg}"
+
+
+def test_act1_kill_targets_match_formation_count() -> None:
+    """BLOQUE 45: act 1 kill_target = formation count (so clearing == perfect score)."""
+    from src.systems.wave_manager import DEFAULT_WAVES
+    for i in range(6):
+        wave = DEFAULT_WAVES[i]
+        f = wave["formation"]
+        assert wave["kill_target"] == f["count"], (
+            f"act 1 wave {i + 1}: kill_target {wave['kill_target']} != formation count {f['count']}"
+        )
+
+
+def test_act1_formations_emit_spawns_inside_screen() -> None:
+    """BLOQUE 45: every act 1 formation produces spawns within the play area."""
+    from src.core.settings import INTERNAL_H, INTERNAL_W
+    from src.systems.wave_manager import DEFAULT_WAVES, parse_formation, spawn_formation
+    for i in range(6):
+        wave = DEFAULT_WAVES[i]
+        f = parse_formation(wave["formation"])
+        spawns = spawn_formation(f)
+        for s in spawns:
+            assert 0 <= s.x <= INTERNAL_W, f"wave {i + 1}: x out of bounds {s.x}"
+            assert 0 <= s.y <= INTERNAL_H, f"wave {i + 1}: y out of bounds {s.y}"
+            assert s.vy > 0, f"wave {i + 1}: enemies should move down"

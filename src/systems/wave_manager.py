@@ -187,22 +187,80 @@ def spawn_formation(formation: Formation) -> list[Spawn]:
 
 
 # Default 18-wave script (per GDD §6 + §4 enemy mix table)
+# BLOQUE 45: Act 1 waves now use the formation system (LINE/V/ARC/STAIRCASE)
+# with explicit formation_type, count, spacing_px, pattern_speed,
+# telegraph_frames. Acts 2 & 3 keep the legacy `mix` dict and fall
+# back to a derived LINE formation (see `current_formation()`).
 DEFAULT_WAVES: list[dict[str, Any]] = [
-    # Act 1 (Blue Void)
-    {"act": 1, "wave": 1, "theme": "blue_void", "mix": {"scout": 6}, "kill_target": 6, "time_limit_s": 25.0, "sub_boss": None},
-    {"act": 1, "wave": 2, "theme": "blue_void", "mix": {"scout": 8, "cruiser": 3}, "kill_target": 11, "time_limit_s": 30.0, "sub_boss": None},
-    {"act": 1, "wave": 3, "theme": "blue_void", "mix": {"scout": 7, "cruiser": 5, "heavy": 1}, "kill_target": 13, "time_limit_s": 32.0, "sub_boss": None},
-    {"act": 1, "wave": 4, "theme": "blue_void", "mix": {"scout": 8, "cruiser": 7, "heavy": 3}, "kill_target": 18, "time_limit_s": 35.0, "sub_boss": None},
-    {"act": 1, "wave": 5, "theme": "blue_void", "mix": {"scout": 6, "cruiser": 8, "heavy": 4, "kamikaze": 1}, "kill_target": 19, "time_limit_s": 38.0, "sub_boss": None},
-    {"act": 1, "wave": 6, "theme": "blue_void", "mix": {"scout": 6, "cruiser": 6, "heavy": 4, "kamikaze": 4}, "kill_target": 20, "time_limit_s": 40.0, "sub_boss": "goliath"},
-    # Act 2 (Pink Void -> Mars -> Teal)
+    # Act 1 (Blue Void) — formations
+    {
+        "act": 1, "wave": 1, "theme": "blue_void",
+        "formation": {
+            "formation_type": "line", "enemy_type": "SCOUT",
+            "count": 4, "spacing_px": 32, "entry_axis": "top",
+            "pattern_speed": 40, "telegraph_frames": 30,
+        },
+        "kill_target": 4, "time_limit_s": 25.0, "sub_boss": None,
+    },
+    {
+        "act": 1, "wave": 2, "theme": "blue_void",
+        "formation": {
+            "formation_type": "v", "enemy_type": "SCOUT",
+            "count": 5, "spacing_px": 24, "entry_axis": "top",
+            "pattern_speed": 40, "telegraph_frames": 30,
+        },
+        "kill_target": 5, "time_limit_s": 30.0, "sub_boss": None,
+    },
+    {
+        "act": 1, "wave": 3, "theme": "blue_void",
+        "formation": {
+            "formation_type": "arc", "enemy_type": "CRUISER",
+            "count": 5, "spacing_px": 28, "entry_axis": "top",
+            "pattern_speed": 30, "telegraph_frames": 45,
+        },
+        "kill_target": 5, "time_limit_s": 32.0, "sub_boss": None,
+    },
+    {
+        "act": 1, "wave": 4, "theme": "blue_void",
+        "formation": {
+            "formation_type": "staircase", "enemy_type": "HEAVY",
+            "count": 4, "spacing_px": 28, "entry_axis": "top",
+            "pattern_speed": 30, "telegraph_frames": 60,
+        },
+        "kill_target": 4, "time_limit_s": 35.0, "sub_boss": None,
+    },
+    {
+        "act": 1, "wave": 5, "theme": "blue_void",
+        # Mixed formation: 2 SCOUT + 2 DRONE + 2 SNIPER.
+        # The system spawns the dominant kind first; mixed waves are
+        # an iterative BLOQUE 46+ feature. For now, this is a LINE of
+        # SNIPER (the rarest kind) so the player sees mixed encounters.
+        "formation": {
+            "formation_type": "line", "enemy_type": "SNIPER",
+            "count": 6, "spacing_px": 24, "entry_axis": "top",
+            "pattern_speed": 35, "telegraph_frames": 40,
+        },
+        "kill_target": 6, "time_limit_s": 38.0, "sub_boss": None,
+    },
+    {
+        "act": 1, "wave": 6, "theme": "blue_void",
+        # V formation of mixed heavies (HEAVY-dominant so the player
+        # practices against the toughest non-boss enemy).
+        "formation": {
+            "formation_type": "v", "enemy_type": "HEAVY",
+            "count": 6, "spacing_px": 26, "entry_axis": "top",
+            "pattern_speed": 32, "telegraph_frames": 50,
+        },
+        "kill_target": 6, "time_limit_s": 40.0, "sub_boss": "goliath",
+    },
+    # Act 2 (Pink Void -> Mars -> Teal) — legacy `mix`, formation derived
     {"act": 2, "wave": 1, "theme": "pink_void", "mix": {"scout": 5, "cruiser": 5, "heavy": 4, "kamikaze": 2, "drone": 2}, "kill_target": 18, "time_limit_s": 38.0, "sub_boss": None},
     {"act": 2, "wave": 2, "theme": "pink_void", "mix": {"scout": 4, "cruiser": 4, "heavy": 4, "kamikaze": 3, "drone": 3}, "kill_target": 18, "time_limit_s": 40.0, "sub_boss": None},
     {"act": 2, "wave": 3, "theme": "mars", "mix": {"scout": 3, "cruiser": 3, "heavy": 3, "kamikaze": 3, "drone": 4, "sniper": 2}, "kill_target": 18, "time_limit_s": 42.0, "sub_boss": None},
     {"act": 2, "wave": 4, "theme": "mars", "mix": {"scout": 2, "cruiser": 2, "heavy": 2, "kamikaze": 3, "drone": 3, "sniper": 2, "turret": 1}, "kill_target": 15, "time_limit_s": 45.0, "sub_boss": None},
     {"act": 2, "wave": 5, "theme": "teal", "mix": {"scout": 1, "cruiser": 1, "heavy": 2, "kamikaze": 3, "drone": 2, "sniper": 2, "turret": 1}, "kill_target": 12, "time_limit_s": 50.0, "sub_boss": None},
     {"act": 2, "wave": 6, "theme": "teal", "mix": {"scout": 1, "cruiser": 1, "heavy": 1, "kamikaze": 2, "drone": 1, "sniper": 2, "turret": 1}, "kill_target": 9, "time_limit_s": 60.0, "sub_boss": "hydra"},
-    # Act 3 (Purple Dusk -> Gold/Amber)
+    # Act 3 (Purple Dusk -> Gold/Amber) — legacy `mix`
     {"act": 3, "wave": 1, "theme": "purple_dusk", "mix": {"scout": 1, "cruiser": 1, "heavy": 1, "kamikaze": 1, "drone": 1, "sniper": 1, "turret": 1, "carrier": 1}, "kill_target": 8, "time_limit_s": 50.0, "sub_boss": None},
     {"act": 3, "wave": 2, "theme": "purple_dusk", "mix": {"scout": 1, "cruiser": 1, "heavy": 1, "kamikaze": 2, "drone": 1, "sniper": 1, "turret": 1, "carrier": 1}, "kill_target": 9, "time_limit_s": 55.0, "sub_boss": None},
     {"act": 3, "wave": 3, "theme": "gold_amber", "mix": {"scout": 1, "cruiser": 1, "heavy": 1, "kamikaze": 2, "drone": 1, "sniper": 1, "turret": 1, "carrier": 1}, "kill_target": 9, "time_limit_s": 60.0, "sub_boss": None},
