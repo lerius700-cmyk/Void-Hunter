@@ -189,6 +189,10 @@ class GameplayRuntime:
         self._boss_death_timer: float = 0.0  # time since death for staging
         self._charge_release_shock: bool = False  # spawn expanding ring on charge release
         self._boss_death_pos: tuple[float, float] = (0.0, 0.0)  # cached pos for staged burst
+        # BLOQUE 24: more polish
+        self._pickup_flash: float = 0.0  # 0..1 alpha of green pickup flash overlay
+        self._speed_line_t: float = 0.0  # accumulator for speed line drift
+        self._level_up_flash: float = 0.0  # brief flash when weapon levels up
 
     def _play_sfx(self, name: str, volume: float = 1.0) -> None:
         if self._audio is not None:
@@ -250,6 +254,10 @@ class GameplayRuntime:
         self._boss_death_stage = 0
         self._boss_death_timer = 0.0
         self._boss_death_pos = (0.0, 0.0)
+        # BLOQUE 24: reset new polish state
+        self._pickup_flash = 0.0
+        self._speed_line_t = 0.0
+        self._level_up_flash = 0.0
         self._t = 0.0
         self._wave_spawn_timer = 0.0
         self._is_wave_active = not self._is_boss
@@ -624,8 +632,14 @@ class GameplayRuntime:
         # Element bonus: plasma bonus vs heavy/cruiser/turret/carrier
         element_bonus = e.kind.value in ("heavy", "cruiser", "turret", "carrier")
         awarded = self._scoring.on_kill(score, is_boss=False, is_element_bonus=element_bonus)
+        # BLOQUE 24: detect weapon level-up before/after on_kill
+        level_before = self._weapon.level.value
         # Weapon XP
         self._weapon.on_kill(e.kind.value)
+        if self._weapon.level.value > level_before:
+            self._level_up_flash = 0.9
+            self._emit_burst(self._player.x, self._player.y, count=16, kind="glow")
+            self._play_sfx("multiplier_up", volume=0.8)
         # Particles
         self._emit_burst(e.x, e.y, count=14, kind="explosion")
         # SFX
@@ -783,6 +797,13 @@ class GameplayRuntime:
             self._muzzle_flash = max(0.0, self._muzzle_flash - effective_dt * 12.0)
         if self._charge_release_flash > 0.0:
             self._charge_release_flash = max(0.0, self._charge_release_flash - effective_dt * 4.0)
+        # BLOQUE 24: pickup + level-up flash decay
+        if self._pickup_flash > 0.0:
+            self._pickup_flash = max(0.0, self._pickup_flash - effective_dt * 3.0)
+        if self._level_up_flash > 0.0:
+            self._level_up_flash = max(0.0, self._level_up_flash - effective_dt * 2.0)
+        # BLOQUE 24: speed line drift accumulator
+        self._speed_line_t += effective_dt
         self._check_player_death_explosion()
         self._particles.update(effective_dt)
         self._hitstop.update()
@@ -931,6 +952,8 @@ class GameplayRuntime:
         ))
 
     def _apply_powerup(self, kind: str) -> None:
+        # BLOQUE 24: green pickup flash on every pickup
+        self._pickup_flash = 0.6
         if kind == POWERUP_BOMB:
             self._player.bombs = min(self._player.bombs + 1, self._player.bombs_max)
             self._score_popups.append(ScorePopup(
@@ -1037,6 +1060,21 @@ class GameplayRuntime:
             flash = pygame.Surface(target.get_size(), pygame.SRCALPHA)
             flash.fill((255, 240, 180, flash_alpha))
             target.blit(flash, (0, 0))
+        # BLOQUE 24: pickup flash (green overlay)
+        if self._pickup_flash > 0.0:
+            flash_alpha = int(120 * self._pickup_flash)
+            flash = pygame.Surface(target.get_size(), pygame.SRCALPHA)
+            flash.fill((100, 255, 140, flash_alpha))
+            target.blit(flash, (0, 0))
+        # BLOQUE 24: level-up flash (cyan overlay, brief)
+        if self._level_up_flash > 0.0:
+            flash_alpha = int(160 * self._level_up_flash)
+            flash = pygame.Surface(target.get_size(), pygame.SRCALPHA)
+            flash.fill((140, 220, 255, flash_alpha))
+            target.blit(flash, (0, 0))
+        # BLOQUE 24: speed lines when player moves fast (dashes / charge moves)
+        if abs(self._player.vx) > 80.0 and self._player.state != PlayerState.DEAD:
+            self._draw_speed_lines(target)
 
     def _draw_wave_indicator(self, target: pygame.Surface) -> None:
         """Show ACT/WAVE label in the top-center between HUD sections."""
@@ -1328,6 +1366,32 @@ class GameplayRuntime:
             ry2 = 12 + int(math.sin(r) * 12)
             pygame.draw.line(surf, (255, 255, 200, outer_alpha), (rx1, ry1), (rx2, ry2), 2)
         target.blit(surf, (cx - 12, cy - 12))
+
+    def _draw_speed_lines(self, target: pygame.Surface) -> None:
+        """BLOQUE 24: motion streaks when player moves fast.
+
+        Horizontal short lines drift backwards relative to player motion, giving
+        a "fast movement" feel. Drawn above the player but below the HUD.
+        """
+        vx = self._player.vx
+        if abs(vx) < 60.0:
+            return
+        surf = pygame.Surface(target.get_size(), pygame.SRCALPHA)
+        w, h = target.get_size()
+        # 6-8 streaks at random y positions
+        n = 8 if abs(vx) > 150.0 else 5
+        # Each streak length scales with |vx|
+        max_len = min(40, int(abs(vx) * 0.25))
+        for i in range(n):
+            # Pseudo-random y based on t + i (so it varies frame to frame)
+            y = int(((i * 53 + self._speed_line_t * 80) % h))
+            x_start = int(self._player.x + (vx * 0.1)) - max_len // 2
+            x_end = x_start - int(vx * 0.05)  # stretch opposite of motion
+            x_start = max(0, min(w - 1, x_start))
+            x_end = max(0, min(w - 1, x_end))
+            alpha = 80 if abs(vx) > 150 else 50
+            pygame.draw.line(surf, (200, 220, 255, alpha), (x_start, y), (x_end, y), 1)
+        target.blit(surf, (0, 0))
 
     def _draw_charge_indicator(self, target: pygame.Surface, level: int, ox: int, oy: int) -> None:
         """Bright pulsing ring around the player when fully charged."""

@@ -580,3 +580,81 @@ def test_player_death_explosion_spawns_shockwave():
     rt._player.is_dead = True
     rt._check_player_death_explosion()
     assert len(rt._shockwaves) == initial_shockwaves + 1
+
+
+# -----------------------------------------------------------------------
+# BLOQUE 24: Pickup flash, level-up flash, speed lines
+# -----------------------------------------------------------------------
+def test_pickup_flash_triggers_on_powerup():
+    """Applying a power-up should set _pickup_flash > 0."""
+    rt = _make_runtime()
+    assert rt._pickup_flash == 0.0
+    rt._apply_powerup("score")
+    assert rt._pickup_flash > 0.0
+
+
+def test_pickup_flash_decays():
+    """Pickup flash decays to 0 over time."""
+    rt = _make_runtime()
+    rt._pickup_flash = 0.6
+    for _ in range(60):
+        rt.update(1.0 / 120)
+    assert rt._pickup_flash == 0.0
+
+
+def test_speed_lines_only_when_moving_fast():
+    """Speed lines draw method should run without error."""
+    rt = _make_runtime()
+    rt._player.vx = 200.0  # moving fast
+    surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
+    rt._draw_speed_lines(surf)  # should not crash
+
+
+def test_speed_lines_noop_when_slow():
+    """Slow movement should not crash speed line draw."""
+    rt = _make_runtime()
+    rt._player.vx = 10.0
+    surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
+    rt._draw_speed_lines(surf)
+
+
+def test_level_up_flash_triggers_on_weapon_levelup():
+    """When the weapon levels up, _level_up_flash should be set."""
+    rt = _make_runtime()
+    from src.entities.enemies import EnemyKind
+    e = rt._enemies.spawn(EnemyKind.SCOUT, 100, 50)
+    assert e is not None
+    # Set weapon xp just below L2 threshold (10)
+    rt._weapon.xp = 9
+    rt._on_enemy_killed(e)
+    # SCOUT gives 1 XP, so this pushes to 10 -> L2
+    assert rt._weapon.level.value >= 2
+    assert rt._level_up_flash > 0.0
+
+
+def test_on_enter_resets_bloque24_state():
+    """on_enter should reset BLOQUE 24 polish state."""
+    rt = _make_runtime()
+    rt._pickup_flash = 0.5
+    rt._level_up_flash = 0.5
+    rt._speed_line_t = 1.5
+    rt.on_enter()
+    assert rt._pickup_flash == 0.0
+    assert rt._level_up_flash == 0.0
+    assert rt._speed_line_t == 0.0
+
+
+def test_draw_with_pickup_flash_runs():
+    """Drawing while pickup_flash > 0 should not raise."""
+    rt = _make_runtime()
+    rt._pickup_flash = 0.5
+    surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
+    rt.draw(surf)
+
+
+def test_draw_with_level_up_flash_runs():
+    """Drawing while level_up_flash > 0 should not raise."""
+    rt = _make_runtime()
+    rt._level_up_flash = 0.5
+    surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
+    rt.draw(surf)

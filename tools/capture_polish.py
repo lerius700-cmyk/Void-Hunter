@@ -124,7 +124,34 @@ def main() -> None:
     pygame.image.save(surf, str(out_dir / "polish_06_bullets_glow.png"))
     print("saved polish_06_bullets_glow.png")
 
-    print("Done. Saved 6 frames in tools/playtest_out/")
+    # 7. BLOQUE 24: pickup flash (green overlay)
+    rt7 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt7.on_enter()
+    rt7._pickup_flash = 0.5
+    rt7.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_07_pickup_flash.png"))
+    print("saved polish_07_pickup_flash.png")
+
+    # 8. BLOQUE 24: level-up flash (cyan overlay)
+    rt8 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt8.on_enter()
+    rt8._level_up_flash = 0.6
+    rt8.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_08_levelup_flash.png"))
+    print("saved polish_08_levelup_flash.png")
+
+    # 9. BLOQUE 24: speed lines (player moving fast)
+    rt9 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt9.on_enter()
+    rt9._player.x = INTERNAL_W / 2
+    rt9._player.y = INTERNAL_H - 60
+    rt9._player.vx = 200.0
+    rt9._speed_line_t = 1.5
+    rt9.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_09_speed_lines.png"))
+    print("saved polish_09_speed_lines.png")
+
+    print("Done. Saved 9 frames in tools/playtest_out/")
     pygame.quit()
 
 
