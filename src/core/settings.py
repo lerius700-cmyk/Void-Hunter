@@ -52,6 +52,12 @@ PLAYER_DASH_IFRAMES: int = 22             # at base level
 PLAYER_INVULN_FRAMES: int = 60            # post-hit
 PLAYER_DEATH_DURATION_S: float = 1.20
 PLAYER_RESPAWN_INVULN_S: float = 1.0
+# BLOQUE 32: boost — fast repositioning for tricky enemies
+PLAYER_BOOST_MULT: float = 2.0        # 2x speed during boost
+PLAYER_BOOST_DURATION_S: float = 0.4  # burst duration
+PLAYER_BOOST_COOLDOWN_S: float = 1.5  # cooldown before next boost
+# BLOQUE 32: nose smoothing (lerp speed for "rotate only while moving")
+PLAYER_NOSE_LERP_PER_S: float = 12.0  # higher = snappier
 
 # ---------------------------------------------------------------------------
 # Bullet FX

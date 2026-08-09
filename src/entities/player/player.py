@@ -27,6 +27,9 @@ from src.core.settings import (
     INTERNAL_W,
     PLAYER_BOMBS,
     PLAYER_BOMBS_MAX,
+    PLAYER_BOOST_COOLDOWN_S,
+    PLAYER_BOOST_DURATION_S,
+    PLAYER_BOOST_MULT,
     PLAYER_DASH_DURATION_S,
     PLAYER_DASH_IFRAMES,
     PLAYER_DASH_SPEED,
@@ -34,6 +37,7 @@ from src.core.settings import (
     PLAYER_FIRE_COOLDOWN_S,
     PLAYER_INVULN_FRAMES,
     PLAYER_LIVES,
+    PLAYER_NOSE_LERP_PER_S,
     PLAYER_RESPAWN_INVULN_S,
     PLAYER_SPEED,
 )
@@ -75,9 +79,12 @@ class Player:
     # Tilt
     tilt: float = 0.0  # degrees, target; current is computed
     current_tilt: float = 0.0
-    # BLOQUE 29: nose angle (rotation of the ship's "trompa")
-    # Limited to ±45° from straight up. Driven by mouse position.
-    nose_angle: float = 0.0  # target angle in degrees (-45 to +45)
+    # BLOQUE 32: nose angle (rotation of the ship's "trompa")
+    # 360° rotation, world-relative movement (WASD is screen-space).
+    # Driven by mouse position; only updates target while moving (BLOQUE 32
+    # "rotate-while-moving" design — keeps the ship stable when stopped
+    # so the player can stand their ground without the nose drifting).
+    nose_angle: float = 0.0  # target angle in degrees, 0..360 (0 = up, 90 = right)
     current_nose_angle: float = 0.0  # smoothed angle for rendering
     # State
     state: PlayerState = PlayerState.IDLE
@@ -112,6 +119,12 @@ class Player:
     input_fire: bool = False
     input_dash: bool = False
     input_bomb: bool = False
+    # BLOQUE 32: boost input (Shift = 2x speed burst for repositioning)
+    input_boost: bool = False
+    # BLOQUE 32: boost state
+    boost_timer: float = 0.0          # > 0 means currently boosting
+    boost_cooldown: float = 0.0       # > 0 means boost on cooldown
+    is_boosting: bool = False         # convenience flag for rendering/SFX
     # Output signals (consumed by WeaponSystem etc.)
     wants_to_shoot: bool = False
     wants_to_charge_release: bool = False
@@ -164,6 +177,13 @@ class Player:
         self.damage_taken = 0
         self.is_dead = False
         self.is_game_over = False
+        # BLOQUE 32: reset boost state
+        self.boost_timer = 0.0
+        self.boost_cooldown = 0.0
+        self.is_boosting = False
+        # BLOQUE 32: nose angle starts pointing up (0°)
+        self.nose_angle = 0.0
+        self.current_nose_angle = 0.0
 
     def take_damage(self, amount: int = 1) -> bool:
         """Apply damage if not in i-frames. Returns True if hit applied."""
@@ -222,6 +242,35 @@ class Player:
                 if new_age < self.AFTERIMAGE_LIFE:
                     new_trail.append((tx, ty, new_age))
             self.afterimage = new_trail
+        # BLOQUE 32: boost timer countdown + cooldown
+        if self.boost_timer > 0.0:
+            self.boost_timer = max(0.0, self.boost_timer - dt)
+            if self.boost_timer <= 0.0:
+                self.is_boosting = False
+        if self.boost_cooldown > 0.0:
+            self.boost_cooldown = max(0.0, self.boost_cooldown - dt)
+        # BLOQUE 32: try to start boost
+        if self.input_boost and self.boost_cooldown <= 0.0 and self.boost_timer <= 0.0 \
+                and self.state in (PlayerState.IDLE, PlayerState.MOVE):
+            self.boost_timer = PLAYER_BOOST_DURATION_S
+            self.boost_cooldown = PLAYER_BOOST_COOLDOWN_S
+            self.is_boosting = True
+        # BLOQUE 32: nose angle lerp (only when moving, per user spec)
+        # When the player is moving, smoothly track nose_angle target.
+        # When stopped, freeze (current_nose_angle stays where it is).
+        moving = (self.state == PlayerState.MOVE
+                  and (self.input_left or self.input_right
+                       or self.input_up or self.input_down))
+        if moving:
+            # Lerp the current_nose_angle toward nose_angle, shortest path
+            target = self.nose_angle
+            cur = self.current_nose_angle
+            diff = (target - cur + 540.0) % 360.0 - 180.0  # signed shortest
+            step = PLAYER_NOSE_LERP_PER_S * dt
+            if abs(diff) <= step:
+                self.current_nose_angle = target
+            else:
+                self.current_nose_angle = (cur + (step if diff > 0 else -step)) % 360.0
         # State-specific update
         if self.state == PlayerState.IDLE:
             self._update_idle(dt)
@@ -298,48 +347,41 @@ class Player:
         if self.input_fire and self.charge_time >= CHARGE_L1_S:
             self._enter_charge()
             return
-        # BLOQUE 29: movement now responds to W (thrust forward in facing direction)
-        # and A/D (strafe lateral). Ship's facing direction is nose_angle.
-        import math as _math
-        nose_rad = _math.radians(getattr(self, "nose_angle", 0.0))
-        # Forward unit vector (nose direction): (sin(nose), -cos(nose))
-        fwd_x = _math.sin(nose_rad)
-        fwd_y = -_math.cos(nose_rad)
-        # Lateral unit vector (perpendicular, 90° CW from forward)
-        lat_x = _math.cos(nose_rad)  # cos(nose) for right
-        lat_y = _math.sin(nose_rad)
-        # Compute target velocity
+        # BLOQUE 32: world-relative movement.
+        # WASD maps to screen-space axes regardless of ship facing.
+        #   W = up screen, S = down, A = left, D = right.
+        # Ship's facing is set by mouse (for aiming only).
         target_vx = 0.0
         target_vy = 0.0
-        # W = forward thrust, S = backward thrust (in facing direction)
-        if self.input_up:
-            target_vx += fwd_x * PLAYER_SPEED
-            target_vy += fwd_y * PLAYER_SPEED
-        if self.input_down:
-            target_vx -= fwd_x * PLAYER_SPEED * 0.5
-            target_vy -= fwd_y * PLAYER_SPEED * 0.5
-        # A = strafe left (in ship's lateral), D = strafe right
+        speed = PLAYER_SPEED
+        # BLOQUE 32: boost gives 2x speed burst
+        if self.boost_timer > 0.0:
+            speed *= PLAYER_BOOST_MULT
+        # Compute desired velocity from WASD (screen-space)
         if self.input_left:
-            target_vx -= lat_x * PLAYER_SPEED
-            target_vy -= lat_y * PLAYER_SPEED
+            target_vx -= speed
         if self.input_right:
-            target_vx += lat_x * PLAYER_SPEED
-            target_vy += lat_y * PLAYER_SPEED
-        # Acceleration (ease-out)
-        self.vx += (target_vx - self.vx) * min(1.0, dt * 12.0)
-        self.vy += (target_vy - self.vy) * min(1.0, dt * 12.0)
-        # Tilt: visual feedback based on horizontal speed
+            target_vx += speed
+        if self.input_up:
+            target_vy -= speed
+        if self.input_down:
+            target_vy += speed
+        # BLOQUE 32: snappier acceleration for responsive feel
+        accel = min(1.0, dt * 18.0)
+        self.vx += (target_vx - self.vx) * accel
+        self.vy += (target_vy - self.vy) * accel
+        # Tilt: visual feedback based on horizontal speed (kept for visual juice)
         self.tilt = -15.0 if self.vx < -10 else (15.0 if self.vx > 10 else 0.0)
         # Position integration
         self.x += self.vx * dt
         self.y += self.vy * dt
         self._clamp_position()
-        # Settle timer
-        if not self.input_left and not self.input_right:
+        # Settle: if no direction input → back to IDLE
+        if not (self.input_left or self.input_right or self.input_up or self.input_down):
             if self.state_timer >= MOVE_SETTLE_S:
                 self._enter_idle()
                 return
-        # Fire
+        # Fire (L1) — same as before
         if self.input_fire and self.fire_cd <= 0.0:
             self.wants_to_shoot = True
             self.fire_cd = PLAYER_FIRE_COOLDOWN_S

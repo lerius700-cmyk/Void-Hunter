@@ -53,13 +53,43 @@ class Game:
         # high-res display" pattern (Celeste, Shovel Knight, etc.) — avoids
         # integer-coordinate drift at 4x and keeps all game logic in one
         # coordinate system.
+        # BLOQUE 31: honor VOID_HUNTER_SCALE env var (set by --scale CLI flag)
+        import os as _os
+        _scale_env = _os.environ.get("VOID_HUNTER_SCALE", "")
+        if _scale_env.isdigit() and int(_scale_env) in (1, 2, 3):
+            _scale = int(_scale_env)
+            _ww = 240 * _scale
+            _wh = 360 * _scale
+        else:
+            _scale = 4
+            _ww = WINDOW_W
+            _wh = WINDOW_H
+        self._scale = _scale
         try:
             self.screen: pygame.Surface = pygame.display.set_mode(
-                (WINDOW_W, WINDOW_H),
+                (_ww, _wh),
                 pygame.SCALED | pygame.RESIZABLE,
             )
         except pygame.error:
             self.screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
+        # BLOQUE 31: center the window on screen so it doesn't open off-screen
+        try:
+            _info = pygame.display.get_desktop_sizes() if hasattr(pygame.display, "get_desktop_sizes") else None
+            if _info:
+                _sw, _sh = _info[0]
+                _ox = max(0, (_sw - _ww) // 2)
+                _oy = max(0, (_sh - _wh) // 2)
+                _os.environ["SDL_VIDEO_WINDOW_POS"] = f"{_ox},{_oy}"
+                # Re-apply position by re-setting the window mode
+                try:
+                    self.screen = pygame.display.set_mode(
+                        (_ww, _wh),
+                        pygame.SCALED | pygame.RESIZABLE,
+                    )
+                except pygame.error:
+                    pass
+        except Exception:
+            pass
         # Internal rendering surface: 240x360 (INTERNAL_W x INTERNAL_H).
         # This is what every scene draws to.
         from src.core.settings import INTERNAL_H as _IH, INTERNAL_W as _IW

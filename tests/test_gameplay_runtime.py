@@ -888,55 +888,144 @@ def test_game_10min_achievable_with_easy_mode():
 # -----------------------------------------------------------------------
 # BLOQUE 29: Mouse aiming + level 1 mode (5 min / 50 kills)
 # -----------------------------------------------------------------------
-def test_mouse_aiming_clamped_to_45_degrees():
-    """BLOQUE 29: nose angle is clamped to ±45° even if mouse is far to the side."""
+def test_mouse_aiming_360_degrees():
+    """BLOQUE 32: nose angle is full 360° — no clamp."""
+    import math
     rt = _make_runtime()
     rt._player.x = INTERNAL_W / 2
     rt._player.y = INTERNAL_H - 60
-    # Mouse far to the right (should clamp to +45)
-    rt._mouse_x = INTERNAL_W * 2
-    rt._mouse_y = INTERNAL_H / 2
+    # Mouse directly above → 0°
+    rt._mouse_x = INTERNAL_W / 2
+    rt._mouse_y = 0
     rt._update_nose_angle()
-    assert rt._player.nose_angle == 45.0
-    # Mouse far to the left (should clamp to -45)
-    rt._mouse_x = -100
+    assert abs(rt._player.nose_angle) < 1.0
+    # Mouse directly right → 90°
+    rt._mouse_x = INTERNAL_W
+    rt._mouse_y = INTERNAL_H - 60
     rt._update_nose_angle()
-    assert rt._player.nose_angle == -45.0
+    assert 89.0 < rt._player.nose_angle < 91.0
+    # Mouse directly below → 180°
+    rt._mouse_x = INTERNAL_W / 2
+    rt._mouse_y = INTERNAL_H
+    rt._update_nose_angle()
+    assert 179.0 < rt._player.nose_angle < 181.0
+    # Mouse directly left → 270°
+    rt._mouse_x = 0
+    rt._mouse_y = INTERNAL_H - 60
+    rt._update_nose_angle()
+    assert 269.0 < rt._player.nose_angle < 271.0
+    # Mouse at 45° (front-right) → 45°
+    rt._mouse_x = INTERNAL_W / 2 + 50
+    rt._mouse_y = INTERNAL_H - 60 - 50
+    rt._update_nose_angle()
+    assert 44.0 < rt._player.nose_angle < 46.0
 
 
 def test_mouse_aiming_front_arc():
-    """BLOQUE 29: mouse in front 180° arc determines nose angle (clamped to ±45)."""
+    """BLOQUE 32: mouse in front arc determines nose angle (no clamp, full 360)."""
     rt = _make_runtime()
     rt._player.x = INTERNAL_W / 2
     rt._player.y = INTERNAL_H - 60
     # Mouse directly forward (should be 0)
     rt._mouse_x = INTERNAL_W / 2
-    rt._mouse_y = 0  # top of screen
+    rt._mouse_y = 0
     rt._update_nose_angle()
     assert abs(rt._player.nose_angle) < 1.0
-    # Mouse forward-right (should be ~+45)
+    # Mouse forward-right: atan2(dx=84, -dy=-300) ≈ 15.6°
     rt._mouse_x = INTERNAL_W * 0.85
     rt._mouse_y = 0
     rt._update_nose_angle()
-    # 45° toward right, atan2(dx=72, -dy=-180) = atan2(72, 180) ~ 21.8°
-    # Just verify it's between 0 and 45
-    assert 0 < rt._player.nose_angle <= 45.0
+    assert 14.0 < rt._player.nose_angle < 17.0
 
 
 def test_mouse_aiming_behind_ship():
-    """BLOQUE 29: mouse behind ship → nose stays at ±45 (whichever side)."""
+    """BLOQUE 32: mouse behind ship → nose rotates 180°+ to face mouse (no clamp)."""
     rt = _make_runtime()
     rt._player.x = INTERNAL_W / 2
     rt._player.y = INTERNAL_H / 2
-    # Mouse below+right → nose = +45
+    # Mouse below+right: atan2(dx=120, -dy=-180) ≈ 146.3° (down-right back)
     rt._mouse_x = INTERNAL_W
     rt._mouse_y = INTERNAL_H
     rt._update_nose_angle()
-    assert rt._player.nose_angle == 45.0
-    # Mouse below+left → nose = -45
+    assert 144.0 < rt._player.nose_angle < 148.0
+    # Mouse below+left: atan2(dx=-120, -dy=-180) ≈ -146.3° → mod 360 = 213.7°
     rt._mouse_x = 0
     rt._update_nose_angle()
-    assert rt._player.nose_angle == -45.0
+    assert 211.0 < rt._player.nose_angle < 216.0
+
+
+def test_nose_rotation_only_while_moving():
+    """BLOQUE 32: nose_angle target only updates while moving (lerp freezes on stop)."""
+    rt = _make_runtime()
+    p = rt._player
+    p.x = INTERNAL_W / 2
+    p.y = INTERNAL_H - 60
+    # Place mouse on the right side
+    rt._mouse_x = INTERNAL_W - 10
+    rt._mouse_y = INTERNAL_H - 60
+    # While stopped, current_nose_angle should NOT change
+    p.current_nose_angle = 0.0
+    # Update with no movement
+    p.input_left = p.input_right = p.input_up = p.input_down = False
+    p.update(0.1)
+    assert p.current_nose_angle == 0.0  # didn't move
+    # Now move: should start lerping
+    p.input_right = True
+    # First need to set nose_angle target via runtime
+    rt._update_nose_angle()
+    p.update(0.1)
+    # current_nose_angle should now be > 0 (lerping toward ~90°)
+    assert p.current_nose_angle > 0.0
+    p.input_right = False
+
+
+def test_boost_doubles_speed():
+    """BLOQUE 32: Shift held → 2x speed for 0.4s, then cooldown 1.5s."""
+    rt = _make_runtime()
+    p = rt._player
+    p.x = INTERNAL_W / 2
+    p.y = INTERNAL_H - 60
+    # Trigger boost
+    p.input_boost = True
+    p.input_right = True
+    p.update(0.1)
+    assert p.is_boosting is True
+    assert p.boost_timer > 0.0
+    # Release shift, let boost finish
+    p.input_boost = False
+    for _ in range(10):
+        p.update(0.1)
+    # Boost should be done
+    assert p.is_boosting is False
+    # Cooldown should prevent immediate re-boost
+    p.input_boost = True
+    p.update(0.1)
+    assert p.is_boosting is False  # still on cooldown
+    # Wait for cooldown
+    for _ in range(20):
+        p.update(0.1)
+    p.input_boost = True
+    p.update(0.1)
+    assert p.is_boosting is True  # ready again
+
+
+def test_movement_world_relative():
+    """BLOQUE 32: W = always up in screen space (regardless of nose facing)."""
+    rt = _make_runtime()
+    p = rt._player
+    p.x = INTERNAL_W / 2
+    p.y = INTERNAL_H - 60
+    # Face right (90°), then press W
+    p.nose_angle = 90.0
+    p.current_nose_angle = 90.0
+    p.input_up = True
+    # Run many small updates (simulating 0.5s at 120Hz)
+    for _ in range(60):
+        p.update(1.0 / 120.0)
+    # Y should decrease (moving up screen), even though facing right
+    assert p.y < INTERNAL_H - 60
+    # X should stay roughly the same (no left/right input)
+    assert abs(p.x - INTERNAL_W / 2) < 5.0
 
 
 def test_level1_mode_has_100_ships():

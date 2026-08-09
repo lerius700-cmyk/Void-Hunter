@@ -52,6 +52,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--easy", action="store_true",
         help="BLOQUE 28: easy mode — 9 lives, 4 bombs, 2x score multiplier.",
     )
+    parser.add_argument(
+        "--scale", type=int, default=4, choices=(1, 2, 3, 4),
+        help="Window scale multiplier (default 4 = 960x1440; use 2 for 480x720 on small screens).",
+    )
     return parser.parse_args(argv)
 
 
@@ -162,6 +166,12 @@ def main(argv: list[str] | None = None) -> int:
         import os
         os.environ["VOID_HUNTER_EASY"] = "1"
         print("VOID HUNTER: --easy mode enabled (9 lives, 4 bombs)")
+
+    if args.scale != 4:
+        # BLOQUE 31: override window scale (1x=240x360, 2x=480x720, 3x=720x1080)
+        import os
+        os.environ["VOID_HUNTER_SCALE"] = str(args.scale)
+        print(f"VOID HUNTER: --scale {args.scale} (window = {240*args.scale}x{360*args.scale})")
 
     if args.check:
         return _cmd_check()

@@ -339,6 +339,10 @@ class GameplayRuntime:
         # BLOQUE 30: set input_fire based on mouse hold (continuous)
         # Holding the button = charging. Release = fire.
         self._player.input_fire = self._mouse_held
+        # BLOQUE 32: Shift held = boost (2x speed for 0.4s)
+        self._player.input_boost = (
+            keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
+        )
         for event in pygame.event.get(pygame.KEYDOWN):
             if event.key == pygame.K_k:
                 # BLOQUE 29: single-press dash (one-shot, consumed)
@@ -353,33 +357,30 @@ class GameplayRuntime:
                 self._transition_to(GameState.PAUSE)
 
     def _update_nose_angle(self) -> None:
-        """BLOQUE 29: compute ship's nose angle from mouse position.
+        """BLOQUE 32: compute ship's nose angle from mouse position — 360°.
 
-        Ship's nose rotation is limited to ±45° from straight up.
-        - Mouse in front arc (0..180° from ship's forward, i.e., above the ship):
-          nose follows mouse direction, clamped to ±45°.
-        - Mouse behind the ship (180..360°, i.e., below the ship in screen coords):
-          nose stays at ±45° depending on which side the mouse is on.
+        Convention (matches Player nose rendering):
+          0° = pointing UP (nose at top of screen, default for shmup)
+          90° = pointing RIGHT
+          180° = pointing DOWN
+          270° = pointing LEFT
+        Mouse is "above" the ship when my < py in screen coordinates, so
+        we use atan2(dx, -dy) which gives 0° when dx=0 and my<py.
+        360° freedom: the ship can face and shoot in any direction. The
+        actual rendering rotation will flip the sprite for angles >90°
+        so the ship's "canopy" stays oriented correctly to the player.
         """
         import math
         px, py = self._player.x, self._player.y
         mx, my = self._mouse_x, self._mouse_y
-        # Mouse offset (screen Y is inverted in pygame)
         dx = mx - px
         dy = my - py
-        # Front arc: my < py (mouse is above ship in screen)
-        if dy < 0:
-            # atan2(dx, -dy): 0 = up, +90 = right, -90 = left
-            angle = math.degrees(math.atan2(dx, -dy))
-        else:
-            # Behind: default to ±45 based on horizontal direction
-            if dx < 0:
-                angle = -45.0
-            else:
-                angle = 45.0
-        # Clamp to ±45° (per user spec)
-        nose_target = max(-45.0, min(45.0, angle))
-        self._player.nose_angle = nose_target
+        if abs(dx) < 0.01 and abs(dy) < 0.01:
+            # Mouse over ship → keep current angle
+            return
+        # atan2(dx, -dy): 0° = up, 90° = right, 180° = down, -90° = left
+        angle = math.degrees(math.atan2(dx, -dy)) % 360.0
+        self._player.nose_angle = angle
 
     # ------------------------------------------------------------------
     # Firing
@@ -436,13 +437,13 @@ class GameplayRuntime:
 
     def _spawn_player_bullet(self, charge_level: int = 0) -> None:
         spec = self._weapon.get_spec()
-        # BLOQUE 29: bullets fire in the direction of the ship's nose
-        # The nose angle is relative to "up" (negative y).
-        # Convert to radians: 0° = up, +90° = right, -90° = left
+        # BLOQUE 32: bullets fire in the direction of the ship's nose.
+        # 0° = up, 90° = right, 180° = down, 270° = left (360° freedom).
         nose_rad = math.radians(self._player.nose_angle)
-        # Base bullet position (at player nose)
-        bx = self._player.x
-        by = self._player.y - 8
+        # Spawn bullet at the ship's nose tip (offset 12px in nose direction).
+        muzzle_offset = 12.0
+        bx = self._player.x + math.sin(nose_rad) * muzzle_offset
+        by = self._player.y - math.cos(nose_rad) * muzzle_offset
         # BLOQUE 30: L3 max charge fires a beam — bigger muzzle flash + many particles
         is_beam = (charge_level >= 3)
         if is_beam:
