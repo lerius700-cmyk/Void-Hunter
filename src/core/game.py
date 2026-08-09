@@ -42,6 +42,11 @@ class Game:
     def __init__(self, easy: bool = False) -> None:
         if not pygame.get_init():
             pygame.init()
+        # BLOQUE 29: enable mouse + show cursor for mouse aiming
+        try:
+            pygame.mouse.set_visible(True)
+        except pygame.error:
+            pass
         # Display surface: WINDOW_W x WINDOW_H (960x1440 = 4x scaled).
         # All game scenes draw to a 240x360 INTERNAL surface, which we then
         # blit scaled to the display. This is the standard "low-res internal,

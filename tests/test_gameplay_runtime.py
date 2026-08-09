@@ -886,6 +886,143 @@ def test_game_10min_achievable_with_easy_mode():
 
 
 # -----------------------------------------------------------------------
+# BLOQUE 29: Mouse aiming + level 1 mode (5 min / 50 kills)
+# -----------------------------------------------------------------------
+def test_mouse_aiming_clamped_to_45_degrees():
+    """BLOQUE 29: nose angle is clamped to ±45° even if mouse is far to the side."""
+    rt = _make_runtime()
+    rt._player.x = INTERNAL_W / 2
+    rt._player.y = INTERNAL_H - 60
+    # Mouse far to the right (should clamp to +45)
+    rt._mouse_x = INTERNAL_W * 2
+    rt._mouse_y = INTERNAL_H / 2
+    rt._update_nose_angle()
+    assert rt._player.nose_angle == 45.0
+    # Mouse far to the left (should clamp to -45)
+    rt._mouse_x = -100
+    rt._update_nose_angle()
+    assert rt._player.nose_angle == -45.0
+
+
+def test_mouse_aiming_front_arc():
+    """BLOQUE 29: mouse in front 180° arc determines nose angle (clamped to ±45)."""
+    rt = _make_runtime()
+    rt._player.x = INTERNAL_W / 2
+    rt._player.y = INTERNAL_H - 60
+    # Mouse directly forward (should be 0)
+    rt._mouse_x = INTERNAL_W / 2
+    rt._mouse_y = 0  # top of screen
+    rt._update_nose_angle()
+    assert abs(rt._player.nose_angle) < 1.0
+    # Mouse forward-right (should be ~+45)
+    rt._mouse_x = INTERNAL_W * 0.85
+    rt._mouse_y = 0
+    rt._update_nose_angle()
+    # 45° toward right, atan2(dx=72, -dy=-180) = atan2(72, 180) ~ 21.8°
+    # Just verify it's between 0 and 45
+    assert 0 < rt._player.nose_angle <= 45.0
+
+
+def test_mouse_aiming_behind_ship():
+    """BLOQUE 29: mouse behind ship → nose stays at ±45 (whichever side)."""
+    rt = _make_runtime()
+    rt._player.x = INTERNAL_W / 2
+    rt._player.y = INTERNAL_H / 2
+    # Mouse below+right → nose = +45
+    rt._mouse_x = INTERNAL_W
+    rt._mouse_y = INTERNAL_H
+    rt._update_nose_angle()
+    assert rt._player.nose_angle == 45.0
+    # Mouse below+left → nose = -45
+    rt._mouse_x = 0
+    rt._update_nose_angle()
+    assert rt._player.nose_angle == -45.0
+
+
+def test_level1_mode_has_100_ships():
+    """BLOQUE 29: level 1 queues 100+ ships."""
+    rt = _make_runtime()
+    # Act 1 wave 0 = level 1 mode
+    assert rt._is_level1_mode()
+    assert len(rt._pending_wave_spawns) >= 100
+
+
+def test_level1_uses_3_distinct_kinds():
+    """BLOQUE 29: level 1 uses exactly 3 distinct enemy types."""
+    rt = _make_runtime()
+    kinds = set(item[1].value for item in rt._pending_wave_spawns)
+    assert len(kinds) == 3
+    assert "scout" in kinds
+    assert "cruiser" in kinds
+    assert "heavy" in kinds
+
+
+def test_level1_victory_at_50_kills():
+    """BLOQUE 29: 50 kills triggers boss intro."""
+    rt = _make_runtime()
+    state_holder = {"current": None}
+    def transition(state):
+        state_holder["current"] = state
+    rt._transition_to = transition
+    rt._wave_mgr.current.kills = 50
+    rt._update_wave_state(0.0)
+    assert state_holder["current"] == GameState.BOSS_INTRO
+
+
+def test_level1_victory_at_5_minutes():
+    """BLOQUE 29: 5 min elapsed triggers boss intro."""
+    rt = _make_runtime()
+    state_holder = {"current": None}
+    def transition(state):
+        state_holder["current"] = state
+    rt._transition_to = transition
+    rt._wave_mgr.current.elapsed_s = 305.0
+    rt._update_wave_state(0.0)
+    assert state_holder["current"] == GameState.BOSS_INTRO
+
+
+def test_level1_does_not_trigger_boss_before_threshold():
+    """BLOQUE 29: before 50 kills AND before 5 min, no boss intro."""
+    rt = _make_runtime()
+    state_holder = {"current": None}
+    def transition(state):
+        state_holder["current"] = state
+    rt._transition_to = transition
+    rt._wave_mgr.current.kills = 30
+    rt._wave_mgr.current.elapsed_s = 100.0
+    rt._update_wave_state(0.0)
+    assert state_holder["current"] is None
+
+
+def test_player_nose_angle_default_zero():
+    """BLOQUE 29: player starts with nose_angle=0."""
+    from src.entities.player import Player
+    p = Player()
+    assert p.nose_angle == 0.0
+    assert p.current_nose_angle == 0.0
+
+
+def test_bullets_fire_in_nose_direction():
+    """BLOQUE 29: bullets follow the ship's nose angle."""
+    rt = _make_runtime()
+    rt._player.x = INTERNAL_W / 2
+    rt._player.y = INTERNAL_H - 60
+    # Set nose to +45 (firing up-right)
+    rt._player.nose_angle = 45.0
+    rt._spawn_player_bullet(charge_level=0)
+    # Find the spawned bullet
+    bullet = None
+    for b in rt._bullets.pool:
+        if b.active and b.owner == 0:  # OWNER_PLAYER
+            bullet = b
+            break
+    assert bullet is not None
+    # Bullet should have positive vx (right) and negative vy (up)
+    assert bullet.vx > 0, f"Expected vx > 0, got {bullet.vx}"
+    assert bullet.vy < 0, f"Expected vy < 0, got {bullet.vy}"
+
+
+# -----------------------------------------------------------------------
 # BLOQUE 27: Hit sparks on player, power-up magnet, boss phase burst
 # -----------------------------------------------------------------------
 def test_powerup_magnet_drifts_toward_player():

@@ -75,6 +75,10 @@ class Player:
     # Tilt
     tilt: float = 0.0  # degrees, target; current is computed
     current_tilt: float = 0.0
+    # BLOQUE 29: nose angle (rotation of the ship's "trompa")
+    # Limited to ±45° from straight up. Driven by mouse position.
+    nose_angle: float = 0.0  # target angle in degrees (-45 to +45)
+    current_nose_angle: float = 0.0  # smoothed angle for rendering
     # State
     state: PlayerState = PlayerState.IDLE
     state_timer: float = 0.0
@@ -235,6 +239,11 @@ class Player:
             self._update_dead(dt)
         # Tilt smoothing
         self.current_tilt += (self.tilt - self.current_tilt) * min(1.0, dt * 12.0)
+        # BLOQUE 29: nose angle smoothing
+        if hasattr(self, "nose_angle"):
+            self.current_nose_angle += (
+                (self.nose_angle - self.current_nose_angle) * min(1.0, dt * 12.0)
+            )
         # Apply damage if accumulated
         if self.damage_taken > 0 and self.state != PlayerState.DEAD:
             self._enter_hit()
@@ -258,8 +267,8 @@ class Player:
         if self.input_fire and self.charge_time >= CHARGE_L1_S:
             self._enter_charge()
             return
-        # Movement input → MOVE
-        if self.input_left or self.input_right:
+        # BLOQUE 29: any directional input (W/A/S/D or arrows) → MOVE
+        if self.input_left or self.input_right or self.input_up or self.input_down:
             self._enter_move()
             return
         # Fire input
@@ -289,15 +298,37 @@ class Player:
         if self.input_fire and self.charge_time >= CHARGE_L1_S:
             self._enter_charge()
             return
-        # Compute vx from input
+        # BLOQUE 29: movement now responds to W (thrust forward in facing direction)
+        # and A/D (strafe lateral). Ship's facing direction is nose_angle.
+        import math as _math
+        nose_rad = _math.radians(getattr(self, "nose_angle", 0.0))
+        # Forward unit vector (nose direction): (sin(nose), -cos(nose))
+        fwd_x = _math.sin(nose_rad)
+        fwd_y = -_math.cos(nose_rad)
+        # Lateral unit vector (perpendicular, 90° CW from forward)
+        lat_x = _math.cos(nose_rad)  # cos(nose) for right
+        lat_y = _math.sin(nose_rad)
+        # Compute target velocity
         target_vx = 0.0
+        target_vy = 0.0
+        # W = forward thrust, S = backward thrust (in facing direction)
+        if self.input_up:
+            target_vx += fwd_x * PLAYER_SPEED
+            target_vy += fwd_y * PLAYER_SPEED
+        if self.input_down:
+            target_vx -= fwd_x * PLAYER_SPEED * 0.5
+            target_vy -= fwd_y * PLAYER_SPEED * 0.5
+        # A = strafe left (in ship's lateral), D = strafe right
         if self.input_left:
-            target_vx -= PLAYER_SPEED
+            target_vx -= lat_x * PLAYER_SPEED
+            target_vy -= lat_y * PLAYER_SPEED
         if self.input_right:
-            target_vx += PLAYER_SPEED
+            target_vx += lat_x * PLAYER_SPEED
+            target_vy += lat_y * PLAYER_SPEED
         # Acceleration (ease-out)
         self.vx += (target_vx - self.vx) * min(1.0, dt * 12.0)
-        self.vy = 0.0
+        self.vy += (target_vy - self.vy) * min(1.0, dt * 12.0)
+        # Tilt: visual feedback based on horizontal speed
         self.tilt = -15.0 if self.vx < -10 else (15.0 if self.vx > 10 else 0.0)
         # Position integration
         self.x += self.vx * dt

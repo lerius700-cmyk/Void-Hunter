@@ -182,6 +182,11 @@ class GameplayRuntime:
         self._bgm_started: bool = False
         # Player-state snapshot for transition SFX
         self._prev_player_state: PlayerState = PlayerState.IDLE
+        # BLOQUE 29: mouse aiming state
+        self._mouse_x: float = INTERNAL_W / 2
+        self._mouse_y: float = INTERNAL_H / 2
+        from src.core.settings import WINDOW_H, WINDOW_W
+        self._game_screen_size: tuple[int, int] = (WINDOW_W, WINDOW_H)
         # BLOQUE 22: extra polish
         self._muzzle_flash: float = 0.0  # 0..1 alpha of muzzle flash overlay
         self._charge_release_flash: float = 0.0  # 0..1 full-screen flash on charge fire
@@ -262,6 +267,9 @@ class GameplayRuntime:
         self._level_up_flash = 0.0
         # BLOQUE 26: reset bomb flash
         self._bomb_flash = 0.0
+        # BLOQUE 29: reset mouse position
+        self._mouse_x = INTERNAL_W / 2
+        self._mouse_y = INTERNAL_H / 4
         self._t = 0.0
         self._wave_spawn_timer = 0.0
         self._is_wave_active = not self._is_boss
@@ -272,7 +280,11 @@ class GameplayRuntime:
         self._boss_entry_t = 0.0
         if not self._is_boss:
             self._wave_mgr.start_wave(self._wave_idx)
-            self._populate_spawn_queue()
+            # BLOQUE 29: use level 1 queue (5 min, 100+ ships, 3 enemy types)
+            if self._is_level1_mode():
+                self._populate_level1_queue()
+            else:
+                self._populate_spawn_queue()
             self._start_bgm("act_normal")
         else:
             # Boss intro pose: player bottom-center, boss anchored
@@ -302,16 +314,60 @@ class GameplayRuntime:
         self._player.input_right = keys[pygame.K_d] or keys[pygame.K_RIGHT]
         self._player.input_up = keys[pygame.K_w] or keys[pygame.K_UP]
         self._player.input_down = keys[pygame.K_s] or keys[pygame.K_DOWN]
+        # BLOQUE 29: mouse aiming — read mouse position relative to internal coords
+        # The display is 4x scaled from internal (240x360 → 960x1440).
+        try:
+            mouse_x_disp, mouse_y_disp = pygame.mouse.get_pos()
+            # Get the internal rect (where the game is drawn on the display)
+            display_w, display_h = self._game_screen_size
+            scale_x = INTERNAL_W / display_w
+            scale_y = INTERNAL_H / display_h
+            self._mouse_x = mouse_x_disp * scale_x
+            self._mouse_y = mouse_y_disp * scale_y
+        except (AttributeError, pygame.error):
+            # No display yet (headless); use center
+            self._mouse_x = INTERNAL_W / 2
+            self._mouse_y = INTERNAL_H / 2
         for event in pygame.event.get(pygame.KEYDOWN):
             if event.key == pygame.K_j:
                 self._player.input_fire = True
             elif event.key == pygame.K_k:
+                # BLOQUE 29: single-press dash (one-shot, consumed)
                 self._player.input_dash = True
             elif event.key == pygame.K_l:
                 self._player.input_bomb = True
             elif event.key == pygame.K_ESCAPE:
                 from src.core.scene_manager import GameState
                 self._transition_to(GameState.PAUSE)
+
+    def _update_nose_angle(self) -> None:
+        """BLOQUE 29: compute ship's nose angle from mouse position.
+
+        Ship's nose rotation is limited to ±45° from straight up.
+        - Mouse in front arc (0..180° from ship's forward, i.e., above the ship):
+          nose follows mouse direction, clamped to ±45°.
+        - Mouse behind the ship (180..360°, i.e., below the ship in screen coords):
+          nose stays at ±45° depending on which side the mouse is on.
+        """
+        import math
+        px, py = self._player.x, self._player.y
+        mx, my = self._mouse_x, self._mouse_y
+        # Mouse offset (screen Y is inverted in pygame)
+        dx = mx - px
+        dy = my - py
+        # Front arc: my < py (mouse is above ship in screen)
+        if dy < 0:
+            # atan2(dx, -dy): 0 = up, +90 = right, -90 = left
+            angle = math.degrees(math.atan2(dx, -dy))
+        else:
+            # Behind: default to ±45 based on horizontal direction
+            if dx < 0:
+                angle = -45.0
+            else:
+                angle = 45.0
+        # Clamp to ±45° (per user spec)
+        nose_target = max(-45.0, min(45.0, angle))
+        self._player.nose_angle = nose_target
 
     # ------------------------------------------------------------------
     # Firing
@@ -359,16 +415,24 @@ class GameplayRuntime:
 
     def _spawn_player_bullet(self, charge_level: int = 0) -> None:
         spec = self._weapon.get_spec()
+        # BLOQUE 29: bullets fire in the direction of the ship's nose
+        # The nose angle is relative to "up" (negative y).
+        # Convert to radians: 0° = up, +90° = right, -90° = left
+        nose_rad = math.radians(self._player.nose_angle)
         # Base bullet position (at player nose)
         bx = self._player.x
         by = self._player.y - 8
         # Muzzle flash particles at the player nose
         self._emit_burst(bx, by - 2, count=3, kind="muzzle")
+        # Bullet velocity in nose direction
+        speed = spec.speed_mult * 480.0
+        base_vx = math.sin(nose_rad) * speed
+        base_vy = -math.cos(nose_rad) * speed
         # Single bullet or fan
         if spec.count == 1:
             kind = BULLET_PLAYER_CHARGED if charge_level > 0 else BULLET_PLAYER
             self._bullets.spawn(
-                kind, bx, by, 0.0, -spec.speed_mult * 480.0,
+                kind, bx, by, base_vx, base_vy,
                 damage=spec.damage, owner=OWNER_PLAYER,
                 pierce=spec.pierce, has_trail=spec.trail,
                 trail_color=spec.color,
@@ -376,13 +440,13 @@ class GameplayRuntime:
         else:
             spread = math.radians(spec.spread_deg)
             for i in range(spec.count):
-                # Symmetric spread around 0 (forward = -y)
+                # Symmetric spread around the nose direction
                 if spec.count == 1:
-                    angle = 0.0
+                    a = 0.0
                 else:
-                    angle = -spread / 2 + (spread * i / (spec.count - 1))
-                vx = math.sin(angle) * 480.0 * spec.speed_mult
-                vy = -math.cos(angle) * 480.0 * spec.speed_mult
+                    a = -spread / 2 + (spread * i / (spec.count - 1))
+                vx = math.sin(nose_rad + a) * speed
+                vy = -math.cos(nose_rad + a) * speed
                 kind = BULLET_PLAYER_CHARGED if charge_level > 0 else BULLET_PLAYER
                 self._bullets.spawn(
                     kind, bx, by, vx, vy,
@@ -434,6 +498,29 @@ class GameplayRuntime:
         for i, item in enumerate(self._pending_wave_spawns):
             t = i * WAVE_SPAWN_INTERVAL_S
             self._pending_wave_spawns[i] = (t,) + item[1:]
+
+    def _populate_level1_queue(self) -> None:
+        """BLOQUE 29: first level = 5 min, 100+ ships, 3 distinct types.
+
+        Win condition: 50 kills OR 5 min elapsed.
+        Spawns ~110 ships distributed across 5 minutes using 3 enemy kinds:
+          - SCOUT (1 HP, fast, low damage)
+          - CRUISER (3 HP, medium, medium damage)
+          - HEAVY (6 HP, slow, high damage)
+        """
+        # BLOQUE 29: 3 distinct enemy types
+        kinds = [EnemyKind.SCOUT, EnemyKind.CRUISER, EnemyKind.HEAVY]
+        # 110 ships over 5 min = ~3 sec between spawns
+        total_ships = 110
+        duration_s = 300.0  # 5 minutes
+        interval = duration_s / total_ships  # ~2.7s
+        for i in range(total_ships):
+            kind = random.choice(kinds)
+            x = random.uniform(20, INTERNAL_W - 20)
+            y = -10.0 - random.uniform(0, 60)
+            # Stagger: i-th ship spawns at t = i * interval
+            spawn_t = i * interval
+            self._pending_wave_spawns.append((spawn_t, kind, x, y))
 
     def _spawn_pending(self, dt: float) -> None:
         if self._is_boss:
@@ -752,10 +839,24 @@ class GameplayRuntime:
             return True
         return False
 
+    def _is_level1_mode(self) -> bool:
+        """BLOQUE 29: first level = 5 min OR 50 kills."""
+        return (not self._is_boss
+                and self._wave_idx == 0
+                and self._act == 1)
+
     def _update_wave_state(self, dt: float) -> None:
         if self._is_boss:
             return
         self._wave_mgr.current.elapsed_s += dt
+        # BLOQUE 29: level 1 mode — 5 min OR 50 kills
+        if self._is_level1_mode():
+            kills = self._wave_mgr.current.kills
+            elapsed = self._wave_mgr.current.elapsed_s
+            if kills >= 50 or elapsed >= 300.0:
+                from src.core.scene_manager import GameState
+                self._transition_to(GameState.BOSS_INTRO)
+            return
         if self._wave_mgr.current.kills >= self._wave_mgr.scripts[self._wave_idx].get("kill_target", 0):
             # Wave cleared — trigger boss intro or move on
             from src.core.scene_manager import GameState
@@ -815,6 +916,8 @@ class GameplayRuntime:
         self._t += effective_dt
         prev_player_state = self._player.state
         self._read_input()
+        # BLOQUE 29: compute nose angle from mouse position
+        self._update_nose_angle()
         self._player.update(effective_dt)
         # Dash SFX: detect DASH entry
         if prev_player_state != PlayerState.DASH and self._player.state == PlayerState.DASH:
@@ -1383,7 +1486,11 @@ class GameplayRuntime:
         pygame.draw.circle(surf, green_color, (22, 13), 1)
         # Engine intake (small dark notch at the back)
         pygame.draw.rect(surf, (40, 50, 70), (10, 12, 4, 2))
-        rotated = pygame.transform.rotate(surf, -self._player.current_tilt)
+        # BLOQUE 29: combined tilt + nose angle (nose smoothed in player.update)
+        # Apply nose rotation (negative because pygame rotates CCW but we want CW visually)
+        rotated = pygame.transform.rotate(
+            surf, -(self._player.current_tilt + self._player.current_nose_angle)
+        )
         rect = rotated.get_rect(center=(int(self._player.x + ox), int(self._player.y + oy)))
         target.blit(rotated, rect)
         # BLOQUE 25: Shield effect during respawn invulnerability
