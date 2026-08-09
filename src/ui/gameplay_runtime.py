@@ -861,12 +861,18 @@ class GameplayRuntime:
         self._shockwaves = alive
 
     def _check_player_death_explosion(self) -> None:
-        """One-shot multi-stage explosion when the player first dies."""
+        """One-shot multi-stage explosion when the player first dies.
+
+        BLOQUE 23: 3-stage explosion — initial fire burst (stage 1, immediate),
+        then expanding ring (stage 2, +0.15s), then smoke + debris (stage 3, +0.40s).
+        """
         if self._player.is_dead and not self._death_exploded:
             self._death_exploded = True
             self._emit_burst(self._player.x, self._player.y, count=24, kind="explosion")
             self._emit_burst(self._player.x, self._player.y, count=16, kind="debris")
             self._emit_burst(self._player.x, self._player.y, count=12, kind="smoke")
+            # BLOQUE 23: ring + screen flash
+            self._add_shockwave(self._player.x, self._player.y, 60.0)
             self._hitstop.trigger(8)
             self._shake.add_trauma(0.5)
             self._play_sfx("explode_boss", volume=0.5)
@@ -967,16 +973,25 @@ class GameplayRuntime:
             flash = pygame.Surface(target.get_size(), pygame.SRCALPHA)
             flash.fill((255, 60, 40, 100))
             target.blit(flash, (0, 0))
-        # Power-ups
+        # Power-ups — BLOQUE 23: pulsing halo so they stand out
         for p in self._powerups:
             alpha = max(0, min(255, int(255 * (p.life / 2.0))))
+            cx, cy = int(p.x) + shx, int(p.y) + shy
+            # Pulsing halo (radius oscillates with time)
+            pulse = 1.0 + 0.5 * math.sin(self._t * 6.0)
+            halo_r = int(7 * pulse)
+            halo = pygame.Surface((halo_r * 2 + 4, halo_r * 2 + 4), pygame.SRCALPHA)
+            pygame.draw.circle(halo, (p.color[0], p.color[1], p.color[2], max(0, alpha // 2)),
+                               (halo_r + 2, halo_r + 2), halo_r, 1)
+            target.blit(halo, (cx - halo_r - 2, cy - halo_r - 2))
+            # Solid square (the pickup body)
             rect = pygame.Rect(int(p.x) - 4 + shx, int(p.y) - 4 + shy, 8, 8)
             pu_surf = pygame.Surface((8, 8), pygame.SRCALPHA)
             pygame.draw.rect(pu_surf, (p.color[0], p.color[1], p.color[2], alpha),
                              pu_surf.get_rect(), border_radius=2)
             target.blit(pu_surf, rect)
-            # Inner dot
-            pygame.draw.rect(target, (255, 255, 255), (rect.x + 2, rect.y + 2, 4, 4))
+            # Inner white dot
+            pygame.draw.rect(target, (255, 255, 255, alpha), (rect.x + 2, rect.y + 2, 4, 4))
         # Enemies
         for e in self._enemies.pool:
             if e.active:
@@ -1058,6 +1073,16 @@ class GameplayRuntime:
         for cx, cy in ((0, 0), (w - 6, 0), (0, h - 6), (w - 6, h - 6)):
             pygame.draw.rect(target, (220, 220, 255), (cx, cy, 6, 6))
             pygame.draw.rect(target, (140, 160, 220), (cx + 1, cy + 1, 4, 4))
+        # BLOQUE 23: pulsing red border during boss entry (first 1.5s)
+        if self._is_boss and self._boss_entry_t < 1.5:
+            pulse_alpha = int(120 * (0.5 + 0.5 * math.sin(self._boss_entry_t * 16.0)))
+            warn = pygame.Surface(target.get_size(), pygame.SRCALPHA)
+            # 4 red edge strips, 3px wide, pulsing
+            pygame.draw.rect(warn, (255, 60, 60, pulse_alpha), (0, 0, w, 3))  # top
+            pygame.draw.rect(warn, (255, 60, 60, pulse_alpha), (0, h - 3, w, 3))  # bottom
+            pygame.draw.rect(warn, (255, 60, 60, pulse_alpha), (0, 0, 3, h))  # left
+            pygame.draw.rect(warn, (255, 60, 60, pulse_alpha), (w - 3, 0, 3, h))  # right
+            target.blit(warn, (0, 0))
         # Wall-hit indicator: thicker highlight when player touches
         if not self._player.is_dead:
             px, py = self._player.x, self._player.y

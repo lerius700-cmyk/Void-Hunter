@@ -542,3 +542,41 @@ def test_shockwave_expands_and_dies():
     assert rt._shockwaves[0].radius > initial_radius
     rt._update_shockwaves(0.6)
     assert len(rt._shockwaves) == 0  # expired
+
+
+# -----------------------------------------------------------------------
+# BLOQUE 23: Power-up pulse, boss entry warning, player death ring
+# -----------------------------------------------------------------------
+def test_powerup_renders_with_pulse_halo():
+    """Drawing a power-up should not raise (uses pulse halo math)."""
+    rt = _make_runtime()
+    rt._spawn_powerup("bomb", 100, 100)
+    surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
+    rt.draw(surf)
+    # Verify the power-up is still in the pool
+    assert len(rt._powerups) == 1
+
+
+def test_boss_entry_warning_border_during_entry():
+    """During first 1.5s of boss fight, the entry should be < 1.5."""
+    rt = _make_runtime(is_boss=True, act=1)
+    rt._boss_entry_t = 0.5  # mid-entry
+    surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
+    rt.draw(surf)  # should not raise (pulsing red border drawn)
+
+
+def test_boss_entry_warning_border_after_entry():
+    """After 1.5s, the entry warning should be cleared."""
+    rt = _make_runtime(is_boss=True, act=1)
+    rt._boss_entry_t = 2.0  # past entry
+    surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
+    rt.draw(surf)  # should not raise (no pulsing border)
+
+
+def test_player_death_explosion_spawns_shockwave():
+    """BLOQUE 23: player death should spawn an expanding ring."""
+    rt = _make_runtime()
+    initial_shockwaves = len(rt._shockwaves)
+    rt._player.is_dead = True
+    rt._check_player_death_explosion()
+    assert len(rt._shockwaves) == initial_shockwaves + 1

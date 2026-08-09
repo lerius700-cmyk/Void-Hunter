@@ -87,6 +87,24 @@ def main() -> None:
     pygame.image.save(surf, str(out_dir / "polish_05_boss_death.png"))
     print("saved polish_05_boss_death.png")
 
+    # 5b. Boss entry warning border (pulsing red)
+    rt4b = GameplayRuntime(transition_to=_noop, is_boss=True, act=1)
+    rt4b.on_enter()
+    rt4b._boss_entry_t = 0.4  # mid-entry
+    rt4b.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_05b_boss_entry_warning.png"))
+    print("saved polish_05b_boss_entry_warning.png")
+
+    # 5c. Power-up pulse halo
+    rt4c = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt4c.on_enter()
+    rt4c._spawn_powerup("bomb", INTERNAL_W / 2, INTERNAL_H / 2)
+    rt4c._spawn_powerup("1up", INTERNAL_W / 2 + 30, INTERNAL_H / 2)
+    rt4c._spawn_powerup("score", INTERNAL_W / 2 - 30, INTERNAL_H / 2)
+    rt4c.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_05c_powerup_pulse.png"))
+    print("saved polish_05c_powerup_pulse.png")
+
     # 6. Bullets with bigger glow
     rt5 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
     rt5.on_enter()
