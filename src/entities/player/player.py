@@ -137,9 +137,16 @@ class Player:
         self.charge_time = 0.0
         self.dash_iframes_left = 0
         self.invuln_frames = 0
-        self.lives = PLAYER_LIVES
-        self.bombs = PLAYER_BOMBS
-        self.bombs_max = PLAYER_BOMBS_MAX
+        # BLOQUE 28: easy mode gives more lives + bombs
+        import os as _os
+        if _os.environ.get("VOID_HUNTER_EASY", "0") == "1":
+            self.lives = 9
+            self.bombs = 4
+            self.bombs_max = 5
+        else:
+            self.lives = PLAYER_LIVES
+            self.bombs = PLAYER_BOMBS
+            self.bombs_max = PLAYER_BOMBS_MAX
         self.hp = 3
         self.hp_max = 3
         self.fire_cd = 0.0

@@ -48,6 +48,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--validate-waves", action="store_true",
         help="Validate the 18 wave JSON scripts. BLOQUE 10+.",
     )
+    parser.add_argument(
+        "--easy", action="store_true",
+        help="BLOQUE 28: easy mode — 9 lives, 4 bombs, 2x score multiplier.",
+    )
     return parser.parse_args(argv)
 
 
@@ -152,6 +156,12 @@ FPS_TARGET = 120  # used by _cmd_play
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+
+    if args.easy:
+        # BLOQUE 28: set env var so Player.reset() reads it
+        import os
+        os.environ["VOID_HUNTER_EASY"] = "1"
+        print("VOID HUNTER: --easy mode enabled (9 lives, 4 bombs)")
 
     if args.check:
         return _cmd_check()

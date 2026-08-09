@@ -48,28 +48,28 @@ class _BossConfig:
 
 BOSS_CONFIGS: dict[BossId, _BossConfig] = {
     BossId.GOLIATH: _BossConfig(
-        name="GOLIATH", width=32, height=18, max_hp=800, score=5000,
+        name="GOLIATH", width=32, height=18, max_hp=400, score=5000,
         color=(200, 200, 220), speed=30.0,
         phase_thresholds=(0.66,),
         anchor_x=INTERNAL_W / 2, anchor_y=80.0,
         attack_cooldown_s=1.5,
     ),
     BossId.HYDRA: _BossConfig(
-        name="HYDRA", width=36, height=20, max_hp=1400, score=8000,
+        name="HYDRA", width=36, height=20, max_hp=700, score=8000,
         color=(180, 100, 220), speed=20.0,
         phase_thresholds=(0.66, 0.33),
         anchor_x=INTERNAL_W / 2, anchor_y=70.0,
         attack_cooldown_s=1.4,
     ),
     BossId.PHANTOM: _BossConfig(
-        name="PHANTOM", width=40, height=22, max_hp=2000, score=12000,
+        name="PHANTOM", width=40, height=22, max_hp=1000, score=12000,
         color=(120, 80, 220), speed=70.0,
         phase_thresholds=(0.66,),
         anchor_x=INTERNAL_W / 2, anchor_y=80.0,
         attack_cooldown_s=2.0,
     ),
     BossId.NEMESIS: _BossConfig(
-        name="NEMESIS", width=48, height=28, max_hp=5000, score=20000,
+        name="NEMESIS", width=48, height=28, max_hp=2500, score=20000,
         color=(255, 200, 80), speed=0.0,
         phase_thresholds=(0.75, 0.50, 0.25),
         anchor_x=INTERNAL_W / 2, anchor_y=60.0,

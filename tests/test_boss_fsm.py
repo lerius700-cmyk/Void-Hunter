@@ -28,28 +28,28 @@ def test_four_bosses_defined() -> None:
 # ---------------------------------------------------------------------------
 def test_goliath_2_phases_800_hp() -> None:
     cfg = BOSS_CONFIGS[BossId.GOLIATH]
-    assert cfg.max_hp == 800
+    assert cfg.max_hp == 400  # BLOQUE 28: reduced from 800 for playability
     assert cfg.width == 32 and cfg.height == 18
     assert cfg.phase_thresholds == (0.66,)
 
 
 def test_hydra_3_phases_1400_hp() -> None:
     cfg = BOSS_CONFIGS[BossId.HYDRA]
-    assert cfg.max_hp == 1400
+    assert cfg.max_hp == 700  # BLOQUE 28: reduced from 1400
     assert cfg.width == 36 and cfg.height == 20
     assert cfg.phase_thresholds == (0.66, 0.33)  # 2->3, 3->enraged
 
 
 def test_phantom_2_phases_2000_hp() -> None:
     cfg = BOSS_CONFIGS[BossId.PHANTOM]
-    assert cfg.max_hp == 2000
+    assert cfg.max_hp == 1000  # BLOQUE 28: reduced from 2000
     assert cfg.width == 40 and cfg.height == 22
     assert cfg.phase_thresholds == (0.66,)
 
 
 def test_nemesis_4_phases_5000_hp() -> None:
     cfg = BOSS_CONFIGS[BossId.NEMESIS]
-    assert cfg.max_hp == 5000
+    assert cfg.max_hp == 2500  # BLOQUE 28: reduced from 5000
     assert cfg.width == 48 and cfg.height == 28
     assert cfg.phase_thresholds == (0.75, 0.50, 0.25)
 

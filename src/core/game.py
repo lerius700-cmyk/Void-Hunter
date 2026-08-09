@@ -39,7 +39,7 @@ class Game:
     accumulator runs at 120 FPS, render at native window refresh.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, easy: bool = False) -> None:
         if not pygame.get_init():
             pygame.init()
         # Display surface: WINDOW_W x WINDOW_H (960x1440 = 4x scaled).
@@ -67,6 +67,7 @@ class Game:
             self.audio: AudioEngine | None = AudioEngine()
         except Exception:
             self.audio = None
+        self.easy: bool = easy  # BLOQUE 28: easy mode flag
         self.scenes: SceneManager = SceneManager()
         self._register_scenes()
         self._running: bool = True

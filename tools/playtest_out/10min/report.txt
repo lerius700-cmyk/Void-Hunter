@@ -3,70 +3,61 @@ VOID HUNTER 10-MIN PLAYTHROUGH REPORT
 ============================================================
 frames                    : 72000
 game_time_s               : 599.9916666666667
-wall_time_s               : 4.261856099998113
-kills                     : 3
-deaths                    : 36
-bombs_used                : 16
-score                     : 400
-max_multiplier            : 16
+wall_time_s               : 35.54359489999479
+kills                     : 4
+deaths                    : 30
+bombs_used                : 14
+score                     : 500
+max_multiplier            : 8
 bullets_fired             : 0
 bosses_killed             : 0
 waves_cleared             : 0
 
-State transitions (53):
-  t=16.9s  gameplay -> game_over
-  t=16.9s  GAME_OVER (died!)
-  t=39.3s  gameplay -> game_over
-  t=39.3s  GAME_OVER (died!)
-  t=61.6s  gameplay -> game_over
-  t=61.6s  GAME_OVER (died!)
-  t=70.3s  gameplay -> game_over
-  t=70.3s  GAME_OVER (died!)
-  t=95.3s  gameplay -> boss_intro
-  t=100.3s  boss_intro -> boss_fight
-  t=118.2s  boss_fight -> game_over
-  t=118.2s  GAME_OVER (died!)
-  t=143.2s  gameplay -> boss_intro
-  t=148.2s  boss_intro -> boss_fight
-  t=166.1s  boss_fight -> game_over
-  t=166.1s  GAME_OVER (died!)
-  t=174.7s  gameplay -> game_over
-  t=174.7s  GAME_OVER (died!)
-  t=197.5s  gameplay -> game_over
-  t=197.5s  GAME_OVER (died!)
-  t=222.5s  gameplay -> boss_intro
-  t=227.5s  boss_intro -> boss_fight
-  t=245.4s  boss_fight -> game_over
-  t=245.4s  GAME_OVER (died!)
-  t=273.3s  gameplay -> game_over
-  t=273.3s  GAME_OVER (died!)
-  t=298.3s  gameplay -> boss_intro
-  t=303.3s  boss_intro -> boss_fight
-  t=321.2s  boss_fight -> game_over
-  t=321.2s  GAME_OVER (died!)
-  t=327.1s  gameplay -> game_over
-  t=327.1s  GAME_OVER (died!)
-  t=352.1s  gameplay -> boss_intro
-  t=357.2s  boss_intro -> boss_fight
-  t=375.0s  boss_fight -> game_over
-  t=375.0s  GAME_OVER (died!)
-  t=424.9s  gameplay -> boss_intro
-  t=429.9s  boss_intro -> boss_fight
-  t=447.7s  boss_fight -> game_over
-  t=447.8s  GAME_OVER (died!)
-  t=472.8s  gameplay -> boss_intro
-  t=477.8s  boss_intro -> boss_fight
-  t=495.6s  boss_fight -> game_over
-  t=495.6s  GAME_OVER (died!)
-  t=507.9s  gameplay -> game_over
-  t=507.9s  GAME_OVER (died!)
-  t=524.7s  gameplay -> game_over
-  t=524.7s  GAME_OVER (died!)
-  t=549.7s  gameplay -> boss_intro
-  t=554.7s  boss_intro -> boss_fight
-  t=572.6s  boss_fight -> game_over
-  t=572.6s  GAME_OVER (died!)
-  t=597.6s  gameplay -> boss_intro
+State transitions (44):
+  t=25.0s  gameplay -> boss_intro
+  t=29.5s  boss_intro -> boss_fight
+  t=48.9s  boss_fight -> game_over
+  t=49.0s  GAME_OVER (died!)
+  t=65.9s  gameplay -> game_over
+  t=65.9s  GAME_OVER (died!)
+  t=108.1s  gameplay -> game_over
+  t=108.1s  GAME_OVER (died!)
+  t=133.1s  gameplay -> boss_intro
+  t=137.7s  boss_intro -> boss_fight
+  t=157.1s  boss_fight -> game_over
+  t=157.1s  GAME_OVER (died!)
+  t=197.9s  gameplay -> game_over
+  t=197.9s  GAME_OVER (died!)
+  t=222.9s  gameplay -> boss_intro
+  t=227.4s  boss_intro -> boss_fight
+  t=246.8s  boss_fight -> game_over
+  t=246.8s  GAME_OVER (died!)
+  t=263.6s  gameplay -> game_over
+  t=263.6s  GAME_OVER (died!)
+  t=276.0s  gameplay -> game_over
+  t=276.0s  GAME_OVER (died!)
+  t=301.0s  gameplay -> boss_intro
+  t=305.5s  boss_intro -> boss_fight
+  t=324.9s  boss_fight -> game_over
+  t=324.9s  GAME_OVER (died!)
+  t=347.1s  gameplay -> game_over
+  t=347.1s  GAME_OVER (died!)
+  t=369.5s  gameplay -> game_over
+  t=369.5s  GAME_OVER (died!)
+  t=419.6s  gameplay -> boss_intro
+  t=424.1s  boss_intro -> boss_fight
+  t=443.5s  boss_fight -> game_over
+  t=443.5s  GAME_OVER (died!)
+  t=468.5s  gameplay -> boss_intro
+  t=473.0s  boss_intro -> boss_fight
+  t=492.4s  boss_fight -> game_over
+  t=492.4s  GAME_OVER (died!)
+  t=534.8s  gameplay -> game_over
+  t=534.8s  GAME_OVER (died!)
+  t=559.8s  gameplay -> boss_intro
+  t=564.3s  boss_intro -> boss_fight
+  t=583.7s  boss_fight -> game_over
+  t=583.7s  GAME_OVER (died!)
 
 Anomalies (0):
 
