@@ -59,6 +59,13 @@ PLAYER_SPRITE_SCALE: float = 0.75   # player 32x24 -> 24x18
 BULLET_SPRITE_SCALE: float = 0.75   # player bullet 4x6 -> 3x5, etc.
 # BLOQUE 35: RMB rapid-fire cooldown (~12 shots/s, was 0 in BLOQUE 34 freeform)
 RMB_FIRE_COOLDOWN_S: float = 0.083
+# BLOQUE 37: L3 continuous plasma laser
+LASER_MAX_RANGE_PX: float = 560.0          # 1.17x screen height (320x480 → 560 max)
+LASER_TICK_S: float = 0.05                # damage re-hit interval per enemy (20 Hz)
+LASER_DAMAGE_PER_TICK: int = 4            # DPS at 20 Hz ≈ 80 dps, sustained
+LASER_HIT_RADIUS_PX: int = 6              # beam thickness for hit detection
+LASER_SPARK_RATE_S: float = 0.025         # ambient spark along the beam
+LASER_FADE_S: float = 0.18                # release-tail visual fade after LMB up
 
 # ---------------------------------------------------------------------------
 # Bullet FX

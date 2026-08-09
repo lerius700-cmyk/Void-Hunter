@@ -179,6 +179,13 @@ class GameplayRuntime:
         self._dash_consumed: bool = False  # SFX dedup
         self._last_charge_level: int = 0
         self._death_exploded: bool = False
+        # BLOQUE 37: continuous L3 laser state
+        self._laser_active: bool = False
+        self._laser_end_x: float = 0.0
+        self._laser_end_y: float = 0.0
+        self._laser_pulse_t: float = 0.0
+        self._laser_damage_timer: float = 0.0
+        self._laser_hit_cooldown: dict[int, float] = {}  # id(enemy) -> s remaining
         # BGM state
         self._bgm_started: bool = False
         # Player-state snapshot for transition SFX
@@ -390,16 +397,9 @@ class GameplayRuntime:
     # Firing
     # ------------------------------------------------------------------
     def _handle_firing(self, dt: float) -> None:
-        # BLOQUE 30: at L3 max charge, fire beam continuously while LMB held
+        # BLOQUE 37: L3 max charge is now a continuous laser (not discrete bullets)
         current_charge = self._player.get_charge_level()
-        if (current_charge >= 3 and self._player.state == PlayerState.CHARGE
-                and self._mouse_held):
-            # Continuous beam: spawn every 0.08s
-            self._beam_timer = getattr(self, "_beam_timer", 0.0)
-            self._beam_timer += dt
-            if self._beam_timer >= 0.08:
-                self._beam_timer = 0.0
-                self._spawn_player_bullet(charge_level=3)
+        self._update_continuous_laser(dt, current_charge)
         # Charge release (player.wants_to_charge_release)
         if self._player.wants_to_charge_release:
             charge_level = self._player.get_charge_level()
@@ -438,6 +438,214 @@ class GameplayRuntime:
             self._muzzle_flash = 1.0 if charge_level == 0 else 1.6
         # Reset bomb output flag
         self._player.wants_to_bomb = False
+
+    # ------------------------------------------------------------------
+    # BLOQUE 37: continuous L3 plasma laser
+    # ------------------------------------------------------------------
+    def _update_continuous_laser(self, dt: float, current_charge: int) -> None:
+        """L3 max charge while LMB held → render a continuous plasma beam
+        that damages enemies in its path (no individual bullet spawns).
+
+        Replaces the BLOQUE 30 discrete-beam approach (0.08s spawn loop).
+        """
+        from src.core.settings import (
+            LASER_DAMAGE_PER_TICK, LASER_HIT_RADIUS_PX, LASER_MAX_RANGE_PX,
+            LASER_SPARK_RATE_S, LASER_TICK_S,
+        )
+        should_be_active = (
+            current_charge >= 3
+            and self._player.state == PlayerState.CHARGE
+            and self._mouse_held
+        )
+        if should_be_active and not self._laser_active:
+            # Laser just turned on — start the held laser sound.
+            self._play_sfx("laser_continuous", volume=0.55)
+            self._laser_damage_timer = 0.0
+            self._laser_hit_cooldown.clear()
+        elif not should_be_active and self._laser_active:
+            # Laser just turned off — short release tail.
+            self._play_sfx("laser_end", volume=0.35)
+        self._laser_active = should_be_active
+        if not self._laser_active:
+            # Cool down per-enemy hit timers even when laser is off (so
+            # the next activation can re-hit the same enemy immediately).
+            for k in list(self._laser_hit_cooldown.keys()):
+                self._laser_hit_cooldown[k] -= dt
+                if self._laser_hit_cooldown[k] <= 0.0:
+                    del self._laser_hit_cooldown[k]
+            return
+        # Compute the beam endpoint: from muzzle, along nose direction, until
+        # it leaves the play area (or hits max range).
+        nose_rad = math.radians(self._player.nose_angle)
+        muzzle_offset = 12.0
+        bx = self._player.x + math.sin(nose_rad) * muzzle_offset
+        by = self._player.y - math.cos(nose_rad) * muzzle_offset
+        # Trace to the screen edge along nose direction.
+        # For each axis, only the edge in the direction of travel can
+        # give a positive t — picking the wrong edge yields t<0 which
+        # would clamp the beam to length 0.
+        dx = math.sin(nose_rad)
+        dy = -math.cos(nose_rad)
+        best_t = LASER_MAX_RANGE_PX
+        if dx > 1e-4:
+            best_t = min(best_t, (INTERNAL_W - bx) / dx)
+        elif dx < -1e-4:
+            best_t = min(best_t, (0 - bx) / dx)
+        if dy > 1e-4:
+            best_t = min(best_t, (INTERNAL_H - by) / dy)
+        elif dy < -1e-4:
+            best_t = min(best_t, (0 - by) / dy)
+        best_t = max(0.0, best_t)
+        self._laser_end_x = bx + dx * best_t
+        self._laser_end_y = by + dy * best_t
+        # Pulse timer (for shimmer along the beam)
+        self._laser_pulse_t += dt
+        # Tick-rate damage
+        self._laser_damage_timer += dt
+        if self._laser_damage_timer >= LASER_TICK_S:
+            self._laser_damage_timer = 0.0
+            self._laser_apply_damage(
+                bx, by, dx, dy, best_t,
+                LASER_HIT_RADIUS_PX, LASER_DAMAGE_PER_TICK,
+            )
+        # Decay per-enemy cooldowns
+        for k in list(self._laser_hit_cooldown.keys()):
+            self._laser_hit_cooldown[k] -= dt
+            if self._laser_hit_cooldown[k] <= 0.0:
+                del self._laser_hit_cooldown[k]
+        # Ambient sparks along the beam (visual sizzle)
+        self._laser_spark_timer = getattr(self, "_laser_spark_timer", 0.0)
+        self._laser_spark_timer += dt
+        if self._laser_spark_timer >= LASER_SPARK_RATE_S:
+            self._laser_spark_timer = 0.0
+            # Place a spark at a random point along the beam
+            import random as _r
+            t = _r.uniform(0.0, best_t)
+            sx = bx + dx * t
+            sy = by + dy * t
+            self._emit_burst(sx, sy, count=1, kind="spark")
+
+    def _laser_apply_damage(
+        self, bx: float, by: float, dx: float, dy: float,
+        t_max: float, radius: int, damage: int,
+    ) -> None:
+        """Apply damage to enemies (and boss) that the beam segment intersects."""
+        # Enemies
+        for e in self._enemies.pool:
+            if not e.active or e.state.name == "DEAD":
+                continue
+            if id(e) in self._laser_hit_cooldown:
+                continue
+            # Distance from point (e.x, e.y) to the segment (bx,by)-(bx+dx*t,by+dy*t)
+            ex, ey = e.x, e.y
+            # Project onto beam
+            t_proj = (ex - bx) * dx + (ey - by) * dy
+            if t_proj < 0.0:
+                t_proj = 0.0
+            elif t_proj > t_max:
+                t_proj = t_max
+            cx = bx + dx * t_proj
+            cy = by + dy * t_proj
+            ddx = ex - cx
+            ddy = ey - cy
+            if ddx * ddx + ddy * ddy <= (radius + 8) ** 2:
+                # Inflate radius to match enemy size roughly.
+                killed = e.apply_damage(damage)
+                self._emit_burst(ex, ey, count=4, kind="spark")
+                self._emit_burst(ex, ey, count=2, kind="shrapnel")
+                self._enemy_flash[id(e)] = 0.05
+                self._laser_hit_cooldown[id(e)] = 0.10
+                if killed:
+                    self._on_enemy_killed(e)
+        # Boss
+        if self._is_boss and self._boss is not None and self._boss.active:
+            if id(self._boss) in self._laser_hit_cooldown:
+                return
+            ex, ey = self._boss.x, self._boss.y
+            t_proj = (ex - bx) * dx + (ey - by) * dy
+            if t_proj < 0.0:
+                t_proj = 0.0
+            elif t_proj > t_max:
+                t_proj = t_max
+            cxp = bx + dx * t_proj
+            cyp = by + dy * t_proj
+            ddx = ex - cxp
+            ddy = ey - cyp
+            # Boss is large (~40px radius), so use a bigger slack.
+            if ddx * ddx + ddy * ddy <= (radius + 24) ** 2:
+                self._boss.hp -= damage
+                self._laser_hit_cooldown[id(self._boss)] = 0.10
+                self._emit_burst(cxp, cyp, count=3, kind="spark")
+                # Phase change check
+                cfg = BOSS_CONFIGS[self._boss.id]
+                new_phase = 1
+                for i, threshold in enumerate(cfg.phase_thresholds):
+                    if self._boss.hp / self._boss.max_hp <= threshold:
+                        new_phase = i + 2
+                if new_phase != self._boss.phase:
+                    self._boss.phase = new_phase
+                    self._emit_burst(self._boss.x, self._boss.y, count=24, kind="explosion")
+                    self._emit_burst(self._boss.x, self._boss.y, count=12, kind="spark")
+                    self._add_shockwave(self._boss.x, self._boss.y, 50.0)
+                    self._hitstop.trigger(6)
+                    self._shake.add_trauma(0.5)
+                    self._play_sfx("multiplier_up", volume=0.7)
+                if self._boss.hp <= 0:
+                    self._on_boss_killed()
+
+    def _draw_continuous_laser(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        """BLOQUE 37: multi-layer plasma beam from muzzle to endpoint.
+
+        Drawn on a per-pixel-alpha surface and blitted on top of the player,
+        so the line is visible regardless of the parent surface's alpha mode.
+        """
+        if not self._laser_active:
+            return
+        import math as _m
+        # Use the muzzle origin (not player center) for visual continuity
+        nose_rad = _m.radians(self._player.nose_angle)
+        muzzle_offset = 12.0
+        bx = self._player.x + _m.sin(nose_rad) * muzzle_offset
+        by = self._player.y - _m.cos(nose_rad) * muzzle_offset
+        ex = self._laser_end_x
+        ey = self._laser_end_y
+        sx = int(bx) + ox
+        sy = int(by) + oy
+        sxe = int(ex) + ox
+        sye = int(ey) + oy
+        # Pulse modulation (0.85..1.0)
+        pulse = 0.925 + 0.075 * _m.sin(self._laser_pulse_t * 18.0)
+        # Render the beam on a per-pixel-alpha surface so widths and
+        # alpha blend correctly even if `target` is a 24-bit surface.
+        w, h = target.get_size()
+        beam = pygame.Surface((w, h), pygame.SRCALPHA)
+        # Layer 1: outer wide soft glow
+        outer_w = int(14 * pulse)
+        pygame.draw.line(
+            beam,
+            (110, 190, 240, 38),
+            (sx, sy), (sxe, sye),
+            outer_w,
+        )
+        # Layer 2: mid plasma core (more saturated)
+        pygame.draw.line(
+            beam,
+            (140, 220, 255, 150),
+            (sx, sy), (sxe, sye),
+            max(1, int(7 * pulse)),
+        )
+        # Layer 3: bright inner highlight (cyan-white)
+        pygame.draw.line(
+            beam,
+            (225, 245, 255, 220),
+            (sx, sy), (sxe, sye),
+            max(1, int(3 * pulse)),
+        )
+        # Bright tip glow at muzzle (where the beam emerges)
+        pygame.draw.circle(beam, (200, 235, 255, 200), (sx, sy), 5)
+        # Bright tip glow at endpoint
+        pygame.draw.circle(beam, (180, 220, 250, 150), (sxe, sye), 4)
+        target.blit(beam, (0, 0))
 
     def _spawn_player_bullet(self, charge_level: int = 0) -> None:
         spec = self._weapon.get_spec()
@@ -1281,6 +1489,9 @@ class GameplayRuntime:
         # Player (only if not in DEAD state and not i-frames invisible)
         if not self._player.is_dead:
             self._draw_player(target, shx, shy)
+        # BLOQUE 37: continuous L3 laser (drawn on top of player so it appears
+        # to emerge from the muzzle).
+        self._draw_continuous_laser(target, shx, shy)
         # BLOQUE 26: bomb flash overlay on the player
         if self._bomb_flash > 0.0:
             flash_alpha = int(220 * self._bomb_flash)

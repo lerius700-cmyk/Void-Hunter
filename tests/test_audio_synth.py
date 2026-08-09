@@ -1,4 +1,4 @@
-"""Tests for src.audio.synth — 24 SFX + 4 BGM procedurales (BLOQUE 13)."""
+"""Tests for src.audio.synth — 26 SFX + 4 BGM procedurales (BLOQUE 13 + BLOQUE 37)."""
 from __future__ import annotations
 
 import array
@@ -91,11 +91,11 @@ def test_adsr_release_phase() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 3. 24 SFX catalog
+# 3. 26 SFX catalog (24 BLOQUE 13 + 2 BLOQUE 37)
 # ---------------------------------------------------------------------------
-def test_twenty_four_sfx_in_catalog() -> None:
-    assert len(SFX_CATALOG) == 24
-    assert len(SFX_NAMES) == 24
+def test_twenty_six_sfx_in_catalog() -> None:
+    assert len(SFX_CATALOG) == 26
+    assert len(SFX_NAMES) == 26
 
 
 def test_all_expected_sfx_present() -> None:
@@ -106,6 +106,8 @@ def test_all_expected_sfx_present() -> None:
         "game_over", "victory", "ui_click", "ui_hover", "charge_loop",
         "beam_charge", "beam_fire", "missile_lock", "missile_fire",
         "screen_shake_thump",
+        # BLOQUE 37: continuous L3 plasma laser (held "piiiiIIII" sound).
+        "laser_continuous", "laser_end",
     }
     assert set(SFX_NAMES) == expected
 
@@ -175,7 +177,7 @@ def test_render_bgm_unknown_name_returns_zero() -> None:
 
 
 @pytest.mark.parametrize("name", SFX_NAMES)
-def test_all_24_sfx_render(name: str) -> None:
+def test_all_26_sfx_render(name: str) -> None:
     """Every SFX renders to a non-empty array without exception."""
     buf = render_sfx(name)
     assert len(buf) > 0
@@ -201,7 +203,7 @@ def test_audio_engine_init_does_not_crash() -> None:
 def test_audio_engine_sfx_count() -> None:
     engine = AudioEngine()
     if engine.mixer_available:
-        assert len(engine.sfx_sounds) == 24
+        assert len(engine.sfx_sounds) == 26
         assert len(engine.bgm_sounds) == 4
 
 

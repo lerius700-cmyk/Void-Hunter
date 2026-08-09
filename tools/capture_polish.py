@@ -247,23 +247,22 @@ def main() -> None:
     pygame.image.save(surf, str(out_dir / "polish_17_starfox_player.png"))
     print("saved polish_17_starfox_player.png")
 
-    # 18. BLOQUE 30/36: charged beam fired (L3) — plasma cyan recolor
+    # 18. BLOQUE 37: continuous L3 plasma laser (multi-layer beam from muzzle to edge)
+    from src.entities.player.player import PlayerState
     rt18 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
     rt18.on_enter()
     rt18._player.x = INTERNAL_W / 2
     rt18._player.y = INTERNAL_H - 80
     rt18._player.nose_angle = 0.0
-    # Spawn a beam bullet
-    from src.systems.projectile import BULLET_PLAYER_BEAM
-    rt18._bullets.spawn(
-        BULLET_PLAYER_BEAM,
-        rt18._player.x, rt18._player.y - 16, 0.0, -700.0,
-        damage=8, owner=0, pierce=99, has_trail=True,
-        trail_color=(140, 220, 255),
-    )
+    rt18._player.state = PlayerState.CHARGE
+    rt18._player.charge_time = 1.6
+    rt18._mouse_held = True
+    # Tick the laser update so endpoint is computed.
+    rt18._update_continuous_laser(0.10, current_charge=3)
+    # Now draw (laser draws after the player in draw()).
     rt18.draw(surf)
     pygame.image.save(surf, str(out_dir / "polish_18_charged_beam.png"))
-    print("saved polish_18_charged_beam.png")
+    print("saved polish_18_charged_beam.png (BLOQUE 37: continuous laser)")
 
     # 19. BLOQUE 30: Star Fox-style enemy ships
     rt19 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)

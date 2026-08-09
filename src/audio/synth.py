@@ -139,6 +139,11 @@ SFX_CATALOG: dict[str, _SfxSpec] = {
     "charge_loop":            _SfxSpec("charge_loop", Voice.SQUARE, 220, 200, 0.050, 0.05, 0.7, 0.10, 0.20, "Charge holding L1->L3", 0.4),
     "beam_charge":            _SfxSpec("beam_charge", Voice.NOISE, 100, 700, 0.100, 0.20, 0.5, 0.10, 0.30, "Beam windup", 0.6),
     "beam_fire":              _SfxSpec("beam_fire", Voice.SAW, 800, 0, 0.005, 0.30, 0.0, 0.10, 0.40, "Beam release", 0.7),
+    # BLOQUE 37: long sustained sawtooth that reads as a held laser (piiiiIIII),
+    # not as discrete shots. Long sustain so the sound feels continuous while
+    # the visual laser is on screen.
+    "laser_continuous":       _SfxSpec("laser_continuous", Voice.SAW, 720, 60, 0.020, 0.05, 0.65, 0.30, 0.50, "L3 continuous laser", 0.55),
+    "laser_end":              _SfxSpec("laser_end", Voice.SAW, 720, -400, 0.005, 0.05, 0.0, 0.10, 0.20, "L3 laser release tail", 0.35),
     "missile_lock":           _SfxSpec("missile_lock", Voice.SQUARE, 2000, 0, 0.005, 0.05, 0.0, 0.05, 0.10, "Homing lock-on", 0.4),
     "missile_fire":           _SfxSpec("missile_fire", Voice.SAW, 400, -200, 0.005, 0.10, 0.0, 0.10, 0.20, "Homing missile launch", 0.5),
     "screen_shake_thump":     _SfxSpec("screen_shake_thump", Voice.NOISE, 60, 0, 0.002, 0.08, 0.0, 0.10, 0.18, "Trauma shake thump", 0.5),

@@ -1297,3 +1297,166 @@ def test_bullet_sizes_reduced_by_scale():
                  BULLET_ENEMY, BULLET_BOSS):
         w, h = BULLET_SIZES[kind]
         assert w >= 1 and h >= 1, f"Bullet kind {kind} has invalid size ({w}, {h})"
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 37: continuous L3 plasma laser
+# ---------------------------------------------------------------------------
+def test_continuous_laser_constants_set() -> None:
+    """BLOQUE 37: laser tuning constants exist with sane values."""
+    from src.core.settings import (
+        LASER_DAMAGE_PER_TICK, LASER_HIT_RADIUS_PX, LASER_MAX_RANGE_PX,
+        LASER_SPARK_RATE_S, LASER_TICK_S,
+    )
+    assert LASER_MAX_RANGE_PX > INTERNAL_H, "laser range should exceed screen height"
+    assert LASER_TICK_S > 0.0
+    assert LASER_DAMAGE_PER_TICK >= 1
+    assert LASER_HIT_RADIUS_PX > 0
+    assert LASER_SPARK_RATE_S > 0.0
+
+
+def test_continuous_laser_inactive_by_default() -> None:
+    """BLOQUE 37: laser is OFF at scene start (not charging)."""
+    def _noop(*_args, **_kwargs):
+        return None
+    rt = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt.on_enter()
+    assert rt._laser_active is False
+
+
+def test_continuous_laser_activates_at_l3_charge_with_lmb() -> None:
+    """BLOQUE 37: laser turns ON when state=CHARGE, charge>=3, LMB held."""
+    from src.entities.player.player import PlayerState
+
+    def _noop(*_args, **_kwargs):
+        return None
+    rt = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt.on_enter()
+    # Force player into L3 CHARGE state with LMB held
+    rt._player.state = PlayerState.CHARGE
+    rt._player.charge_time = 1.6  # past CHARGE_L3_S
+    rt._mouse_held = True
+    rt._update_continuous_laser(0.05, current_charge=3)
+    assert rt._laser_active is True
+    assert rt._laser_end_x != 0.0 or rt._laser_end_y != 0.0  # endpoint was set
+
+
+def test_continuous_laser_deactivates_when_lmb_released() -> None:
+    """BLOQUE 37: laser turns OFF when LMB released even if still in CHARGE."""
+    from src.entities.player.player import PlayerState
+
+    def _noop(*_args, **_kwargs):
+        return None
+    rt = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt.on_enter()
+    rt._player.state = PlayerState.CHARGE
+    rt._player.charge_time = 1.6
+    rt._mouse_held = True
+    rt._update_continuous_laser(0.05, current_charge=3)
+    assert rt._laser_active is True
+    # Release LMB
+    rt._mouse_held = False
+    rt._update_continuous_laser(0.05, current_charge=3)
+    assert rt._laser_active is False
+
+
+def test_continuous_laser_inactive_when_charge_below_3() -> None:
+    """BLOQUE 37: laser only fires at L3, not at L1/L2."""
+    from src.entities.player.player import PlayerState
+
+    def _noop(*_args, **_kwargs):
+        return None
+    rt = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt.on_enter()
+    rt._player.state = PlayerState.CHARGE
+    rt._player.charge_time = 0.7  # L1 only
+    rt._mouse_held = True
+    rt._update_continuous_laser(0.05, current_charge=1)
+    assert rt._laser_active is False
+    rt._update_continuous_laser(0.05, current_charge=2)
+    assert rt._laser_active is False
+
+
+def test_continuous_laser_does_not_spawn_bullets() -> None:
+    """BLOQUE 37: laser mode is bullet-free — only the visual beam damages."""
+    from src.entities.player.player import PlayerState
+
+    def _noop(*_args, **_kwargs):
+        return None
+    rt = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt.on_enter()
+    rt._player.state = PlayerState.CHARGE
+    rt._player.charge_time = 1.6
+    rt._mouse_held = True
+    initial_active = sum(1 for b in rt._bullets.pool if b.active)
+    # Run many updates (laser should be active throughout)
+    for _ in range(20):
+        rt._update_continuous_laser(0.05, current_charge=3)
+    after_active = sum(1 for b in rt._bullets.pool if b.active)
+    # No new BULLET_PLAYER_BEAM should have been spawned.
+    assert after_active == initial_active, (
+        f"laser spawned bullets ({initial_active} -> {after_active})"
+    )
+
+
+def test_continuous_laser_damages_enemy_in_path() -> None:
+    """BLOQUE 37: laser applies damage to enemies in its path."""
+    from src.entities.player.player import PlayerState
+
+    def _noop(*_args, **_kwargs):
+        return None
+    rt = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt.on_enter()
+    # Place player in the middle, pointing up
+    rt._player.x = INTERNAL_W / 2
+    rt._player.y = INTERNAL_H * 0.7
+    rt._player.nose_angle = 0.0
+    rt._player.state = PlayerState.CHARGE
+    rt._player.charge_time = 1.6
+    rt._mouse_held = True
+    # Spawn a SCOUT directly in front of the player (in the beam path)
+    e = rt._enemies.spawn(EnemyKind.SCOUT, INTERNAL_W / 2, INTERNAL_H * 0.4)
+    assert e is not None
+    initial_hp = e.hp
+    # Compute the beam origin/endpoint the same way the update does, then
+    # call _laser_apply_damage once directly to verify damage path.
+    import math
+    nose_rad = math.radians(rt._player.nose_angle)
+    muzzle_offset = 12.0
+    bx = rt._player.x + math.sin(nose_rad) * muzzle_offset
+    by = rt._player.y - math.cos(nose_rad) * muzzle_offset
+    # dx, dy
+    dx = math.sin(nose_rad)
+    dy = -math.cos(nose_rad)
+    # t_max: how far the beam goes (well past the SCOUT at y=192)
+    t_max = 600.0
+    from src.core.settings import LASER_HIT_RADIUS_PX, LASER_DAMAGE_PER_TICK
+    rt._laser_apply_damage(bx, by, dx, dy, t_max, LASER_HIT_RADIUS_PX, LASER_DAMAGE_PER_TICK)
+    # SCOUT has 1 HP, so apply_damage returns True and the SCOUT is now DYING.
+    assert e.damage_taken >= LASER_DAMAGE_PER_TICK, (
+        f"laser did not damage enemy (damage_taken={e.damage_taken})"
+    )
+
+
+def test_continuous_laser_endpoint_stays_inside_playfield() -> None:
+    """BLOQUE 37: laser endpoint is clamped to the play area."""
+    from src.entities.player.player import PlayerState
+
+    def _noop(*_args, **_kwargs):
+        return None
+    rt = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt.on_enter()
+    rt._player.x = INTERNAL_W / 2
+    rt._player.y = INTERNAL_H / 2
+    rt._player.state = PlayerState.CHARGE
+    rt._player.charge_time = 1.6
+    rt._mouse_held = True
+    for angle in (0.0, 90.0, 180.0, 270.0, 45.0, 135.0):
+        rt._player.nose_angle = angle
+        rt._update_continuous_laser(0.05, current_charge=3)
+        assert 0 <= rt._laser_end_x <= INTERNAL_W, (
+            f"laser endpoint x out of bounds at angle {angle}: {rt._laser_end_x}"
+        )
+        assert 0 <= rt._laser_end_y <= INTERNAL_H, (
+            f"laser endpoint y out of bounds at angle {angle}: {rt._laser_end_y}"
+        )
