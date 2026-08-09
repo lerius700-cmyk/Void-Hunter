@@ -6,6 +6,7 @@ scaled 4x to 960x1440 by Game._present). 240px width is the hard cap.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable, Optional
+import math
 
 import pygame
 
@@ -157,16 +158,31 @@ class GameplayScene(Scene):
 
 
 class BossIntroScene(Scene):
-    """BOSS_INTRO — boss warning, 4-6s animated intro."""
+    """BOSS_INTRO — boss warning, 4-6s animated intro.
+
+    Phases (5s total):
+      0.0 - 0.3s : White flash burst, then dark red
+      0.3 - 1.5s : WARNING text slides in from left/right
+      1.5 - 3.5s : Boss portrait slides down from top
+      3.5 - 4.5s : Pulsing red, boss locked in
+      4.5 - 5.0s : Transition to fight
+    """
 
     def __init__(self, transition_to: TransitionFn, boss_name: str = "BOSS") -> None:
         self._transition_to = transition_to
         self._boss_name = boss_name
         self._t: float = 0.0
-        self._duration: float = 5.0
+        self._duration: float = 4.5  # slightly shorter with animation
 
     def on_enter(self) -> None:
         self._t = 0.0
+        # Try to play boss warning SFX
+        try:
+            from src.audio.synth import AudioEngine
+            audio = AudioEngine()
+            audio.play_sfx("boss_warning", volume=0.9)
+        except Exception:
+            pass
 
     def update(self, dt: float) -> None:
         self._t += dt
@@ -177,15 +193,89 @@ class BossIntroScene(Scene):
             self._transition_to(GameState.BOSS_FIGHT)
 
     def draw(self, target: pygame.Surface) -> None:
-        target.fill((40, 0, 0))
-        # Warning — 18px to fit "WARNING: <boss_name>" in 240px
-        font = pygame.font.Font(None, 18)
-        text = font.render(f"WARNING: {self._boss_name}", True, (255, 220, 100))
-        _center_blit(target, text, 140)
-        # Subtitle (blinking)
-        font2 = pygame.font.Font(None, 12)
-        if int(self._t * 2) % 2 == 0:
+        w, h = target.get_size()
+        # Phase 1: white flash burst (first 0.3s)
+        if self._t < 0.3:
+            target.fill((255, 255, 255))
+            return
+        # Background: pulsing dark red (gets more intense)
+        pulse = 0.5 + 0.5 * math.sin(self._t * 6.0)
+        bg_r = int(40 + pulse * 30)
+        bg_g = int(0 + pulse * 5)
+        bg_b = int(0)
+        target.fill((bg_r, bg_g, bg_b))
+        # Phase 2: WARNING text (slides in from left+right, settles center)
+        # Use larger font for impact
+        font = pygame.font.Font(None, 24)
+        # Slide: text appears 0.3-1.5s
+        text_alpha = min(1.0, max(0.0, (self._t - 0.3) / 0.3))
+        warning_text = f"WARNING: {self._boss_name}"
+        # Truncate if too long for 240px
+        if font.size(warning_text)[0] > 220:
+            # Try shorter format
+            warning_text = self._boss_name
+            if font.size(f"!! {warning_text} !!")[0] > 220:
+                warning_text = warning_text[:10]
+        warn_surf = font.render(warning_text, True, (255, 220, 100))
+        warn_surf.set_alpha(int(255 * text_alpha))
+        # Add a glow
+        glow_surf = font.render(warning_text, True, (255, 100, 60))
+        glow_surf.set_alpha(int(80 * text_alpha))
+        for ox, oy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            target.blit(glow_surf,
+                        (w // 2 - warn_surf.get_width() // 2 + ox,
+                         80 - warn_surf.get_height() // 2 + oy))
+        target.blit(warn_surf,
+                    (w // 2 - warn_surf.get_width() // 2,
+                     80 - warn_surf.get_height() // 2))
+        # Phase 3: Boss portrait slides down from top (1.5s+)
+        if self._t > 1.0:
+            # Boss rectangle (gray, with eye detail)
+            boss_size = 32
+            # Slide in: y starts at -boss_size, settles at 160
+            target_y = 160
+            start_y = -boss_size
+            t_slide = min(1.0, (self._t - 1.0) / 0.8)
+            t_eased = 1.0 - (1.0 - t_slide) ** 3  # ease-out
+            boss_y = int(start_y + (target_y - start_y) * t_eased)
+            boss_x = w // 2
+            # Glow under boss
+            glow_size = boss_size + 12
+            glow = pygame.Surface((glow_size, glow_size), pygame.SRCALPHA)
+            pygame.draw.rect(glow, (200, 100, 100, 60 + int(60 * pulse)),
+                             (0, 0, glow_size, glow_size), border_radius=4)
+            target.blit(glow, (boss_x - glow_size // 2, boss_y - glow_size // 2))
+            # Boss body
+            boss_rect = pygame.Rect(boss_x - boss_size // 2, boss_y - boss_size // 2 // 2,
+                                    boss_size, boss_size // 2)
+            pygame.draw.rect(target, (200, 100, 100), boss_rect)
+            # Boss eye (white)
+            eye_w = 12
+            eye_h = 3
+            pygame.draw.rect(target, (255, 255, 255),
+                             (boss_x - eye_w // 2, boss_y - eye_h // 2, eye_w, eye_h))
+            # Phase border (red, glowing)
+            border_color = (255, 80, 80) if pulse > 0.5 else (200, 60, 60)
+            pygame.draw.rect(target, border_color, boss_rect, 1)
+        # Bottom: "INCOMING HOSTILE" subtitle (blinking)
+        if int(self._t * 2) % 2 == 0 and self._t > 0.5:
+            font2 = pygame.font.Font(None, 12)
             sub = font2.render("INCOMING HOSTILE", True, (255, 100, 100))
+            _center_blit(target, sub, 230)
+        # Progress bar (fills over duration)
+        bar_w = 200
+        bar_h = 4
+        bar_x = (w - bar_w) // 2
+        bar_y = 320
+        pygame.draw.rect(target, (60, 20, 20), (bar_x, bar_y, bar_w, bar_h), 1)
+        progress = min(1.0, self._t / self._duration)
+        pygame.draw.rect(target, (255, 100, 100),
+                         (bar_x + 1, bar_y + 1, int(bar_w * progress) - 2, bar_h - 2))
+        # "PRESS ENTER TO SKIP" hint
+        if self._t > 1.0:
+            font3 = pygame.font.Font(None, 10)
+            hint = font3.render("PRESS ENTER TO SKIP", True, (180, 180, 180))
+            _center_blit(target, hint, 340)
             _center_blit(target, sub, 200)
 
 

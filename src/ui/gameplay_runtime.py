@@ -993,23 +993,30 @@ class GameplayRuntime:
     def _draw_player(self, target: pygame.Surface, ox: int, oy: int) -> None:
         # Engine flame behind the ship — length scales with |vx|
         self._draw_engine_flame(target, ox, oy)
-        surf = pygame.Surface((18, 16), pygame.SRCALPHA)
+        surf = pygame.Surface((24, 18), pygame.SRCALPHA)
         # Flicker iframes (every-other frame invisible during dash)
         if self._player.dash_iframes_left > 0 and (self._t * 30) % 2 < 1:
             pass  # still draw so the trail is visible
-        # Ship body
+        # Ship body color (changes with charge level)
         body_color = (220, 240, 255)
+        wing_color = (180, 200, 230)
         if self._player.state == PlayerState.CHARGE:
-            # Tint based on charge level
             level = self._player.get_charge_level()
             if level >= 3:
                 body_color = (255, 255, 255)
+                wing_color = (220, 220, 255)
             elif level >= 2:
                 body_color = (200, 230, 255)
+                wing_color = (160, 200, 240)
             elif level >= 1:
                 body_color = (180, 220, 255)
-        pygame.draw.polygon(surf, body_color, [(9, 0), (0, 16), (18, 16)])
-        # Cockpit
+                wing_color = (140, 190, 230)
+        # Main body (triangle pointing up)
+        pygame.draw.polygon(surf, body_color, [(12, 0), (6, 12), (18, 12)])
+        # Wings (two small triangles on the sides)
+        pygame.draw.polygon(surf, wing_color, [(6, 8), (0, 14), (6, 14)])
+        pygame.draw.polygon(surf, wing_color, [(18, 8), (24, 14), (18, 14)])
+        # Cockpit (smaller triangle in center)
         cockpit_color = (255, 100, 100)
         if self._player.state == PlayerState.CHARGE:
             level = self._player.get_charge_level()
@@ -1019,16 +1026,25 @@ class GameplayRuntime:
                 cockpit_color = (255, 150, 200)
             elif level >= 1:
                 cockpit_color = (255, 120, 150)
-        pygame.draw.polygon(surf, cockpit_color, [(9, 4), (4, 14), (14, 14)])
+        pygame.draw.polygon(surf, cockpit_color, [(12, 4), (9, 12), (15, 12)])
+        # Cockpit highlight (1px white)
+        pygame.draw.circle(surf, (255, 255, 255), (12, 6), 1)
+        # Wing tip lights (red/green for orientation)
+        pygame.draw.circle(surf, (255, 60, 60), (2, 13), 1)
+        pygame.draw.circle(surf, (60, 255, 100), (22, 13), 1)
+        # Engine intake (small dark notch at the back)
+        pygame.draw.rect(surf, (40, 50, 70), (10, 12, 4, 2))
         rotated = pygame.transform.rotate(surf, -self._player.current_tilt)
         rect = rotated.get_rect(center=(int(self._player.x + ox), int(self._player.y + oy)))
         target.blit(rotated, rect)
         # Afterimage trail
         for tx, ty, age in self._player.afterimage:
             alpha = max(0, int(255 * (1 - age / self._player.AFTERIMAGE_LIFE)))
-            ghost = pygame.Surface((18, 16), pygame.SRCALPHA)
-            pygame.draw.polygon(ghost, (220, 240, 255, alpha), [(9, 0), (0, 16), (18, 16)])
-            target.blit(ghost, (int(tx - 9 + ox), int(ty - 8 + oy)))
+            ghost = pygame.Surface((24, 18), pygame.SRCALPHA)
+            pygame.draw.polygon(ghost, (220, 240, 255, alpha), [(12, 0), (6, 12), (18, 12)])
+            pygame.draw.polygon(ghost, (180, 200, 230, alpha), [(6, 8), (0, 14), (6, 14)])
+            pygame.draw.polygon(ghost, (180, 200, 230, alpha), [(18, 8), (24, 14), (18, 14)])
+            target.blit(ghost, (int(tx - 12 + ox), int(ty - 9 + oy)))
         # Charge indicator: a ring around the player that fills as charge builds
         charge_level = self._player.get_charge_level()
         if self._player.state == PlayerState.CHARGE and charge_level > 0:
@@ -1121,11 +1137,8 @@ class GameplayRuntime:
         from src.entities.enemies.enemy import ENEMY_CONFIGS
         cfg = ENEMY_CONFIGS[e.kind]
         w, h = cfg.width, cfg.height
-        rect = pygame.Rect(
-            int(e.x - w / 2 + ox),
-            int(e.y - h / 2 + oy),
-            w, h,
-        )
+        cx = int(e.x + ox)
+        cy = int(e.y + oy)
         # Telegraph (red flash) — skip for archetypes w/o telegraph
         if e.telegraph_timer > 0:
             color = (255, 100, 100)
@@ -1135,15 +1148,72 @@ class GameplayRuntime:
         flash_t = self._enemy_flash.get(id(e), 0.0)
         if flash_t > 0.0:
             color = (255, 255, 255)
-        pygame.draw.rect(target, color, rect)
-        # Inner detail: a small darker rectangle for "eye/window"
-        if w >= 10 and h >= 6:
-            inner = rect.inflate(-max(2, w // 3), -max(2, h // 3))
+        # Different shapes per kind (so the eye can distinguish)
+        if e.kind == EnemyKind.SCOUT:
+            # Triangle (diamond pointing down — "incoming" feel)
+            points = [(cx, cy - h // 2), (cx + w // 2, cy + h // 2), (cx - w // 2, cy + h // 2)]
+            pygame.draw.polygon(target, color, points)
+            # Inner darker triangle for detail
+            inner_color = (max(0, color[0] - 50), max(0, color[1] - 50), max(0, color[2] - 50))
+            points2 = [(cx, cy - h // 4), (cx + w // 4, cy + h // 4), (cx - w // 4, cy + h // 4)]
+            pygame.draw.polygon(target, inner_color, points2)
+            # Eye/cockpit dot
+            pygame.draw.circle(target, (255, 255, 255), (cx, cy), 1)
+        elif e.kind == EnemyKind.CRUISER:
+            # Hexagon (wider, more "tank" feel)
+            import math as _m
+            points = []
+            for i in range(6):
+                a = i * _m.pi / 3 + _m.pi / 6
+                points.append((cx + int(_m.cos(a) * w / 2), cy + int(_m.sin(a) * h / 2)))
+            pygame.draw.polygon(target, color, points)
+            # Inner detail: a smaller hex rotated
             inner_color = (max(0, color[0] - 60), max(0, color[1] - 60), max(0, color[2] - 60))
-            pygame.draw.rect(target, inner_color, inner)
-        # Mini drones
+            points2 = []
+            for i in range(6):
+                a = i * _m.pi / 3
+                points2.append((cx + int(_m.cos(a) * w / 4), cy + int(_m.sin(a) * h / 4)))
+            pygame.draw.polygon(target, inner_color, points2)
+        elif e.kind == EnemyKind.HEAVY:
+            # Square (chunky, armored)
+            rect = pygame.Rect(cx - w // 2, cy - h // 2, w, h)
+            pygame.draw.rect(target, color, rect)
+            # Corner reinforcement (darker triangles in each corner)
+            inner_color = (max(0, color[0] - 70), max(0, color[1] - 70), max(0, color[2] - 70))
+            corner_size = max(2, w // 4)
+            for dx, dy in [(-1, -1), (1, -1), (-1, 1), (1, 1)]:
+                cx_c = cx + dx * (w // 2 - corner_size // 2)
+                cy_c = cy + dy * (h // 2 - corner_size // 2)
+                pygame.draw.rect(target, inner_color,
+                                 (cx_c - corner_size // 2, cy_c - corner_size // 2,
+                                  corner_size, corner_size))
+            # Central cannon (small red circle)
+            pygame.draw.circle(target, (255, 80, 80), (cx, cy + h // 4), 1)
+        elif e.kind == EnemyKind.KAMIKAZE:
+            # Inverted triangle (aggressive, pointed down)
+            points = [(cx - w // 2, cy - h // 2), (cx + w // 2, cy - h // 2), (cx, cy + h // 2)]
+            pygame.draw.polygon(target, color, points)
+            # Pulsing red eye
+            pulse = 200 + int(55 * math.sin(self._t * 8))
+            pygame.draw.circle(target, (pulse, 50, 50), (cx, cy - 1), 2)
+        elif e.kind == EnemyKind.SNIPER:
+            # Long horizontal rectangle (sniper shape)
+            rect = pygame.Rect(cx - w // 2, cy - h // 2, w, h)
+            pygame.draw.rect(target, color, rect)
+            # Red laser aim line (vertical)
+            pygame.draw.line(target, (255, 60, 60), (cx, cy + h // 2), (cx, cy + h // 2 + 6), 1)
+        else:
+            # Default: rectangle with inner detail
+            rect = pygame.Rect(cx - w // 2, cy - h // 2, w, h)
+            pygame.draw.rect(target, color, rect)
+            if w >= 10 and h >= 6:
+                inner = rect.inflate(-max(2, w // 3), -max(2, h // 3))
+                inner_color = (max(0, color[0] - 60), max(0, color[1] - 60), max(0, color[2] - 60))
+                pygame.draw.rect(target, inner_color, inner)
+        # Mini drones: white inner highlight
         if cfg.is_mini:
-            pygame.draw.rect(target, (180, 230, 255), rect.inflate(-2, -2))
+            pygame.draw.rect(target, (180, 230, 255),
+                             (cx - w // 2 + 1, cy - h // 2 + 1, w - 2, h - 2))
 
     def _draw_boss(self, target: pygame.Surface, ox: int, oy: int) -> None:
         if self._boss is None:

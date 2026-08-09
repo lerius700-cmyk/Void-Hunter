@@ -84,10 +84,10 @@ def main() -> int:
     print(f"  -> {OUT / '04_gameplay_moving.png'}")
     gp._rt._player.input_fire = False
 
-    # 05 — BOSS_INTRO
+    # 05 — BOSS_INTRO (animated)
     print("Rendering BOSS_INTRO...")
     game.scenes.transition_to(GameState.BOSS_INTRO)
-    render_and_save(game, "05_boss_intro", ticks=30)
+    render_and_save(game, "05_boss_intro", ticks=180)  # ~1.5s for slide-in
 
     # 06 — BOSS_FIGHT (real boss with attacks)
     print("Rendering BOSS_FIGHT...")
