@@ -27,7 +27,7 @@ from src.core.settings import INTERNAL_H, INTERNAL_W  # noqa: E402
 from src.entities.enemies import EnemyKind  # noqa: E402
 from src.entities.enemies.boss import BOSS_CONFIGS  # noqa: E402
 from src.systems.projectile import BULLET_PLAYER, OWNER_PLAYER  # noqa: E402
-from src.ui.gameplay_runtime import GameplayRuntime, PowerUp, ScorePopup  # noqa: E402
+from src.ui.gameplay_runtime import GameplayRuntime, ScorePopup  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -312,6 +312,65 @@ def test_dash_8way_diagonal_down_right():
         p.update(1.0 / 120)
     assert p.dash_dir_x > 0
     assert p.dash_dir_y > 0
+
+
+# -----------------------------------------------------------------------
+# BLOQUE 33: Shift = dash, K freed, Boost removed
+# -----------------------------------------------------------------------
+def test_dash_triggers_on_shift_left_down():
+    """BLOQUE 33: pressing K_LSHIFT (KEYDOWN) sets input_dash → DASH state."""
+    import pygame
+    # Patch the event queue: synthesize a K_LSHIFT KEYDOWN
+    original_get = pygame.event.get
+
+    def fake_get(event_type=None):
+        if event_type is None or event_type == pygame.KEYDOWN:
+            return [pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_LSHIFT})]
+        return []
+    pygame.event.get = fake_get
+    try:
+        rt = _make_runtime()
+        rt._read_input()
+        assert rt._player.input_dash is True
+    finally:
+        pygame.event.get = original_get
+
+
+def test_boost_fields_removed_from_player():
+    """BLOQUE 33: input_boost / boost_timer / is_boosting should not exist."""
+    from src.entities.player import Player
+    p = Player()
+    assert not hasattr(p, "input_boost"), "input_boost must be removed"
+    assert not hasattr(p, "boost_timer"), "boost_timer must be removed"
+    assert not hasattr(p, "boost_cooldown"), "boost_cooldown must be removed"
+    assert not hasattr(p, "is_boosting"), "is_boosting must be removed"
+
+
+def test_settings_no_boost_constants():
+    """BLOQUE 33: PLAYER_BOOST_* must not be in settings."""
+    from src.core import settings
+    assert not hasattr(settings, "PLAYER_BOOST_MULT")
+    assert not hasattr(settings, "PLAYER_BOOST_DURATION_S")
+    assert not hasattr(settings, "PLAYER_BOOST_COOLDOWN_S")
+
+
+def test_k_does_not_trigger_dash():
+    """BLOQUE 33: K must NOT trigger dash (only Shift does)."""
+    import pygame
+    # Synthesize a K KEYDOWN
+    original_get = pygame.event.get
+
+    def fake_get(event_type=None):
+        if event_type is None or event_type == pygame.KEYDOWN:
+            return [pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_k})]
+        return []
+    pygame.event.get = fake_get
+    try:
+        rt = _make_runtime()
+        rt._read_input()
+        assert rt._player.input_dash is False, "K should NOT trigger dash anymore"
+    finally:
+        pygame.event.get = original_get
 
 
 # -----------------------------------------------------------------------
@@ -977,36 +1036,6 @@ def test_nose_rotation_only_while_moving():
     # current_nose_angle should now be > 0 (lerping toward ~90°)
     assert p.current_nose_angle > 0.0
     p.input_right = False
-
-
-def test_boost_doubles_speed():
-    """BLOQUE 32: Shift held → 2x speed for 0.4s, then cooldown 1.5s."""
-    rt = _make_runtime()
-    p = rt._player
-    p.x = INTERNAL_W / 2
-    p.y = INTERNAL_H - 60
-    # Trigger boost
-    p.input_boost = True
-    p.input_right = True
-    p.update(0.1)
-    assert p.is_boosting is True
-    assert p.boost_timer > 0.0
-    # Release shift, let boost finish
-    p.input_boost = False
-    for _ in range(10):
-        p.update(0.1)
-    # Boost should be done
-    assert p.is_boosting is False
-    # Cooldown should prevent immediate re-boost
-    p.input_boost = True
-    p.update(0.1)
-    assert p.is_boosting is False  # still on cooldown
-    # Wait for cooldown
-    for _ in range(20):
-        p.update(0.1)
-    p.input_boost = True
-    p.update(0.1)
-    assert p.is_boosting is True  # ready again
 
 
 def test_movement_world_relative():

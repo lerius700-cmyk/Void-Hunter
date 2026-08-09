@@ -27,9 +27,6 @@ from src.core.settings import (
     INTERNAL_W,
     PLAYER_BOMBS,
     PLAYER_BOMBS_MAX,
-    PLAYER_BOOST_COOLDOWN_S,
-    PLAYER_BOOST_DURATION_S,
-    PLAYER_BOOST_MULT,
     PLAYER_DASH_DURATION_S,
     PLAYER_DASH_IFRAMES,
     PLAYER_DASH_SPEED,
@@ -119,12 +116,6 @@ class Player:
     input_fire: bool = False
     input_dash: bool = False
     input_bomb: bool = False
-    # BLOQUE 32: boost input (Shift = 2x speed burst for repositioning)
-    input_boost: bool = False
-    # BLOQUE 32: boost state
-    boost_timer: float = 0.0          # > 0 means currently boosting
-    boost_cooldown: float = 0.0       # > 0 means boost on cooldown
-    is_boosting: bool = False         # convenience flag for rendering/SFX
     # Output signals (consumed by WeaponSystem etc.)
     wants_to_shoot: bool = False
     wants_to_charge_release: bool = False
@@ -177,10 +168,6 @@ class Player:
         self.damage_taken = 0
         self.is_dead = False
         self.is_game_over = False
-        # BLOQUE 32: reset boost state
-        self.boost_timer = 0.0
-        self.boost_cooldown = 0.0
-        self.is_boosting = False
         # BLOQUE 32: nose angle starts pointing up (0°)
         self.nose_angle = 0.0
         self.current_nose_angle = 0.0
@@ -242,19 +229,6 @@ class Player:
                 if new_age < self.AFTERIMAGE_LIFE:
                     new_trail.append((tx, ty, new_age))
             self.afterimage = new_trail
-        # BLOQUE 32: boost timer countdown + cooldown
-        if self.boost_timer > 0.0:
-            self.boost_timer = max(0.0, self.boost_timer - dt)
-            if self.boost_timer <= 0.0:
-                self.is_boosting = False
-        if self.boost_cooldown > 0.0:
-            self.boost_cooldown = max(0.0, self.boost_cooldown - dt)
-        # BLOQUE 32: try to start boost
-        if self.input_boost and self.boost_cooldown <= 0.0 and self.boost_timer <= 0.0 \
-                and self.state in (PlayerState.IDLE, PlayerState.MOVE):
-            self.boost_timer = PLAYER_BOOST_DURATION_S
-            self.boost_cooldown = PLAYER_BOOST_COOLDOWN_S
-            self.is_boosting = True
         # BLOQUE 32: nose angle lerp (only when moving, per user spec)
         # When the player is moving, smoothly track nose_angle target.
         # When stopped, freeze (current_nose_angle stays where it is).
@@ -354,9 +328,6 @@ class Player:
         target_vx = 0.0
         target_vy = 0.0
         speed = PLAYER_SPEED
-        # BLOQUE 32: boost gives 2x speed burst
-        if self.boost_timer > 0.0:
-            speed *= PLAYER_BOOST_MULT
         # Compute desired velocity from WASD (screen-space)
         if self.input_left:
             target_vx -= speed

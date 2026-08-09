@@ -339,13 +339,9 @@ class GameplayRuntime:
         # BLOQUE 30: set input_fire based on mouse hold (continuous)
         # Holding the button = charging. Release = fire.
         self._player.input_fire = self._mouse_held
-        # BLOQUE 32: Shift held = boost (2x speed for 0.4s)
-        self._player.input_boost = (
-            keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
-        )
         for event in pygame.event.get(pygame.KEYDOWN):
-            if event.key == pygame.K_k:
-                # BLOQUE 29: single-press dash (one-shot, consumed)
+            if event.key == pygame.K_LSHIFT:
+                # BLOQUE 33: Shift left = dash (one-shot, consumed)
                 self._player.input_dash = True
             elif event.key == pygame.K_l:
                 self._player.input_bomb = True

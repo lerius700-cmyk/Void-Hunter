@@ -20,16 +20,19 @@ python main.py --profile     # run with FPS overlay (BLOQUE 14+)
 python main.py                # play (BLOQUE 14+)
 ```
 
-## Controls (BLOQUE 14+)
+## Controls (BLOQUE 33)
 
 | Action     | Keyboard | Gamepad |
 | ---------- | -------- | ------- |
-| Move L/R   | `A`/`D`  | Stick   |
-| Shoot      | `J`      | `X`     |
-| Dash       | `K`      | `Y`     |
+| Move WASD  | `W`/`A`/`S`/`D` (world-relative) | Stick |
+| Aim        | Mouse (360° yaw)  | Right stick |
+| Shoot      | `LMB` (hold = charge, release = fire) | `X` |
+| Dash       | `Shift` (left, one-shot)  | `Y` |
 | Bomb       | `L`      | `B`     |
 | Pause      | `Esc`    | Start   |
 | FPS overlay| `F1`     | —       |
+
+Legacy keys: `J` still fires (testing), `K` is now free for future use.
 
 ## CLI flags
 
