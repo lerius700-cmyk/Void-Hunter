@@ -247,6 +247,17 @@ def main() -> None:
     pygame.image.save(surf, str(out_dir / "polish_17_starfox_player.png"))
     print("saved polish_17_starfox_player.png")
 
+    # 17b. BLOQUE 38: RMB rapid-fire muzzle flash (orange tint)
+    rt17b = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt17b.on_enter()
+    rt17b._player.x, rt17b._player.y = INTERNAL_W / 2, INTERNAL_H - 60
+    rt17b._player.nose_angle = 0.0
+    rt17b._muzzle_flash_source = "rmb"
+    rt17b._muzzle_flash = 1.0
+    rt17b.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_17b_rmb_muzzle.png"))
+    print("saved polish_17b_rmb_muzzle.png (BLOQUE 38: orange RMB tint)")
+
     # 18. BLOQUE 37: continuous L3 plasma laser (multi-layer beam from muzzle to edge)
     from src.entities.player.player import PlayerState
     rt18 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)

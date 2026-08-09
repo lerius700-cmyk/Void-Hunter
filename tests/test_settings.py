@@ -104,10 +104,10 @@ def test_player_lives_and_bombs() -> None:
     assert PLAYER_BOMBS_MAX == 4  # +1 with special unlock
 
 
-def test_player_speed_130() -> None:
-    """Player speed tuned for 240x360 arena — fast but not floaty."""
-    assert PLAYER_SPEED == 130.0
-    # 130 px/s in a 240x360 arena ≈ 2.77s to cross horizontally.
+def test_player_speed_165() -> None:
+    """BLOQUE 38: PLAYER_SPEED is 165 px/s (was 130, ~1.27x snappier)."""
+    assert PLAYER_SPEED == 165.0
+    # 165 px/s in a 320x480 arena ≈ 1.94s to cross horizontally.
     # Sanity check: not too slow, not too fast.
     assert 100.0 <= PLAYER_SPEED <= 200.0
 

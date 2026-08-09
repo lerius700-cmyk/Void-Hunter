@@ -288,6 +288,12 @@ class Player:
         if self.input_dash:
             self._enter_dash()
             return
+        # BLOQUE 38: RMB rapid fire (independent of LMB charge)
+        if self.input_rapid_fire and self.fire_cd <= 0.0:
+            self.wants_to_shoot = True
+            self.fire_cd = PLAYER_FIRE_COOLDOWN_S
+            self._enter_shoot()
+            return
         # Bomb
         if self.input_bomb and self.bombs > 0:
             self._consume_bomb()
@@ -322,6 +328,12 @@ class Player:
         # Bomb
         if self.input_bomb and self.bombs > 0:
             self._consume_bomb()
+            return
+        # BLOQUE 38: RMB rapid fire (can be combined with WASD movement)
+        if self.input_rapid_fire and self.fire_cd <= 0.0:
+            self.wants_to_shoot = True
+            self.fire_cd = PLAYER_FIRE_COOLDOWN_S
+            self._enter_shoot()
             return
         # Charge before shoot
         if self.input_fire and self.charge_time >= CHARGE_L1_S:
@@ -369,6 +381,12 @@ class Player:
         # Maintain movement capability while in SHOOT (it's a sub-state)
         if self.input_left or self.input_right:
             self._enter_move()
+            return
+        # BLOQUE 38: keep firing while RMB held (continuous L1 stream)
+        if self.input_rapid_fire and self.fire_cd <= 0.0:
+            self.wants_to_shoot = True
+            self.fire_cd = PLAYER_FIRE_COOLDOWN_S
+            self.state_timer = 0.0  # reset recoil so we don't exit yet
             return
         # 0.10s after fire, return to idle
         if self.state_timer >= PLAYER_FIRE_COOLDOWN_S:

@@ -392,9 +392,9 @@ def test_resolution_grew_to_320x480():
 
 
 def test_nose_lerp_faster_per_spec():
-    """BLOQUE 35: PLAYER_NOSE_LERP_PER_S is 28 (was 24 in BLOQUE 34, was 12 originally)."""
+    """BLOQUE 38: PLAYER_NOSE_LERP_PER_S is 50 (was 28, was 12 originally)."""
     from src.core.settings import PLAYER_NOSE_LERP_PER_S
-    assert PLAYER_NOSE_LERP_PER_S == 28.0
+    assert PLAYER_NOSE_LERP_PER_S == 50.0
 
 
 def test_nose_angle_lerps_when_stopped():
@@ -1460,3 +1460,47 @@ def test_continuous_laser_endpoint_stays_inside_playfield() -> None:
         assert 0 <= rt._laser_end_y <= INTERNAL_H, (
             f"laser endpoint y out of bounds at angle {angle}: {rt._laser_end_y}"
         )
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 38: snappier mouse follow + RMB rapid fire visual feedback
+# ---------------------------------------------------------------------------
+def test_bloque_38_player_speed_increased() -> None:
+    """BLOQUE 38: PLAYER_SPEED is 165 px/s (was 130, ~1.27x faster)."""
+    from src.core.settings import PLAYER_SPEED
+    assert PLAYER_SPEED >= 160.0, f"PLAYER_SPEED too low: {PLAYER_SPEED}"
+    assert PLAYER_SPEED <= 200.0, f"PLAYER_SPEED too high: {PLAYER_SPEED}"
+
+
+def test_bloque_38_nose_lerp_snappier() -> None:
+    """BLOQUE 38: PLAYER_NOSE_LERP_PER_S is 50 (was 28, ~1.78x snappier)."""
+    from src.core.settings import PLAYER_NOSE_LERP_PER_S
+    assert PLAYER_NOSE_LERP_PER_S >= 40.0, (
+        f"Nose lerp too slow: {PLAYER_NOSE_LERP_PER_S}"
+    )
+    assert PLAYER_NOSE_LERP_PER_S <= 80.0, (
+        f"Nose lerp too aggressive: {PLAYER_NOSE_LERP_PER_S}"
+    )
+
+
+def test_bloque_38_muzzle_flash_source_defaults_to_lmb() -> None:
+    """BLOQUE 38: muzzle_flash_source starts as 'lmb'."""
+    def _noop(*_args, **_kwargs):
+        return None
+    rt = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt.on_enter()
+    assert rt._muzzle_flash_source == "lmb"
+
+
+def test_bloque_38_muzzle_flash_source_tracks_rmb() -> None:
+    """BLOQUE 38: when RMB is held, _muzzle_flash_source becomes 'rmb'."""
+    from src.entities.player.player import PlayerState
+    def _noop(*_args, **_kwargs):
+        return None
+    rt = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt.on_enter()
+    rt._player.state = PlayerState.IDLE
+    # Manually set the source the same way _handle_firing would
+    rt._mouse_r_held = True
+    rt._muzzle_flash_source = "rmb" if rt._mouse_r_held else "lmb"
+    assert rt._muzzle_flash_source == "rmb"

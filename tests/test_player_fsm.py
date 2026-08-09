@@ -436,3 +436,58 @@ def test_nose_angle_no_nan_or_inf() -> None:
             f"current_nose_angle is not finite: {p.current_nose_angle} for target={target}"
         )
         assert 0.0 <= p.current_nose_angle < 360.0
+
+
+# ---------------------------------------------------------------------------
+# 14. BLOQUE 38: RMB rapid fire (was a bug in BLOQUE 34 — input_rapid_fire
+# flag was set but never read in the FSM, so RMB did nothing).
+# ---------------------------------------------------------------------------
+def test_rmb_rapid_fire_in_idle(p: Player) -> None:
+    """RMB hold triggers a L1 shot from IDLE without entering CHARGE."""
+    p.input_rapid_fire = True
+    p.update(1 / 60)
+    assert p.state == PlayerState.SHOOT, "RMB should fire from IDLE"
+    assert p.wants_to_shoot is True
+    # Rapid fire must NOT enter CHARGE (charge_time stays 0)
+    assert p.charge_time == 0.0
+
+
+def test_rmb_rapid_fire_continues_in_shoot(p: Player) -> None:
+    """RMB hold keeps firing: subsequent shots fire as cooldown elapses."""
+    p.input_rapid_fire = True
+    p.update(1 / 60)
+    p.wants_to_shoot = False
+    # Cooldown is 0.10s = 100ms = 6 frames at 1/60 (1/60 ≈ 16.67ms).
+    # Run for 8 frames (133ms) — should see 1 refire.
+    fired_count = 0
+    for _ in range(8):
+        p.update(1 / 60)
+        if p.wants_to_shoot:
+            fired_count += 1
+            p.wants_to_shoot = False
+    assert fired_count >= 1, f"Expected at least 1 refire, got {fired_count}"
+
+
+def test_rmb_does_not_charge(p: Player) -> None:
+    """Even with RMB held for >1.5s, charge_time must stay 0 (no L3)."""
+    p.input_rapid_fire = True
+    # Run for 2 simulated seconds
+    for _ in range(int(2.0 * 60)):
+        p.update(1 / 60)
+    assert p.charge_time == 0.0, (
+        f"RMB should never charge (charge_time={p.charge_time})"
+    )
+    assert p.get_charge_level() == 0
+
+
+def test_lmb_with_rmb_held_does_not_charge(p: Player) -> None:
+    """LMB+RMB both held: rapid_fire suppresses charge (RMB wins)."""
+    p.input_rapid_fire = True
+    p.input_fire = True
+    p.update(1 / 60)
+    # Per the player FSM, charge_time only grows if input_fire AND NOT input_rapid_fire.
+    # So if both are held, RMB wins (rapid_fire=True suppresses charge_time growth).
+    assert p.charge_time == 0.0, (
+        f"With RMB held, charge_time must stay 0 (got {p.charge_time})"
+    )
+    assert p.wants_to_shoot is True

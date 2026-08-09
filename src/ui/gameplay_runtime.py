@@ -199,6 +199,10 @@ class GameplayRuntime:
         self._game_screen_size: tuple[int, int] = (WINDOW_W, WINDOW_H)
         # BLOQUE 22: extra polish
         self._muzzle_flash: float = 0.0  # 0..1 alpha of muzzle flash overlay
+        # BLOQUE 38: which input caused the most recent muzzle flash
+        # ("lmb" → warm yellow, "rmb" → warm orange) so RMB rapid fire is
+        # visually distinct from LMB single shots.
+        self._muzzle_flash_source: str = "lmb"
         self._charge_release_flash: float = 0.0  # 0..1 full-screen flash on charge fire
         self._boss_death_stage: int = 0  # 0 = alive, 1..3 = multi-stage explosion frames
         self._boss_death_timer: float = 0.0  # time since death for staging
@@ -424,6 +428,10 @@ class GameplayRuntime:
         self._last_charge_level = current_charge
         fire_now, special_now, charge_level = self._weapon.consume_pending()
         if fire_now or special_now:
+            # BLOQUE 38: tag the shot with its source so the muzzle flash
+            # can be tinted (RMB = orange, LMB = yellow) and the player
+            # gets clear visual feedback about which input is firing.
+            self._muzzle_flash_source = "rmb" if self._mouse_r_held else "lmb"
             self._spawn_player_bullet(charge_level=charge_level)
             if charge_level > 0:
                 self._play_sfx("shoot_charged", volume=0.6)
@@ -1885,22 +1893,34 @@ class GameplayRuntime:
 
         Three concentric ovals: outer (warm yellow), middle (white), inner (pure white).
         Scales and fades with self._muzzle_flash.
+        BLOQUE 38: tint is orange for RMB rapid fire, yellow for LMB.
         """
         # Position: nose of the ship — bigger sprite so adjust
         flash = self._muzzle_flash
         # Ship nose is at (player.x, player.y - 12) for the new bigger sprite
         cx = int(self._player.x + ox)
         cy = int(self._player.y - 12 + oy)
-        # Outer warm halo (yellow)
+        # BLOQUE 38: source-dependent tint.
+        if self._muzzle_flash_source == "rmb":
+            outer_rgb = (255, 170, 80)    # warm orange
+            mid_rgb = (255, 210, 150)
+            inner_rgb = (255, 240, 220)
+            ray_rgb = (255, 210, 140)
+        else:
+            outer_rgb = (255, 220, 100)   # warm yellow
+            mid_rgb = (255, 240, 200)
+            inner_rgb = (255, 255, 255)
+            ray_rgb = (255, 255, 200)
+        # Outer warm halo
         surf = pygame.Surface((28, 28), pygame.SRCALPHA)
         outer_alpha = int(min(255, 200 * flash))
-        pygame.draw.circle(surf, (255, 220, 100, outer_alpha), (14, 14), 13)
+        pygame.draw.circle(surf, (*outer_rgb, outer_alpha), (14, 14), 13)
         # Middle white core
         mid_alpha = int(min(255, 230 * flash))
-        pygame.draw.circle(surf, (255, 240, 200, mid_alpha), (14, 14), 7)
+        pygame.draw.circle(surf, (*mid_rgb, mid_alpha), (14, 14), 7)
         # Bright center
         inner_alpha = int(min(255, 255 * flash))
-        pygame.draw.circle(surf, (255, 255, 255, inner_alpha), (12, 12), 3)
+        pygame.draw.circle(surf, (*inner_rgb, inner_alpha), (12, 12), 3)
         # 4 directional rays
         for ang in (0, 90, 180, 270):
             r = math.radians(ang)
@@ -1908,7 +1928,7 @@ class GameplayRuntime:
             ry1 = 14 + int(math.sin(r) * 7)
             rx2 = 14 + int(math.cos(r) * 14)
             ry2 = 14 + int(math.sin(r) * 14)
-            pygame.draw.line(surf, (255, 255, 200, outer_alpha), (rx1, ry1), (rx2, ry2), 2)
+            pygame.draw.line(surf, (*ray_rgb, outer_alpha), (rx1, ry1), (rx2, ry2), 2)
         target.blit(surf, (cx - 14, cy - 14))
 
     def _draw_shield(self, target: pygame.Surface, ox: int, oy: int) -> None:

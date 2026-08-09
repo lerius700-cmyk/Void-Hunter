@@ -44,7 +44,7 @@ PLAYER_LIVES: int = 3
 PLAYER_CONTINUES: int = 1
 PLAYER_BOMBS: int = 3
 PLAYER_BOMBS_MAX: int = 4                 # +1 with special unlocked
-PLAYER_SPEED: float = 130.0               # px/s
+PLAYER_SPEED: float = 165.0               # px/s — BLOQUE 38: was 130
 PLAYER_FIRE_COOLDOWN_S: float = 0.10      # 12 shots/s at L1
 PLAYER_DASH_SPEED: float = 480.0          # px/s (3.7x walk)
 PLAYER_DASH_DURATION_S: float = 0.18
@@ -52,8 +52,8 @@ PLAYER_DASH_IFRAMES: int = 22             # at base level
 PLAYER_INVULN_FRAMES: int = 60            # post-hit
 PLAYER_DEATH_DURATION_S: float = 1.20
 PLAYER_RESPAWN_INVULN_S: float = 1.0
-# BLOQUE 35: nose smoothing — even snappier (28°/s, was 24)
-PLAYER_NOSE_LERP_PER_S: float = 28.0
+# BLOQUE 38: nose smoothing — snappier mouse follow (50°/s, was 28)
+PLAYER_NOSE_LERP_PER_S: float = 50.0
 # BLOQUE 35: sprite scale factors (visual reduction, hitbox unchanged)
 PLAYER_SPRITE_SCALE: float = 0.75   # player 32x24 -> 24x18
 BULLET_SPRITE_SCALE: float = 0.75   # player bullet 4x6 -> 3x5, etc.
