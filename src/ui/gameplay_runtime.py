@@ -182,6 +182,13 @@ class GameplayRuntime:
         self._bgm_started: bool = False
         # Player-state snapshot for transition SFX
         self._prev_player_state: PlayerState = PlayerState.IDLE
+        # BLOQUE 22: extra polish
+        self._muzzle_flash: float = 0.0  # 0..1 alpha of muzzle flash overlay
+        self._charge_release_flash: float = 0.0  # 0..1 full-screen flash on charge fire
+        self._boss_death_stage: int = 0  # 0 = alive, 1..3 = multi-stage explosion frames
+        self._boss_death_timer: float = 0.0  # time since death for staging
+        self._charge_release_shock: bool = False  # spawn expanding ring on charge release
+        self._boss_death_pos: tuple[float, float] = (0.0, 0.0)  # cached pos for staged burst
 
     def _play_sfx(self, name: str, volume: float = 1.0) -> None:
         if self._audio is not None:
@@ -237,6 +244,12 @@ class GameplayRuntime:
         self._enemy_flash.clear()
         self._shockwaves.clear()
         self._screen_flash = 0.0
+        # BLOQUE 22: reset polish state
+        self._muzzle_flash = 0.0
+        self._charge_release_flash = 0.0
+        self._boss_death_stage = 0
+        self._boss_death_timer = 0.0
+        self._boss_death_pos = (0.0, 0.0)
         self._t = 0.0
         self._wave_spawn_timer = 0.0
         self._is_wave_active = not self._is_boss
@@ -320,8 +333,15 @@ class GameplayRuntime:
             self._spawn_player_bullet(charge_level=charge_level)
             if charge_level > 0:
                 self._play_sfx("shoot_charged", volume=0.6)
+                # BLOQUE 22: charge release = big visual punch
+                self._charge_release_flash = 0.7
+                self._charge_release_shock = True
+                self._add_shockwave(self._player.x, self._player.y, 40.0)
+                self._shake.add_trauma(0.15)
             else:
                 self._play_sfx("shoot", volume=0.4)
+            # BLOQUE 22: muzzle flash overlay (decays in update)
+            self._muzzle_flash = 1.0 if charge_level == 0 else 1.6
         # Reset bomb output flag
         self._player.wants_to_bomb = False
 
@@ -640,21 +660,33 @@ class GameplayRuntime:
     def _on_boss_killed(self) -> None:
         if self._boss is None:
             return
-        score = BOSS_CONFIGS[self._boss.id].score
+        # Cache boss position before we release the reference
+        bx, by = self._boss.x, self._boss.y
+        boss_id = self._boss.id
+        score = BOSS_CONFIGS[boss_id].score
         self._scoring.on_kill(score, is_boss=True)
-        self._scoring.on_boss_defeated(BOSS_CONFIGS[self._boss.id].name)
-        self._emit_burst(self._boss.x, self._boss.y, count=64, kind="explosion")
-        # Multi-stage explosion
-        for delay_frames in (0, 4, 10):
-            pass  # particles will continue across hitstop frames
+        self._scoring.on_boss_defeated(BOSS_CONFIGS[boss_id].name)
+        # BLOQUE 22: multi-stage explosion (3 bursts staggered over 0.6s)
+        # Stage 1 — immediate
+        self._emit_burst(bx, by, count=48, kind="explosion")
+        self._emit_burst(bx, by, count=24, kind="shrapnel")
+        self._add_shockwave(bx, by, 100.0)
+        # Stage timer drives subsequent bursts
+        self._boss_death_stage = 1
+        self._boss_death_timer = 0.0
+        # Place a death_effect that we'll step in update
+        # (Using a small object instead of more state)
+        self._boss_death_pos = (bx, by)
+        # Heavy hitstop + slow-mo on first stage
         self._hitstop.trigger(20)
         self._shake.add_trauma(0.8)
         self._slowmo.trigger(0.30, 30)
+        # Full-screen flash (re-using _screen_flash for the bomb-style flash)
+        self._screen_flash = 1.0
         self._play_sfx("explode_boss", volume=1.0)
-        self._play_sfx("act_clear", volume=0.8)
         # Score popup
         self._score_popups.append(ScorePopup(
-            x=self._boss.x, y=self._boss.y - 8, vy=-40.0,
+            x=bx, y=by - 8, vy=-40.0,
             text=f"+{score}", color=(255, 220, 100),
             life=2.0, max_life=2.0,
         ))
@@ -717,6 +749,9 @@ class GameplayRuntime:
     def update(self, dt: float) -> None:
         if dt <= 0.0:
             return
+        # BLOQUE 22: boss death stages advance even during hitstop so the
+        # 3-stage explosion reads as a sequence instead of one frozen frame.
+        self._update_boss_death_stages(dt)
         # Hitstop pauses game logic
         if self._hitstop.is_active:
             self._hitstop.update()
@@ -743,6 +778,11 @@ class GameplayRuntime:
         self._update_shockwaves(effective_dt)
         if self._screen_flash > 0.0:
             self._screen_flash = max(0.0, self._screen_flash - effective_dt * 2.5)
+        # BLOQUE 22: muzzle flash + charge release flash decay
+        if self._muzzle_flash > 0.0:
+            self._muzzle_flash = max(0.0, self._muzzle_flash - effective_dt * 12.0)
+        if self._charge_release_flash > 0.0:
+            self._charge_release_flash = max(0.0, self._charge_release_flash - effective_dt * 4.0)
         self._check_player_death_explosion()
         self._particles.update(effective_dt)
         self._hitstop.update()
@@ -831,6 +871,30 @@ class GameplayRuntime:
             self._shake.add_trauma(0.5)
             self._play_sfx("explode_boss", volume=0.5)
             self._play_sfx("game_over", volume=0.7)
+
+    def _update_boss_death_stages(self, dt: float) -> None:
+        """BLOQUE 22: drive the 3-stage boss death explosion.
+
+        Stage 1 (0s):    big initial burst + shockwave
+        Stage 2 (0.15s): secondary burst + smaller ring
+        Stage 3 (0.40s): tertiary burst + act-clear SFX
+        """
+        if self._boss_death_stage == 0:
+            return
+        self._boss_death_timer += dt
+        bx, by = self._boss_death_pos
+        if self._boss_death_stage == 1 and self._boss_death_timer >= 0.15:
+            self._boss_death_stage = 2
+            self._emit_burst(bx, by, count=32, kind="explosion")
+            self._emit_burst(bx, by, count=16, kind="fire")
+            self._add_shockwave(bx, by, 70.0)
+            self._shake.add_trauma(0.4)
+        elif self._boss_death_stage == 2 and self._boss_death_timer >= 0.40:
+            self._boss_death_stage = 3
+            self._emit_burst(bx, by, count=24, kind="smoke")
+            self._emit_burst(bx, by, count=12, kind="debris")
+            self._add_shockwave(bx, by, 50.0)
+            self._play_sfx("act_clear", volume=0.8)
 
     def _maybe_drop_powerup(self, e: Enemy) -> None:
         """Roll for a power-up drop on enemy kill (per ENEMY_CONFIGS)."""
@@ -952,6 +1016,12 @@ class GameplayRuntime:
             flash = pygame.Surface(target.get_size(), pygame.SRCALPHA)
             flash.fill((255, 255, 255, flash_alpha))
             target.blit(flash, (0, 0))
+        # BLOQUE 22: charge release flash (yellow-white overlay, fast decay)
+        if self._charge_release_flash > 0.0:
+            flash_alpha = int(180 * self._charge_release_flash)
+            flash = pygame.Surface(target.get_size(), pygame.SRCALPHA)
+            flash.fill((255, 240, 180, flash_alpha))
+            target.blit(flash, (0, 0))
 
     def _draw_wave_indicator(self, target: pygame.Surface) -> None:
         """Show ACT/WAVE label in the top-center between HUD sections."""
@@ -1001,11 +1071,17 @@ class GameplayRuntime:
                 pygame.draw.rect(target, (255, 255, 255), (0, h - 5, w, 5), 2)
 
     def _draw_bullets_with_glow(self, target: pygame.Surface, ox: int, oy: int) -> None:
-        """Draw bullets with a soft glow halo + trail behind each one."""
+        """Draw bullets with a soft glow halo + trail behind each one.
+
+        BLOQUE 22: bigger / brighter glows and longer trails so bullets read clearly
+        against any background.
+        """
         from src.systems.projectile import (
             BULLET_BOSS, BULLET_ENEMY, BULLET_PLAYER, BULLET_PLAYER_CHARGED,
         )
-        # Glow pass: draw larger soft circles first (cheap halo via translucent surface)
+        # Outer halo (large, soft, very transparent)
+        outer = pygame.Surface(target.get_size(), pygame.SRCALPHA)
+        # Inner glow (smaller, brighter)
         glow = pygame.Surface(target.get_size(), pygame.SRCALPHA)
         # Trail pass: draw fading line segments behind each bullet
         trail = pygame.Surface(target.get_size(), pygame.SRCALPHA)
@@ -1015,32 +1091,53 @@ class GameplayRuntime:
             cx, cy = int(p.x) + ox, int(p.y) + oy
             # Glow color + radius by bullet kind
             if p.kind == BULLET_PLAYER:
-                glow_color = (255, 220, 100, 70)
-                radius = 5
-                trail_color = (255, 220, 100, 180)
+                outer_color = (255, 200, 80, 30)
+                glow_color = (255, 230, 120, 100)
+                radius_outer = 9
+                radius_glow = 5
+                trail_color = (255, 220, 100, 200)
+                trail_len = 0.06
+                trail_w = 2
             elif p.kind == BULLET_PLAYER_CHARGED:
-                glow_color = (255, 240, 200, 130)
-                radius = 8
-                trail_color = (255, 240, 200, 220)
+                outer_color = (255, 220, 150, 60)
+                glow_color = (255, 250, 220, 160)
+                radius_outer = 13
+                radius_glow = 8
+                trail_color = (255, 240, 200, 240)
+                trail_len = 0.10
+                trail_w = 3
             elif p.kind == BULLET_ENEMY:
-                glow_color = (255, 100, 100, 70)
-                radius = 5
-                trail_color = (255, 100, 100, 180)
+                outer_color = (255, 60, 60, 30)
+                glow_color = (255, 130, 130, 100)
+                radius_outer = 9
+                radius_glow = 5
+                trail_color = (255, 100, 100, 200)
+                trail_len = 0.05
+                trail_w = 2
             elif p.kind == BULLET_BOSS:
-                glow_color = (220, 120, 255, 90)
-                radius = 7
-                trail_color = (220, 120, 255, 200)
+                outer_color = (180, 80, 255, 35)
+                glow_color = (220, 140, 255, 110)
+                radius_outer = 11
+                radius_glow = 7
+                trail_color = (220, 120, 255, 220)
+                trail_len = 0.07
+                trail_w = 2
             else:
-                glow_color = (255, 255, 255, 70)
-                radius = 5
-                trail_color = (255, 255, 255, 180)
-            pygame.draw.circle(glow, glow_color, (cx, cy), radius)
-            # Trail: a line from current position to (pos - vx*0.05, pos - vy*0.05)
-            # Inverted because the bullet is moving away from where it was
-            tx = int(p.x - p.vx * 0.04) + ox
-            ty = int(p.y - p.vy * 0.04) + oy
-            pygame.draw.line(trail, trail_color, (cx, cy), (tx, ty), 2)
+                outer_color = (255, 255, 255, 30)
+                glow_color = (255, 255, 255, 100)
+                radius_outer = 9
+                radius_glow = 5
+                trail_color = (255, 255, 255, 200)
+                trail_len = 0.05
+                trail_w = 2
+            pygame.draw.circle(outer, outer_color, (cx, cy), radius_outer)
+            pygame.draw.circle(glow, glow_color, (cx, cy), radius_glow)
+            # Trail: a line from current position back along velocity
+            tx = int(p.x - p.vx * trail_len) + ox
+            ty = int(p.y - p.vy * trail_len) + oy
+            pygame.draw.line(trail, trail_color, (cx, cy), (tx, ty), trail_w)
         target.blit(trail, (0, 0))
+        target.blit(outer, (0, 0))
         target.blit(glow, (0, 0))
         # Solid bullets on top
         self._bullets.draw(target)
@@ -1050,7 +1147,7 @@ class GameplayRuntime:
             if not p.active:
                 continue
             cx, cy = int(p.x) + ox, int(p.y) + oy
-            pygame.draw.circle(center, (255, 255, 255, 200), (cx, cy), 1)
+            pygame.draw.circle(center, (255, 255, 255, 220), (cx, cy), 1)
         target.blit(center, (0, 0))
 
     def _draw_score_popups(self, target: pygame.Surface, ox: int, oy: int) -> None:
@@ -1109,6 +1206,9 @@ class GameplayRuntime:
         rotated = pygame.transform.rotate(surf, -self._player.current_tilt)
         rect = rotated.get_rect(center=(int(self._player.x + ox), int(self._player.y + oy)))
         target.blit(rotated, rect)
+        # BLOQUE 22: muzzle flash overlay — bright oval at the player nose
+        if self._muzzle_flash > 0.0:
+            self._draw_muzzle_flash(target, ox, oy)
         # Afterimage trail
         for tx, ty, age in self._player.afterimage:
             alpha = max(0, int(255 * (1 - age / self._player.AFTERIMAGE_LIFE)))
@@ -1171,6 +1271,38 @@ class GameplayRuntime:
             self._particles.emit(P_SPARK, spark_x, spark_y,
                                   vx=spread * 5.0, vy=20.0,
                                   life=0.15, radius=1.0)
+
+    def _draw_muzzle_flash(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        """BLOQUE 22: bright multi-layer flash at the player nose.
+
+        Three concentric ovals: outer (warm yellow), middle (white), inner (pure white).
+        Scales and fades with self._muzzle_flash.
+        """
+        # Position: nose of the ship (12, 0) in the 24x18 surface
+        # We draw in screen space so we can use bigger radii
+        flash = self._muzzle_flash
+        # Ship nose is at (player.x, player.y - 8) before tilt, near top of ship
+        cx = int(self._player.x + ox)
+        cy = int(self._player.y - 8 + oy)
+        # Outer warm halo (yellow)
+        surf = pygame.Surface((24, 24), pygame.SRCALPHA)
+        outer_alpha = int(min(255, 200 * flash))
+        pygame.draw.circle(surf, (255, 220, 100, outer_alpha), (12, 12), 11)
+        # Middle white core
+        mid_alpha = int(min(255, 230 * flash))
+        pygame.draw.circle(surf, (255, 240, 200, mid_alpha), (12, 12), 6)
+        # Bright center
+        inner_alpha = int(min(255, 255 * flash))
+        pygame.draw.circle(surf, (255, 255, 255, inner_alpha), (12, 12), 3)
+        # 4 directional rays
+        for ang in (0, 90, 180, 270):
+            r = math.radians(ang)
+            rx1 = 12 + int(math.cos(r) * 6)
+            ry1 = 12 + int(math.sin(r) * 6)
+            rx2 = 12 + int(math.cos(r) * 12)
+            ry2 = 12 + int(math.sin(r) * 12)
+            pygame.draw.line(surf, (255, 255, 200, outer_alpha), (rx1, ry1), (rx2, ry2), 2)
+        target.blit(surf, (cx - 12, cy - 12))
 
     def _draw_charge_indicator(self, target: pygame.Surface, level: int, ox: int, oy: int) -> None:
         """Bright pulsing ring around the player when fully charged."""

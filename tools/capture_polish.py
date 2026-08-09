@@ -1,0 +1,114 @@
+"""Capture polished-state frames for BLOQUE 22 visual verification.
+
+Renders a single frame with each polish effect forced active so we can confirm:
+  1. Muzzle flash on player
+  2. Charge release flash (yellow full-screen overlay)
+  3. Boss death multi-stage explosion
+  4. Bomb screen flash
+  5. Shockwave ring
+"""
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+# Headless before pygame import
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+import pygame  # noqa: E402
+
+from src.core.settings import INTERNAL_H, INTERNAL_W  # noqa: E402
+from src.core.scene_manager import GameState  # noqa: E402
+from src.entities.enemies import EnemyKind  # noqa: E402
+from src.ui.gameplay_runtime import GameplayRuntime  # noqa: E402
+
+
+def _noop(_state: GameState) -> None:
+    pass
+
+
+def main() -> None:
+    pygame.init()
+    out_dir = ROOT / "tools" / "playtest_out"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
+
+    # 1. Idle frame (no polish)
+    rt = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt.on_enter()
+    rt._player.x, rt._player.y = INTERNAL_W / 2, INTERNAL_H - 60
+    rt.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_01_idle.png"))
+    print("saved polish_01_idle.png")
+
+    # 2. Muzzle flash (player just fired)
+    rt._muzzle_flash = 1.0
+    # Spawn a player bullet for visual context
+    rt._bullets.spawn(
+        0,  # BULLET_PLAYER
+        rt._player.x, rt._player.y - 12, 0.0, -480.0,
+        damage=1, owner=1,  # OWNER_PLAYER
+    )
+    rt.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_02_muzzle_flash.png"))
+    print("saved polish_02_muzzle_flash.png")
+
+    # 3. Charge release flash (yellow full-screen)
+    rt2 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt2.on_enter()
+    rt2._charge_release_flash = 0.6
+    rt2._add_shockwave(rt2._player.x, rt2._player.y, 30.0)
+    rt2.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_03_charge_release.png"))
+    print("saved polish_03_charge_release.png")
+
+    # 4. Bomb screen flash
+    rt3 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt3.on_enter()
+    rt3._screen_flash = 0.9
+    rt3._add_shockwave(rt3._player.x, rt3._player.y, 60.0)
+    rt3.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_04_bomb_flash.png"))
+    print("saved polish_04_bomb_flash.png")
+
+    # 5. Boss death multi-stage explosion (mid-stage 1)
+    rt4 = GameplayRuntime(transition_to=_noop, is_boss=True, act=1)
+    rt4.on_enter()
+    rt4._on_boss_killed()
+    # Step a few frames so stage 1 is established and shockwave expanded
+    for _ in range(6):
+        rt4.update(1.0 / 60)
+    rt4.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_05_boss_death.png"))
+    print("saved polish_05_boss_death.png")
+
+    # 6. Bullets with bigger glow
+    rt5 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt5.on_enter()
+    # Spawn a vertical fan of player bullets
+    for dx in (-6, 0, 6):
+        rt5._bullets.spawn(
+            0, INTERNAL_W / 2 + dx, INTERNAL_H - 100, 0.0, -480.0,
+            damage=1, owner=1,
+        )
+    # And a couple of enemy bullets going up
+    for dx in (-20, 20):
+        rt5._bullets.spawn(
+            1, INTERNAL_W / 2 + dx, 80, dx * 0.5, 200.0,
+            damage=1, owner=2,  # OWNER_ENEMY
+        )
+    rt5.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_06_bullets_glow.png"))
+    print("saved polish_06_bullets_glow.png")
+
+    print("Done. Saved 6 frames in tools/playtest_out/")
+    pygame.quit()
+
+
+if __name__ == "__main__":
+    main()

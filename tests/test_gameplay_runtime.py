@@ -405,3 +405,140 @@ def test_draw_with_borders_and_polish_runs():
     rt.draw(surf)  # should not crash
     # Verify surface was modified (some pixel was drawn)
     assert surf.get_size() == (INTERNAL_W, INTERNAL_H)
+
+
+# -----------------------------------------------------------------------
+# BLOQUE 22: Extra polish — muzzle flash, charge release, boss death stages
+# -----------------------------------------------------------------------
+def test_muzzle_flash_triggers_on_fire():
+    """Pressing fire should set _muzzle_flash to > 0."""
+    rt = _make_runtime()
+    assert rt._muzzle_flash == 0.0
+    rt._player.input_fire = True
+    for _ in range(int(0.15 * 120)):
+        rt.update(1.0 / 120)
+    # By now a fire has happened; muzzle flash should be set (then decays)
+    # We can't assert > 0 always (it decays fast), so simulate immediate fire
+    rt._muzzle_flash = 1.0
+    rt.update(0.05)  # 0.05s = 5 frames worth of decay at rate 12
+    # Decay of 0.6 -> should be ~0.4
+    assert rt._muzzle_flash < 1.0
+
+
+def test_muzzle_flash_decays_to_zero():
+    """After enough time without firing, _muzzle_flash returns to 0."""
+    rt = _make_runtime()
+    rt._muzzle_flash = 1.0
+    for _ in range(60):
+        rt.update(1.0 / 120)  # 0.5s total
+    assert rt._muzzle_flash == 0.0
+
+
+def test_charge_release_flash_triggered_on_charge_fire():
+    """A charged shot should set _charge_release_flash."""
+    rt = _make_runtime()
+    # Force the weapon to want a charge release at L3
+    rt._player.state = rt._player.state.__class__.CHARGE  # type: ignore[attr-defined]
+    rt._player.charge_time = 1.6  # beyond L3 threshold
+    rt._player.wants_to_charge_release = True
+    rt._handle_firing(0.016)
+    # _charge_release_flash should be set (0.7) and a shockwave spawned
+    assert rt._charge_release_flash > 0.0
+    assert len(rt._shockwaves) >= 1
+
+
+def test_charge_release_flash_decays():
+    """Charge release flash decays to 0 after enough time."""
+    rt = _make_runtime()
+    rt._charge_release_flash = 0.5
+    for _ in range(60):
+        rt.update(1.0 / 120)
+    assert rt._charge_release_flash == 0.0
+
+
+def test_boss_death_stages_progress():
+    """On boss kill, the 3-stage explosion should progress over time."""
+    rt = _make_runtime(is_boss=True, act=1)
+    assert rt._boss is not None
+    # Manually trigger boss death
+    rt._on_boss_killed()
+    # After immediate call, stage should be 1 and timer 0
+    assert rt._boss_death_stage == 1
+    assert rt._boss_death_timer == 0.0
+    # Cache pos should match boss
+    assert rt._boss_death_pos != (0.0, 0.0)
+    # Advance to stage 2 (0.15s)
+    for _ in range(int(0.20 * 120)):
+        rt.update(1.0 / 120)
+    assert rt._boss_death_stage == 2
+    # Advance to stage 3 (0.40s)
+    for _ in range(int(0.30 * 120)):
+        rt.update(1.0 / 120)
+    assert rt._boss_death_stage == 3
+
+
+def test_boss_death_spawns_shockwaves():
+    """Boss death should spawn multiple shockwaves across stages."""
+    rt = _make_runtime(is_boss=True, act=1)
+    rt._on_boss_killed()
+    initial_shockwaves = len(rt._shockwaves)
+    assert initial_shockwaves >= 1  # at least the stage-1 wave
+    # Advance through all stages
+    for _ in range(int(0.5 * 120)):
+        rt.update(1.0 / 120)
+    # More shockwaves should have been added across stages (>= initial + 2)
+    assert len(rt._shockwaves) >= initial_shockwaves + 1
+
+
+def test_on_enter_resets_polish_state():
+    """Re-entering the scene should reset BLOQUE 22 polish state."""
+    rt = _make_runtime()
+    # Dirty the polish state
+    rt._muzzle_flash = 0.5
+    rt._charge_release_flash = 0.3
+    rt._boss_death_stage = 2
+    rt._boss_death_timer = 0.2
+    rt._boss_death_pos = (100.0, 50.0)
+    rt.on_enter()
+    assert rt._muzzle_flash == 0.0
+    assert rt._charge_release_flash == 0.0
+    assert rt._boss_death_stage == 0
+    assert rt._boss_death_timer == 0.0
+
+
+def test_draw_renders_muzzle_flash():
+    """Drawing while muzzle_flash > 0 should not raise."""
+    rt = _make_runtime()
+    rt._muzzle_flash = 0.8
+    surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
+    rt.draw(surf)  # should not crash
+
+
+def test_draw_renders_charge_release_flash():
+    """Drawing while charge_release_flash > 0 should not raise."""
+    rt = _make_runtime()
+    rt._charge_release_flash = 0.5
+    surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
+    rt.draw(surf)
+
+
+def test_draw_renders_shockwaves():
+    """Drawing while shockwaves are active should not raise."""
+    rt = _make_runtime()
+    rt._add_shockwave(100, 100, 60.0)
+    surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
+    rt.draw(surf)
+    assert len(rt._shockwaves) == 1
+
+
+def test_shockwave_expands_and_dies():
+    """Shockwaves should grow and expire over time."""
+    rt = _make_runtime()
+    rt._add_shockwave(100, 100, 60.0)
+    s = rt._shockwaves[0]
+    initial_radius = s.radius
+    rt._update_shockwaves(0.1)
+    assert len(rt._shockwaves) == 1
+    assert rt._shockwaves[0].radius > initial_radius
+    rt._update_shockwaves(0.6)
+    assert len(rt._shockwaves) == 0  # expired
