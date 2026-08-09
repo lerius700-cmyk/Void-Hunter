@@ -3,99 +3,44 @@ VOID HUNTER 10-MIN SMART PLAYTHROUGH REPORT
 ============================================================
 frames                    : 72000
 game_time_s               : 599.9916666666667
-wall_time_s               : 46.1884547000227
-kills                     : 74
-deaths                    : 16
-bombs_used                : 64
-bullets_fired             : 6922
-score                     : 300
-max_multiplier            : 16
+wall_time_s               : 16.571203399973456
+kills                     : 15
+deaths                    : 3
+bombs_used                : 29
+bullets_fired             : 2122
+score                     : 0
+max_multiplier            : 4
 bosses_killed             : 0
 waves_cleared             : 0
-boss_fights_reached       : 24
+boss_fights_reached       : 8
 
-State transitions (80):
-  t=32.4s  gameplay -> game_over
-  t=32.4s  GAME_OVER (run #1 ended)
-  t=57.5s  gameplay -> boss_intro
-  t=62.0s  -> BOSS_FIGHT
-  t=62.0s  boss_intro -> boss_fight
-  t=62.0s  -> BOSS_FIGHT
-  t=68.5s  boss_fight -> game_over
-  t=68.5s  GAME_OVER (run #2 ended)
-  t=93.5s  gameplay -> boss_intro
-  t=98.0s  -> BOSS_FIGHT
-  t=98.0s  boss_intro -> boss_fight
-  t=98.0s  -> BOSS_FIGHT
-  t=104.5s  boss_fight -> game_over
-  t=104.5s  GAME_OVER (run #3 ended)
-  t=129.6s  gameplay -> boss_intro
-  t=134.1s  -> BOSS_FIGHT
-  t=134.1s  boss_intro -> boss_fight
-  t=134.1s  -> BOSS_FIGHT
-  t=140.6s  boss_fight -> game_over
-  t=140.6s  GAME_OVER (run #4 ended)
-  t=165.6s  gameplay -> boss_intro
-  t=170.1s  -> BOSS_FIGHT
-  t=170.1s  boss_intro -> boss_fight
-  t=170.1s  -> BOSS_FIGHT
-  t=176.6s  boss_fight -> game_over
-  t=176.6s  GAME_OVER (run #5 ended)
-  t=201.6s  gameplay -> boss_intro
-  t=206.1s  -> BOSS_FIGHT
-  t=206.1s  boss_intro -> boss_fight
-  t=206.2s  -> BOSS_FIGHT
-  t=212.6s  boss_fight -> game_over
-  t=212.6s  GAME_OVER (run #6 ended)
-  t=255.2s  gameplay -> game_over
-  t=255.2s  GAME_OVER (run #7 ended)
-  t=280.2s  gameplay -> boss_intro
-  t=284.8s  -> BOSS_FIGHT
-  t=284.8s  boss_intro -> boss_fight
-  t=284.8s  -> BOSS_FIGHT
-  t=291.2s  boss_fight -> game_over
-  t=291.2s  GAME_OVER (run #8 ended)
-  t=316.3s  gameplay -> boss_intro
-  t=320.8s  -> BOSS_FIGHT
-  t=320.8s  boss_intro -> boss_fight
-  t=320.8s  -> BOSS_FIGHT
-  t=327.3s  boss_fight -> game_over
-  t=327.3s  GAME_OVER (run #9 ended)
-  t=376.4s  gameplay -> boss_intro
-  t=380.9s  -> BOSS_FIGHT
-  t=380.9s  boss_intro -> boss_fight
-  t=380.9s  -> BOSS_FIGHT
-  t=387.4s  boss_fight -> game_over
-  t=387.4s  GAME_OVER (run #10 ended)
-  t=412.5s  gameplay -> boss_intro
-  t=417.0s  -> BOSS_FIGHT
-  t=417.0s  boss_intro -> boss_fight
-  t=417.0s  -> BOSS_FIGHT
-  t=423.5s  boss_fight -> game_over
-  t=423.5s  GAME_OVER (run #11 ended)
-  t=435.0s  gameplay -> game_over
-  t=435.1s  GAME_OVER (run #12 ended)
-  t=460.1s  gameplay -> boss_intro
-  t=464.6s  -> BOSS_FIGHT
-  t=464.6s  boss_intro -> boss_fight
-  t=464.6s  -> BOSS_FIGHT
-  t=471.1s  boss_fight -> game_over
-  t=471.1s  GAME_OVER (run #13 ended)
-  t=503.1s  gameplay -> game_over
-  t=503.1s  GAME_OVER (run #14 ended)
-  t=547.7s  gameplay -> boss_intro
-  t=552.2s  -> BOSS_FIGHT
-  t=552.2s  boss_intro -> boss_fight
-  t=552.2s  -> BOSS_FIGHT
-  t=558.7s  boss_fight -> game_over
-  t=558.7s  GAME_OVER (run #15 ended)
-  t=583.7s  gameplay -> boss_intro
-  t=588.2s  -> BOSS_FIGHT
-  t=588.2s  boss_intro -> boss_fight
-  t=588.2s  -> BOSS_FIGHT
-  t=594.7s  boss_fight -> game_over
-  t=594.7s  GAME_OVER (run #16 ended)
+State transitions (22):
+  t=25.0s  gameplay -> boss_intro
+  t=29.5s  -> BOSS_FIGHT
+  t=29.5s  boss_intro -> boss_fight
+  t=29.5s  -> BOSS_FIGHT
+  t=164.2s  boss_fight -> game_over
+  t=164.2s  GAME_OVER (run #1 ended)
+  t=189.2s  gameplay -> boss_intro
+  t=193.7s  -> BOSS_FIGHT
+  t=193.7s  boss_intro -> boss_fight
+  t=193.7s  -> BOSS_FIGHT
+  t=328.4s  boss_fight -> game_over
+  t=328.4s  GAME_OVER (run #2 ended)
+  t=353.4s  gameplay -> boss_intro
+  t=357.9s  -> BOSS_FIGHT
+  t=357.9s  boss_intro -> boss_fight
+  t=357.9s  -> BOSS_FIGHT
+  t=492.6s  boss_fight -> game_over
+  t=492.6s  GAME_OVER (run #3 ended)
+  t=517.7s  gameplay -> boss_intro
+  t=522.2s  -> BOSS_FIGHT
+  t=522.2s  boss_intro -> boss_fight
+  t=522.2s  -> BOSS_FIGHT
 
-Anomalies (0):
+Anomalies (3):
+  t=164.2: lives went negative (-1)
+  t=328.4: lives went negative (-1)
+  t=492.6: lives went negative (-1)
 
 ============================================================

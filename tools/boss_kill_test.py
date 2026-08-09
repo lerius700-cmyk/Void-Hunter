@@ -60,15 +60,15 @@ for f in range(target_frames):
             rt._player.input_left = False
             rt._player.input_right = False
 
-    # Aggressive dash in boss fight
-    if game_time - last_dash >= 0.4:
+    # Aggressive dash in boss fight — but only when REALLY imminent
+    if game_time - last_dash >= 0.6:
         px, py = rt._player.x, rt._player.y
         for p in rt._bullets.pool:
             if not p.active or p.owner not in (OWNER_ENEMY, OWNER_BOSS):
                 continue
-            fut_x = p.x + p.vx * 0.4
-            fut_y = p.y + p.vy * 0.4
-            if abs(fut_x - px) < 18 and abs(fut_y - py) < 18:
+            fut_x = p.x + p.vx * 0.15  # only 0.15s lookahead
+            fut_y = p.y + p.vy * 0.15
+            if abs(fut_x - px) < 10 and abs(fut_y - py) < 10:
                 rt._player.input_dash = True
                 last_dash = game_time
                 break
@@ -84,6 +84,12 @@ for f in range(target_frames):
     # Check boss death
     if rt._boss is None or not rt._boss.active:
         print(f"  BOSS KILLED at t={game_time:.1f}s!")
+        print(f"    state={game.scenes.current_state} "
+              f"player_hp={rt._player.hp} lives={rt._player.lives} "
+              f"is_dead={rt._player.is_dead} boss_killed={getattr(rt, '_boss_killed_this_frame', 'N/A')}")
+        # Force another frame to see if GAME_OVER transition overrides
+        rt.update(1.0 / 120.0)
+        print(f"  After extra frame: state={game.scenes.current_state}")
         kills = 1
         break
 
@@ -98,6 +104,8 @@ if kills == 1:
         print("[boss test] PASS — transitioned to ACT_CLEARED after boss kill")
     else:
         print(f"[boss test] NOTE — state after kill: {game.scenes.current_state}")
+        # Debug: why is player dead?
+        print(f"  player.is_dead={rt._player.is_dead} hp={rt._player.hp} lives={rt._player.lives}")
 else:
     if rt._boss and rt._boss.active:
         print(f"[boss test] FAIL — boss still alive at t={game_time:.1f}s "

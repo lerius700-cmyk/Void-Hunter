@@ -699,6 +699,10 @@ class GameplayRuntime:
     def _on_boss_killed(self) -> None:
         if self._boss is None:
             return
+        # BLOQUE 28: mark this frame as a boss kill so _check_player_death
+        # doesn't override the win transition with GAME_OVER if the player
+        # also dies at the same time.
+        self._boss_killed_this_frame = True
         # Cache boss position before we release the reference
         bx, by = self._boss.x, self._boss.y
         boss_id = self._boss.id
@@ -777,10 +781,19 @@ class GameplayRuntime:
     # Player death
     # ------------------------------------------------------------------
     def _check_player_death(self) -> None:
-        if self._player.is_dead:
-            self._scoring.on_death()
-            from src.core.scene_manager import GameState
-            self._transition_to(GameState.GAME_OVER)
+        if not self._player.is_dead:
+            return
+        # BLOQUE 28: only trigger GAME_OVER when lives run out, not on every death.
+        # Player can die and respawn while lives > 0.
+        if self._player.lives >= 0:
+            return
+        # BLOQUE 28: if we just won the boss fight in the same frame,
+        # don't override the ACT_CLEARED transition with GAME_OVER.
+        if getattr(self, "_boss_killed_this_frame", False):
+            return
+        self._scoring.on_death()
+        from src.core.scene_manager import GameState
+        self._transition_to(GameState.GAME_OVER)
 
     # ------------------------------------------------------------------
     # Update loop
@@ -788,6 +801,8 @@ class GameplayRuntime:
     def update(self, dt: float) -> None:
         if dt <= 0.0:
             return
+        # BLOQUE 28: reset per-frame flags
+        self._boss_killed_this_frame = False
         # BLOQUE 22: boss death stages advance even during hitstop so the
         # 3-stage explosion reads as a sequence instead of one frozen frame.
         self._update_boss_death_stages(dt)

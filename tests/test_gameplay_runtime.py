@@ -242,12 +242,19 @@ def test_draw_produces_non_empty_surface():
 
 
 def test_player_death_transitions_to_game_over():
+    """BLOQUE 28: GAME_OVER only when lives run out, not on every death."""
     state_holder = {"current": None}
     def transition(state):
         state_holder["current"] = state
     rt = GameplayRuntime(transition_to=transition, is_boss=False, act=1)
     rt.on_enter()
+    # With lives >= 0, dying should NOT trigger GAME_OVER (player respawns)
     rt._player.is_dead = True
+    rt._player.lives = 3
+    rt._check_player_death()
+    assert state_holder["current"] is None  # No transition yet
+    # Only when lives go negative should GAME_OVER trigger
+    rt._player.lives = -1
     rt._check_player_death()
     assert state_holder["current"] == GameState.GAME_OVER
 
