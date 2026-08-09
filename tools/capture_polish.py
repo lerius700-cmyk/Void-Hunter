@@ -232,7 +232,52 @@ def main() -> None:
     pygame.image.save(surf, str(out_dir / "polish_16_kill_counter.png"))
     print("saved polish_16_kill_counter.png")
 
-    print("Done. Saved 16 frames in tools/playtest_out/")
+    # 17. BLOQUE 30: Star Fox-style player ship (rotated 30° right)
+    rt17 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt17.on_enter()
+    rt17._player.x = INTERNAL_W / 2
+    rt17._player.y = INTERNAL_H - 60
+    rt17._player.nose_angle = 30.0  # pointing right-up
+    rt17._t = 0.5
+    rt17._update_nose_angle()
+    # Advance smoothing
+    for _ in range(20):
+        rt17.update(1.0 / 60)
+    rt17.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_17_starfox_player.png"))
+    print("saved polish_17_starfox_player.png")
+
+    # 18. BLOQUE 30: charged beam fired (L3)
+    rt18 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt18.on_enter()
+    rt18._player.x = INTERNAL_W / 2
+    rt18._player.y = INTERNAL_H - 80
+    rt18._player.nose_angle = 0.0
+    # Spawn a beam bullet
+    from src.systems.projectile import BULLET_PLAYER_BEAM
+    rt18._bullets.spawn(
+        BULLET_PLAYER_BEAM,
+        rt18._player.x, rt18._player.y - 16, 0.0, -700.0,
+        damage=8, owner=0, pierce=99, has_trail=True,
+        trail_color=(255, 255, 255),
+    )
+    rt18.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_18_charged_beam.png"))
+    print("saved polish_18_charged_beam.png")
+
+    # 19. BLOQUE 30: Star Fox-style enemy ships
+    rt19 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt19.on_enter()
+    from src.entities.enemies import EnemyKind
+    # Spawn 3 different enemy types
+    e1 = rt19._enemies.spawn(EnemyKind.SCOUT, 60, 100)
+    e2 = rt19._enemies.spawn(EnemyKind.CRUISER, INTERNAL_W / 2, 100)
+    e3 = rt19._enemies.spawn(EnemyKind.HEAVY, INTERNAL_W - 60, 100)
+    rt19.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_19_starfox_enemies.png"))
+    print("saved polish_19_starfox_enemies.png")
+
+    print("Done. Saved 19 frames in tools/playtest_out/")
     pygame.quit()
 
 

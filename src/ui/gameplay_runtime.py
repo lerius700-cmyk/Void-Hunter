@@ -33,7 +33,8 @@ from src.systems.particle_engine import (
     P_SMOKE, P_SPARK, ParticleEngine,
 )
 from src.systems.projectile import (
-    BULLET_BOSS, BULLET_ENEMY, BULLET_PLAYER, BULLET_PLAYER_CHARGED,
+    BULLET_BOSS, BULLET_ENEMY, BULLET_PLAYER, BULLET_PLAYER_BEAM,
+    BULLET_PLAYER_CHARGED,
     OWNER_BOSS, OWNER_ENEMY, OWNER_PLAYER, ProjectilePool,
 )
 from src.systems.scoring_system import ScoringSystem
@@ -185,6 +186,7 @@ class GameplayRuntime:
         # BLOQUE 29: mouse aiming state
         self._mouse_x: float = INTERNAL_W / 2
         self._mouse_y: float = INTERNAL_H / 2
+        self._mouse_held: bool = False  # BLOQUE 30: LMB held state
         from src.core.settings import WINDOW_H, WINDOW_W
         self._game_screen_size: tuple[int, int] = (WINDOW_W, WINDOW_H)
         # BLOQUE 22: extra polish
@@ -270,6 +272,7 @@ class GameplayRuntime:
         # BLOQUE 29: reset mouse position
         self._mouse_x = INTERNAL_W / 2
         self._mouse_y = INTERNAL_H / 4
+        self._mouse_held = False
         self._t = 0.0
         self._wave_spawn_timer = 0.0
         self._is_wave_active = not self._is_boss
@@ -324,18 +327,27 @@ class GameplayRuntime:
             scale_y = INTERNAL_H / display_h
             self._mouse_x = mouse_x_disp * scale_x
             self._mouse_y = mouse_y_disp * scale_y
+            # BLOQUE 30: left mouse button = fire (held = charge)
+            # pygame.mouse.get_pressed(): (left, middle, right)
+            mouse_buttons = pygame.mouse.get_pressed()
+            self._mouse_held = bool(mouse_buttons[0])
         except (AttributeError, pygame.error):
             # No display yet (headless); use center
             self._mouse_x = INTERNAL_W / 2
             self._mouse_y = INTERNAL_H / 2
+            self._mouse_held = False
+        # BLOQUE 30: set input_fire based on mouse hold (continuous)
+        # Holding the button = charging. Release = fire.
+        self._player.input_fire = self._mouse_held
         for event in pygame.event.get(pygame.KEYDOWN):
-            if event.key == pygame.K_j:
-                self._player.input_fire = True
-            elif event.key == pygame.K_k:
+            if event.key == pygame.K_k:
                 # BLOQUE 29: single-press dash (one-shot, consumed)
                 self._player.input_dash = True
             elif event.key == pygame.K_l:
                 self._player.input_bomb = True
+            elif event.key == pygame.K_j:
+                # Legacy: J also fires (for testing)
+                self._player.input_fire = True
             elif event.key == pygame.K_ESCAPE:
                 from src.core.scene_manager import GameState
                 self._transition_to(GameState.PAUSE)
@@ -373,6 +385,16 @@ class GameplayRuntime:
     # Firing
     # ------------------------------------------------------------------
     def _handle_firing(self, dt: float) -> None:
+        # BLOQUE 30: at L3 max charge, fire beam continuously while LMB held
+        current_charge = self._player.get_charge_level()
+        if (current_charge >= 3 and self._player.state == PlayerState.CHARGE
+                and self._mouse_held):
+            # Continuous beam: spawn every 0.08s
+            self._beam_timer = getattr(self, "_beam_timer", 0.0)
+            self._beam_timer += dt
+            if self._beam_timer >= 0.08:
+                self._beam_timer = 0.0
+                self._spawn_player_bullet(charge_level=3)
         # Charge release (player.wants_to_charge_release)
         if self._player.wants_to_charge_release:
             charge_level = self._player.get_charge_level()
@@ -392,7 +414,6 @@ class GameplayRuntime:
             self._emit_burst(self._player.x, self._player.y, count=24, kind="spark")
             self._play_sfx("bomb", volume=0.9)
         # Charge SFX: rising pitch as charge level increases
-        current_charge = self._player.get_charge_level()
         if current_charge > self._last_charge_level:
             self._play_sfx("charge_loop", volume=0.5)
         self._last_charge_level = current_charge
@@ -422,15 +443,28 @@ class GameplayRuntime:
         # Base bullet position (at player nose)
         bx = self._player.x
         by = self._player.y - 8
-        # Muzzle flash particles at the player nose
-        self._emit_burst(bx, by - 2, count=3, kind="muzzle")
+        # BLOQUE 30: L3 max charge fires a beam — bigger muzzle flash + many particles
+        is_beam = (charge_level >= 3)
+        if is_beam:
+            # Mega Man-style beam: lots of particles emanating from the muzzle
+            self._emit_burst(bx, by - 2, count=12, kind="muzzle")
+            self._emit_burst(bx, by - 2, count=6, kind="spark")
+            self._emit_burst(bx, by - 2, count=4, kind="glow")
+        else:
+            self._emit_burst(bx, by - 2, count=3, kind="muzzle")
         # Bullet velocity in nose direction
         speed = spec.speed_mult * 480.0
         base_vx = math.sin(nose_rad) * speed
         base_vy = -math.cos(nose_rad) * speed
         # Single bullet or fan
         if spec.count == 1:
-            kind = BULLET_PLAYER_CHARGED if charge_level > 0 else BULLET_PLAYER
+            # BLOQUE 30: L3 uses the BEAM bullet kind (bigger, more area)
+            if is_beam:
+                kind = BULLET_PLAYER_BEAM
+            elif charge_level > 0:
+                kind = BULLET_PLAYER_CHARGED
+            else:
+                kind = BULLET_PLAYER
             self._bullets.spawn(
                 kind, bx, by, base_vx, base_vy,
                 damage=spec.damage, owner=OWNER_PLAYER,
@@ -1350,7 +1384,8 @@ class GameplayRuntime:
         against any background.
         """
         from src.systems.projectile import (
-            BULLET_BOSS, BULLET_ENEMY, BULLET_PLAYER, BULLET_PLAYER_CHARGED,
+            BULLET_BOSS, BULLET_ENEMY, BULLET_PLAYER, BULLET_PLAYER_BEAM,
+            BULLET_PLAYER_CHARGED,
         )
         # Outer halo (large, soft, very transparent)
         outer = pygame.Surface(target.get_size(), pygame.SRCALPHA)
@@ -1435,7 +1470,10 @@ class GameplayRuntime:
     def _draw_player(self, target: pygame.Surface, ox: int, oy: int) -> None:
         # Engine flame behind the ship — length scales with |vx|
         self._draw_engine_flame(target, ox, oy)
-        surf = pygame.Surface((24, 18), pygame.SRCALPHA)
+        # BLOQUE 30: bigger sprite for more Star Fox-style detail
+        # Arwing-inspired: long body, big swept wings, twin wing-tip lasers
+        surf = pygame.Surface((32, 24), pygame.SRCALPHA)
+        # Center the 32x24 sprite around (16, 12)
         # Flicker iframes (every-other frame invisible during dash)
         if self._player.dash_iframes_left > 0 and (self._t * 30) % 2 < 1:
             pass  # still draw so the trail is visible
@@ -1453,12 +1491,43 @@ class GameplayRuntime:
             elif level >= 1:
                 body_color = (180, 220, 255)
                 wing_color = (140, 190, 230)
-        # Main body (triangle pointing up)
-        pygame.draw.polygon(surf, body_color, [(12, 0), (6, 12), (18, 12)])
-        # Wings (two small triangles on the sides)
-        pygame.draw.polygon(surf, wing_color, [(6, 8), (0, 14), (6, 14)])
-        pygame.draw.polygon(surf, wing_color, [(18, 8), (24, 14), (18, 14)])
-        # Cockpit (smaller triangle in center)
+        # ---- Arwing-style body (longer, sleeker) ----
+        # Main fuselage: pointed nose → wider body → tapered tail
+        pygame.draw.polygon(surf, body_color, [
+            (16, 0),    # nose tip
+            (13, 8),    # upper-left of body
+            (11, 18),   # tail-left
+            (16, 20),   # tail center
+            (21, 18),   # tail-right
+            (19, 8),    # upper-right of body
+        ])
+        # Belly highlight (lighter shade at the bottom of the fuselage)
+        pygame.draw.polygon(surf, (180, 200, 230), [
+            (13, 14), (19, 14), (16, 18),
+        ])
+        # ---- Big swept wings (Arwing-style) ----
+        # Left wing: long sweep from fuselage tip down to bottom-left
+        pygame.draw.polygon(surf, wing_color, [
+            (13, 8),    # root (upper body)
+            (10, 11),   # inner edge
+            (0, 17),    # wingtip (far left)
+            (0, 19),    # wingtip bottom
+            (4, 20),    # back of wingtip
+            (11, 14),   # trailing edge
+        ])
+        # Right wing (mirror)
+        pygame.draw.polygon(surf, wing_color, [
+            (19, 8),    # root
+            (22, 11),   # inner edge
+            (32, 17),   # wingtip (far right)
+            (32, 19),   # wingtip bottom
+            (28, 20),   # back of wingtip
+            (21, 14),   # trailing edge
+        ])
+        # Wing leading edge highlight
+        pygame.draw.line(surf, (240, 245, 255), (13, 8), (0, 17), 1)
+        pygame.draw.line(surf, (240, 245, 255), (19, 8), (32, 17), 1)
+        # ---- Cockpit (canopy) ----
         cockpit_color = (255, 100, 100)
         if self._player.state == PlayerState.CHARGE:
             level = self._player.get_charge_level()
@@ -1468,29 +1537,46 @@ class GameplayRuntime:
                 cockpit_color = (255, 150, 200)
             elif level >= 1:
                 cockpit_color = (255, 120, 150)
-        pygame.draw.polygon(surf, cockpit_color, [(12, 4), (9, 12), (15, 12)])
-        # Cockpit highlight (1px white)
-        pygame.draw.circle(surf, (255, 255, 255), (12, 6), 1)
-        # BLOQUE 25: Wing tip lights — pulsing (red port, green starboard)
-        # Pulse with different phase so they appear to "alternate"
+        # Hex canopy (Arwing-style bubble canopy)
+        pygame.draw.polygon(surf, cockpit_color, [
+            (14, 5), (18, 5), (19, 8), (16, 11), (13, 8),
+        ])
+        # Canopy highlight (white shine)
+        pygame.draw.circle(surf, (255, 255, 255), (15, 6), 1)
+        # ---- Wing-tip laser cannons (Star Fox detail) ----
+        # Left laser barrel (red, port side)
+        pygame.draw.rect(surf, (200, 80, 80), (1, 16, 3, 2))
+        pygame.draw.rect(surf, (255, 120, 100), (0, 17, 2, 1))  # hot tip
+        # Right laser barrel (green, starboard side)
+        pygame.draw.rect(surf, (80, 200, 100), (28, 16, 3, 2))
+        pygame.draw.rect(surf, (120, 255, 150), (30, 17, 2, 1))  # hot tip
+        # ---- Wing tip lights (pulsing) ----
         red_pulse = 0.5 + 0.5 * math.sin(self._t * 6.0)
         green_pulse = 0.5 + 0.5 * math.sin(self._t * 6.0 + math.pi)
-        # Red port (left, x=2)
         red_color = (int(255 * (0.4 + 0.6 * red_pulse)),
                      int(60 * (0.4 + 0.6 * red_pulse)),
                      int(60 * (0.4 + 0.6 * red_pulse)))
         green_color = (int(60 * (0.4 + 0.6 * green_pulse)),
                        int(255 * (0.4 + 0.6 * green_pulse)),
                        int(100 * (0.4 + 0.6 * green_pulse)))
-        pygame.draw.circle(surf, red_color, (2, 13), 1)
-        pygame.draw.circle(surf, green_color, (22, 13), 1)
-        # Engine intake (small dark notch at the back)
-        pygame.draw.rect(surf, (40, 50, 70), (10, 12, 4, 2))
-        # BLOQUE 29: combined tilt + nose angle (nose smoothed in player.update)
-        # Apply nose rotation (negative because pygame rotates CCW but we want CW visually)
+        pygame.draw.circle(surf, red_color, (1, 13), 1)
+        pygame.draw.circle(surf, green_color, (31, 13), 1)
+        # ---- Twin engine exhausts (between body and wings) ----
+        # Left engine intake
+        pygame.draw.rect(surf, (40, 50, 70), (12, 16, 3, 2))
+        # Right engine intake
+        pygame.draw.rect(surf, (40, 50, 70), (17, 16, 3, 2))
+        # Engine glow at the intakes (orange/red)
+        pygame.draw.rect(surf, (255, 140, 60), (12, 18, 3, 1))
+        pygame.draw.rect(surf, (255, 140, 60), (17, 18, 3, 1))
+        # ---- Center stripe (Arwing signature) ----
+        # Red accent stripe down the center of the body
+        pygame.draw.line(surf, (255, 80, 80), (16, 6), (16, 16), 1)
+        # ---- BLOQUE 29: combined tilt + nose angle ----
         rotated = pygame.transform.rotate(
             surf, -(self._player.current_tilt + self._player.current_nose_angle)
         )
+        # Recenter after rotation
         rect = rotated.get_rect(center=(int(self._player.x + ox), int(self._player.y + oy)))
         target.blit(rotated, rect)
         # BLOQUE 25: Shield effect during respawn invulnerability
@@ -1499,14 +1585,21 @@ class GameplayRuntime:
         # BLOQUE 22: muzzle flash overlay — bright oval at the player nose
         if self._muzzle_flash > 0.0:
             self._draw_muzzle_flash(target, ox, oy)
-        # Afterimage trail
+        # Afterimage trail — bigger ghost matching the new 32x24 sprite
         for tx, ty, age in self._player.afterimage:
             alpha = max(0, int(255 * (1 - age / self._player.AFTERIMAGE_LIFE)))
-            ghost = pygame.Surface((24, 18), pygame.SRCALPHA)
-            pygame.draw.polygon(ghost, (220, 240, 255, alpha), [(12, 0), (6, 12), (18, 12)])
-            pygame.draw.polygon(ghost, (180, 200, 230, alpha), [(6, 8), (0, 14), (6, 14)])
-            pygame.draw.polygon(ghost, (180, 200, 230, alpha), [(18, 8), (24, 14), (18, 14)])
-            target.blit(ghost, (int(tx - 12 + ox), int(ty - 9 + oy)))
+            ghost = pygame.Surface((32, 24), pygame.SRCALPHA)
+            # Simple silhouette of the new ship
+            pygame.draw.polygon(ghost, (220, 240, 255, alpha), [
+                (16, 0), (13, 8), (11, 18), (16, 20), (21, 18), (19, 8),
+            ])
+            pygame.draw.polygon(ghost, (180, 200, 230, alpha), [
+                (13, 8), (10, 11), (0, 17), (4, 20), (11, 14),
+            ])
+            pygame.draw.polygon(ghost, (180, 200, 230, alpha), [
+                (19, 8), (22, 11), (32, 17), (28, 20), (21, 14),
+            ])
+            target.blit(ghost, (int(tx - 16 + ox), int(ty - 12 + oy)))
         # Charge indicator: a ring around the player that fills as charge builds
         charge_level = self._player.get_charge_level()
         if self._player.state == PlayerState.CHARGE and charge_level > 0:
@@ -1568,31 +1661,30 @@ class GameplayRuntime:
         Three concentric ovals: outer (warm yellow), middle (white), inner (pure white).
         Scales and fades with self._muzzle_flash.
         """
-        # Position: nose of the ship (12, 0) in the 24x18 surface
-        # We draw in screen space so we can use bigger radii
+        # Position: nose of the ship — bigger sprite so adjust
         flash = self._muzzle_flash
-        # Ship nose is at (player.x, player.y - 8) before tilt, near top of ship
+        # Ship nose is at (player.x, player.y - 12) for the new bigger sprite
         cx = int(self._player.x + ox)
-        cy = int(self._player.y - 8 + oy)
+        cy = int(self._player.y - 12 + oy)
         # Outer warm halo (yellow)
-        surf = pygame.Surface((24, 24), pygame.SRCALPHA)
+        surf = pygame.Surface((28, 28), pygame.SRCALPHA)
         outer_alpha = int(min(255, 200 * flash))
-        pygame.draw.circle(surf, (255, 220, 100, outer_alpha), (12, 12), 11)
+        pygame.draw.circle(surf, (255, 220, 100, outer_alpha), (14, 14), 13)
         # Middle white core
         mid_alpha = int(min(255, 230 * flash))
-        pygame.draw.circle(surf, (255, 240, 200, mid_alpha), (12, 12), 6)
+        pygame.draw.circle(surf, (255, 240, 200, mid_alpha), (14, 14), 7)
         # Bright center
         inner_alpha = int(min(255, 255 * flash))
         pygame.draw.circle(surf, (255, 255, 255, inner_alpha), (12, 12), 3)
         # 4 directional rays
         for ang in (0, 90, 180, 270):
             r = math.radians(ang)
-            rx1 = 12 + int(math.cos(r) * 6)
-            ry1 = 12 + int(math.sin(r) * 6)
-            rx2 = 12 + int(math.cos(r) * 12)
-            ry2 = 12 + int(math.sin(r) * 12)
+            rx1 = 14 + int(math.cos(r) * 7)
+            ry1 = 14 + int(math.sin(r) * 7)
+            rx2 = 14 + int(math.cos(r) * 14)
+            ry2 = 14 + int(math.sin(r) * 14)
             pygame.draw.line(surf, (255, 255, 200, outer_alpha), (rx1, ry1), (rx2, ry2), 2)
-        target.blit(surf, (cx - 12, cy - 12))
+        target.blit(surf, (cx - 14, cy - 14))
 
     def _draw_shield(self, target: pygame.Surface, ox: int, oy: int) -> None:
         """BLOQUE 25: glowing shield bubble around player during respawn invuln.
@@ -1726,47 +1818,78 @@ class GameplayRuntime:
         flash_t = self._enemy_flash.get(id(e), 0.0)
         if flash_t > 0.0:
             color = (255, 255, 255)
-        # Different shapes per kind (so the eye can distinguish)
+        # Different shapes per kind (BLOQUE 30: more Star Fox-style detail)
         if e.kind == EnemyKind.SCOUT:
-            # Triangle (diamond pointing down — "incoming" feel)
-            points = [(cx, cy - h // 2), (cx + w // 2, cy + h // 2), (cx - w // 2, cy + h // 2)]
-            pygame.draw.polygon(target, color, points)
-            # Inner darker triangle for detail
-            inner_color = (max(0, color[0] - 50), max(0, color[1] - 50), max(0, color[2] - 50))
-            points2 = [(cx, cy - h // 4), (cx + w // 4, cy + h // 4), (cx - w // 4, cy + h // 4)]
-            pygame.draw.polygon(target, inner_color, points2)
-            # Eye/cockpit dot
-            pygame.draw.circle(target, (255, 255, 255), (cx, cy), 1)
+            # BLOQUE 30: Mono-Raptor style — sleek dart with wings
+            # Main body: long pointed dart
+            pygame.draw.polygon(target, color, [
+                (cx, cy - h // 2),          # nose
+                (cx + w // 3, cy + h // 3),  # right shoulder
+                (cx + w // 4, cy + h // 2),  # right tail tip
+                (cx, cy + h // 3),           # tail center
+                (cx - w // 4, cy + h // 2),  # left tail tip
+                (cx - w // 3, cy + h // 3),  # left shoulder
+            ])
+            # Wings (slim, swept back)
+            wing_c = (max(0, color[0] - 40), max(0, color[1] - 40), max(0, color[2] - 40))
+            pygame.draw.polygon(target, wing_c, [
+                (cx - w // 3, cy + h // 3),
+                (cx - w // 2 - 1, cy + h // 2 + 1),
+                (cx - w // 4, cy + h // 2 + 1),
+            ])
+            pygame.draw.polygon(target, wing_c, [
+                (cx + w // 3, cy + h // 3),
+                (cx + w // 2 + 1, cy + h // 2 + 1),
+                (cx + w // 4, cy + h // 2 + 1),
+            ])
+            # Cockpit/canopy (green glass)
+            pygame.draw.circle(target, (180, 255, 200), (cx, cy - 1), 1)
+            # Engine glow at the tail
+            pygame.draw.rect(target, (255, 180, 100), (cx - 1, cy + h // 2 - 1, 3, 1))
         elif e.kind == EnemyKind.CRUISER:
-            # Hexagon (wider, more "tank" feel)
+            # BLOQUE 30: Granga-style heavy fighter — wider hex with twin cannons
             import math as _m
+            # Outer hex
             points = []
             for i in range(6):
                 a = i * _m.pi / 3 + _m.pi / 6
                 points.append((cx + int(_m.cos(a) * w / 2), cy + int(_m.sin(a) * h / 2)))
             pygame.draw.polygon(target, color, points)
-            # Inner detail: a smaller hex rotated
+            # Inner hex
             inner_color = (max(0, color[0] - 60), max(0, color[1] - 60), max(0, color[2] - 60))
             points2 = []
             for i in range(6):
                 a = i * _m.pi / 3
                 points2.append((cx + int(_m.cos(a) * w / 4), cy + int(_m.sin(a) * h / 4)))
             pygame.draw.polygon(target, inner_color, points2)
+            # Twin side cannons (red barrels pointing down)
+            pygame.draw.rect(target, (220, 80, 80), (cx - w // 3, cy + h // 4, 2, 3))
+            pygame.draw.rect(target, (220, 80, 80), (cx + w // 3 - 2, cy + h // 4, 2, 3))
+            # Central red "eye" (active targeting)
+            pygame.draw.circle(target, (255, 60, 60), (cx, cy - 1), 1)
+            # Yellow sensor strip at the top
+            pygame.draw.line(target, (255, 220, 100), (cx - 2, cy - h // 2 + 1), (cx + 2, cy - h // 2 + 1), 1)
         elif e.kind == EnemyKind.HEAVY:
-            # Square (chunky, armored)
+            # BLOQUE 30: Star Fox attack carrier — armored square with turrets
             rect = pygame.Rect(cx - w // 2, cy - h // 2, w, h)
             pygame.draw.rect(target, color, rect)
-            # Corner reinforcement (darker triangles in each corner)
-            inner_color = (max(0, color[0] - 70), max(0, color[1] - 70), max(0, color[2] - 70))
-            corner_size = max(2, w // 4)
+            # Inner darker rectangle for depth
+            inner_color = (max(0, color[0] - 60), max(0, color[1] - 60), max(0, color[2] - 60))
+            inner_rect = rect.inflate(-max(2, w // 3), -max(2, h // 3))
+            pygame.draw.rect(target, inner_color, inner_rect)
+            # 4 corner turrets
+            corner_color = (60, 60, 80)
             for dx, dy in [(-1, -1), (1, -1), (-1, 1), (1, 1)]:
-                cx_c = cx + dx * (w // 2 - corner_size // 2)
-                cy_c = cy + dy * (h // 2 - corner_size // 2)
-                pygame.draw.rect(target, inner_color,
-                                 (cx_c - corner_size // 2, cy_c - corner_size // 2,
-                                  corner_size, corner_size))
-            # Central cannon (small red circle)
-            pygame.draw.circle(target, (255, 80, 80), (cx, cy + h // 4), 1)
+                tcx = cx + dx * (w // 2 - 2)
+                tcy = cy + dy * (h // 2 - 2)
+                pygame.draw.circle(target, corner_color, (tcx, tcy), 2)
+                pygame.draw.circle(target, (255, 80, 80), (tcx, tcy), 1)
+            # Central cannon barrel (red glowing)
+            pygame.draw.rect(target, (60, 30, 30), (cx - 1, cy, 2, h // 2 - 1))
+            pygame.draw.circle(target, (255, 80, 80), (cx, cy + h // 2 - 1), 1)
+            # Sensor lights on top
+            pygame.draw.circle(target, (255, 60, 60), (cx - 3, cy - h // 2 + 1), 1)
+            pygame.draw.circle(target, (60, 255, 100), (cx + 3, cy - h // 2 + 1), 1)
         elif e.kind == EnemyKind.KAMIKAZE:
             # Inverted triangle (aggressive, pointed down)
             points = [(cx - w // 2, cy - h // 2), (cx + w // 2, cy - h // 2), (cx, cy + h // 2)]

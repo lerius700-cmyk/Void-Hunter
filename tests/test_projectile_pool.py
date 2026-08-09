@@ -254,8 +254,9 @@ def test_release_all_clears_active(pool: ProjectilePool) -> None:
 # 10. Pre-baked frame surface invariant
 # ---------------------------------------------------------------------------
 def test_pre_baked_frames_have_4_per_kind(pool: ProjectilePool) -> None:
-    """4 kinds × 4 frames = 16 surface keys, all unique-ish."""
-    assert len(pool._frames) == 16
+    """BLOQUE 30: 5 kinds × 4 frames = 20 surface keys."""
+    # PLAYER, PLAYER_CHARGED, PLAYER_BEAM, ENEMY, BOSS = 5 kinds
+    assert len(pool._frames) == 20
 
 
 def test_bullet_kinds_have_correct_size(pool: ProjectilePool) -> None:

@@ -70,17 +70,17 @@ class _BulletSpec:
 PLASMA_SPECS: dict[WeaponLevel, _BulletSpec] = {
     WeaponLevel.L1: _BulletSpec(count=1, spread_deg=0.0,  damage=1, pierce=0, speed_mult=1.0, trail=True,  color=(255, 180, 80)),
     WeaponLevel.L2: _BulletSpec(count=2, spread_deg=0.0,  damage=2, pierce=0, speed_mult=1.125, trail=True, color=(255, 140, 60)),
-    WeaponLevel.L3: _BulletSpec(count=3, spread_deg=8.0,  damage=3, pierce=0, speed_mult=1.25, trail=True, color=(255, 100, 40)),
+    WeaponLevel.L3: _BulletSpec(count=1, spread_deg=0.0,  damage=8, pierce=99, speed_mult=1.5, trail=True, color=(255, 255, 255)),  # BLOQUE 30: L3 beam
 }
 ION_SPECS: dict[WeaponLevel, _BulletSpec] = {
     WeaponLevel.L1: _BulletSpec(count=1, spread_deg=0.0,  damage=1, pierce=1, speed_mult=1.0, trail=True,  color=(80, 200, 255)),
     WeaponLevel.L2: _BulletSpec(count=2, spread_deg=0.0,  damage=2, pierce=2, speed_mult=1.125, trail=True, color=(120, 220, 255)),
-    WeaponLevel.L3: _BulletSpec(count=3, spread_deg=6.0,  damage=3, pierce=3, speed_mult=1.25, trail=True, color=(180, 240, 255)),
+    WeaponLevel.L3: _BulletSpec(count=1, spread_deg=0.0,  damage=8, pierce=99, speed_mult=1.5, trail=True, color=(180, 240, 255)),  # BLOQUE 30: L3 beam
 }
 SHOCK_SPECS: dict[WeaponLevel, _BulletSpec] = {
     WeaponLevel.L1: _BulletSpec(count=1, spread_deg=0.0, damage=1, pierce=0, speed_mult=0.625, trail=True, color=(180, 80, 220)),
     WeaponLevel.L2: _BulletSpec(count=2, spread_deg=0.0, damage=2, pierce=0, speed_mult=0.75,  trail=True, color=(220, 120, 255)),
-    WeaponLevel.L3: _BulletSpec(count=1, spread_deg=0.0, damage=3, pierce=0, speed_mult=0.875, trail=True, color=(255, 140, 255)),
+    WeaponLevel.L3: _BulletSpec(count=1, spread_deg=0.0, damage=8, pierce=99, speed_mult=1.5, trail=True, color=(255, 255, 255)),  # BLOQUE 30: L3 beam
 }
 
 SPECS_BY_PATH: dict[WeaponPath, dict[WeaponLevel, _BulletSpec]] = {

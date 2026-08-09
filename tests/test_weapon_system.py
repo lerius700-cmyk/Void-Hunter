@@ -81,25 +81,28 @@ def test_special_names_per_path() -> None:
     (WeaponPath.SHOCK, SHOCK_SPECS),
 ])
 def test_damage_1_2_3_per_level(path: WeaponPath, specs: dict) -> None:
-    """Per GDD §3: damage 1/2/3 at L1/L2/L3."""
+    """Per GDD §3: damage 1/2 at L1/L2. BLOQUE 30: L3 is a charged beam (8 dmg)."""
     assert specs[WeaponLevel.L1].damage == 1
     assert specs[WeaponLevel.L2].damage == 2
-    assert specs[WeaponLevel.L3].damage == 3
+    assert specs[WeaponLevel.L3].damage == 8  # beam damage (BIG)
 
 
 # ---------------------------------------------------------------------------
 # 4. Bullet count scales
 # ---------------------------------------------------------------------------
 def test_plasma_bullets_1_2_3() -> None:
+    """BLOQUE 30: L3 is a single beam bullet (not 3-shot)."""
     assert PLASMA_SPECS[WeaponLevel.L1].count == 1
     assert PLASMA_SPECS[WeaponLevel.L2].count == 2
-    assert PLASMA_SPECS[WeaponLevel.L3].count == 3
+    # L3 is the charged beam — single projectile
+    assert PLASMA_SPECS[WeaponLevel.L3].count == 1
 
 
 def test_ion_bullets_1_2_3() -> None:
+    """BLOQUE 30: L3 is a single piercing beam."""
     assert ION_SPECS[WeaponLevel.L1].count == 1
     assert ION_SPECS[WeaponLevel.L2].count == 2
-    assert ION_SPECS[WeaponLevel.L3].count == 3
+    assert ION_SPECS[WeaponLevel.L3].count == 1  # beam, not 3-shot
 
 
 def test_shock_bullets_1_2_1() -> None:
@@ -113,28 +116,34 @@ def test_shock_bullets_1_2_1() -> None:
 # 5. Pierce on ion
 # ---------------------------------------------------------------------------
 def test_ion_pierce_1_2_3() -> None:
+    """BLOQUE 30: L3 beam pierces everything (99)."""
     assert ION_SPECS[WeaponLevel.L1].pierce == 1
     assert ION_SPECS[WeaponLevel.L2].pierce == 2
-    assert ION_SPECS[WeaponLevel.L3].pierce == 3
+    assert ION_SPECS[WeaponLevel.L3].pierce == 99  # beam pierces all
 
 
 def test_plasma_no_pierce() -> None:
-    for level in WeaponLevel:
-        assert PLASMA_SPECS[level].pierce == 0
+    """BLOQUE 30: plasma L3 beam pierces (99), but L1/L2 don't."""
+    assert PLASMA_SPECS[WeaponLevel.L1].pierce == 0
+    assert PLASMA_SPECS[WeaponLevel.L2].pierce == 0
+    assert PLASMA_SPECS[WeaponLevel.L3].pierce == 99
 
 
 def test_shock_no_pierce() -> None:
-    for level in WeaponLevel:
-        assert SHOCK_SPECS[level].pierce == 0
+    """BLOQUE 30: shock L3 beam pierces (99), but L1/L2 don't."""
+    assert SHOCK_SPECS[WeaponLevel.L1].pierce == 0
+    assert SHOCK_SPECS[WeaponLevel.L2].pierce == 0
+    assert SHOCK_SPECS[WeaponLevel.L3].pierce == 99
 
 
 # ---------------------------------------------------------------------------
 # 6. Speed differences
 # ---------------------------------------------------------------------------
 def test_shock_slower_than_plasma_ion() -> None:
-    """Shock is the slow path per GDD §3."""
-    for level in WeaponLevel:
+    """Shock is the slow path per GDD §3 (only L1/L2; L3 is the beam, all paths equal speed)."""
+    for level in (WeaponLevel.L1, WeaponLevel.L2):
         assert SHOCK_SPECS[level].speed_mult < PLASMA_SPECS[level].speed_mult
+    # L3 beam: all paths use the same speed mult (1.5) for the beam
         assert SHOCK_SPECS[level].speed_mult < ION_SPECS[level].speed_mult
 
 

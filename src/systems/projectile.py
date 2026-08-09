@@ -31,6 +31,7 @@ from src.systems.pool import Pool
 # Bullet kinds
 BULLET_PLAYER = 0          # fast, friendly
 BULLET_PLAYER_CHARGED = 1  # glow halo, pierce
+BULLET_PLAYER_BEAM = 4     # BLOQUE 30: L3 charged beam — big, lots of particles
 BULLET_ENEMY = 2           # standard enemy shot
 BULLET_BOSS = 3            # boss shot, 1-frame anim (no flicker per spec)
 
@@ -47,6 +48,7 @@ NUM_FRAMES = 4
 BULLET_SIZES = {
     BULLET_PLAYER: (4, 6),
     BULLET_PLAYER_CHARGED: (6, 10),
+    BULLET_PLAYER_BEAM: (12, 16),  # BLOQUE 30: big L3 beam
     BULLET_ENEMY: (4, 6),
     BULLET_BOSS: (8, 8),
 }
@@ -55,6 +57,7 @@ BULLET_SIZES = {
 DEFAULT_SPEEDS = {
     BULLET_PLAYER: 480.0,
     BULLET_PLAYER_CHARGED: 600.0,
+    BULLET_PLAYER_BEAM: 700.0,  # BLOQUE 30: beam is fast
     BULLET_ENEMY: 220.0,
     BULLET_BOSS: 240.0,
 }
@@ -63,6 +66,7 @@ DEFAULT_SPEEDS = {
 DEFAULT_COLORS = {
     BULLET_PLAYER: (255, 220, 100),       # warm gold (player plasma default)
     BULLET_PLAYER_CHARGED: (255, 240, 200),
+    BULLET_PLAYER_BEAM: (255, 255, 255),  # BLOQUE 30: white-hot beam
     BULLET_ENEMY: (255, 100, 100),         # red-ish
     BULLET_BOSS: (220, 120, 255),          # purple-ish
 }
@@ -241,7 +245,8 @@ class ProjectilePool:
         Animation = scale 0.9 → 1.1 at 16 FPS for player/enemy, 1-frame
         for boss (no flicker), and a glow halo for charged.
         """
-        for kind in (BULLET_PLAYER, BULLET_PLAYER_CHARGED, BULLET_ENEMY, BULLET_BOSS):
+        for kind in (BULLET_PLAYER, BULLET_PLAYER_CHARGED, BULLET_PLAYER_BEAM,
+                     BULLET_ENEMY, BULLET_BOSS):
             w, h = BULLET_SIZES[kind]
             for frame in range(NUM_FRAMES):
                 if kind == BULLET_BOSS:
@@ -268,14 +273,20 @@ class ProjectilePool:
         sw = max(1, int(math.ceil(w * scale)))
         sh = max(1, int(h * scale))
         # Charged bullets get a +6px halo on each side.
-        halo = 6 if kind == BULLET_PLAYER_CHARGED else 0
+        # BLOQUE 30: beam bullets get a much larger halo for the "rayo" effect
+        if kind == BULLET_PLAYER_BEAM:
+            halo = 14
+        elif kind == BULLET_PLAYER_CHARGED:
+            halo = 6
+        else:
+            halo = 0
         canvas_w = sw + halo * 2
         canvas_h = sh + halo * 2
         surf = pygame.Surface((canvas_w, canvas_h), pygame.SRCALPHA)
         # Halo (soft alpha falloff)
         if halo > 0:
             for r in range(halo, 0, -1):
-                a = int(40 * (r / halo))
+                a = int(60 * (r / halo)) if kind == BULLET_PLAYER_BEAM else int(40 * (r / halo))
                 pygame.draw.circle(
                     surf,
                     (color[0], color[1], color[2], a),
@@ -287,8 +298,14 @@ class ProjectilePool:
         rect.center = (canvas_w // 2, canvas_h // 2)
         pygame.draw.rect(surf, color, rect)
         # Bright core highlight
-        if kind in (BULLET_PLAYER, BULLET_PLAYER_CHARGED):
+        if kind in (BULLET_PLAYER, BULLET_PLAYER_CHARGED, BULLET_PLAYER_BEAM):
             highlight = pygame.Rect(0, 0, max(1, sw // 2), max(1, sh // 3))
             highlight.center = rect.center
             pygame.draw.rect(surf, (255, 255, 255), highlight)
+        # BLOQUE 30: beam gets extra inner ring for the "charged" feel
+        if kind == BULLET_PLAYER_BEAM:
+            pygame.draw.rect(
+                surf, (255, 255, 255, 200),
+                (canvas_w // 2 - sw // 4, canvas_h // 2 - sh // 4, sw // 2, sh // 2),
+            )
         return surf
