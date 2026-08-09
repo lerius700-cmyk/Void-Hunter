@@ -141,6 +141,23 @@ WAVE_KILL_TARGET: int = 20
 WAVE_TIME_LIMIT_S: float = 30.0
 SUBBOSS_TRIGGER_KILLS: int = 40
 WAVE_GROWTH: int = 2
+# BLOQUE 40: formation-based encounter pacing
+MAX_ENEMIES_ON_SCREEN: int = 8            # density cap (no more than 8 active)
+SPAWN_CADENCE_S_MIN: float = 0.8         # min time between spawns
+SPAWN_CADENCE_S_MAX: float = 1.5         # max time between spawns
+WAVE_RESPITE_S_MIN: float = 4.0          # min breathing room between waves
+WAVE_RESPITE_S_MAX: float = 6.0          # max breathing room between waves
+# BLOQUE 40: boss trigger hierarchy
+BOSS_FAST_TRIGGER_S: float = 60.0        # perfect-score fast path
+BOSS_FALLBACK_KILLS: int = 50            # kill-count fallback
+BOSS_FALLBACK_TIMEOUT_S: float = 180.0   # lenient timeout fallback
+# Formation defaults
+FORMATION_SPACING_MIN_PX: int = 24
+FORMATION_SPACING_MAX_PX: int = 32
+FORMATION_PATTERN_SPEED_MIN: float = 30.0
+FORMATION_PATTERN_SPEED_MAX: float = 60.0
+FORMATION_TELEGRAPH_FRAMES_MIN: int = 24
+FORMATION_TELEGRAPH_FRAMES_MAX: int = 60
 
 # ---------------------------------------------------------------------------
 # Scoring

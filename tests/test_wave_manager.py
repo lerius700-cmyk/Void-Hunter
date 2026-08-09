@@ -169,3 +169,165 @@ def test_act_3_wave_6_has_phantom_then_nemesis(wm: WaveManager) -> None:
 def test_act_2_wave_6_has_hydra(wm: WaveManager) -> None:
     wm.start_wave(11)
     assert wm.current_wave()["sub_boss"] == "hydra"
+
+
+# ---------------------------------------------------------------------------
+# 8. BLOQUE 41: formation system
+# ---------------------------------------------------------------------------
+def test_parse_formation_line() -> None:
+    """BLOQUE 41: LINE formation with 4 SCOUT produces 4 evenly-spaced spawns."""
+    from src.systems.wave_manager import parse_formation, spawn_formation
+    f = parse_formation({
+        "formation_type": "line",
+        "enemy_type": "SCOUT",
+        "count": 4,
+        "spacing_px": 32,
+        "entry_axis": "top",
+        "pattern_speed": 40,
+        "telegraph_frames": 30,
+    })
+    assert f.enemy_count == 4
+    assert f.spacing_px == 32
+    spawns = spawn_formation(f)
+    assert len(spawns) == 4
+    # All y values should be the same (LINE has constant y)
+    ys = {round(s.y, 1) for s in spawns}
+    assert len(ys) == 1
+    # All vy should equal pattern_speed (downward)
+    for s in spawns:
+        assert s.vy == 40.0
+        assert s.vx == 0.0
+        assert s.kind == "SCOUT"
+
+
+def test_parse_formation_v() -> None:
+    """BLOQUE 41: V formation with 5 enemies produces 5 non-linear spawns."""
+    from src.systems.wave_manager import parse_formation, spawn_formation
+    f = parse_formation({
+        "formation_type": "v",
+        "enemy_type": "SCOUT",
+        "count": 5,
+        "spacing_px": 24,
+        "entry_axis": "top",
+        "pattern_speed": 40,
+        "telegraph_frames": 30,
+    })
+    spawns = spawn_formation(f)
+    assert len(spawns) == 5
+    # Middle spawn (index 2) should be at the top (smallest y)
+    ys = [s.y for s in spawns]
+    middle_y = ys[2]
+    assert all(s.y >= middle_y - 0.01 for s in spawns), (
+        f"Wings should be at or below middle: {ys}"
+    )
+
+
+def test_parse_formation_arc() -> None:
+    """BLOQUE 41: ARC formation produces 5 concave arc spawns."""
+    from src.systems.wave_manager import parse_formation, spawn_formation
+    f = parse_formation({
+        "formation_type": "arc",
+        "enemy_type": "CRUISER",
+        "count": 5,
+        "spacing_px": 28,
+        "entry_axis": "top",
+        "pattern_speed": 30,
+        "telegraph_frames": 45,
+    })
+    spawns = spawn_formation(f)
+    assert len(spawns) == 5
+    # All should be CRUISER kind
+    assert all(s.kind == "CRUISER" for s in spawns)
+
+
+def test_parse_formation_staircase() -> None:
+    """BLOQUE 41: STAIRCASE formation produces 4 diagonal spawns."""
+    from src.systems.wave_manager import parse_formation, spawn_formation
+    f = parse_formation({
+        "formation_type": "staircase",
+        "enemy_type": "HEAVY",
+        "count": 4,
+        "spacing_px": 28,
+        "entry_axis": "top",
+        "pattern_speed": 30,
+        "telegraph_frames": 60,
+    })
+    spawns = spawn_formation(f)
+    assert len(spawns) == 4
+    # All HEAVY
+    assert all(s.kind == "HEAVY" for s in spawns)
+    # y should INCREASE from first to last (staircase goes down)
+    for i in range(1, len(spawns)):
+        assert spawns[i].y > spawns[i - 1].y, (
+            f"Staircase y must increase: {[(s.x, s.y) for s in spawns]}"
+        )
+
+
+def test_parse_formation_rejects_unknown_type() -> None:
+    """BLOQUE 41: unknown formation_type raises ValueError (no silent fallback)."""
+    from src.systems.wave_manager import parse_formation
+    with pytest.raises(ValueError, match="Unknown formation_type"):
+        parse_formation({"formation_type": "circle", "enemy_type": "SCOUT", "count": 4})
+
+
+def test_parse_formation_clamps_extreme_values() -> None:
+    """BLOQUE 41: out-of-range values are clamped, not passed through."""
+    from src.systems.wave_manager import parse_formation
+    f = parse_formation({
+        "formation_type": "line",
+        "enemy_type": "SCOUT",
+        "count": 4,
+        "spacing_px": 999,        # way too big � clamp to 32
+        "pattern_speed": 999.0,   # way too fast � clamp to 60
+        "telegraph_frames": 0,    # too low � clamp to 24
+    })
+    from src.core.settings import (
+        FORMATION_PATTERN_SPEED_MAX, FORMATION_SPACING_MAX_PX,
+        FORMATION_TELEGRAPH_FRAMES_MIN,
+    )
+    assert f.spacing_px <= FORMATION_SPACING_MAX_PX
+    assert f.pattern_speed <= FORMATION_PATTERN_SPEED_MAX
+    assert f.telegraph_frames >= FORMATION_TELEGRAPH_FRAMES_MIN
+
+
+def test_spawn_formation_keeps_spawns_inside_screen() -> None:
+    """BLOQUE 41: even with extreme count+spacing, spawns stay inside the play area."""
+    from src.core.settings import INTERNAL_W
+    from src.systems.wave_manager import parse_formation, spawn_formation
+    f = parse_formation({
+        "formation_type": "line",
+        "enemy_type": "SCOUT",
+        "count": 8,
+        "spacing_px": 32,  # 8*32=256, would overflow 320
+        "pattern_speed": 40,
+        "telegraph_frames": 30,
+    })
+    spawns = spawn_formation(f)
+    for s in spawns:
+        assert 0 <= s.x <= INTERNAL_W, f"Spawn x out of bounds: {s.x}"
+
+
+def test_wave_manager_current_formation_falls_back_to_mix() -> None:
+    """BLOQUE 41: a wave with no `formation` field derives one from `mix`."""
+    from src.systems.wave_manager import WaveManager
+    wm = WaveManager([{
+        "act": 1, "wave": 1, "theme": "blue_void",
+        "mix": {"scout": 6, "cruiser": 2},
+        "kill_target": 8, "time_limit_s": 25.0, "sub_boss": None,
+    }])
+    wm.start_wave(0)
+    f = wm.current_formation()
+    assert f is not None
+    assert f.enemy_type == "SCOUT"  # first key in mix
+    assert f.enemy_count == 8  # capped at 8
+    assert f.formation_type == "line"
+
+
+def test_all_default_waves_destructible() -> None:
+    """BLOQUE 41: every enemy in DEFAULT_WAVES is destructible (no indestructibles)."""
+    from src.systems.wave_manager import DEFAULT_WAVES
+    for i, wave in enumerate(DEFAULT_WAVES):
+        # No wave is "indestructible" by design
+        assert "indestructible" not in wave, f"wave {i} has indestructible flag"
+        # Every wave has a kill_target > 0 (so they CAN be cleared)
+        assert wave.get("kill_target", 0) > 0

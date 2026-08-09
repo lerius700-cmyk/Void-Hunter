@@ -1,9 +1,15 @@
-"""Wave manager + 18 wave JSON scripts (BLOQUE 10).
+"""Wave manager + 18 wave JSON scripts (BLOQUE 10 + BLOQUE 41 formations).
 
 Per GDD §6: 6 waves per act × 3 acts = 18 waves. Each wave script is a
 JSON file in data/waves/ with archetype counts, kill target, optional
 sub-boss trigger, and special conditions. Adaptive difficulty scales
 spawn rate based on player HP/score.
+
+BLOQUE 41: formation-based spawning. Each wave can declare a `formation`
+that spawns enemies in choreographed shapes (LINE, V, ARC, STAIRCASE)
+instead of the legacy random `mix` dictionary. The `parse_formation`
+and `spawn_formation` helpers produce a list of (x, y, vx, vy) tuples
+for the formation; gameplay_runtime spawns enemies from those tuples.
 """
 from __future__ import annotations
 
@@ -11,9 +17,17 @@ import json
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from src.core.settings import (
+    FORMATION_PATTERN_SPEED_MAX,
+    FORMATION_PATTERN_SPEED_MIN,
+    FORMATION_SPACING_MAX_PX,
+    FORMATION_SPACING_MIN_PX,
+    FORMATION_TELEGRAPH_FRAMES_MAX,
+    FORMATION_TELEGRAPH_FRAMES_MIN,
+    INTERNAL_H,
+    INTERNAL_W,
     SUBBOSS_TRIGGER_KILLS,
     WAVE_KILL_TARGET,
     WAVE_TIME_LIMIT_S,
@@ -21,6 +35,155 @@ from src.core.settings import (
 
 
 WAVES_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "waves"
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 41: formation types
+# ---------------------------------------------------------------------------
+FORMATION_TYPES: tuple[str, ...] = ("line", "v", "arc", "staircase")
+
+
+class Formation(NamedTuple):
+    """Scripted enemy formation for a wave.
+
+    Fields map 1:1 to the JSON spec in actX_wY.json under "formation".
+    All waves are destructible (destructible=True implicitly).
+    """
+    formation_type: str           # one of FORMATION_TYPES
+    enemy_type: str               # SCOUT|CRUISER|HEAVY|KAMIKAZE|DRONE|SNIPER|TURRET|CARRIER
+    enemy_count: int              # 4..8 (named enemy_count to avoid NamedTuple's `.count` method)
+    spacing_px: int               # 24..32 (line/v) or general offset
+    entry_axis: str               # "top" | "side" | "bottom" (currently "top")
+    pattern_speed: float          # 30..60 px/s (downward)
+    telegraph_frames: int         # 24..60 (0.2-0.5s @ 120fps)
+
+
+class Spawn(NamedTuple):
+    """One enemy spawn from a formation. Returned by spawn_formation()."""
+    x: float
+    y: float
+    vx: float
+    vy: float
+    kind: str                     # enemy type
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 41: formation helpers
+# ---------------------------------------------------------------------------
+def _clamp_formation(formation: Formation) -> Formation:
+    """Sanitize a formation: clamp out-of-range values to safe defaults."""
+    ftype = formation.formation_type if formation.formation_type in FORMATION_TYPES else "line"
+    spacing = max(FORMATION_SPACING_MIN_PX, min(FORMATION_SPACING_MAX_PX, formation.spacing_px))
+    # If count*spacing > screen width, halve the spacing so the row fits.
+    max_count_width = INTERNAL_W - 16
+    if formation.enemy_count > 1 and (formation.enemy_count - 1) * spacing > max_count_width:
+        spacing = max(16, max_count_width // (formation.enemy_count - 1))
+    speed = max(FORMATION_PATTERN_SPEED_MIN, min(FORMATION_PATTERN_SPEED_MAX, formation.pattern_speed))
+    tele = max(FORMATION_TELEGRAPH_FRAMES_MIN, min(FORMATION_TELEGRAPH_FRAMES_MAX, formation.telegraph_frames))
+    return Formation(
+        formation_type=ftype,
+        enemy_type=formation.enemy_type,
+        enemy_count=max(1, formation.enemy_count),
+        spacing_px=spacing,
+        entry_axis=formation.entry_axis or "top",
+        pattern_speed=speed,
+        telegraph_frames=tele,
+    )
+
+
+def parse_formation(spec: dict[str, Any]) -> Formation:
+    """Parse a JSON formation spec into a Formation namedtuple.
+
+    Raises ValueError if the formation_type is unknown (no silent fallback —
+    callers want to know).
+    """
+    ftype = spec.get("formation_type", "line")
+    if ftype not in FORMATION_TYPES:
+        raise ValueError(
+            f"Unknown formation_type {ftype!r}; must be one of {FORMATION_TYPES}"
+        )
+    return _clamp_formation(Formation(
+        formation_type=ftype,
+        enemy_type=str(spec.get("enemy_type", "SCOUT")).upper(),
+        enemy_count=int(spec.get("count", 4)),
+        spacing_px=int(spec.get("spacing_px", 28)),
+        entry_axis=str(spec.get("entry_axis", "top")),
+        pattern_speed=float(spec.get("pattern_speed", 40.0)),
+        telegraph_frames=int(spec.get("telegraph_frames", 30)),
+    ))
+
+
+def spawn_formation(formation: Formation) -> list[Spawn]:
+    """Generate the (x, y, vx, vy) tuples for every enemy in the formation.
+
+    Convention:
+      - All formations enter from the top (y small) and move downward (vy > 0).
+      - The formation is centered horizontally in INTERNAL_W.
+      - spacing_px controls intra-formation offsets.
+    """
+    f = _clamp_formation(formation)
+    cx = INTERNAL_W / 2
+    spawns: list[Spawn] = []
+    if f.formation_type == "line":
+        # Horizontal row, evenly spaced. y = 16 (just inside top).
+        if f.enemy_count == 1:
+            xs = [cx]
+        else:
+            half = (f.enemy_count - 1) * f.spacing_px / 2
+            xs = [cx - half + i * f.spacing_px for i in range(f.enemy_count)]
+        y = 16.0
+        vy = f.pattern_speed
+        for x in xs:
+            spawns.append(Spawn(x=x, y=y, vx=0.0, vy=vy, kind=f.enemy_type))
+    elif f.formation_type == "v":
+        # Inverted V: middle at the top, wings angled down.
+        # 5 enemies: x offsets relative to center, y offsets increase by spacing_y.
+        spacing_y = f.spacing_px
+        if f.enemy_count == 1:
+            offsets = [(0.0, 0.0)]
+        else:
+            mid = (f.enemy_count - 1) / 2
+            offsets = [(f.spacing_px * (i - mid), spacing_y * abs(i - mid))
+                       for i in range(f.enemy_count)]
+        y_top = 16.0
+        vy = f.pattern_speed
+        for ox, oy in offsets:
+            spawns.append(Spawn(x=cx + ox, y=y_top + oy, vx=0.0, vy=vy, kind=f.enemy_type))
+    elif f.formation_type == "arc":
+        # 30°-span concave arc centered horizontally, peaking downward.
+        # For count=5: positions at -30°, -15°, 0°, +15°, +30° around center.
+        radius_x = (f.enemy_count - 1) * f.spacing_px / 2
+        radius_y = 24.0
+        span_deg = 30.0
+        if f.enemy_count == 1:
+            offsets_deg = [0.0]
+        else:
+            step = span_deg / (f.enemy_count - 1)
+            offsets_deg = [-span_deg / 2 + step * i for i in range(f.enemy_count)]
+        y_top = 16.0
+        vy = f.pattern_speed
+        for d in offsets_deg:
+            rad = math.radians(d)
+            spawns.append(Spawn(
+                x=cx + math.sin(rad) * radius_x,
+                y=y_top + (1.0 - math.cos(rad)) * radius_y,
+                vx=0.0, vy=vy, kind=f.enemy_type,
+            ))
+    elif f.formation_type == "staircase":
+        # Diagonal: each enemy offset 30px RIGHT + 20px DOWN from the previous.
+        step_x = 30.0
+        step_y = 20.0
+        y_top = 16.0
+        vy = f.pattern_speed
+        for i in range(f.enemy_count):
+            spawns.append(Spawn(
+                x=cx - (f.enemy_count - 1) * step_x / 2 + i * step_x,
+                y=y_top + i * step_y,
+                vx=0.0, vy=vy, kind=f.enemy_type,
+            ))
+    else:  # pragma: no cover — _clamp_formation already forces "line"
+        return []
+    return spawns
 
 
 # Default 18-wave script (per GDD §6 + §4 enemy mix table)
@@ -107,6 +270,36 @@ class WaveManager:
 
     def current_wave(self) -> dict[str, Any]:
         return self.scripts[self.current.wave_index]
+
+    def current_formation(self) -> Formation | None:
+        """BLOQUE 41: return the Formation for the current wave, if any.
+
+        Falls back to deriving a LINE formation from the legacy `mix` dict
+        (uses the first enemy type and the total count) so old wave JSONs
+        without a `formation` field still produce a sensible spawn.
+        Returns None only if the wave has neither `formation` nor `mix`.
+        """
+        wave = self.current_wave()
+        if "formation" in wave and isinstance(wave["formation"], dict):
+            try:
+                return parse_formation(wave["formation"])
+            except ValueError:
+                pass  # bad spec — fall through to mix-derived fallback
+        mix = wave.get("mix", {})
+        if not mix:
+            return None
+        first_kind = next(iter(mix.keys()))
+        total = sum(int(v) for v in mix.values())
+        # Default formation: LINE with the dominant kind and the count.
+        return Formation(
+            formation_type="line",
+            enemy_type=str(first_kind).upper(),
+            enemy_count=min(8, max(4, total)),
+            spacing_px=28,
+            entry_axis="top",
+            pattern_speed=40.0,
+            telegraph_frames=30,
+        )
 
     def on_kill(self) -> None:
         """Called when an enemy dies. Tracks wave progress."""

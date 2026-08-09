@@ -22,7 +22,10 @@ from typing import TYPE_CHECKING, Optional
 
 import pygame
 
-from src.core.settings import INTERNAL_H, INTERNAL_W, FIXED_DT
+from src.core.settings import (
+    BOSS_FALLBACK_KILLS, BOSS_FALLBACK_TIMEOUT_S, BOSS_FAST_TRIGGER_S,
+    INTERNAL_H, INTERNAL_W, FIXED_DT,
+)
 from src.entities.enemies import EnemyKind, EnemyPool, Enemy
 from src.entities.enemies.boss import Boss, BossId, BossPool, BOSS_CONFIGS
 from src.entities.player import Player, PlayerState
@@ -51,8 +54,9 @@ if TYPE_CHECKING:
 
 # Wave spawn intervals (seconds) — how often to drop a new enemy during a wave
 WAVE_SPAWN_INTERVAL_S = 0.9
-# Max enemies alive at once during regular waves
-WAVE_MAX_LIVE = 8
+# Max enemies alive at once during regular waves (BLOQUE 42: now sourced from
+# settings.MAX_ENEMIES_ON_SCREEN so it stays in sync with the global cap).
+from src.core.settings import MAX_ENEMIES_ON_SCREEN as WAVE_MAX_LIVE
 # Score awarded per enemy archetype (mirrors ENEMY_CONFIGS)
 _ENEMY_SCORE = {
     EnemyKind.SCOUT: 50, EnemyKind.CRUISER: 150, EnemyKind.HEAVY: 400,
@@ -214,6 +218,9 @@ class GameplayRuntime:
         self._mouse_r_held: bool = False  # BLOQUE 34: RMB held state (rapid fire)
         # BLOQUE 39: active homing missiles (bomb B key)
         self._missiles: list[HomingMissile] = []
+        # BLOQUE 43: perfect-score tracking
+        self._enemies_spawned_total: int = 0   # cumulative across all waves
+        self._enemies_escaped: int = 0         # left the screen alive (above the top edge)
         from src.core.settings import WINDOW_H, WINDOW_W
         self._game_screen_size: tuple[int, int] = (WINDOW_W, WINDOW_H)
         # BLOQUE 22: extra polish
@@ -289,6 +296,9 @@ class GameplayRuntime:
         self._shockwaves.clear()
         # BLOQUE 39: clear active homing missiles on scene enter
         self._missiles.clear()
+        # BLOQUE 43: reset perfect-score tracking
+        self._enemies_spawned_total = 0
+        self._enemies_escaped = 0
         self._screen_flash = 0.0
         # BLOQUE 22: reset polish state
         self._muzzle_flash = 0.0
@@ -1057,6 +1067,7 @@ class GameplayRuntime:
                 e = self._enemies.spawn(kind, x, y)
                 if e is not None:
                     self._wave_spawn_timer = 0.0  # reset for next spawn slot
+                    self._enemies_spawned_total += 1  # BLOQUE 43
             else:
                 remaining.append((when, kind, x, y))
         self._pending_wave_spawns = remaining
@@ -1082,6 +1093,9 @@ class GameplayRuntime:
                     self._enemies.spawn(EnemyKind.DRONE, e.x + random.uniform(-8, 8), e.y + 4)
             # Offscreen cull
             if e.state.name == "DEAD" or e.y > INTERNAL_H + 30:
+                # BLOQUE 43: count enemies that left the screen alive (escaped)
+                if e.y > INTERNAL_H + 30 and e.state.name != "DEAD":
+                    self._enemies_escaped += 1
                 self._enemies.release(e)
         # Boss
         if self._is_boss and self._boss is not None and self._boss.active:
@@ -1374,11 +1388,16 @@ class GameplayRuntime:
         if self._is_boss:
             return
         self._wave_mgr.current.elapsed_s += dt
-        # BLOQUE 29: level 1 mode — 5 min OR 50 kills
+        # BLOQUE 43: boss trigger — 60s+perfect OR 50 kills OR 180s timeout
         if self._is_level1_mode():
             kills = self._wave_mgr.current.kills
             elapsed = self._wave_mgr.current.elapsed_s
-            if kills >= 50 or elapsed >= 300.0:
+            fast = (elapsed >= BOSS_FAST_TRIGGER_S
+                    and self._enemies_escaped == 0
+                    and kills >= 1)  # require at least 1 kill (no trivial perfect)
+            kill_fallback = kills >= BOSS_FALLBACK_KILLS
+            timeout = elapsed >= BOSS_FALLBACK_TIMEOUT_S
+            if fast or kill_fallback or timeout:
                 from src.core.scene_manager import GameState
                 self._transition_to(GameState.BOSS_INTRO)
             return

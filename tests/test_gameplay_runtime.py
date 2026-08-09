@@ -1262,14 +1262,16 @@ def test_level1_victory_at_5_minutes():
 
 
 def test_level1_does_not_trigger_boss_before_threshold():
-    """BLOQUE 29: before 50 kills AND before 5 min, no boss intro."""
+    """BLOQUE 43: before 50 kills AND before 60s, no boss intro.
+    (Was 5min in BLOQUE 29; tightened to 60s+perfect in BLOQUE 43.)
+    """
     rt = _make_runtime()
     state_holder = {"current": None}
     def transition(state):
         state_holder["current"] = state
     rt._transition_to = transition
-    rt._wave_mgr.current.kills = 30
-    rt._wave_mgr.current.elapsed_s = 100.0
+    rt._wave_mgr.current.kills = 10
+    rt._wave_mgr.current.elapsed_s = 30.0
     rt._update_wave_state(0.0)
     assert state_holder["current"] is None
 
@@ -1597,3 +1599,107 @@ def test_bloque_38_muzzle_flash_source_tracks_rmb() -> None:
     rt._mouse_r_held = True
     rt._muzzle_flash_source = "rmb" if rt._mouse_r_held else "lmb"
     assert rt._muzzle_flash_source == "rmb"
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 43: boss trigger (60s+perfect OR 50kills OR 180s)
+# ---------------------------------------------------------------------------
+def test_boss_trigger_constants_in_settings() -> None:
+    """BLOQUE 43: settings have the new boss trigger constants."""
+    from src.core.settings import (
+        BOSS_FALLBACK_KILLS, BOSS_FALLBACK_TIMEOUT_S, BOSS_FAST_TRIGGER_S,
+    )
+    assert BOSS_FAST_TRIGGER_S == 60.0
+    assert BOSS_FALLBACK_KILLS == 50
+    assert BOSS_FALLBACK_TIMEOUT_S == 180.0
+
+
+def _recording_transition():
+    """Returns (callback_fn, transitions_list) — appends each state passed to fn."""
+    transitions: list = []
+    def _fn(state):
+        transitions.append(state)
+    return _fn, transitions
+
+
+def test_boss_trigger_at_60s_with_perfect_score() -> None:
+    """BLOQUE 43: elapsed=60s, no escaped, kills>=1 → BOSS_INTRO."""
+    from src.core.settings import BOSS_FAST_TRIGGER_S
+    from src.core.scene_manager import GameState
+    fn, transitions = _recording_transition()
+    rt = GameplayRuntime(transition_to=fn, is_boss=False, act=1)
+    rt.on_enter()
+    rt._is_level1_mode = lambda: True
+    rt._wave_mgr.current.elapsed_s = BOSS_FAST_TRIGGER_S
+    rt._wave_mgr.current.kills = 4
+    rt._enemies_escaped = 0
+    rt._update_wave_state(0.0)
+    assert GameState.BOSS_INTRO in transitions
+
+
+def test_boss_trigger_fallback_at_50_kills() -> None:
+    """BLOQUE 43: kills>=50 (regardless of time) → BOSS_INTRO."""
+    from src.core.settings import BOSS_FALLBACK_KILLS
+    from src.core.scene_manager import GameState
+    fn, transitions = _recording_transition()
+    rt = GameplayRuntime(transition_to=fn, is_boss=False, act=1)
+    rt.on_enter()
+    rt._is_level1_mode = lambda: True
+    rt._wave_mgr.current.elapsed_s = 30.0
+    rt._wave_mgr.current.kills = BOSS_FALLBACK_KILLS
+    rt._enemies_escaped = 5
+    rt._update_wave_state(0.0)
+    assert GameState.BOSS_INTRO in transitions
+
+
+def test_boss_trigger_timeout_at_180s() -> None:
+    """BLOQUE 43: elapsed>=180s, low kills → BOSS_INTRO (lenient timeout)."""
+    from src.core.settings import BOSS_FALLBACK_TIMEOUT_S
+    from src.core.scene_manager import GameState
+    fn, transitions = _recording_transition()
+    rt = GameplayRuntime(transition_to=fn, is_boss=False, act=1)
+    rt.on_enter()
+    rt._is_level1_mode = lambda: True
+    rt._wave_mgr.current.elapsed_s = BOSS_FALLBACK_TIMEOUT_S
+    rt._wave_mgr.current.kills = 10
+    rt._enemies_escaped = 0
+    rt._update_wave_state(0.0)
+    assert GameState.BOSS_INTRO in transitions
+
+
+def test_boss_trigger_does_not_fire_below_thresholds() -> None:
+    """BLOQUE 43: under all thresholds, NO transition."""
+    from src.core.scene_manager import GameState
+    fn, transitions = _recording_transition()
+    rt = GameplayRuntime(transition_to=fn, is_boss=False, act=1)
+    rt.on_enter()
+    rt._is_level1_mode = lambda: True
+    rt._wave_mgr.current.elapsed_s = 30.0
+    rt._wave_mgr.current.kills = 10
+    rt._enemies_escaped = 5
+    rt._update_wave_state(0.0)
+    assert GameState.BOSS_INTRO not in transitions
+
+
+def test_boss_trigger_fast_requires_at_least_one_kill() -> None:
+    """BLOQUE 43: even at 60s, the fast path requires at least 1 kill."""
+    from src.core.settings import BOSS_FAST_TRIGGER_S
+    from src.core.scene_manager import GameState
+    fn, transitions = _recording_transition()
+    rt = GameplayRuntime(transition_to=fn, is_boss=False, act=1)
+    rt.on_enter()
+    rt._is_level1_mode = lambda: True
+    rt._wave_mgr.current.elapsed_s = BOSS_FAST_TRIGGER_S
+    rt._wave_mgr.current.kills = 0
+    rt._enemies_escaped = 0
+    rt._update_wave_state(0.0)
+    assert GameState.BOSS_INTRO not in transitions
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 42: density cap
+# ---------------------------------------------------------------------------
+def test_density_cap_setting_is_8() -> None:
+    """BLOQUE 42: MAX_ENEMIES_ON_SCREEN is 8."""
+    from src.core.settings import MAX_ENEMIES_ON_SCREEN
+    assert MAX_ENEMIES_ON_SCREEN == 8
