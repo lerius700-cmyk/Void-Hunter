@@ -149,7 +149,9 @@ for f in range(target_frames):
             rt._mouse_held = False
             rt._player.input_fire = False
     else:
-        # Level: always fire L1 (no charge, full mobility)
+        # Level: always fire L1 — keeps input_fire=True so SHOOT↔MOVE cycle
+        # allows movement while firing. The player will be in MOVE state
+        # because input_left/right is set.
         rt._mouse_held = False
         rt._player.input_fire = True
 
