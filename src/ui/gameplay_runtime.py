@@ -640,8 +640,18 @@ class GameplayRuntime:
             self._level_up_flash = 0.9
             self._emit_burst(self._player.x, self._player.y, count=16, kind="glow")
             self._play_sfx("multiplier_up", volume=0.8)
-        # Particles
-        self._emit_burst(e.x, e.y, count=14, kind="explosion")
+        # Particles — BLOQUE 25: more particles on tougher kills
+        if e.kind in (EnemyKind.HEAVY, EnemyKind.CARRIER):
+            self._emit_burst(e.x, e.y, count=32, kind="explosion")
+            self._emit_burst(e.x, e.y, count=20, kind="shrapnel")
+            self._emit_burst(e.x, e.y, count=12, kind="smoke")
+            self._add_shockwave(e.x, e.y, 50.0)
+        elif e.kind in (EnemyKind.CRUISER, EnemyKind.SNIPER, EnemyKind.TURRET):
+            self._emit_burst(e.x, e.y, count=22, kind="explosion")
+            self._emit_burst(e.x, e.y, count=10, kind="shrapnel")
+            self._add_shockwave(e.x, e.y, 30.0)
+        else:
+            self._emit_burst(e.x, e.y, count=14, kind="explosion")
         # SFX
         if e.kind in (EnemyKind.HEAVY, EnemyKind.CARRIER):
             self._play_sfx("explode_medium", volume=0.7)
@@ -987,6 +997,8 @@ class GameplayRuntime:
     def draw(self, target: pygame.Surface) -> None:
         # Background
         self._bg.draw(target)
+        # BLOQUE 25: ambient drift particles in background
+        self._draw_ambient_dust(target)
         # Shake offset
         shx_f, shy_f = self._shake.get_offset()
         shx, shy = int(shx_f), int(shy_f)
@@ -1046,8 +1058,8 @@ class GameplayRuntime:
         self._draw_wave_indicator(target)
         # Play-area frame (always on top so the border is visible)
         self._draw_play_area_frame(target)
-        # HUD
-        self._hud.draw(target, self._player, self._weapon, self._scoring)
+        # HUD (BLOQUE 25: pass t for animations)
+        self._hud.draw(target, self._player, self._weapon, self._scoring, t=self._t)
         # Screen flash (bomb) — drawn last, fades over time
         if self._screen_flash > 0.0:
             flash_alpha = int(200 * self._screen_flash)
@@ -1261,14 +1273,27 @@ class GameplayRuntime:
         pygame.draw.polygon(surf, cockpit_color, [(12, 4), (9, 12), (15, 12)])
         # Cockpit highlight (1px white)
         pygame.draw.circle(surf, (255, 255, 255), (12, 6), 1)
-        # Wing tip lights (red/green for orientation)
-        pygame.draw.circle(surf, (255, 60, 60), (2, 13), 1)
-        pygame.draw.circle(surf, (60, 255, 100), (22, 13), 1)
+        # BLOQUE 25: Wing tip lights — pulsing (red port, green starboard)
+        # Pulse with different phase so they appear to "alternate"
+        red_pulse = 0.5 + 0.5 * math.sin(self._t * 6.0)
+        green_pulse = 0.5 + 0.5 * math.sin(self._t * 6.0 + math.pi)
+        # Red port (left, x=2)
+        red_color = (int(255 * (0.4 + 0.6 * red_pulse)),
+                     int(60 * (0.4 + 0.6 * red_pulse)),
+                     int(60 * (0.4 + 0.6 * red_pulse)))
+        green_color = (int(60 * (0.4 + 0.6 * green_pulse)),
+                       int(255 * (0.4 + 0.6 * green_pulse)),
+                       int(100 * (0.4 + 0.6 * green_pulse)))
+        pygame.draw.circle(surf, red_color, (2, 13), 1)
+        pygame.draw.circle(surf, green_color, (22, 13), 1)
         # Engine intake (small dark notch at the back)
         pygame.draw.rect(surf, (40, 50, 70), (10, 12, 4, 2))
         rotated = pygame.transform.rotate(surf, -self._player.current_tilt)
         rect = rotated.get_rect(center=(int(self._player.x + ox), int(self._player.y + oy)))
         target.blit(rotated, rect)
+        # BLOQUE 25: Shield effect during respawn invulnerability
+        if self._player.respawn_invuln > 0.0:
+            self._draw_shield(target, ox, oy)
         # BLOQUE 22: muzzle flash overlay — bright oval at the player nose
         if self._muzzle_flash > 0.0:
             self._draw_muzzle_flash(target, ox, oy)
@@ -1366,6 +1391,64 @@ class GameplayRuntime:
             ry2 = 12 + int(math.sin(r) * 12)
             pygame.draw.line(surf, (255, 255, 200, outer_alpha), (rx1, ry1), (rx2, ry2), 2)
         target.blit(surf, (cx - 12, cy - 12))
+
+    def _draw_shield(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        """BLOQUE 25: glowing shield bubble around player during respawn invuln.
+
+        Animated rotating arc + soft cyan ring.
+        """
+        cx = int(self._player.x + ox)
+        cy = int(self._player.y + oy)
+        # Outer soft ring
+        ring = pygame.Surface((40, 40), pygame.SRCALPHA)
+        pulse = 0.5 + 0.5 * math.sin(self._t * 8.0)
+        outer_alpha = int(80 + 60 * pulse)
+        pygame.draw.circle(ring, (100, 200, 255, outer_alpha), (20, 20), 18, 2)
+        # Inner brighter ring
+        pygame.draw.circle(ring, (200, 240, 255, 180), (20, 20), 14, 1)
+        target.blit(ring, (cx - 20, cy - 20))
+        # Rotating arc segments (3 arcs at different angles)
+        arc_surf = pygame.Surface((40, 40), pygame.SRCALPHA)
+        for i in range(3):
+            base_angle = self._t * 4.0 + i * (2 * math.pi / 3)
+            for j in range(8):
+                a1 = base_angle + j * (math.pi / 24)
+                a2 = base_angle + (j + 1) * (math.pi / 24)
+                x1 = 20 + int(math.cos(a1) * 18)
+                y1 = 20 + int(math.sin(a1) * 18)
+                x2 = 20 + int(math.cos(a2) * 18)
+                y2 = 20 + int(math.sin(a2) * 18)
+                pygame.draw.line(arc_surf, (180, 230, 255, 200), (x1, y1), (x2, y2), 1)
+        target.blit(arc_surf, (cx - 20, cy - 20))
+
+    def _draw_ambient_dust(self, target: pygame.Surface) -> None:
+        """BLOQUE 25: ambient drifting dust particles in the background.
+
+        Small motes that drift slowly across the screen, wrapping at edges.
+        Adds depth to the parallax without being distracting.
+        """
+        w, h = target.get_size()
+        surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        n_motes = 18
+        for i in range(n_motes):
+            # Deterministic per-mote base position (so they don't all cluster)
+            base_x = (i * 53 + 11) % w
+            base_y = (i * 89 + 37) % h
+            # Slow drift based on time
+            drift_x = self._t * (8.0 + (i % 4) * 2.0) * 0.3
+            drift_y = self._t * (5.0 + (i % 3) * 1.5) * 0.3
+            x = (base_x + drift_x) % w
+            y = (base_y + drift_y) % h
+            # Color: faint blue-white motes
+            intensity = 30 + (i % 3) * 20
+            color = (intensity, intensity, intensity + 30, 100)
+            if i % 4 == 0:
+                # Bigger mote
+                pygame.draw.circle(surf, color, (int(x), int(y)), 1)
+            else:
+                # Single pixel
+                surf.set_at((int(x), int(y)), color)
+        target.blit(surf, (0, 0))
 
     def _draw_speed_lines(self, target: pygame.Surface) -> None:
         """BLOQUE 24: motion streaks when player moves fast.

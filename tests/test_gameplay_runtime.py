@@ -658,3 +658,64 @@ def test_draw_with_level_up_flash_runs():
     rt._level_up_flash = 0.5
     surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
     rt.draw(surf)
+
+
+# -----------------------------------------------------------------------
+# BLOQUE 25: Animated HP, shield, ambient dust, wing lights
+# -----------------------------------------------------------------------
+def test_shield_renders_during_respawn_invuln():
+    """When respawn_invuln > 0, _draw_shield should not raise."""
+    rt = _make_runtime()
+    rt._player.respawn_invuln = 1.0
+    surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
+    rt._draw_shield(surf, 0, 0)
+
+
+def test_ambient_dust_runs():
+    """Ambient dust draw should not raise."""
+    rt = _make_runtime()
+    surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
+    rt._draw_ambient_dust(surf)
+
+
+def test_heavy_kill_spawns_more_particles():
+    """BLOQUE 25: killing a HEAVY should spawn more particles than killing a SCOUT."""
+    rt1 = _make_runtime()
+    rt2 = _make_runtime()
+    e1 = rt1._enemies.spawn(EnemyKind.SCOUT, 100, 50)
+    e2 = rt2._enemies.spawn(EnemyKind.HEAVY, 100, 50)
+    assert e1 is not None and e2 is not None
+    before1 = sum(1 for p in rt1._particles.pool if p.active)
+    before2 = sum(1 for p in rt2._particles.pool if p.active)
+    rt1._on_enemy_killed(e1)
+    rt2._on_enemy_killed(e2)
+    after1 = sum(1 for p in rt1._particles.pool if p.active)
+    after2 = sum(1 for p in rt2._particles.pool if p.active)
+    delta1 = after1 - before1
+    delta2 = after2 - before2
+    assert delta2 > delta1  # HEAVY spawns more
+
+
+def test_heavy_kill_spawns_shockwave():
+    """BLOQUE 25: HEAVY kill should add a shockwave ring."""
+    rt = _make_runtime()
+    e = rt._enemies.spawn(EnemyKind.HEAVY, 100, 50)
+    assert e is not None
+    initial = len(rt._shockwaves)
+    rt._on_enemy_killed(e)
+    assert len(rt._shockwaves) > initial
+
+
+def test_draw_with_respawn_invuln_runs():
+    """Full draw with shield active should not raise."""
+    rt = _make_runtime()
+    rt._player.respawn_invuln = 0.5
+    surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
+    rt.draw(surf)
+
+
+def test_hud_draw_with_t_runs():
+    """HUD draw with t parameter should not raise."""
+    rt = _make_runtime()
+    surf = pygame.Surface((INTERNAL_W, INTERNAL_H))
+    rt._hud.draw(surf, rt._player, rt._weapon, rt._scoring, t=0.5)

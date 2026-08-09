@@ -151,7 +151,37 @@ def main() -> None:
     pygame.image.save(surf, str(out_dir / "polish_09_speed_lines.png"))
     print("saved polish_09_speed_lines.png")
 
-    print("Done. Saved 9 frames in tools/playtest_out/")
+    # 10. BLOQUE 25: shield effect (respawn invuln)
+    rt10 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt10.on_enter()
+    rt10._player.x = INTERNAL_W / 2
+    rt10._player.y = INTERNAL_H - 60
+    rt10._player.respawn_invuln = 1.0
+    rt10._t = 0.5
+    rt10.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_10_shield.png"))
+    print("saved polish_10_shield.png")
+
+    # 11. BLOQUE 25: low HP (animated red pulse)
+    rt11 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt11.on_enter()
+    rt11._player.hp = 1
+    rt11._t = 0.5
+    rt11.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_11_low_hp.png"))
+    print("saved polish_11_low_hp.png")
+
+    # 12. BLOQUE 25: HUD with high weapon level
+    rt12 = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+    rt12.on_enter()
+    rt12._weapon.level = rt12._weapon.level.__class__.L3  # type: ignore[attr-defined]
+    rt12._weapon.xp = 50
+    rt12._t = 0.5
+    rt12.draw(surf)
+    pygame.image.save(surf, str(out_dir / "polish_12_hud_high_level.png"))
+    print("saved polish_12_hud_high_level.png")
+
+    print("Done. Saved 12 frames in tools/playtest_out/")
     pygame.quit()
 
 
