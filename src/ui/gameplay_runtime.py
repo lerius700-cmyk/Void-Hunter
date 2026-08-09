@@ -109,6 +109,16 @@ class PowerUp:
     color: tuple[int, int, int]
 
 
+@dataclass
+class Shockwave:
+    x: float
+    y: float
+    radius: float
+    max_radius: float
+    life: float
+    max_life: float
+
+
 class GameplayRuntime:
     """Owns the live action loop. One per GAMEPLAY or BOSS_FIGHT scene.
 
@@ -162,6 +172,9 @@ class GameplayRuntime:
         self._score_popups: list[ScorePopup] = []
         self._powerups: list[PowerUp] = []
         self._enemy_flash: dict[int, float] = {}  # id(e) -> flash_timer
+        self._shockwaves: list[Shockwave] = []  # expanding ring effects
+        self._screen_flash: float = 0.0  # 0..1 alpha of white overlay (bomb)
+        self._boss_entry_t: float = 0.0  # boss slides in on first 1.5s of fight
         self._dash_consumed: bool = False  # SFX dedup
         self._last_charge_level: int = 0
         self._death_exploded: bool = False
@@ -222,6 +235,8 @@ class GameplayRuntime:
         self._score_popups.clear()
         self._powerups.clear()
         self._enemy_flash.clear()
+        self._shockwaves.clear()
+        self._screen_flash = 0.0
         self._t = 0.0
         self._wave_spawn_timer = 0.0
         self._is_wave_active = not self._is_boss
@@ -229,6 +244,7 @@ class GameplayRuntime:
         self._death_exploded = False
         self._last_charge_level = 0
         self._bgm_started = False
+        self._boss_entry_t = 0.0
         if not self._is_boss:
             self._wave_mgr.start_wave(self._wave_idx)
             self._populate_spawn_queue()
@@ -345,6 +361,8 @@ class GameplayRuntime:
 
     def _screen_clear_damage(self) -> None:
         """Bomb: kill all enemy bullets and damage visible enemies."""
+        # Full-screen white flash (decreases over time)
+        self._screen_flash = 1.0
         # Clear enemy bullets
         for p in self._bullets.pool:
             if p.active and p.owner in (OWNER_ENEMY, OWNER_BOSS):
@@ -356,7 +374,8 @@ class GameplayRuntime:
                 killed = e.apply_damage(400)
                 if killed:
                     self._on_enemy_killed(e)
-
+        # Shockwave ring expanding from player
+        self._add_shockwave(self._player.x, self._player.y, 80.0)
     # ------------------------------------------------------------------
     # Enemies: spawn + update
     # ------------------------------------------------------------------
@@ -420,11 +439,23 @@ class GameplayRuntime:
                 self._enemies.release(e)
         # Boss
         if self._is_boss and self._boss is not None and self._boss.active:
-            self._boss.update(dt)
-            # Boss attack selection
-            attack = self._boss.select_attack()
-            if attack >= 0:
-                self._spawn_boss_attack(attack)
+            # Boss slides in from off-screen for first 1.5s
+            self._boss_entry_t += dt
+            if self._boss_entry_t < 1.5:
+                # Override y position to slide from -50 to anchor_y
+                from src.entities.enemies.boss import BOSS_CONFIGS
+                cfg = BOSS_CONFIGS[self._boss.id]
+                progress = min(1.0, self._boss_entry_t / 1.5)
+                eased = 1.0 - (1.0 - progress) ** 3
+                self._boss.y = -50 + (cfg.anchor_y - -50) * eased
+            else:
+                # Normal boss behavior (sine oscillation)
+                self._boss.update(dt)
+            # Boss attack selection (suppressed during entry)
+            if self._boss_entry_t >= 0.8:
+                attack = self._boss.select_attack()
+                if attack >= 0:
+                    self._spawn_boss_attack(attack)
             # Boss death
             if self._boss.hp <= 0:
                 self._on_boss_killed()
@@ -709,6 +740,9 @@ class GameplayRuntime:
         self._update_score_popups(effective_dt)
         self._update_powerups(effective_dt)
         self._update_enemy_flash(effective_dt)
+        self._update_shockwaves(effective_dt)
+        if self._screen_flash > 0.0:
+            self._screen_flash = max(0.0, self._screen_flash - effective_dt * 2.5)
         self._check_player_death_explosion()
         self._particles.update(effective_dt)
         self._hitstop.update()
@@ -763,6 +797,28 @@ class GameplayRuntime:
             if t > 0.0:
                 decayed[eid] = t
         self._enemy_flash = decayed
+
+    def _add_shockwave(self, x: float, y: float, max_radius: float = 60.0) -> None:
+        """Add an expanding ring shockwave (bomb/charged-shot visual)."""
+        self._shockwaves.append(Shockwave(
+            x=x, y=y, radius=2.0, max_radius=max_radius, life=0.5, max_life=0.5,
+        ))
+
+    def _update_shockwaves(self, dt: float) -> None:
+        """Expand shockwaves over their lifetime."""
+        if not self._shockwaves:
+            return
+        alive: list[Shockwave] = []
+        for s in self._shockwaves:
+            new_life = s.life - dt
+            if new_life <= 0.0:
+                continue
+            new_radius = s.radius + dt * (s.max_radius / 0.5)
+            alive.append(Shockwave(
+                x=s.x, y=s.y, radius=new_radius,
+                max_radius=s.max_radius, life=new_life, max_life=s.max_life,
+            ))
+        self._shockwaves = alive
 
     def _check_player_death_explosion(self) -> None:
         """One-shot multi-stage explosion when the player first dies."""
@@ -844,7 +900,6 @@ class GameplayRuntime:
         # Player damage flash: red overlay right after taking a hit
         if self._player.invuln_frames > 60 - 8 and self._player.invuln_frames > 0 \
                 and not self._player.is_dead:
-            # Brief red flash overlay (8 frames after hit)
             flash = pygame.Surface(target.get_size(), pygame.SRCALPHA)
             flash.fill((255, 60, 40, 100))
             target.blit(flash, (0, 0))
@@ -852,10 +907,10 @@ class GameplayRuntime:
         for p in self._powerups:
             alpha = max(0, min(255, int(255 * (p.life / 2.0))))
             rect = pygame.Rect(int(p.x) - 4 + shx, int(p.y) - 4 + shy, 8, 8)
-            s = pygame.Surface((8, 8), pygame.SRCALPHA)
-            pygame.draw.rect(s, (p.color[0], p.color[1], p.color[2], alpha),
-                             s.get_rect(), border_radius=2)
-            target.blit(s, rect)
+            pu_surf = pygame.Surface((8, 8), pygame.SRCALPHA)
+            pygame.draw.rect(pu_surf, (p.color[0], p.color[1], p.color[2], alpha),
+                             pu_surf.get_rect(), border_radius=2)
+            target.blit(pu_surf, rect)
             # Inner dot
             pygame.draw.rect(target, (255, 255, 255), (rect.x + 2, rect.y + 2, 4, 4))
         # Enemies
@@ -865,6 +920,17 @@ class GameplayRuntime:
         # Boss
         if self._is_boss and self._boss is not None and self._boss.active:
             self._draw_boss(target, shx, shy)
+        # Shockwaves (under bullets so they sit behind)
+        for s in self._shockwaves:
+            r = s.radius
+            life_ratio = s.life / s.max_life if s.max_life > 0 else 0
+            alpha = max(0, min(255, int(200 * life_ratio)))
+            sx = int(s.x) + shx
+            sy = int(s.y) + shy
+            ring_surf = pygame.Surface((int(r * 2) + 4, int(r * 2) + 4), pygame.SRCALPHA)
+            pygame.draw.circle(ring_surf, (255, 255, 255, alpha),
+                               (int(r) + 2, int(r) + 2), int(r), 2)
+            target.blit(ring_surf, (sx - int(r) - 2, sy - int(r) - 2))
         # Bullets (with glow halo)
         self._draw_bullets_with_glow(target, shx, shy)
         # Player (only if not in DEAD state and not i-frames invisible)
@@ -880,6 +946,12 @@ class GameplayRuntime:
         self._draw_play_area_frame(target)
         # HUD
         self._hud.draw(target, self._player, self._weapon, self._scoring)
+        # Screen flash (bomb) — drawn last, fades over time
+        if self._screen_flash > 0.0:
+            flash_alpha = int(200 * self._screen_flash)
+            flash = pygame.Surface(target.get_size(), pygame.SRCALPHA)
+            flash.fill((255, 255, 255, flash_alpha))
+            target.blit(flash, (0, 0))
 
     def _draw_wave_indicator(self, target: pygame.Surface) -> None:
         """Show ACT/WAVE label in the top-center between HUD sections."""
@@ -908,25 +980,25 @@ class GameplayRuntime:
         with a bright inner edge that defines the play area clearly.
         """
         w, h = target.get_size()
-        # Outer dark border
-        pygame.draw.rect(target, _BORDER_COLOR, (0, 0, w, h), 2)
-        # Inner light edge for depth
-        pygame.draw.rect(target, _BORDER_INNER, (1, 1, w - 2, h - 2), 1)
-        # Corner accents (brighter)
-        for cx, cy in ((0, 0), (w - 5, 0), (0, h - 5), (w - 5, h - 5)):
-            pygame.draw.rect(target, (200, 200, 240), (cx, cy, 5, 5))
-        # Wall-hit indicator: highlight the side the player is touching
+        # Outer dark border (4px — more prominent)
+        pygame.draw.rect(target, _BORDER_COLOR, (0, 0, w, h), 4)
+        # Inner light edge (2px — bright)
+        pygame.draw.rect(target, _BORDER_INNER, (2, 2, w - 4, h - 4), 2)
+        # Corner accents (6x6, very bright)
+        for cx, cy in ((0, 0), (w - 6, 0), (0, h - 6), (w - 6, h - 6)):
+            pygame.draw.rect(target, (220, 220, 255), (cx, cy, 6, 6))
+            pygame.draw.rect(target, (140, 160, 220), (cx + 1, cy + 1, 4, 4))
+        # Wall-hit indicator: thicker highlight when player touches
         if not self._player.is_dead:
             px, py = self._player.x, self._player.y
-            highlight = 80  # extra bright edge
             if px < 12:  # left wall
-                pygame.draw.rect(target, (255, 255, 255), (0, 0, 3, h), 1)
+                pygame.draw.rect(target, (255, 255, 255), (0, 0, 5, h), 2)
             if px > 228:  # right wall
-                pygame.draw.rect(target, (255, 255, 255), (w - 3, 0, 3, h), 1)
+                pygame.draw.rect(target, (255, 255, 255), (w - 5, 0, 5, h), 2)
             if py < 12:  # top wall
-                pygame.draw.rect(target, (255, 255, 255), (0, 0, w, 3), 1)
+                pygame.draw.rect(target, (255, 255, 255), (0, 0, w, 5), 2)
             if py > 348:  # bottom wall
-                pygame.draw.rect(target, (255, 255, 255), (0, h - 3, w, 3), 1)
+                pygame.draw.rect(target, (255, 255, 255), (0, h - 5, w, 5), 2)
 
     def _draw_bullets_with_glow(self, target: pygame.Surface, ox: int, oy: int) -> None:
         """Draw bullets with a soft glow halo + trail behind each one."""
