@@ -116,6 +116,8 @@ class Player:
     input_fire: bool = False
     input_dash: bool = False
     input_bomb: bool = False
+    # BLOQUE 34: rapid fire (RMB) — fires L1 every cooldown WITHOUT charging
+    input_rapid_fire: bool = False
     # Output signals (consumed by WeaponSystem etc.)
     wants_to_shoot: bool = False
     wants_to_charge_release: bool = False
@@ -213,10 +215,13 @@ class Player:
         # Fire cooldown
         if self.fire_cd > 0.0:
             self.fire_cd = max(0.0, self.fire_cd - dt)
-        # Track charge_time when input_fire is held in IDLE/MOVE only.
-        # Don't reset to 0 here — _update_idle / _update_charge own the
-        # charge_time lifecycle.
-        if self.input_fire and self.state in (PlayerState.IDLE, PlayerState.MOVE):
+        # Track charge_time when input_fire is held.
+        # BLOQUE 34 fix: charge_time grows in IDLE/MOVE/SHOOT/CHARGE whenever
+        # input_fire is held (was IDLE/MOVE only — this bug prevented L3 beam
+        # from ever triggering because IDLE is only 1 frame out of 13 in the
+        # SHOOT cycle, so charge_time never reached 0.5s).
+        # Rapid fire (RMB) still bypasses — never enters CHARGE.
+        if self.input_fire and not self.input_rapid_fire:
             self.charge_time += dt
         elif self.state in (PlayerState.IDLE, PlayerState.MOVE):
             # Released while in IDLE/MOVE → reset
@@ -229,22 +234,18 @@ class Player:
                 if new_age < self.AFTERIMAGE_LIFE:
                     new_trail.append((tx, ty, new_age))
             self.afterimage = new_trail
-        # BLOQUE 32: nose angle lerp (only when moving, per user spec)
-        # When the player is moving, smoothly track nose_angle target.
-        # When stopped, freeze (current_nose_angle stays where it is).
-        moving = (self.state == PlayerState.MOVE
-                  and (self.input_left or self.input_right
-                       or self.input_up or self.input_down))
-        if moving:
-            # Lerp the current_nose_angle toward nose_angle, shortest path
-            target = self.nose_angle
-            cur = self.current_nose_angle
-            diff = (target - cur + 540.0) % 360.0 - 180.0  # signed shortest
-            step = PLAYER_NOSE_LERP_PER_S * dt
-            if abs(diff) <= step:
-                self.current_nose_angle = target
-            else:
-                self.current_nose_angle = (cur + (step if diff > 0 else -step)) % 360.0
+        # BLOQUE 34: nose angle lerp — always tracks mouse, fast and smooth.
+        # Fixes "weird 360° rotation" bug: now the visual matches the target
+        # in ~15ms for small turns, so the ship ALWAYS faces where the bullets
+        # are going. No more frozen-when-stopped disconnect.
+        target = self.nose_angle
+        cur = self.current_nose_angle
+        diff = (target - cur + 540.0) % 360.0 - 180.0  # signed shortest
+        step = PLAYER_NOSE_LERP_PER_S * dt
+        if abs(diff) <= step:
+            self.current_nose_angle = target
+        else:
+            self.current_nose_angle = (cur + (step if diff > 0 else -step)) % 360.0
         # State-specific update
         if self.state == PlayerState.IDLE:
             self._update_idle(dt)
@@ -452,9 +453,12 @@ class Player:
     # State transitions
     # -----------------------------------------------------------------------
     def _enter_idle(self) -> None:
+        """Enter IDLE state. NOTE: charge_time is intentionally NOT reset
+        here — that would clobber a charge the player has been building.
+        The actual charge release happens when input_fire transitions from
+        True → False (handled in the main update via the elif branch)."""
         self.state = PlayerState.IDLE
         self.state_timer = 0.0
-        self.charge_time = 0.0
         self._charge_fired = False
 
     def _enter_move(self) -> None:

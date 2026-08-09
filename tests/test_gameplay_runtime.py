@@ -374,6 +374,75 @@ def test_k_does_not_trigger_dash():
 
 
 # -----------------------------------------------------------------------
+# BLOQUE 34: BGM off, resolution 320x480, fast nose tracking, RMB rapid fire
+# -----------------------------------------------------------------------
+def test_bgm_start_becomes_noop():
+    """BLOQUE 34: _start_bgm is a no-op (user asked to remove background music)."""
+    rt = _make_runtime()
+    # Just verify the call doesn't crash and BGM stays "not playing"
+    rt._start_bgm("act_normal")
+    assert rt._bgm_started is True  # state flag set, but no audio dispatched
+
+
+def test_resolution_grew_to_320x480():
+    """BLOQUE 34: INTERNAL_W/H is 320/480 (1.33x bigger playfield, ships look smaller)."""
+    from src.core.settings import INTERNAL_H, INTERNAL_W
+    assert INTERNAL_W == 320
+    assert INTERNAL_H == 480
+
+
+def test_nose_lerp_faster_per_spec():
+    """BLOQUE 34: PLAYER_NOSE_LERP_PER_S is 24 (was 12, was 'only while moving')."""
+    from src.core.settings import PLAYER_NOSE_LERP_PER_S
+    assert PLAYER_NOSE_LERP_PER_S == 24.0
+
+
+def test_nose_angle_lerps_when_stopped():
+    """BLOQUE 34: nose angle now lerps EVERY frame (not just while moving)."""
+    from src.entities.player import Player
+    p = Player()
+    p.nose_angle = 90.0
+    p.current_nose_angle = 0.0
+    # No movement input
+    p.input_left = p.input_right = p.input_up = p.input_down = False
+    # One small update
+    p.update(0.01)
+    # current_nose_angle should have moved toward 90°
+    assert p.current_nose_angle > 0.0
+
+
+def test_rmb_rapid_fire_skips_charge():
+    """BLOQUE 34: input_rapid_fire=True keeps charge_time at 0 → no CHARGE state."""
+    from src.entities.player import Player, PlayerState
+    p = Player()
+    p.input_rapid_fire = True
+    p.input_fire = True
+    # Update for > 0.5s (would normally enter CHARGE)
+    for _ in range(60):
+        p.update(1.0 / 120.0)
+    # charge_time should still be ~0 (rapid_fire bypasses)
+    assert p.charge_time < 0.1
+    # Player should NOT be in CHARGE state
+    assert p.state != PlayerState.CHARGE
+
+
+def test_lmb_charge_still_works():
+    """BLOQUE 34: LMB without rapid_fire still charges (regression test).
+    Run 120 frames (1s of game time) so the charge has time to grow past 0.5s
+    and the player transitions to CHARGE state in an IDLE window."""
+    from src.entities.player import Player, PlayerState
+    p = Player()
+    p.input_rapid_fire = False
+    p.input_fire = True
+    for _ in range(120):
+        p.update(1.0 / 120.0)
+    # charge_time should have grown
+    assert p.charge_time > 0.5
+    # Player should be in CHARGE state
+    assert p.state == PlayerState.CHARGE
+
+
+# -----------------------------------------------------------------------
 # BLOQUE 18: Power-ups
 # -----------------------------------------------------------------------
 def test_powerup_bomb_drops_and_pickup():

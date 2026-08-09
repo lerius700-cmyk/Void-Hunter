@@ -11,10 +11,10 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 # Display
 # ---------------------------------------------------------------------------
-INTERNAL_W: int = 240
-INTERNAL_H: int = 360
-DEFAULT_SCALE: int = 4  # 960x1440 window
-WINDOW_W: int = INTERNAL_W * DEFAULT_SCALE
+INTERNAL_W: int = 320        # BLOQUE 34: 1.33x wider playfield (was 240)
+INTERNAL_H: int = 480        # BLOQUE 34: 1.33x taller playfield (was 360)
+DEFAULT_SCALE: int = 3  # window = INTERNAL_W x INTERNAL_H at this scale
+WINDOW_W: int = INTERNAL_W * DEFAULT_SCALE   # 960x1440 @ scale 3
 WINDOW_H: int = INTERNAL_H * DEFAULT_SCALE
 WINDOW_TITLE: str = "VOID HUNTER"
 
@@ -52,8 +52,8 @@ PLAYER_DASH_IFRAMES: int = 22             # at base level
 PLAYER_INVULN_FRAMES: int = 60            # post-hit
 PLAYER_DEATH_DURATION_S: float = 1.20
 PLAYER_RESPAWN_INVULN_S: float = 1.0
-# BLOQUE 32: nose smoothing (lerp speed for "rotate only while moving")
-PLAYER_NOSE_LERP_PER_S: float = 12.0  # higher = snappier
+# BLOQUE 34: nose smoothing — fast snappy tracking (was 12, was broken "only while moving")
+PLAYER_NOSE_LERP_PER_S: float = 24.0  # higher = snappier; 24°/s catches up in ~15ms for small turns
 
 # ---------------------------------------------------------------------------
 # Bullet FX

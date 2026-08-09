@@ -187,6 +187,7 @@ class GameplayRuntime:
         self._mouse_x: float = INTERNAL_W / 2
         self._mouse_y: float = INTERNAL_H / 2
         self._mouse_held: bool = False  # BLOQUE 30: LMB held state
+        self._mouse_r_held: bool = False  # BLOQUE 34: RMB held state (rapid fire)
         from src.core.settings import WINDOW_H, WINDOW_W
         self._game_screen_size: tuple[int, int] = (WINDOW_W, WINDOW_H)
         # BLOQUE 22: extra polish
@@ -208,9 +209,9 @@ class GameplayRuntime:
             self._audio.play_sfx(name, volume)
 
     def _start_bgm(self, name: str) -> None:
-        if self._audio is not None and not self._bgm_started:
-            self._audio.play_bgm(name)
-            self._bgm_started = True
+        # BLOQUE 34: BGM disabled per user request (quítale la música de fondo).
+        # SFX still plays. Mark as started to keep state consistent.
+        self._bgm_started = True
 
     def _stop_bgm(self) -> None:
         if self._audio is not None:
@@ -273,6 +274,7 @@ class GameplayRuntime:
         self._mouse_x = INTERNAL_W / 2
         self._mouse_y = INTERNAL_H / 4
         self._mouse_held = False
+        self._mouse_r_held = False
         self._t = 0.0
         self._wave_spawn_timer = 0.0
         self._is_wave_active = not self._is_boss
@@ -327,18 +329,24 @@ class GameplayRuntime:
             scale_y = INTERNAL_H / display_h
             self._mouse_x = mouse_x_disp * scale_x
             self._mouse_y = mouse_y_disp * scale_y
-            # BLOQUE 30: left mouse button = fire (held = charge)
-            # pygame.mouse.get_pressed(): (left, middle, right)
+            # BLOQUE 34: mouse buttons — (left, middle, right)
+            #   LMB (index 0) = charge shot
+            #   RMB (index 2) = rapid fire (no charge)
             mouse_buttons = pygame.mouse.get_pressed()
             self._mouse_held = bool(mouse_buttons[0])
+            self._mouse_r_held = bool(mouse_buttons[2])
         except (AttributeError, pygame.error):
             # No display yet (headless); use center
             self._mouse_x = INTERNAL_W / 2
             self._mouse_y = INTERNAL_H / 2
             self._mouse_held = False
-        # BLOQUE 30: set input_fire based on mouse hold (continuous)
-        # Holding the button = charging. Release = fire.
+            self._mouse_r_held = False
+        # BLOQUE 34: shooting controls
+        #   LMB held = input_fire (charge shot, release fires)
+        #   RMB held = input_rapid_fire (continuous L1, no charge)
+        # These are independent — you can RMB-spam while LMB charges.
         self._player.input_fire = self._mouse_held
+        self._player.input_rapid_fire = self._mouse_r_held
         for event in pygame.event.get(pygame.KEYDOWN):
             if event.key == pygame.K_LSHIFT:
                 # BLOQUE 33: Shift left = dash (one-shot, consumed)

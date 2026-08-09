@@ -11,6 +11,7 @@ import time
 import pygame
 import pytest
 
+from src.core.settings import INTERNAL_H, INTERNAL_W
 from src.systems.particle_engine import (
     KIND_CONFIG,
     P_DEBRIS,
@@ -420,14 +421,14 @@ def test_kind_default_color_is_rgb_tuple(kind: int) -> None:
 # 15. Bounds culling edge cases
 # ---------------------------------------------------------------------------
 def test_particle_at_edge_of_bounds_survives(engine: ParticleEngine) -> None:
-    """Particle exactly at right edge (x=240) survives one frame, then dies."""
-    p = engine.emit(P_SPARK, 240.0, 180.0, vx=0.0, life=1.0)
+    """Particle exactly at right edge (x=INTERNAL_W) survives one frame, then dies."""
+    p = engine.emit(P_SPARK, float(INTERNAL_W), float(INTERNAL_H) / 2, vx=0.0, life=1.0)
     assert p is not None
     engine.update(1 / 120)
-    # x=240 + 0 vx → still 240. Margin is 16, so 240 < 240+16 → alive.
+    # x=INTERNAL_W + 0 vx → still at edge. Margin is 16, so x < INTERNAL_W+16 → alive.
     assert p.active
     # Push it out hard (1000 px/s)
     p.vx = 1000.0
     engine.update(1 / 60)
-    # 1000 * 1/60 ≈ 16.67 px → x = 256.67, beyond margin → culled
+    # 1000 * 1/60 ≈ 16.67 px → x = INTERNAL_W + 16.67, beyond margin → culled
     assert not p.active

@@ -62,15 +62,17 @@ def test_dt_clamp_prevents_death_spiral() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 2. Display — 240x360 internal @ 4x integer scale = 960x1440 window.
+# 2. Display — 320x480 internal @ 3x integer scale = 960x1440 window. (BLOQUE 34)
 # ---------------------------------------------------------------------------
-def test_resolution_internal_240x360() -> None:
-    assert INTERNAL_W == 240
-    assert INTERNAL_H == 360
+def test_resolution_internal_320x480() -> None:
+    """BLOQUE 34: 1.33x wider playfield (was 240x360) — more dodge space, ships look smaller."""
+    assert INTERNAL_W == 320
+    assert INTERNAL_H == 480
 
 
-def test_window_960x1440_at_4x() -> None:
-    assert DEFAULT_SCALE == 4
+def test_window_960x1440_at_3x() -> None:
+    """BLOQUE 34: default scale is 3 (was 4) because INTERNAL grew 1.33x; window stays 960x1440."""
+    assert DEFAULT_SCALE == 3
     assert WINDOW_W == INTERNAL_W * DEFAULT_SCALE == 960
     assert WINDOW_H == INTERNAL_H * DEFAULT_SCALE == 1440
 

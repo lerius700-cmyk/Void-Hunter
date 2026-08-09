@@ -36,8 +36,9 @@ def test_player_initial_lives_and_bombs(p: Player) -> None:
 
 
 def test_player_initial_position_center_bottom(p: Player) -> None:
-    assert p.x == INTERNAL_W / 2 == 120
-    assert p.y == INTERNAL_H - 60 == 300
+    """BLOQUE 34: playfield is 320x480 now, so center-bottom is (160, 420)."""
+    assert p.x == INTERNAL_W / 2 == 160
+    assert p.y == INTERNAL_H - 60 == 420
 
 
 def test_player_initial_tilt_zero(p: Player) -> None:

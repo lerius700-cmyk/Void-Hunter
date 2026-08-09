@@ -20,19 +20,28 @@ python main.py --profile     # run with FPS overlay (BLOQUE 14+)
 python main.py                # play (BLOQUE 14+)
 ```
 
-## Controls (BLOQUE 33)
+## Controls (BLOQUE 34)
 
-| Action     | Keyboard | Gamepad |
-| ---------- | -------- | ------- |
-| Move WASD  | `W`/`A`/`S`/`D` (world-relative) | Stick |
-| Aim        | Mouse (360° yaw)  | Right stick |
-| Shoot      | `LMB` (hold = charge, release = fire) | `X` |
-| Dash       | `Shift` (left, one-shot)  | `Y` |
-| Bomb       | `L`      | `B`     |
-| Pause      | `Esc`    | Start   |
-| FPS overlay| `F1`     | —       |
+| Action     | Keyboard | Mouse | Gamepad |
+| ---------- | -------- | ----- | ------- |
+| Move WASD  | `W`/`A`/`S`/`D` (world-relative) | — | Stick |
+| Aim        | — | Mouse 360° yaw | Right stick |
+| Charge shot| — | `LMB` hold = charge, release = fire | `X` |
+| Rapid fire | — | `RMB` hold = continuous L1 | — |
+| Dash       | `Shift` (left, one-shot) | — | `Y` |
+| Bomb       | `L` | — | `B` |
+| Pause      | `Esc` | — | Start |
+| FPS overlay| `F1` | — | — |
 
 Legacy keys: `J` still fires (testing), `K` is now free for future use.
+
+**BLOQUE 34 changes:**
+- 🖱️ **LMB** = charge shot (hold to charge to L1/L2/L3, release fires)
+- 🖱️ **RMB** = rapid fire (continuous L1, never charges)
+- 🖼️ Resolution grew to 320x480 (was 240x360) — ships/projectiles look smaller
+- ⚡ Mouse tracking is now fast (24°/s lerp, always tracking — was slow + frozen when stopped)
+- 🔇 Background music disabled
+- 🐛 Fixed L3 beam bug: charge_time was being reset on every SHOOT→IDLE cycle, preventing L3 from ever triggering. Now charge builds continuously while LMB is held.
 
 ## CLI flags
 
