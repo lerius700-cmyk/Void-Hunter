@@ -6,6 +6,7 @@ transition_to and exercise its update/draw via the Scene interface.
 """
 from __future__ import annotations
 
+import math
 import os
 import sys
 from pathlib import Path
@@ -24,6 +25,7 @@ import pygame  # noqa: E402
 from src.core.scene_manager import GameState  # noqa: E402
 from src.core.settings import INTERNAL_H, INTERNAL_W  # noqa: E402
 from src.entities.enemies import EnemyKind  # noqa: E402
+from src.entities.enemies.boss import BOSS_CONFIGS  # noqa: E402
 from src.systems.projectile import BULLET_PLAYER, OWNER_PLAYER  # noqa: E402
 from src.ui.gameplay_runtime import GameplayRuntime, PowerUp, ScorePopup  # noqa: E402
 
@@ -822,3 +824,54 @@ def test_dash_emits_extra_smoke():
     after1 = sum(1 for p in rt1._particles.pool if p.active)
     after2 = sum(1 for p in rt2._particles.pool if p.active)
     assert (after2 - before2) > (after1 - before1)  # dash spawns more
+
+
+# -----------------------------------------------------------------------
+# BLOQUE 27: Hit sparks on player, power-up magnet, boss phase burst
+# -----------------------------------------------------------------------
+def test_powerup_magnet_drifts_toward_player():
+    """BLOQUE 27: power-ups near the player should drift toward it."""
+    rt = _make_runtime()
+    rt._player.x = 100
+    rt._player.y = 200
+    # Spawn a powerup close to the player
+    rt._spawn_powerup("score", 110, 210)
+    initial_x = rt._powerups[0].x
+    initial_y = rt._powerups[0].y
+    rt._update_powerups(0.1)
+    # The powerup may have been picked up; check if still alive
+    if rt._powerups:
+        # If still alive, it should have moved toward the player
+        p = rt._powerups[0]
+        dx_to_player = p.x - rt._player.x
+        dy_to_player = p.y - rt._player.y
+        orig_dx = initial_x - rt._player.x
+        orig_dy = initial_y - rt._player.y
+        # Distance should be smaller (or equal if already at the player)
+        orig_dist = math.hypot(orig_dx, orig_dy)
+        new_dist = math.hypot(dx_to_player, dy_to_player)
+        assert new_dist <= orig_dist
+
+
+def test_boss_phase_change_spawns_burst():
+    """BLOQUE 27: when boss enters a new phase, a bigger burst should spawn."""
+    rt = _make_runtime(is_boss=True, act=1)
+    # Damage the boss heavily to trigger phase change
+    assert rt._boss is not None
+    rt._boss.phase = 1
+    # Set boss HP just above phase 2 threshold to force a change
+    cfg = BOSS_CONFIGS[rt._boss.id]
+    threshold = cfg.phase_thresholds[0]
+    rt._boss.hp = int(rt._boss.max_hp * (threshold + 0.05))
+    initial_particles = sum(1 for p in rt._particles.pool if p.active)
+    initial_shockwaves = len(rt._shockwaves)
+    # Manually trigger a phase change (normally triggered by collision)
+    rt._boss.hp = int(rt._boss.max_hp * (threshold - 0.05))
+    # Now damage it with a player bullet
+    rt._bullets.spawn(BULLET_PLAYER, rt._boss.x, rt._boss.y, 0, 100, damage=99, owner=OWNER_PLAYER)
+    rt._handle_collisions()
+    after_particles = sum(1 for p in rt._particles.pool if p.active)
+    after_shockwaves = len(rt._shockwaves)
+    # Phase change adds particles and shockwave
+    assert after_particles > initial_particles
+    assert after_shockwaves > initial_shockwaves

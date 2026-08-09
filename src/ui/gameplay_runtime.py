@@ -594,8 +594,13 @@ class GameplayRuntime:
                             new_phase = i + 2
                     if new_phase != self._boss.phase:
                         self._boss.phase = new_phase
+                        # BLOQUE 27: bigger phase change burst
+                        self._emit_burst(self._boss.x, self._boss.y, count=24, kind="explosion")
+                        self._emit_burst(self._boss.x, self._boss.y, count=12, kind="spark")
+                        self._add_shockwave(self._boss.x, self._boss.y, 50.0)
                         self._hitstop.trigger(6)
                         self._shake.add_trauma(0.5)
+                        self._play_sfx("multiplier_up", volume=0.7)
                     # Check death
                     if self._boss.hp <= 0:
                         self._on_boss_killed()
@@ -610,6 +615,10 @@ class GameplayRuntime:
                 self._bullets.pool.release(p)
                 took = self._player.take_damage(p.damage)
                 self._emit_burst(p.x, p.y, count=4, kind="spark")
+                # BLOQUE 27: hit sparks ring around the player
+                if took:
+                    self._emit_burst(self._player.x, self._player.y, count=10, kind="spark")
+                    self._emit_burst(self._player.x, self._player.y, count=4, kind="debris")
                 self._shake.add_trauma(0.15)
                 if took:
                     self._play_sfx("hit", volume=0.6)
@@ -851,7 +860,11 @@ class GameplayRuntime:
         self._score_popups = alive
 
     def _update_powerups(self, dt: float) -> None:
-        """Power-ups drift down slowly; player touches to collect."""
+        """Power-ups drift down slowly; player touches to collect.
+
+        BLOQUE 27: magnet effect — when player is within 50px, the power-up
+        drifts toward the player instead of falling.
+        """
         alive: list[PowerUp] = []
         phb = self._player.hitbox
         for p in self._powerups:
@@ -859,8 +872,16 @@ class GameplayRuntime:
             p.life -= dt
             if p.life <= 0.0 or p.y > INTERNAL_H + 10:
                 continue
-            # Player pickup
+            # BLOQUE 27: magnet drift toward player
             if not self._player.is_dead:
+                dx = self._player.x - p.x
+                dy = self._player.y - p.y
+                dist = math.hypot(dx, dy)
+                if 0.01 < dist < 50.0:
+                    pull = 80.0  # px/s toward player
+                    p.x += (dx / dist) * pull * dt
+                    p.y += (dy / dist) * pull * dt
+                # Player pickup
                 pr = pygame.Rect(int(p.x) - 4, int(p.y) - 4, 8, 8)
                 if pr.colliderect(phb):
                     self._apply_powerup(p.kind)
