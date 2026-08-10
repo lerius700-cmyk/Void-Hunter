@@ -204,6 +204,7 @@ class GameplayRuntime:
         self._score_popups: list[ScorePopup] = []
         self._powerups: list[PowerUp] = []
         self._enemy_flash: dict[int, float] = {}  # id(e) -> flash_timer
+        self._boss_flash: dict[int, float] = {}  # BLOQUE 51: id(boss) -> flash_timer (hit feedback)
         self._shockwaves: list[Shockwave] = []  # expanding ring effects
         self._screen_flash: float = 0.0  # 0..1 alpha of white overlay (bomb)
         self._boss_entry_t: float = 0.0  # boss slides in on first 1.5s of fight
@@ -335,6 +336,7 @@ class GameplayRuntime:
         self._score_popups.clear()
         self._powerups.clear()
         self._enemy_flash.clear()
+        self._boss_flash.clear()
         self._shockwaves.clear()
         # BLOQUE 39: clear active homing missiles on scene enter
         self._missiles.clear()
@@ -679,6 +681,8 @@ class GameplayRuntime:
             if ddx * ddx + ddy * ddy <= (radius + 24) ** 2:
                 self._boss.hp -= damage
                 self._laser_hit_cooldown[id(self._boss)] = 0.10
+                # BLOQUE 51: hit feedback flash
+                self._boss_flash[id(self._boss)] = 0.10
                 # BLOQUE 49: orange plasma sparks on boss too
                 self._emit_burst(cxp, cyp, count=4, kind="spark",
                                   color=(255, 140, 40))
@@ -982,6 +986,11 @@ class GameplayRuntime:
             dy = self._boss.y - cy
             if dx * dx + dy * dy <= rad * rad:
                 self._boss.hp -= MISSILE_EXPLOSION_DAMAGE
+                # BLOQUE 51: hit feedback flash
+                self._boss_flash[id(self._boss)] = 0.10
+                # BLOQUE 51: emit hit sparks on boss (was missing here)
+                self._emit_burst(self._boss.x, self._boss.y, count=6, kind="spark",
+                                  color=(255, 140, 40))
                 # Phase change
                 cfg = BOSS_CONFIGS[self._boss.id]
                 new_phase = 1
@@ -1437,6 +1446,8 @@ class GameplayRuntime:
                     p.active = False
                     self._bullets.pool.release(p)
                     self._emit_burst(p.x, p.y, count=2, kind="spark")
+                    # BLOQUE 51: hit feedback flash
+                    self._boss_flash[id(self._boss)] = 0.08
                     # Check phase change
                     cfg = BOSS_CONFIGS[self._boss.id]
                     new_phase = 1
@@ -1825,13 +1836,22 @@ class GameplayRuntime:
     def _update_enemy_flash(self, dt: float) -> None:
         """Decay the per-enemy white-flash timer (hit feedback)."""
         if not self._enemy_flash:
-            return
-        decayed: dict[int, float] = {}
-        for eid, t in self._enemy_flash.items():
-            t -= dt
-            if t > 0.0:
-                decayed[eid] = t
-        self._enemy_flash = decayed
+            pass
+        else:
+            decayed: dict[int, float] = {}
+            for eid, t in self._enemy_flash.items():
+                t -= dt
+                if t > 0.0:
+                    decayed[eid] = t
+            self._enemy_flash = decayed
+        # BLOQUE 51: also decay the boss flash timer
+        if self._boss_flash:
+            decayed_b: dict[int, float] = {}
+            for bid, t in self._boss_flash.items():
+                t -= dt
+                if t > 0.0:
+                    decayed_b[bid] = t
+            self._boss_flash = decayed_b
 
     def _emit_player_motion_particles(self, dt: float) -> None:
         """BLOQUE 26: continuous engine smoke + dash stars + low-HP smoke.
@@ -2950,6 +2970,19 @@ class GameplayRuntime:
                              (cx - w // 2 + 1, cy - h // 2 + 1, w - 2, h - 2))
 
     def _draw_boss(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        """BLOQUE 51: dispatch to per-boss visual.
+        - GOLIATH (Act 1): biblical giant warrior — armor, helmet, spear, shield.
+        - HYDRA/PHANTOM/NEMESIS: keep the simple rect (TODO polish in future BLOQUE).
+        """
+        if self._boss is None:
+            return
+        if self._boss.id == BossId.GOLIATH:
+            self._draw_goliath(target, ox, oy)
+        else:
+            self._draw_boss_simple(target, ox, oy)
+
+    def _draw_boss_simple(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        """Default boss visual — simple rectangle with eye. Used by HYDRA/PHANTOM/NEMESIS."""
         if self._boss is None:
             return
         cfg = BOSS_CONFIGS[self._boss.id]
@@ -2982,3 +3015,319 @@ class GameplayRuntime:
             ratio = self._boss.hp / self._boss.max_hp
             pygame.draw.rect(target, (60, 60, 80), (rect.x - 2, rect.y - 6, bar_w, 3))
             pygame.draw.rect(target, (220, 80, 80), (rect.x - 1, rect.y - 5, int(bar_w * ratio), 2))
+
+    def _draw_goliath(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        """BLOQUE 51: GOLIATH — biblical giant warrior visual.
+
+        Reference: the Philistine giant from the David vs. Goliath story.
+        Heavy bronze armor, helmet with visor, glowing red eyes behind the
+        slit, a long spear in the right hand, and a round shield in the
+        left. A subtle "breathing" bob + eye pulse + floating embers give
+        it a menacing, alive feel. Phase 2 reveals cracked armor with
+        inner red glow.
+
+        The visual bounding box is ~44x44 (slightly larger than the 32x18
+        hitbox). The hitbox stays 70% of cfg.width/height so the boss is
+        still fair to fight — only the silhouette grows.
+        """
+        if self._boss is None:
+            return
+        cfg = BOSS_CONFIGS[self._boss.id]
+        # Visual is centered on the hitbox; offset y for the "breathing" bob.
+        bob = math.sin(self._t * 1.0) * 1.5
+        # Hit feedback (white flash for 0.08s after a hit)
+        flash_t = self._boss_flash.get(id(self._boss), 0.0)
+        flashing = flash_t > 0.0
+        # Center of the hitbox (anchor for the visual)
+        cx = int(self._boss.x + ox)
+        cy = int(self._boss.y + oy)
+        # Visual offset (centered on hitbox, much larger than 32x18 hitbox
+        # to feel like a GIANT — the hitbox is 70% of cfg.width/height so
+        # the visual is the imposing silhouette, the hitbox is the armor core)
+        vw, vh = 64, 60
+        vx = cx - vw // 2
+        vy = cy - vh // 2 + int(bob)
+        # Color palette
+        bronze_main = (180, 130, 70) if not flashing else (240, 220, 200)
+        bronze_hi = (220, 170, 100)
+        bronze_sh = (100, 70, 40)
+        iron = (70, 70, 85)
+        # Phase 2 makes the inner red glow stronger
+        phase2 = self._boss.phase >= 2
+        # ------------------------------------------------------------------
+        # Layer 1: bronze aura / halo (pulsing)
+        # ------------------------------------------------------------------
+        aura_pulse = 0.5 + 0.5 * math.sin(self._t * 1.5)
+        aura_size = 88
+        aura = pygame.Surface((aura_size, aura_size), pygame.SRCALPHA)
+        aura_alpha = int(35 + 25 * aura_pulse)
+        pygame.draw.ellipse(
+            aura, (180, 110, 50, aura_alpha),
+            (0, 0, aura_size, aura_size), 1,
+        )
+        target.blit(aura, (cx - aura_size // 2, cy - aura_size // 2 + int(bob)))
+        # ------------------------------------------------------------------
+        # Layer 2: idle embers (floating up from the boss). Cheap, drawn
+        # here rather than via ParticleEngine to keep frame budget tight.
+        # ------------------------------------------------------------------
+        for i in range(4):
+            ember_phase = (self._t * 0.8 + i * 0.25) % 1.0
+            ember_x = cx + int(math.sin(ember_phase * 6.28 + i) * 18)
+            ember_y = vy + vh - int(ember_phase * 32)
+            ember_size = 1 + int((1.0 - ember_phase) * 1.5)
+            ember_alpha = int(200 * (1.0 - ember_phase))
+            ember_color = (255, 140, 60) if phase2 else (255, 170, 80)
+            ember_surf = pygame.Surface((ember_size * 2 + 2, ember_size * 2 + 2), pygame.SRCALPHA)
+            pygame.draw.circle(
+                ember_surf, (*ember_color, ember_alpha),
+                (ember_size + 1, ember_size + 1), ember_size,
+            )
+            target.blit(ember_surf, (ember_x - ember_size - 1, ember_y - ember_size - 1))
+        # ------------------------------------------------------------------
+        # Layer 3: stone base / plinth (the giant stands on a platform)
+        # ------------------------------------------------------------------
+        base_w = 56
+        base_h = 5
+        base_x = cx - base_w // 2
+        base_y = vy + vh - 2
+        pygame.draw.rect(target, (50, 45, 40), (base_x, base_y, base_w, base_h))
+        pygame.draw.rect(target, (90, 80, 65), (base_x, base_y, base_w, 1))  # top edge
+        # Cracks in the base
+        for i, (sx, ex) in enumerate([(base_x + 8, base_x + 16), (base_x + 32, base_x + 44)]):
+            pygame.draw.line(target, (30, 25, 20), (sx, base_y + 1), (ex, base_y + base_h - 1), 1)
+        # ------------------------------------------------------------------
+        # Layer 4: greaves (leg armor — two bronze blocks)
+        # ------------------------------------------------------------------
+        greave_w = 11
+        greave_h = 11
+        greave_y = vy + vh - 2 - greave_h
+        # Left greave
+        pygame.draw.rect(target, bronze_sh, (cx - 16, greave_y, greave_w, greave_h))
+        pygame.draw.rect(target, bronze_main, (cx - 16, greave_y, greave_w, greave_h - 1))
+        pygame.draw.rect(target, bronze_hi, (cx - 16, greave_y, greave_w, 1))  # top edge
+        # Right greave
+        pygame.draw.rect(target, bronze_sh, (cx + 5, greave_y, greave_w, greave_h))
+        pygame.draw.rect(target, bronze_main, (cx + 5, greave_y, greave_w, greave_h - 1))
+        pygame.draw.rect(target, bronze_hi, (cx + 5, greave_y, greave_w, 1))
+        # Knee highlights
+        pygame.draw.circle(target, bronze_hi, (cx - 11, greave_y + 3), 1)
+        pygame.draw.circle(target, bronze_hi, (cx + 10, greave_y + 3), 1)
+        # ------------------------------------------------------------------
+        # Layer 5: torso / main body armor (segmented plates)
+        # ------------------------------------------------------------------
+        torso_w = 36
+        torso_h = 30
+        torso_x = cx - torso_w // 2
+        torso_y = vy + vh - 2 - greave_h - torso_h
+        # Outer body
+        pygame.draw.rect(target, bronze_sh, (torso_x, torso_y, torso_w, torso_h))
+        pygame.draw.rect(target, bronze_main, (torso_x, torso_y, torso_w, torso_h - 1))
+        # 4 horizontal plate segments (with glowing red seams)
+        plate_h = torso_h // 4
+        for i in range(1, 4):
+            seam_y = torso_y + i * plate_h
+            # Dark seam
+            pygame.draw.line(
+                target, (60, 40, 20),
+                (torso_x + 1, seam_y), (torso_x + torso_w - 2, seam_y), 1,
+            )
+            # Inner red glow (phase 2 makes this more visible)
+            glow_color = (255, 80, 30) if phase2 else (180, 60, 30)
+            glow_alpha = int(160 if phase2 else 80)
+            seam_glow = pygame.Surface((torso_w - 4, 2), pygame.SRCALPHA)
+            seam_glow.fill((*glow_color, glow_alpha))
+            target.blit(seam_glow, (torso_x + 2, seam_y - 1))
+        # Central bronze "spine" highlight
+        pygame.draw.line(
+            target, bronze_hi,
+            (cx, torso_y + 2), (cx, torso_y + torso_h - 3), 1,
+        )
+        # Central chest emblem (small cross / star)
+        emblem_y = torso_y + plate_h + 1
+        pygame.draw.line(target, (255, 220, 150), (cx - 3, emblem_y), (cx + 3, emblem_y), 1)
+        pygame.draw.line(target, (255, 220, 150), (cx, emblem_y - 2), (cx, emblem_y + 2), 1)
+        # ------------------------------------------------------------------
+        # Layer 6: pauldrons (shoulder armor — wider on each side)
+        # ------------------------------------------------------------------
+        pauldron_w = 12
+        pauldron_h = 8
+        pauldron_y = torso_y - pauldron_h + 1
+        # Left pauldron
+        pygame.draw.rect(
+            target, bronze_main,
+            (torso_x - pauldron_w + 1, pauldron_y, pauldron_w, pauldron_h),
+        )
+        pygame.draw.rect(target, bronze_hi, (torso_x - pauldron_w + 1, pauldron_y, pauldron_w, 1))
+        # Spikes on left pauldron
+        pygame.draw.polygon(target, bronze_hi, [
+            (torso_x - pauldron_w + 3, pauldron_y - 1),
+            (torso_x - pauldron_w + 5, pauldron_y - 1),
+            (torso_x - pauldron_w + 4, pauldron_y - 4),
+        ])
+        # Right pauldron
+        pygame.draw.rect(
+            target, bronze_main,
+            (torso_x + torso_w - 1, pauldron_y, pauldron_w, pauldron_h),
+        )
+        pygame.draw.rect(target, bronze_hi, (torso_x + torso_w - 1, pauldron_y, pauldron_w, 1))
+        # Spikes on right pauldron
+        pygame.draw.polygon(target, bronze_hi, [
+            (torso_x + torso_w + 5, pauldron_y - 1),
+            (torso_x + torso_w + 7, pauldron_y - 1),
+            (torso_x + torso_w + 6, pauldron_y - 4),
+        ])
+        # ------------------------------------------------------------------
+        # Layer 7: helmet (bronze dome with visor + crest + horns)
+        # ------------------------------------------------------------------
+        helmet_w = 22
+        helmet_h = 14
+        helmet_x = cx - helmet_w // 2
+        helmet_y = pauldron_y - helmet_h + 1
+        # Helmet body
+        pygame.draw.rect(target, bronze_sh, (helmet_x, helmet_y, helmet_w, helmet_h))
+        pygame.draw.rect(target, bronze_main, (helmet_x, helmet_y, helmet_w, helmet_h - 1))
+        pygame.draw.rect(target, bronze_hi, (helmet_x, helmet_y, helmet_w, 1))
+        # Side horns (left + right) — biblical giant icon
+        pygame.draw.polygon(target, bronze_hi, [
+            (helmet_x, helmet_y + 2),
+            (helmet_x - 4, helmet_y - 1),
+            (helmet_x - 2, helmet_y + 2),
+        ])
+        pygame.draw.polygon(target, bronze_hi, [
+            (helmet_x + helmet_w, helmet_y + 2),
+            (helmet_x + helmet_w + 4, helmet_y - 1),
+            (helmet_x + helmet_w + 2, helmet_y + 2),
+        ])
+        # Visor slit (dark)
+        visor_y = helmet_y + 5
+        visor_h = 3
+        pygame.draw.rect(
+            target, (15, 10, 5),
+            (helmet_x + 2, visor_y, helmet_w - 4, visor_h),
+        )
+        # Crest / peak on top
+        pygame.draw.polygon(target, bronze_hi, [
+            (cx - 2, helmet_y - 4),
+            (cx + 2, helmet_y - 4),
+            (cx, helmet_y - 9),
+        ])
+        # Crest ridge (red plume highlight)
+        pygame.draw.line(target, (200, 40, 40), (cx, helmet_y - 9), (cx, helmet_y - 1), 1)
+        # Helmet rivets (4 corners + center)
+        for rx, ry in [(helmet_x + 1, helmet_y + 1), (helmet_x + helmet_w - 2, helmet_y + 1),
+                        (helmet_x + 1, helmet_y + helmet_h - 2), (helmet_x + helmet_w - 2, helmet_y + helmet_h - 2)]:
+            pygame.draw.circle(target, bronze_sh, (rx, ry), 1)
+        # ------------------------------------------------------------------
+        # Layer 8: glowing red eyes (inside the visor slit) — BLOQUE 51
+        # signature element. Pulses, gets brighter on phase 2 / hit.
+        # ------------------------------------------------------------------
+        eye_pulse = 0.5 + 0.5 * math.sin(self._t * 4.0)
+        if phase2:
+            eye_pulse = 0.7 + 0.3 * math.sin(self._t * 6.0)  # faster, more frantic
+        if flashing:
+            eye_color = (255, 255, 255)  # white on hit
+        else:
+            eye_r = 255
+            eye_g = int(40 + 50 * eye_pulse)
+            eye_b = int(20 + 30 * eye_pulse)
+            eye_color = (eye_r, eye_g, eye_b)
+        # Eye glow halo (oval, extends slightly outside the visor)
+        eye_halo = pygame.Surface((16, 8), pygame.SRCALPHA)
+        eye_halo_alpha = int(70 + 70 * eye_pulse)
+        pygame.draw.ellipse(
+            eye_halo, (*eye_color, eye_halo_alpha),
+            (0, 0, 16, 8),
+        )
+        target.blit(eye_halo, (cx - 8, visor_y - 2))
+        # Two eye dots
+        pygame.draw.circle(target, eye_color, (cx - 4, visor_y + 1), 1)
+        pygame.draw.circle(target, eye_color, (cx + 4, visor_y + 1), 1)
+        # Bright core
+        if not flashing:
+            pygame.draw.circle(target, (255, 240, 200), (cx - 4, visor_y + 1), 0)
+            pygame.draw.circle(target, (255, 240, 200), (cx + 4, visor_y + 1), 0)
+        # ------------------------------------------------------------------
+        # Layer 9: shield (round, on the LEFT side)
+        # ------------------------------------------------------------------
+        shield_cx = cx - 30
+        shield_cy = torso_y + 12
+        shield_r = 13
+        # Shield body (iron)
+        pygame.draw.circle(target, iron, (shield_cx, shield_cy), shield_r)
+        pygame.draw.circle(target, (110, 110, 125), (shield_cx, shield_cy), shield_r, 1)
+        # Inner bronze boss (center stud)
+        pygame.draw.circle(target, bronze_main, (shield_cx, shield_cy), 4)
+        pygame.draw.circle(target, bronze_hi, (shield_cx, shield_cy), 4, 1)
+        # 4 rivets around the boss
+        for i in range(4):
+            a = i * math.pi / 2 + 0.4
+            rx = shield_cx + int(math.cos(a) * 8)
+            ry = shield_cy + int(math.sin(a) * 8)
+            pygame.draw.circle(target, (40, 40, 50), (rx, ry), 1)
+        # ------------------------------------------------------------------
+        # Layer 10: spear (long, on the RIGHT side, pointing down)
+        # ------------------------------------------------------------------
+        spear_top_x = cx + 30
+        spear_top_y = pauldron_y - 2
+        spear_bot_x = spear_top_x + 5
+        spear_bot_y = spear_top_y + 42
+        # Wooden shaft
+        pygame.draw.line(
+            target, (90, 60, 35),
+            (spear_top_x, spear_top_y), (spear_bot_x, spear_bot_y), 2,
+        )
+        # Shaft highlight
+        pygame.draw.line(
+            target, (130, 90, 55),
+            (spear_top_x - 1, spear_top_y), (spear_bot_x - 1, spear_bot_y), 1,
+        )
+        # Iron spearhead (pointy triangle at the BOTTOM of the shaft)
+        spear_tip_x = spear_bot_x + 1
+        spear_tip_y = spear_bot_y + 8
+        pygame.draw.polygon(target, iron, [
+            (spear_bot_x - 3, spear_bot_y),
+            (spear_bot_x + 5, spear_bot_y),
+            (spear_tip_x, spear_tip_y),
+        ])
+        pygame.draw.polygon(target, (160, 160, 180), [
+            (spear_bot_x - 3, spear_bot_y),
+            (spear_bot_x + 5, spear_bot_y),
+            (spear_tip_x, spear_tip_y),
+        ], 1)
+        # Spear tip glow (pulses — phase 2 brighter)
+        if phase2 or flashing:
+            tip_glow = pygame.Surface((10, 10), pygame.SRCALPHA)
+            tip_alpha = int(120 + 80 * eye_pulse) if not flashing else 200
+            pygame.draw.circle(
+                tip_glow, (255, 80, 40, tip_alpha), (5, 5), 4,
+            )
+            target.blit(tip_glow, (spear_tip_x - 5, spear_tip_y - 5))
+        # Top of spear (small tassel / grip)
+        pygame.draw.circle(target, (160, 30, 30), (spear_top_x, spear_top_y), 1)
+        # ------------------------------------------------------------------
+        # Layer 11: phase 2 cracks on the armor (glowing red lines)
+        # ------------------------------------------------------------------
+        if phase2 and not flashing:
+            crack_color = (255, 60, 30)
+            for (sx, sy, ex, ey) in [
+                (torso_x + 6, torso_y + 4, torso_x + 10, torso_y + 12),
+                (torso_x + torso_w - 7, torso_y + 6, torso_x + torso_w - 11, torso_y + 14),
+                (helmet_x + 4, helmet_y + 2, helmet_x + 7, helmet_y + 8),
+                (torso_x + 12, torso_y + plate_h * 2 - 2, torso_x + 16, torso_y + plate_h * 2 + 4),
+            ]:
+                pygame.draw.line(target, crack_color, (sx, sy), (ex, ey), 1)
+        # ------------------------------------------------------------------
+        # Layer 12: HP bar (always visible, with a bronze frame)
+        # ------------------------------------------------------------------
+        bar_w = vw + 4
+        bar_h = 3
+        bar_x = cx - bar_w // 2
+        bar_y = vy - 6
+        # Frame
+        pygame.draw.rect(target, (40, 30, 20), (bar_x - 1, bar_y - 1, bar_w + 2, bar_h + 2))
+        # Background
+        pygame.draw.rect(target, (60, 20, 20), (bar_x, bar_y, bar_w, bar_h))
+        # HP fill
+        ratio = self._boss.hp / self._boss.max_hp
+        hp_color = (220, 60, 40) if ratio < 0.34 else (220, 140, 50)
+        pygame.draw.rect(target, hp_color, (bar_x, bar_y, int(bar_w * ratio), bar_h))
