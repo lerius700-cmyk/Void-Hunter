@@ -311,9 +311,24 @@ class GameplayRuntime:
     # Lifecycle
     # ------------------------------------------------------------------
     def on_enter(self) -> None:
-        self._player.reset()
-        self._weapon.reset()
-        self._scoring.reset()
+        # BLOQUE 50: detect "resume from SUB_BOSS_INTRO" — when we return
+        # to GAMEPLAY after the sub-boss warning, the chain has
+        # _sub_boss_pending=True and current_wave_idx is post-O2. In that
+        # case we must NOT reset the chain (otherwise the level restarts
+        # from O1 and the warning loop triggers every time O2 finishes).
+        # We still clear bullets/particles/score-popups so the visual
+        # feels like a fresh continuation rather than a hard cut.
+        _resume_from_sub_boss = (
+            self._level1_chain is not None
+            and self._level1_chain.sub_boss_pending
+        )
+        if not _resume_from_sub_boss:
+            self._player.reset()
+            self._weapon.reset()
+            self._scoring.reset()
+        # Even on a sub-boss resume, we clear transient visual state so the
+        # transition doesn't look like a hard cut (in-flight bullets, smoke
+        # particles, score popups).
         self._bullets.release_all()
         self._enemies.release_all()
         self._particles.release_all()
@@ -323,61 +338,69 @@ class GameplayRuntime:
         self._shockwaves.clear()
         # BLOQUE 39: clear active homing missiles on scene enter
         self._missiles.clear()
-        # BLOQUE 43: reset perfect-score tracking
-        self._enemies_spawned_total = 0
-        self._enemies_escaped = 0
-        self._squadron_id_counter = 0  # BLOQUE 47: reset on each scene reset
-        # BLOQUE 48: reset the chained wave system
-        if self._level1_chain is not None:
-            self._level1_chain.reset()
-        # BLOQUE 50: reset sub-boss state
-        self._sub_boss_alive = False
-        self._sub_boss_intro_done = False
-        self._screen_flash = 0.0
-        # BLOQUE 22: reset polish state
-        self._muzzle_flash = 0.0
-        self._charge_release_flash = 0.0
-        self._boss_death_stage = 0
-        self._boss_death_timer = 0.0
-        self._boss_death_pos = (0.0, 0.0)
-        # BLOQUE 24: reset new polish state
-        self._pickup_flash = 0.0
-        self._speed_line_t = 0.0
-        self._level_up_flash = 0.0
-        # BLOQUE 26: reset bomb flash
-        self._bomb_flash = 0.0
-        # BLOQUE 29: reset mouse position
-        self._mouse_x = INTERNAL_W / 2
-        self._mouse_y = INTERNAL_H / 4
-        self._mouse_held = False
-        self._mouse_r_held = False
-        self._t = 0.0
-        self._wave_spawn_timer = 0.0
-        self._is_wave_active = not self._is_boss
-        self._transition_pending = None
-        self._death_exploded = False
-        self._last_charge_level = 0
-        self._bgm_started = False
-        self._boss_entry_t = 0.0
-        if not self._is_boss:
-            self._wave_mgr.start_wave(self._wave_idx)
-            # BLOQUE 29: use level 1 queue (5 min, 100+ ships, 3 enemy types)
-            if self._is_level1_mode():
-                self._populate_level1_queue()
+        if not _resume_from_sub_boss:
+            # BLOQUE 43: reset perfect-score tracking
+            self._enemies_spawned_total = 0
+            self._enemies_escaped = 0
+            self._squadron_id_counter = 0  # BLOQUE 47: reset on each scene reset
+            # BLOQUE 48: reset the chained wave system (only on fresh start)
+            if self._level1_chain is not None:
+                self._level1_chain.reset()
+            # BLOQUE 50: reset sub-boss state (only on fresh start)
+            self._sub_boss_alive = False
+            self._sub_boss_intro_done = False
+            self._screen_flash = 0.0
+            # BLOQUE 22: reset polish state
+            self._muzzle_flash = 0.0
+            self._charge_release_flash = 0.0
+            self._boss_death_stage = 0
+            self._boss_death_timer = 0.0
+            self._boss_death_pos = (0.0, 0.0)
+            # BLOQUE 24: reset new polish state
+            self._pickup_flash = 0.0
+            self._speed_line_t = 0.0
+            self._level_up_flash = 0.0
+            # BLOQUE 26: reset bomb flash
+            self._bomb_flash = 0.0
+            # BLOQUE 29: reset mouse position
+            self._mouse_x = INTERNAL_W / 2
+            self._mouse_y = INTERNAL_H / 4
+            self._mouse_held = False
+            self._mouse_r_held = False
+            self._t = 0.0
+            self._wave_spawn_timer = 0.0
+            self._is_wave_active = not self._is_boss
+            self._transition_pending = None
+            self._death_exploded = False
+            self._last_charge_level = 0
+            self._bgm_started = False
+            self._boss_entry_t = 0.0
+            if not self._is_boss:
+                self._wave_mgr.start_wave(self._wave_idx)
+                # BLOQUE 29: use level 1 queue (5 min, 100+ ships, 3 enemy types)
+                if self._is_level1_mode():
+                    self._populate_level1_queue()
+                else:
+                    self._populate_spawn_queue()
+                self._start_bgm("act_normal")
             else:
-                self._populate_spawn_queue()
-            self._start_bgm("act_normal")
+                # Boss intro pose: player bottom-center, boss anchored
+                self._player.x = INTERNAL_W / 2
+                self._player.y = INTERNAL_H - 60
+                if self._boss is not None:
+                    cfg = BOSS_CONFIGS[self._boss.id]
+                    self._boss.x = cfg.anchor_x
+                    self._boss.y = cfg.anchor_y
+                    self._boss.phase = 1
+                    self._boss.hp = self._boss.max_hp
+                self._start_bgm("boss_fight")
         else:
-            # Boss intro pose: player bottom-center, boss anchored
-            self._player.x = INTERNAL_W / 2
-            self._player.y = INTERNAL_H - 60
-            if self._boss is not None:
-                cfg = BOSS_CONFIGS[self._boss.id]
-                self._boss.x = cfg.anchor_x
-                self._boss.y = cfg.anchor_y
-                self._boss.phase = 1
-                self._boss.hp = self._boss.max_hp
-            self._start_bgm("boss_fight")
+            # BLOQUE 50: on sub-boss resume, mark that we need to spawn the
+            # sub-boss on the first frame. _sub_boss_alive starts False and
+            # will be set to True in _update_enemies when the spawn happens.
+            self._sub_boss_alive = False
+            self._sub_boss_intro_done = True  # intro already played
+            # Keep mouse, time, player position, score, etc. intact
 
     def on_exit(self) -> None:
         self._bullets.release_all()
