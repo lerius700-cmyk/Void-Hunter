@@ -64,14 +64,16 @@ def _wrap_text(text: str, font: pygame.font.Font, max_width: int) -> list[str]:
 
 
 class TitleScene(Scene):
-    """TITLE — main menu, void logo, 'PRESS ENTER TO START'."""
+    """TITLE — main menu, void logo, 'PRESS ANY KEY TO START'.
+
+    Waits for ANY keypress or mouse click to start. Removed the
+    BLOQUE 46 auto-start so the player has control over when the
+    game begins (fix for "game opens and immediately starts").
+    """
 
     def __init__(self, transition_to: TransitionFn) -> None:
         self._transition_to = transition_to
         self._t: float = 0.0
-        # BLOQUE 46: auto-start after 3s if user hasn't pressed anything
-        # (fix for "user doesn't realize they need to press Enter")
-        self._auto_start_s: float = 3.0
 
     def on_enter(self) -> None:
         self._t = 0.0
@@ -79,13 +81,19 @@ class TitleScene(Scene):
     def update(self, dt: float) -> None:
         self._t += dt
         for event in pygame.event.get(pygame.KEYDOWN):
-            if event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                self._transition_to(GameState.ACT_INTRO)
-            elif event.key == pygame.K_c:
-                self._transition_to(GameState.CREDITS)
-        # Auto-start if user idle
-        if self._t >= self._auto_start_s:
+            # Any key starts the game (except a few modifiers)
+            if event.key in (
+                pygame.K_LSHIFT, pygame.K_RSHIFT,
+                pygame.K_LCTRL, pygame.K_RCTRL,
+                pygame.K_LALT, pygame.K_RALT,
+            ):
+                continue
             self._transition_to(GameState.ACT_INTRO)
+            return
+        # Mouse click also starts
+        for event in pygame.event.get(pygame.MOUSEBUTTONDOWN):
+            self._transition_to(GameState.ACT_INTRO)
+            return
 
     def draw(self, target: pygame.Surface) -> None:
         target.fill((0, 0, 0))
@@ -95,18 +103,15 @@ class TitleScene(Scene):
         _center_blit(target, title, 100)
         # Subtitle
         font2 = pygame.font.Font(None, 14)
-        sub = font2.render("PRESS ENTER TO START", True, (180, 180, 200))
+        sub = font2.render("PRESS ANY KEY TO START", True, (255, 240, 140))
         # Blink
         if int(self._t * 2) % 2 == 0:
             _center_blit(target, sub, 200)
-        # BLOQUE 46: auto-start countdown
-        if self._t < self._auto_start_s:
-            remaining = int(self._auto_start_s - self._t) + 1
-            auto = font2.render(f"AUTO-START IN {remaining}s", True, (140, 140, 160))
-            _center_blit(target, auto, 220)
-        else:
-            auto = font2.render("STARTING...", True, (180, 220, 180))
-            _center_blit(target, auto, 220)
+        # Hint about controls
+        ctrl1 = font2.render("WASD MOVE  |  MOUSE AIM  |  LMB CHARGE  |  RMB RAPID", True, (140, 140, 160))
+        _center_blit(target, ctrl1, 220)
+        ctrl2 = font2.render("B MISSILE  |  SHIFT DASH  |  ESC PAUSE", True, (140, 140, 160))
+        _center_blit(target, ctrl2, 235)
         # Credits hint
         sub2 = font2.render("C: CREDITS", True, (120, 120, 140))
         _center_blit(target, sub2, 230)

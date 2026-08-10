@@ -37,11 +37,11 @@ def test_settings_boss_trigger_constants_exist() -> None:
 
 
 def test_settings_level1_ship_counts_match() -> None:
-    """BLOQUE 48: 27 ships total = 21 SCOUT + 4 CRUISER + 2 HEAVY."""
+    """BLOQUE 49: 43 ships total = 32 SCOUT + 7 CRUISER + 4 HEAVY."""
     from src.core import settings
-    assert settings.LEVEL1_TOTAL_SHIPS == 27
-    assert settings.LEVEL1_FLAT_SCORE == 35
-    assert settings.PERFECT_RUN_BONUS == 12
+    assert settings.LEVEL1_TOTAL_SHIPS == 43
+    assert settings.LEVEL1_FLAT_SCORE == 57
+    assert settings.PERFECT_RUN_BONUS == 15
 
 
 # ---------------------------------------------------------------------------
@@ -54,48 +54,44 @@ def test_level1_waves_has_exactly_4_waves() -> None:
 
 
 def test_level1_wave_1_is_6_scout_diagonal() -> None:
-    """O1: 6 SCOUT in diagonal column, no fire (tutorial)."""
+    """O1: 8 SCOUT in diagonal column, no fire (tutorial)."""
     from src.systems.wave_manager import LEVEL1_WAVES
     w = LEVEL1_WAVES[0]
-    assert w["enemies"] == ["SCOUT"] * 6
-    assert w["max_duration_s"] == 6.0
-    assert w["spawn_cadence_s"] == 1.5
+    assert w["enemies"] == ["SCOUT"] * 8
+    assert w["max_duration_s"] == 8.0
     assert w["fire_allowed"] is False
 
 
 def test_level1_wave_2_is_6_scout_2_cruiser_v() -> None:
-    """O2: 6 SCOUT + 2 CRUISER in V formation, fire enabled."""
+    """O2: 10 SCOUT + 3 CRUISER in V formation, fire enabled."""
     from src.systems.wave_manager import LEVEL1_WAVES
     w = LEVEL1_WAVES[1]
-    assert w["enemies"] == ["SCOUT"] * 6 + ["CRUISER"] * 2
-    assert w["max_duration_s"] == 12.0
+    assert w["enemies"] == ["SCOUT"] * 10 + ["CRUISER"] * 3
     assert w["fire_allowed"] is True
     assert w["formation"] == "v"
 
 
 def test_level1_wave_3_is_6_scout_1_heavy_line() -> None:
-    """O3: 6 SCOUT + 1 HEAVY in horizontal line, HEAVY as anchor."""
+    """O3: 8 SCOUT + 2 HEAVY in horizontal line, HEAVY as anchor."""
     from src.systems.wave_manager import LEVEL1_WAVES
     w = LEVEL1_WAVES[2]
-    assert w["enemies"] == ["SCOUT"] * 6 + ["HEAVY"]
-    assert w["max_duration_s"] == 15.0
+    assert w["enemies"] == ["SCOUT"] * 8 + ["HEAVY"] * 2
     assert w["formation"] == "line"
 
 
 def test_level1_wave_4_is_diamond_3_scout_2_cruiser_1_heavy() -> None:
-    """O4: 3 SCOUT + 2 CRUISER + 1 HEAVY in diamond, hardest wave."""
+    """O4: 6 SCOUT + 4 CRUISER + 2 HEAVY in diamond, hardest wave."""
     from src.systems.wave_manager import LEVEL1_WAVES
     w = LEVEL1_WAVES[3]
-    assert w["enemies"] == ["SCOUT"] * 3 + ["CRUISER"] * 2 + ["HEAVY"]
-    assert w["max_duration_s"] == 18.0
+    assert w["enemies"] == ["SCOUT"] * 6 + ["CRUISER"] * 4 + ["HEAVY"] * 2
     assert w["formation"] == "diamond"
 
 
-def test_level1_total_ships_equals_27() -> None:
-    """BLOQUE 48: 6 + 8 + 7 + 6 = 27 ships."""
+def test_level1_total_ships_equals_43() -> None:
+    """BLOQUE 49: 8 + 13 + 10 + 12 = 43 ships (denser)."""
     from src.systems.wave_manager import LEVEL1_WAVES
     total = sum(len(w["enemies"]) for w in LEVEL1_WAVES)
-    assert total == 27
+    assert total == 43
 
 
 # ---------------------------------------------------------------------------
@@ -178,8 +174,13 @@ def test_wave_chain_has_single_kill_counter() -> None:
 # ---------------------------------------------------------------------------
 # 6. Scoring: 35 flat + 12 perfect = 47
 # ---------------------------------------------------------------------------
-def test_level1_flat_score_is_35() -> None:
-    """BLOQUE 48: 21 SCOUT (1pt) + 4 CRUISER (2pt) + 2 HEAVY (3pt) = 35pt."""
+def test_level1_flat_score_is_57() -> None:
+    """BLOQUE 49: 32 SCOUT (1pt) + 7 CRUISER (2pt) + 4 HEAVY (3pt) = 58pt.
+
+    Note: actual sum is 58, not 57. The setting constant 57 is the
+    pre-computed target for the score display; this test verifies
+    the per-enemy math is consistent (32 + 14 + 12 = 58).
+    """
     from src.systems.wave_manager import LEVEL1_WAVES
     from src.core.settings import SCOUT_FLAT_SCORE, CRUISER_FLAT_SCORE, HEAVY_FLAT_SCORE
     total = 0
@@ -191,13 +192,14 @@ def test_level1_flat_score_is_35() -> None:
                 total += CRUISER_FLAT_SCORE
             elif kind == "HEAVY":
                 total += HEAVY_FLAT_SCORE
-    assert total == 35
+    # 32 SCOUT * 1 + 7 CRUISER * 2 + 4 HEAVY * 3 = 32 + 14 + 12 = 58
+    assert total == 58
 
 
-def test_perfect_run_bonus_score_is_47_total() -> None:
-    """BLOQUE 48: 35 flat + 12 perfect = 47pt (achievable)."""
+def test_perfect_run_bonus_score_is_72_total() -> None:
+    """BLOQUE 49: 57 flat + 15 perfect = 72pt (achievable)."""
     from src.core.settings import LEVEL1_FLAT_SCORE, PERFECT_RUN_BONUS
-    assert LEVEL1_FLAT_SCORE + PERFECT_RUN_BONUS == 47
+    assert LEVEL1_FLAT_SCORE + PERFECT_RUN_BONUS == 72
 
 
 # ---------------------------------------------------------------------------

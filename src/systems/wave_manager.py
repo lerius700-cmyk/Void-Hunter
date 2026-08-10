@@ -433,35 +433,35 @@ class WaveManager:
 # BLOQUE 48: chained wave system for level 1 mode
 # ---------------------------------------------------------------------------
 LEVEL1_WAVES: list[dict[str, Any]] = [
-    # O1 — intro/tutorial: 6 SCOUT diagonal, no fire
+    # O1 — intro/tutorial: 8 SCOUT diagonal, no fire (was 6)
     {
-        "enemies": ["SCOUT"] * 6,
-        "spawn_cadence_s": 1.5,
-        "max_duration_s": 6.0,
+        "enemies": ["SCOUT"] * 8,
+        "spawn_cadence_s": 1.2,
+        "max_duration_s": 8.0,
         "formation": "diagonal",
         "fire_allowed": False,
     },
-    # O2 — pattern recognition: 6 SCOUT + 2 CRUISER, V formation
+    # O2 — pattern recognition: 10 SCOUT + 3 CRUISER, V formation (was 6+2)
     {
-        "enemies": ["SCOUT"] * 6 + ["CRUISER"] * 2,
-        "spawn_cadence_s": 0.8,
-        "max_duration_s": 12.0,
+        "enemies": ["SCOUT"] * 10 + ["CRUISER"] * 3,
+        "spawn_cadence_s": 0.7,
+        "max_duration_s": 14.0,
         "formation": "v",
         "fire_allowed": True,
     },
-    # O3 — mixed composition: 6 SCOUT + 1 HEAVY, line, HEAVY as anchor
+    # O3 — mixed composition: 8 SCOUT + 2 HEAVY, line, HEAVY as anchor (was 6+1)
     {
-        "enemies": ["SCOUT"] * 6 + ["HEAVY"],
-        "spawn_cadence_s": 1.0,
-        "max_duration_s": 15.0,
+        "enemies": ["SCOUT"] * 8 + ["HEAVY"] * 2,
+        "spawn_cadence_s": 0.9,
+        "max_duration_s": 17.0,
         "formation": "line",
         "fire_allowed": True,
     },
-    # O4 — finale: 3 SCOUT + 2 CRUISER + 1 HEAVY, diamond
+    # O4 — finale: 6 SCOUT + 4 CRUISER + 2 HEAVY, diamond (was 3+2+1)
     {
-        "enemies": ["SCOUT"] * 3 + ["CRUISER"] * 2 + ["HEAVY"],
-        "spawn_cadence_s": 1.2,
-        "max_duration_s": 18.0,
+        "enemies": ["SCOUT"] * 6 + ["CRUISER"] * 4 + ["HEAVY"] * 2,
+        "spawn_cadence_s": 1.0,
+        "max_duration_s": 20.0,
         "formation": "diamond",
         "fire_allowed": True,
     },

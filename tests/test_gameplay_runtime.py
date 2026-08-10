@@ -1220,14 +1220,13 @@ def test_movement_world_relative():
     assert abs(p.x - INTERNAL_W / 2) < 5.0
 
 
-def test_level1_mode_has_27_ships():
-    """BLOQUE 48: level 1 chains 27 ships in 4 waves (was 100+)."""
+def test_level1_mode_has_43_ships():
+    """BLOQUE 49: level 1 chains 43 ships in 4 waves (was 27 in BLOQUE 48)."""
     from src.systems.wave_manager import LEVEL1_WAVES
     rt = _make_runtime()
     assert rt._is_level1_mode()
-    # BLOQUE 48: chained wave system has 27 ships total (21 SCOUT + 4 CRUISER + 2 HEAVY)
     total = sum(len(w["enemies"]) for w in LEVEL1_WAVES)
-    assert total == 27
+    assert total == 43
 
 
 def test_level1_uses_3_distinct_kinds():

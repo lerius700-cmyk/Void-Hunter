@@ -277,15 +277,20 @@ class GameplayRuntime:
         from src.systems.wave_manager import WaveManager
         return WaveManager()
 
-    def _emit_burst(self, x: float, y: float, count: int, kind: str = "spark") -> None:
-        """Spawn a radial burst of particles at (x, y)."""
+    def _emit_burst(self, x: float, y: float, count: int, kind: str = "spark",
+                    color: tuple[int, int, int] | None = None) -> None:
+        """Spawn a radial burst of particles at (x, y).
+
+        BLOQUE 49: optional `color` parameter to override the default
+        tint of the particle kind (used for orange laser-contact sparks).
+        """
         kind_id = _BURST_KIND.get(kind, P_SPARK)
         for _ in range(count):
             angle = random.uniform(0.0, 2.0 * math.pi)
             speed = random.uniform(40.0, 120.0)
             vx = math.cos(angle) * speed
             vy = math.sin(angle) * speed
-            self._particles.emit(kind_id, x, y, vx, vy)
+            self._particles.emit(kind_id, x, y, vx, vy, color=color)
 
     def _spawn_boss_for_act(self) -> None:
         boss_id = {
@@ -611,8 +616,14 @@ class GameplayRuntime:
             if ddx * ddx + ddy * ddy <= (radius + 8) ** 2:
                 # Inflate radius to match enemy size roughly.
                 killed = e.apply_damage(damage)
-                self._emit_burst(ex, ey, count=4, kind="spark")
+                # BLOQUE 49: orange contact sparks (high-energy plasma
+                # burning through enemy hull) + cyan shrapnel + smoke
+                self._emit_burst(ex, ey, count=6, kind="spark",
+                                  color=(255, 140, 40))
+                self._emit_burst(ex, ey, count=3, kind="spark",
+                                  color=(255, 200, 80))
                 self._emit_burst(ex, ey, count=2, kind="shrapnel")
+                self._emit_burst(ex, ey, count=1, kind="smoke")
                 self._enemy_flash[id(e)] = 0.05
                 self._laser_hit_cooldown[id(e)] = 0.10
                 if killed:
@@ -635,7 +646,11 @@ class GameplayRuntime:
             if ddx * ddx + ddy * ddy <= (radius + 24) ** 2:
                 self._boss.hp -= damage
                 self._laser_hit_cooldown[id(self._boss)] = 0.10
-                self._emit_burst(cxp, cyp, count=3, kind="spark")
+                # BLOQUE 49: orange plasma sparks on boss too
+                self._emit_burst(cxp, cyp, count=4, kind="spark",
+                                  color=(255, 140, 40))
+                self._emit_burst(cxp, cyp, count=2, kind="spark",
+                                  color=(255, 200, 80))
                 # Phase change check
                 cfg = BOSS_CONFIGS[self._boss.id]
                 new_phase = 1
@@ -2281,6 +2296,13 @@ class GameplayRuntime:
         # BLOQUE 22: muzzle flash overlay — bright oval at the player nose
         if self._muzzle_flash > 0.0:
             self._draw_muzzle_flash(target, ox, oy)
+        # BLOQUE 49: charge aura + energy absorption particles
+        if self._player.state == PlayerState.CHARGE:
+            self._draw_charge_aura(target, ox, oy)
+            # Estimate dt from frame time so absorption rate stays consistent
+            # (called from draw so we don't have dt here)
+            est_dt = 1.0 / 60.0
+            self._emit_energy_absorption(est_dt)
         # Afterimage trail — bigger ghost matching the new 32x24 sprite
         for tx, ty, age in self._player.afterimage:
             alpha = max(0, int(255 * (1 - age / self._player.AFTERIMAGE_LIFE)))
@@ -2548,6 +2570,108 @@ class GameplayRuntime:
             pygame.draw.line(ring_surf, (*color, 200), (x1, y1), (x2, y2), 2)
         target.blit(ring_surf, (int(self._player.x - 16 + ox),
                                  int(self._player.y - 16 + oy)))
+
+    def _draw_charge_aura(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        """BLOQUE 49: pulsating plasma aura around the player while charging.
+
+        Visual feedback that the ship is gathering energy. Color shifts
+        from cyan (L1) to bright white-cyan (L3 laser-ready). The aura
+        pulses with charge time.
+        """
+        level = self._player.get_charge_level()
+        if level == 0:
+            return
+        # Pulse rate increases with charge level
+        pulse_rate = 4.0 + level * 2.0
+        pulse = 0.5 + 0.5 * math.sin(self._t * pulse_rate)
+        # Color by level
+        if level >= 3:
+            base_color = (140, 220, 255)
+        elif level >= 2:
+            base_color = (120, 200, 240)
+        else:
+            base_color = (100, 180, 220)
+        # Outer aura ring
+        aura_radius = int(18 + pulse * 6 + level * 2)
+        aura_surf = pygame.Surface((aura_radius * 2 + 4, aura_radius * 2 + 4),
+                                    pygame.SRCALPHA)
+        # Multiple concentric rings for depth
+        for i, alpha_mul in enumerate([0.7, 0.4, 0.2]):
+            r = aura_radius - i * 3
+            if r > 0:
+                a = int(60 * alpha_mul * (0.6 + 0.4 * pulse))
+                pygame.draw.circle(aura_surf, (*base_color, a),
+                                   (aura_radius + 2, aura_radius + 2), r, 1)
+        target.blit(aura_surf, (int(self._player.x - aura_radius - 2 + ox),
+                                int(self._player.y - aura_radius - 2 + oy)))
+        # Inner glow (brighter, smaller)
+        glow_radius = int(10 + pulse * 3)
+        glow_surf = pygame.Surface((glow_radius * 2, glow_radius * 2),
+                                   pygame.SRCALPHA)
+        for r in range(glow_radius, 0, -2):
+            t = 1.0 - r / glow_radius
+            a = int(120 * t * (0.5 + 0.5 * pulse))
+            pygame.draw.circle(glow_surf, (*base_color, a),
+                               (glow_radius, glow_radius), r)
+        target.blit(glow_surf, (int(self._player.x - glow_radius + ox),
+                                int(self._player.y - glow_radius + oy)))
+
+    def _emit_energy_absorption(self, dt: float) -> None:
+        """BLOQUE 49: energy particles flowing from off-screen toward the
+        player while charging or firing the L3 laser. Gives the visual
+        feel of the ship "absorbing" ambient energy to power the beam.
+        """
+        level = self._player.get_charge_level()
+        if level == 0:
+            return
+        # More particles at higher charge levels
+        spawns_per_call = 1 + level
+        # The laser (L3) pulls harder than charging alone
+        is_laser_active = (
+            self._laser_active and level >= 3
+        )
+        if is_laser_active:
+            spawns_per_call *= 2
+        import random as _r
+        px, py = self._player.x, self._player.y
+        for _ in range(spawns_per_call):
+            # Spawn at a random point on the playfield edge, slightly
+            # outside the play area in random direction
+            edge = _r.choice(["top", "bottom", "left", "right"])
+            if edge == "top":
+                sx = _r.uniform(0, INTERNAL_W)
+                sy = _r.uniform(-30, -5)
+            elif edge == "bottom":
+                sx = _r.uniform(0, INTERNAL_W)
+                sy = _r.uniform(INTERNAL_H + 5, INTERNAL_H + 30)
+            elif edge == "left":
+                sx = _r.uniform(-30, -5)
+                sy = _r.uniform(0, INTERNAL_H)
+            else:
+                sx = _r.uniform(INTERNAL_W + 5, INTERNAL_W + 30)
+                sy = _r.uniform(0, INTERNAL_H)
+            # Velocity pointing toward the player
+            dx = px - sx
+            dy = py - sy
+            d = math.hypot(dx, dy) or 1.0
+            speed = 80.0 + level * 30.0
+            vx = (dx / d) * speed
+            vy = (dy / d) * speed
+            # Color: cyan-white for high charge, blue for low
+            if level >= 3:
+                color = (140, 220, 255)
+            elif level >= 2:
+                color = (100, 200, 240)
+            else:
+                color = (80, 160, 220)
+            # Emit a long-lived spark that travels toward the player
+            self._particles.emit(
+                0,  # P_SPARK
+                sx, sy, vx=vx, vy=vy,
+                color=color,
+                life=0.6,
+                radius=1.5,
+            )
 
     def _draw_enemy(self, target: pygame.Surface, e: Enemy, ox: int, oy: int) -> None:
         from src.entities.enemies.enemy import ENEMY_CONFIGS
