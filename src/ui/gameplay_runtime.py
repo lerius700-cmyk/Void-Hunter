@@ -212,6 +212,14 @@ class GameplayRuntime:
         self._boss_spear_phase_t: float = 0.0
         # Active spear projectiles (main + fragments)
         self._boss_spears: list[BossSpear] = []
+        # BLOQUE 53a: GOLIATH shield charge + laser state.
+        # 20 player bullets hitting the shield → boss fires a charged
+        # laser for 1 second. After the laser ends, the counter resets
+        # and the boss returns to its normal attack cycle.
+        self._boss_shield_hits: int = 0
+        self._boss_shield_laser_t: float = 0.0  # 0.0 = not firing; >0 = remaining seconds
+        self._boss_shield_laser_duration: float = 1.0
+        self._boss_shield_laser_damage_cooldown: dict[int, float] = {}
         self._shockwaves: list[Shockwave] = []  # expanding ring effects
         self._screen_flash: float = 0.0  # 0..1 alpha of white overlay (bomb)
         self._boss_entry_t: float = 0.0  # boss slides in on first 1.5s of fight
@@ -347,6 +355,10 @@ class GameplayRuntime:
         self._boss_spear_phase = "ready"
         self._boss_spear_phase_t = 0.0
         self._boss_spears = []
+        # BLOQUE 53a: reset shield charge
+        self._boss_shield_hits = 0
+        self._boss_shield_laser_t = 0.0
+        self._boss_shield_laser_damage_cooldown = {}
         self._shockwaves.clear()
         # BLOQUE 39: clear active homing missiles on scene enter
         self._missiles.clear()
@@ -1578,6 +1590,12 @@ class GameplayRuntime:
         # Player bullets ↔ boss
         if self._is_boss and self._boss is not None and self._boss.active:
             boss_hit = self._boss.hitbox()
+            # BLOQUE 53a: check player bullets against the GOLIATH shield
+            # FIRST (before the body) — if a bullet hits the shield, it
+            # counts toward the shield charge instead of damaging the
+            # boss. The shield is a circle on the boss's left side.
+            if self._boss.id == BossId.GOLIATH and self._boss_spear_phase != "thrown":
+                self._handle_shield_collisions()
             for p in self._bullets.pool:
                 if not p.active or p.owner != OWNER_PLAYER:
                     continue
@@ -1644,6 +1662,99 @@ class GameplayRuntime:
                     self._hitstop.trigger(2)
         # BLOQUE 52: GOLIATH spear collisions (player bullets → spear, spear → player)
         self._handle_spear_collisions(phb)
+
+    def _handle_shield_collisions(self) -> None:
+        """BLOQUE 53a: handle player bullets hitting GOLIATH's shield.
+
+        The shield is a circle at the boss's left (offset -30 from boss
+        center, +12 from boss top, radius 13). Player bullets that hit
+        the shield circle are consumed and increment a charge counter.
+        When the counter reaches 20, the boss fires a 1s charged laser.
+
+        Bullets still pass through to the boss body if they miss the
+        shield (handled by the regular boss collision code below).
+        """
+        if self._boss is None:
+            return
+        # If the laser is already firing, don't accumulate more charge
+        if self._boss_shield_laser_t > 0.0:
+            return
+        # Compute shield position in world space (mirrors _draw_goliath
+        # which centers the visual on the hitbox). The visual is centered
+        # on (cx, cy) with vw=64, vh=60; the shield is at:
+        #   shield_cx = boss.x - 30
+        #   shield_cy = boss.y + 12
+        #   shield_r = 13
+        sx = self._boss.x - 30
+        sy = self._boss.y + 12
+        sr = 13
+        shield_rect = pygame.Rect(int(sx - sr), int(sy - sr), sr * 2, sr * 2)
+        for p in self._bullets.pool:
+            if not p.active or p.owner != OWNER_PLAYER:
+                continue
+            pr = pygame.Rect(int(p.x) - 2, int(p.y) - 3, 4, 6)
+            if pr.colliderect(shield_rect):
+                p.active = False
+                self._bullets.pool.release(p)
+                self._boss_shield_hits += 1
+                # Spark feedback on the shield
+                self._emit_burst(p.x, p.y, count=3, kind="spark",
+                                  color=(180, 200, 255))
+                # If we've hit 20, fire the laser
+                if self._boss_shield_hits >= 20:
+                    self._start_shield_laser()
+                break  # bullet can only hit one thing
+
+    def _start_shield_laser(self) -> None:
+        """BLOQUE 53a: trigger the 1s charged laser attack.
+
+        The boss stops firing regular attacks for 1 second, the laser
+        beam is rendered from the boss to the bottom of the screen,
+        and any player contact deals heavy damage.
+        """
+        self._boss_shield_laser_t = self._boss_shield_laser_duration
+        self._boss_shield_hits = 0  # reset counter
+        # Visual + SFX cue (bright flash at the boss hand)
+        if self._boss is not None:
+            self._emit_burst(self._boss.x - 30, self._boss.y + 12,
+                              count=20, kind="explosion")
+            self._add_shockwave(self._boss.x - 30, self._boss.y + 12, 40.0)
+        self._shake.add_trauma(0.4)
+        self._play_sfx("explode_medium", volume=0.9)
+
+    def _update_shield_laser(self, dt: float) -> None:
+        """BLOQUE 53a: tick the shield laser duration + damage the
+        player if they're in the beam path.
+        """
+        if self._boss_shield_laser_t <= 0.0:
+            return
+        if self._boss is None or not self._boss.active:
+            self._boss_shield_laser_t = 0.0
+            return
+        # Decrement timer
+        self._boss_shield_laser_t = max(0.0, self._boss_shield_laser_t - dt)
+        # Check player collision with the laser beam
+        # Beam: from shield position (boss.x-30, boss.y+12) straight
+        # down to the bottom of the screen
+        beam_x = self._boss.x - 30
+        beam_top_y = self._boss.y + 12
+        beam_width = 8
+        beam_rect = pygame.Rect(
+            int(beam_x - beam_width / 2),
+            int(beam_top_y),
+            beam_width,
+            INTERNAL_H - int(beam_top_y) + 4,
+        )
+        if beam_rect.colliderect(self._player.hitbox):
+            # Per-bullet damage (throttled so it's not instant death
+            # at 60fps). Cooldown tracked per-frame, not per-bullet.
+            took = self._player.take_damage(1)
+            self._emit_burst(self._player.x, self._player.y,
+                              count=4, kind="spark", color=(255, 100, 60))
+            self._shake.add_trauma(0.18)
+            if took:
+                self._play_sfx("hit", volume=0.6)
+                self._hitstop.trigger(1)
 
     def _handle_spear_collisions(self, phb: pygame.Rect) -> None:
         """BLOQUE 52: collision logic for boss spears.
@@ -1959,6 +2070,8 @@ class GameplayRuntime:
         self._update_shockwaves(effective_dt)
         # BLOQUE 52: tick GOLIATH spear state machine + spear projectiles
         self._update_boss_spears(effective_dt)
+        # BLOQUE 53a: tick the shield laser timer + beam damage
+        self._update_shield_laser(effective_dt)
         if self._screen_flash > 0.0:
             self._screen_flash = max(0.0, self._screen_flash - effective_dt * 2.5)
         # BLOQUE 22: muzzle flash + charge release flash decay
@@ -2267,6 +2380,10 @@ class GameplayRuntime:
         for sp in self._boss_spears:
             if sp.active:
                 self._draw_boss_spear(target, sp, shx, shy)
+        # BLOQUE 53a: GOLIATH charged laser (drawn AFTER the boss so
+        # the beam sits on top of everything)
+        if self._boss_shield_laser_t > 0.0:
+            self._draw_shield_laser(target, shx, shy)
         # Shockwaves (under bullets so they sit behind)
         for s in self._shockwaves:
             r = s.radius
@@ -3201,6 +3318,49 @@ class GameplayRuntime:
         else:
             self._draw_spear_fragment(target, s, ox, oy)
 
+    def _draw_shield_laser(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        """BLOQUE 53a: render the GOLIATH charged shield laser.
+
+        A thick vertical beam from the boss's shield position down to
+        the bottom of the screen. Pulses red, with a bright white core
+        and an outer red glow. Drawn after the boss so it sits on top.
+        """
+        if self._boss is None:
+            return
+        # Beam source = shield position (mirrors _handle_shield_collisions)
+        beam_cx = int(self._boss.x - 30) + ox
+        beam_top = int(self._boss.y + 12) + oy
+        beam_w = 8
+        # Pulse intensity
+        pulse = 0.5 + 0.5 * math.sin(self._t * 30.0)
+        beam_h = INTERNAL_H - beam_top + 4
+        # Outer red glow (wide)
+        glow = pygame.Surface((beam_w + 24, beam_h), pygame.SRCALPHA)
+        glow_alpha = int(80 + 40 * pulse)
+        pygame.draw.rect(glow, (255, 60, 40, glow_alpha),
+                         (0, 0, beam_w + 24, beam_h))
+        target.blit(glow, (beam_cx - (beam_w + 24) // 2, beam_top - 2))
+        # Mid red beam
+        mid = pygame.Surface((beam_w + 8, beam_h), pygame.SRCALPHA)
+        mid_alpha = int(180 + 40 * pulse)
+        pygame.draw.rect(mid, (255, 120, 60, mid_alpha),
+                         (0, 0, beam_w + 8, beam_h))
+        target.blit(mid, (beam_cx - (beam_w + 8) // 2, beam_top - 2))
+        # White hot core
+        core = pygame.Surface((beam_w, beam_h), pygame.SRCALPHA)
+        pygame.draw.rect(core, (255, 240, 200, 230),
+                         (0, 0, beam_w, beam_h))
+        target.blit(core, (beam_cx - beam_w // 2, beam_top - 2))
+        # Bright top origin (the shield exploding)
+        origin_size = 24
+        origin = pygame.Surface((origin_size, origin_size), pygame.SRCALPHA)
+        origin_alpha = int(220 + 35 * pulse)
+        pygame.draw.circle(origin, (255, 220, 160, origin_alpha),
+                           (origin_size // 2, origin_size // 2),
+                           origin_size // 2)
+        target.blit(origin, (beam_cx - origin_size // 2,
+                              beam_top - origin_size // 2 + 4))
+
     def _draw_spear_main(self, target: pygame.Surface, s: "BossSpear",
                           ox: int, oy: int) -> None:
         """BLOQUE 52: main spear visual (long, thick, iron-tipped)."""
@@ -3606,13 +3766,48 @@ class GameplayRuntime:
             pygame.draw.circle(target, (255, 240, 200), (cx + 4, visor_y + 1), 0)
         # ------------------------------------------------------------------
         # Layer 9: shield (round, on the LEFT side)
+        # BLOQUE 53a: as the player charges the shield (20 hits), it
+        # glows brighter. At 20, the boss fires the laser instead of
+        # drawing a normal shield (the laser is drawn separately).
         # ------------------------------------------------------------------
         shield_cx = cx - 30
         shield_cy = torso_y + 12
         shield_r = 13
-        # Shield body (iron)
-        pygame.draw.circle(target, iron, (shield_cx, shield_cy), shield_r)
+        # Charge ratio (0..1) — only meaningful when not firing the laser
+        charge_ratio = min(1.0, self._boss_shield_hits / 20.0)
+        # Shield body (iron) — recolor as it charges: iron → bright blue
+        if charge_ratio < 0.5:
+            shield_color = iron
+        elif charge_ratio < 0.85:
+            # Iron → mid blue
+            t = (charge_ratio - 0.5) / 0.35
+            shield_color = (
+                int(70 + (110 - 70) * t),
+                int(70 + (170 - 70) * t),
+                int(85 + (255 - 85) * t),
+            )
+        else:
+            # Mid blue → bright cyan-white
+            t = (charge_ratio - 0.85) / 0.15
+            shield_color = (
+                int(110 + (220 - 110) * t),
+                int(170 + (240 - 170) * t),
+                int(255),
+            )
+        pygame.draw.circle(target, shield_color, (shield_cx, shield_cy), shield_r)
         pygame.draw.circle(target, (110, 110, 125), (shield_cx, shield_cy), shield_r, 1)
+        # Charging glow (intensity scales with charge)
+        if charge_ratio > 0.0:
+            glow_outer = pygame.Surface((shield_r * 4, shield_r * 4), pygame.SRCALPHA)
+            glow_alpha = int(40 + 100 * charge_ratio)
+            pulse = 0.5 + 0.5 * math.sin(self._t * 6.0)
+            ga = int(glow_alpha * (0.6 + 0.4 * pulse))
+            pygame.draw.circle(
+                glow_outer, (160, 220, 255, ga),
+                (shield_r * 2, shield_r * 2), shield_r + 4,
+            )
+            target.blit(glow_outer,
+                        (shield_cx - shield_r * 2, shield_cy - shield_r * 2))
         # Inner bronze boss (center stud)
         pygame.draw.circle(target, bronze_main, (shield_cx, shield_cy), 4)
         pygame.draw.circle(target, bronze_hi, (shield_cx, shield_cy), 4, 1)
