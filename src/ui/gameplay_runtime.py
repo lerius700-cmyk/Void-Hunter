@@ -28,6 +28,7 @@ from src.core.settings import (
 )
 from src.entities.enemies import EnemyKind, EnemyPool, Enemy
 from src.entities.enemies.boss import Boss, BossId, BossPool, BOSS_CONFIGS
+from src.entities.boss_spear import BossSpear
 from src.entities.player import Player, PlayerState
 from src.systems.hitstop import Hitstop
 from src.systems.parallax import ParallaxBackground
@@ -205,6 +206,12 @@ class GameplayRuntime:
         self._powerups: list[PowerUp] = []
         self._enemy_flash: dict[int, float] = {}  # id(e) -> flash_timer
         self._boss_flash: dict[int, float] = {}  # BLOQUE 51: id(boss) -> flash_timer (hit feedback)
+        # BLOQUE 52: GOLIATH spear throw state machine.
+        # Phase: "ready" (spear in hand), "winding" (pulling back), "thrown" (no spear in hand)
+        self._boss_spear_phase: str = "ready"
+        self._boss_spear_phase_t: float = 0.0
+        # Active spear projectiles (main + fragments)
+        self._boss_spears: list[BossSpear] = []
         self._shockwaves: list[Shockwave] = []  # expanding ring effects
         self._screen_flash: float = 0.0  # 0..1 alpha of white overlay (bomb)
         self._boss_entry_t: float = 0.0  # boss slides in on first 1.5s of fight
@@ -337,6 +344,9 @@ class GameplayRuntime:
         self._powerups.clear()
         self._enemy_flash.clear()
         self._boss_flash.clear()
+        self._boss_spear_phase = "ready"
+        self._boss_spear_phase_t = 0.0
+        self._boss_spears = []
         self._shockwaves.clear()
         # BLOQUE 39: clear active homing missiles on scene enter
         self._missiles.clear()
@@ -1375,6 +1385,14 @@ class GameplayRuntime:
     def _spawn_boss_attack(self, attack: int) -> None:
         if self._boss is None:
             return
+        # BLOQUE 52: GOLIATH attack 8 = throw the giant's spear.
+        # The spear has its own state machine (winding/thrown) and is
+        # destructible by the player. The boss enters "winding" phase
+        # for 0.3s, then the spear is spawned and the boss enters
+        # "thrown" for 1.2s while the spear is in flight.
+        if attack == 8 and self._boss.id == BossId.GOLIATH:
+            self._start_goliath_spear_throw()
+            return
         bx, by = self._boss.x, self._boss.y + 12
         if attack == 0:
             # Aimed
@@ -1404,6 +1422,130 @@ class GameplayRuntime:
                     math.sin(r) * 200, math.cos(r) * 200,
                     damage=1, owner=OWNER_BOSS,
                 )
+
+    def _start_goliath_spear_throw(self) -> None:
+        """BLOQUE 52: begin the GOLIATH spear throw wind-up animation.
+
+        Transitions _boss_spear_phase from "ready" → "winding". The
+        _update_boss_spears tick will then advance the timer and
+        spawn the actual spear projectile at the right moment.
+        """
+        # Only start a new throw if we're ready (not already winding/thrown)
+        if self._boss_spear_phase != "ready":
+            return
+        self._boss_spear_phase = "winding"
+        self._boss_spear_phase_t = 0.0
+
+    def _spawn_boss_spear(self) -> None:
+        """BLOQUE 52: spawn the main GOLIATH spear projectile.
+
+        Fired at the end of the wind-up phase (0.3s after the throw
+        started). The spear is aimed at the player and follows a
+        serpentine path. 3 HP — player can shoot it down for bonus
+        points, and on death it splits into 3 fragments in a cone.
+        """
+        if self._boss is None:
+            return
+        # Initial direction = toward player
+        bx, by = self._boss.x, self._boss.y + 18  # boss hand height
+        dx = self._player.x - bx
+        dy = self._player.y - by
+        d = math.hypot(dx, dy) or 1.0
+        base_vx = dx / d
+        base_vy = dy / d
+        # Perpendicular (for the serpentine wave). Rotate 90° clockwise.
+        # pygame y is down, so rotating (vx, vy) by -90° gives (vy, -vx).
+        perp_vx = base_vy
+        perp_vy = -base_vx
+        spear = BossSpear(
+            active=True,
+            kind="main",
+            is_main=True,
+            x=bx, y=by,
+            base_vx=base_vx, base_vy=base_vy,
+            perp_vx=perp_vx, perp_vy=perp_vy,
+            speed=160.0,
+            wave_amp=18.0, wave_freq_hz=1.6,
+            wave_amp_growth=10.0,
+            hp=3, max_hp=3,
+            damage=2,
+            life=6.0, max_life=6.0,
+        )
+        self._boss_spears.append(spear)
+        # SFX + small visual cue (white flash at the boss hand)
+        self._emit_burst(bx, by, count=6, kind="spark", color=(255, 220, 160))
+
+    def _split_spear(self, spear: BossSpear) -> None:
+        """BLOQUE 52: when the main spear is destroyed, spawn 3 fragments
+        in a 40° cone (20° left/right of the original direction).
+        Fragments are smaller, faster, and only have 1 HP each.
+        """
+        if not spear.is_main:
+            return
+        # Mark the main spear as inactive (it's been "destroyed" —
+        # _update_boss_spears will cull it from the list next tick).
+        spear.active = False
+        for offset_deg in (-20.0, 0.0, 20.0):
+            # Rotate the base direction by offset_deg
+            base_angle = math.atan2(spear.base_vy, spear.base_vx)
+            frag_angle = base_angle + math.radians(offset_deg)
+            frag_vx = math.cos(frag_angle)
+            frag_vy = math.sin(frag_angle)
+            # Perpendicular
+            perp_vx = frag_vy
+            perp_vy = -frag_vx
+            frag = BossSpear(
+                active=True,
+                kind="fragment",
+                is_main=False,
+                x=spear.x, y=spear.y,
+                base_vx=frag_vx, base_vy=frag_vy,
+                perp_vx=perp_vx, perp_vy=perp_vy,
+                speed=240.0,  # faster than the main spear
+                wave_amp=4.0, wave_freq_hz=2.0,  # smaller wave
+                wave_amp_growth=3.0,
+                hp=1, max_hp=1,
+                damage=1,
+                life=2.5, max_life=2.5,
+            )
+            self._boss_spears.append(frag)
+        # Player gets bonus points for destroying the main spear
+        bonus = 500
+        self._scoring.on_kill(bonus)
+        self._score_popups.append(ScorePopup(
+            x=spear.x, y=spear.y - 4, vy=-30.0,
+            text=f"SPEAR +{bonus}", color=(255, 220, 140),
+            life=1.4, max_life=1.4,
+        ))
+
+    def _update_boss_spears(self, dt: float) -> None:
+        """BLOQUE 52: tick the GOLIATH spear state machine and update
+        all in-flight spear projectiles (serpentine motion + lifetime).
+        """
+        # 1) State machine for the boss's hand-held spear
+        if self._boss_spear_phase == "winding":
+            self._boss_spear_phase_t += dt
+            if self._boss_spear_phase_t >= 0.3:
+                # Wind-up complete → spawn the spear, transition to "thrown"
+                self._spawn_boss_spear()
+                self._boss_spear_phase = "thrown"
+                self._boss_spear_phase_t = 0.0
+        elif self._boss_spear_phase == "thrown":
+            self._boss_spear_phase_t += dt
+            if self._boss_spear_phase_t >= 1.2:
+                # Recovered: respawn the spear in the boss's hand
+                self._boss_spear_phase = "ready"
+                self._boss_spear_phase_t = 0.0
+        # 2) Update all active spear projectiles
+        alive: list[BossSpear] = []
+        for s in self._boss_spears:
+            s.update(dt)
+            # Offscreen cull
+            if s.active and -20 < s.x < INTERNAL_W + 20 and -20 < s.y < INTERNAL_H + 20:
+                alive.append(s)
+            elif s.active:
+                s.active = False  # went off screen
+        self._boss_spears = alive
 
     # ------------------------------------------------------------------
     # Collisions
@@ -1500,6 +1642,64 @@ class GameplayRuntime:
                 if took:
                     self._play_sfx("hit", volume=0.6)
                     self._hitstop.trigger(2)
+        # BLOQUE 52: GOLIATH spear collisions (player bullets → spear, spear → player)
+        self._handle_spear_collisions(phb)
+
+    def _handle_spear_collisions(self, phb: pygame.Rect) -> None:
+        """BLOQUE 52: collision logic for boss spears.
+        - Player bullets damage the spear; at HP=0, main spears split
+          into 3 fragments, fragments just die.
+        - The spear damages the player on contact (2 damage for main,
+          1 for fragments).
+        """
+        if not self._boss_spears:
+            return
+        # Player bullets ↔ spears
+        for p in self._bullets.pool:
+            if not p.active or p.owner != OWNER_PLAYER:
+                continue
+            pr = pygame.Rect(int(p.x) - 2, int(p.y) - 3, 4, 6)
+            for s in self._boss_spears:
+                if not s.active:
+                    continue
+                cx, cy, w, h = s.hitbox()
+                sr = pygame.Rect(int(cx - w / 2), int(cy - h / 2), int(w), int(h))
+                if pr.colliderect(sr):
+                    p.active = False
+                    self._bullets.pool.release(p)
+                    killed = s.apply_damage(1)
+                    # Hit feedback
+                    self._emit_burst(cx, cy, count=4, kind="spark",
+                                      color=(255, 200, 120))
+                    if killed:
+                        # Explosion visual
+                        self._emit_burst(cx, cy, count=10, kind="shrapnel")
+                        self._emit_burst(cx, cy, count=6, kind="spark",
+                                          color=(255, 160, 80))
+                        self._add_shockwave(cx, cy, 24.0)
+                        # Main spear splits into 3 fragments
+                        if s.is_main:
+                            self._split_spear(s)
+                        break  # bullet can only hit one spear
+        # Spears ↔ player
+        for s in self._boss_spears:
+            if not s.active:
+                continue
+            cx, cy, w, h = s.hitbox()
+            sr = pygame.Rect(int(cx - w / 2), int(cy - h / 2), int(w), int(h))
+            if sr.colliderect(phb):
+                # Spear damages player and stops
+                took = self._player.take_damage(s.damage)
+                self._emit_burst(s.x, s.y, count=8, kind="spark",
+                                  color=(255, 100, 60))
+                self._shake.add_trauma(0.25)
+                if took:
+                    self._play_sfx("hit", volume=0.6)
+                    self._hitstop.trigger(2)
+                # Main spear splits when blocked by player; fragments just die
+                s.active = False
+                if s.is_main:
+                    self._split_spear(s)
 
     # ------------------------------------------------------------------
     # Kill handlers
@@ -1757,6 +1957,8 @@ class GameplayRuntime:
         self._update_powerups(effective_dt)
         self._update_enemy_flash(effective_dt)
         self._update_shockwaves(effective_dt)
+        # BLOQUE 52: tick GOLIATH spear state machine + spear projectiles
+        self._update_boss_spears(effective_dt)
         if self._screen_flash > 0.0:
             self._screen_flash = max(0.0, self._screen_flash - effective_dt * 2.5)
         # BLOQUE 22: muzzle flash + charge release flash decay
@@ -2061,6 +2263,10 @@ class GameplayRuntime:
         # Boss
         if self._is_boss and self._boss is not None and self._boss.active:
             self._draw_boss(target, shx, shy)
+        # BLOQUE 52: GOLIATH spear projectiles in flight
+        for sp in self._boss_spears:
+            if sp.active:
+                self._draw_boss_spear(target, sp, shx, shy)
         # Shockwaves (under bullets so they sit behind)
         for s in self._shockwaves:
             r = s.radius
@@ -2981,6 +3187,158 @@ class GameplayRuntime:
         else:
             self._draw_boss_simple(target, ox, oy)
 
+    def _draw_boss_spear(self, target: pygame.Surface, s: "BossSpear",
+                          ox: int, oy: int) -> None:
+        """BLOQUE 52: render a GOLIATH spear projectile in flight.
+
+        Main spears are big and detailed (wood shaft + iron tip + glow).
+        Fragments are smaller chunks (just shaft + tip). Both orient
+        along their base direction and pulse slightly. Hit flash goes
+        white for 0.08s.
+        """
+        if s.kind == "main":
+            self._draw_spear_main(target, s, ox, oy)
+        else:
+            self._draw_spear_fragment(target, s, ox, oy)
+
+    def _draw_spear_main(self, target: pygame.Surface, s: "BossSpear",
+                          ox: int, oy: int) -> None:
+        """BLOQUE 52: main spear visual (long, thick, iron-tipped)."""
+        cx = int(s.x) + ox
+        cy = int(s.y) + oy
+        # Angle of the base direction
+        angle = math.atan2(s.base_vy, s.base_vx)
+        # Perpendicular to the base for shaft thickness (perp already computed)
+        # Length: 28 px shaft + 6 px tip
+        # Compute endpoints
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
+        # Shaft: from cx-14*cos to cx+14*cos
+        shaft_back_x = cx - int(14 * cos_a)
+        shaft_back_y = cy - int(14 * sin_a)
+        shaft_front_x = cx + int(14 * cos_a)
+        shaft_front_y = cy + int(14 * sin_a)
+        # Perpendicular for thickness (2px)
+        perp_x = -sin_a * 2
+        perp_y = cos_a * 2
+        # Iron body color (or white if flashing)
+        if s.flash_t > 0.0:
+            wood_color = (255, 255, 255)
+            iron_color = (255, 255, 255)
+            glow_color = (255, 255, 255)
+        else:
+            wood_color = (130, 90, 55)
+            iron_color = (160, 160, 180)
+            glow_color = (255, 180, 100)
+        # Outer glow (aura around the spear)
+        aura = pygame.Surface((40, 12), pygame.SRCALPHA)
+        aura_alpha = 80 + int(40 * math.sin(s.wave_t * 6.0))
+        pygame.draw.ellipse(
+            aura, (*glow_color, aura_alpha),
+            (0, 0, 40, 12),
+        )
+        # Rotate the aura around its center
+        rotated_aura = pygame.transform.rotate(aura, -math.degrees(angle))
+        aura_rect = rotated_aura.get_rect(center=(cx, cy))
+        target.blit(rotated_aura, aura_rect.topleft)
+        # Wooden shaft (thick rectangle along the base direction)
+        shaft_poly = [
+            (shaft_back_x + perp_x, shaft_back_y + perp_y),
+            (shaft_front_x + perp_x, shaft_front_y + perp_y),
+            (shaft_front_x - perp_x, shaft_front_y - perp_y),
+            (shaft_back_x - perp_x, shaft_back_y - perp_y),
+        ]
+        pygame.draw.polygon(target, (70, 50, 30), shaft_poly)  # dark wood edge
+        pygame.draw.polygon(target, wood_color, [
+            (shaft_back_x + perp_x * 0.6, shaft_back_y + perp_y * 0.6),
+            (shaft_front_x + perp_x * 0.6, shaft_front_y + perp_y * 0.6),
+            (shaft_front_x - perp_x * 0.6, shaft_front_y - perp_y * 0.6),
+            (shaft_back_x - perp_x * 0.6, shaft_back_y - perp_y * 0.6),
+        ])
+        # Wood grain (a darker line down the middle)
+        pygame.draw.line(
+            target, (90, 60, 35),
+            (shaft_back_x, shaft_back_y),
+            (shaft_front_x, shaft_front_y), 1,
+        )
+        # Iron spearhead (triangle at the front, extending past the shaft)
+        tip_back_x = shaft_front_x
+        tip_back_y = shaft_front_y
+        tip_left_x = shaft_front_x + int(2 * cos_a) - int(perp_x * 2)
+        tip_left_y = shaft_front_y + int(2 * sin_a) - int(perp_y * 2)
+        tip_right_x = shaft_front_x + int(2 * cos_a) + int(perp_x * 2)
+        tip_right_y = shaft_front_y + int(2 * sin_a) + int(perp_y * 2)
+        tip_point_x = shaft_front_x + int(8 * cos_a)
+        tip_point_y = shaft_front_y + int(8 * sin_a)
+        pygame.draw.polygon(target, (40, 40, 50), [
+            (tip_back_x, tip_back_y),
+            (tip_left_x, tip_left_y),
+            (tip_point_x, tip_point_y),
+            (tip_right_x, tip_right_y),
+        ])
+        pygame.draw.polygon(target, iron_color, [
+            (tip_back_x, tip_back_y),
+            (tip_left_x, tip_left_y),
+            (tip_point_x, tip_point_y),
+            (tip_right_x, tip_right_y),
+        ], 1)
+        # Iron tip highlight
+        pygame.draw.line(
+            target, (220, 220, 240),
+            (tip_back_x, tip_back_y),
+            (tip_point_x, tip_point_y), 1,
+        )
+        # HP indicator (small dots on the shaft, one per HP)
+        # Place at the back of the shaft
+        for i in range(s.max_hp):
+            dot_offset = -10 + i * 5
+            dot_x = cx + int(dot_offset * cos_a)
+            dot_y = cy + int(dot_offset * sin_a)
+            if i < s.hp:
+                dot_color = (255, 60, 60)
+            else:
+                dot_color = (60, 30, 30)
+            pygame.draw.circle(target, dot_color, (dot_x, dot_y), 1)
+
+    def _draw_spear_fragment(self, target: pygame.Surface, s: "BossSpear",
+                              ox: int, oy: int) -> None:
+        """BLOQUE 52: small spear fragment (shorter, no aura, just a chunk)."""
+        cx = int(s.x) + ox
+        cy = int(s.y) + oy
+        angle = math.atan2(s.base_vy, s.base_vx)
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
+        # Smaller shaft: 6 long, 1 thick
+        shaft_back_x = cx - int(6 * cos_a)
+        shaft_back_y = cy - int(6 * sin_a)
+        shaft_front_x = cx + int(6 * cos_a)
+        shaft_front_y = cy + int(6 * sin_a)
+        # Perpendicular
+        perp_x = -sin_a
+        perp_y = cos_a
+        # Flash
+        if s.flash_t > 0.0:
+            wood_color = (255, 255, 255)
+            iron_color = (255, 255, 255)
+        else:
+            wood_color = (140, 100, 60)
+            iron_color = (180, 180, 200)
+        # Shaft
+        pygame.draw.line(
+            target, wood_color,
+            (shaft_back_x, shaft_back_y),
+            (shaft_front_x, shaft_front_y), 2,
+        )
+        # Tiny iron tip
+        tip_x = shaft_front_x + int(3 * cos_a)
+        tip_y = shaft_front_y + int(3 * sin_a)
+        pygame.draw.polygon(target, iron_color, [
+            (shaft_front_x, shaft_front_y),
+            (shaft_front_x + int(cos_a) - int(perp_x), shaft_front_y + int(sin_a) - int(perp_y)),
+            (tip_x, tip_y),
+            (shaft_front_x + int(cos_a) + int(perp_x), shaft_front_y + int(sin_a) + int(perp_y)),
+        ])
+
     def _draw_boss_simple(self, target: pygame.Surface, ox: int, oy: int) -> None:
         """Default boss visual — simple rectangle with eye. Used by HYDRA/PHANTOM/NEMESIS."""
         if self._boss is None:
@@ -3265,45 +3623,88 @@ class GameplayRuntime:
             ry = shield_cy + int(math.sin(a) * 8)
             pygame.draw.circle(target, (40, 40, 50), (rx, ry), 1)
         # ------------------------------------------------------------------
-        # Layer 10: spear (long, on the RIGHT side, pointing down)
-        # ------------------------------------------------------------------
-        spear_top_x = cx + 30
-        spear_top_y = pauldron_y - 2
-        spear_bot_x = spear_top_x + 5
-        spear_bot_y = spear_top_y + 42
-        # Wooden shaft
-        pygame.draw.line(
-            target, (90, 60, 35),
-            (spear_top_x, spear_top_y), (spear_bot_x, spear_bot_y), 2,
-        )
-        # Shaft highlight
-        pygame.draw.line(
-            target, (130, 90, 55),
-            (spear_top_x - 1, spear_top_y), (spear_bot_x - 1, spear_bot_y), 1,
-        )
-        # Iron spearhead (pointy triangle at the BOTTOM of the shaft)
-        spear_tip_x = spear_bot_x + 1
-        spear_tip_y = spear_bot_y + 8
-        pygame.draw.polygon(target, iron, [
-            (spear_bot_x - 3, spear_bot_y),
-            (spear_bot_x + 5, spear_bot_y),
-            (spear_tip_x, spear_tip_y),
-        ])
-        pygame.draw.polygon(target, (160, 160, 180), [
-            (spear_bot_x - 3, spear_bot_y),
-            (spear_bot_x + 5, spear_bot_y),
-            (spear_tip_x, spear_tip_y),
-        ], 1)
-        # Spear tip glow (pulses — phase 2 brighter)
-        if phase2 or flashing:
-            tip_glow = pygame.Surface((10, 10), pygame.SRCALPHA)
-            tip_alpha = int(120 + 80 * eye_pulse) if not flashing else 200
-            pygame.draw.circle(
-                tip_glow, (255, 80, 40, tip_alpha), (5, 5), 4,
+        # Layer 10: spear (long, on the RIGHT side, pointing down).
+        # BLOQUE 52: animation states.
+        #   - "ready"   : spear fully extended at rest position (right side)
+        #   - "winding" : pulled back behind the boss (charging)
+        #   - "thrown"  : NOT drawn here (the spear is in flight, drawn
+        #                 separately via _draw_boss_spear). Boss's hand
+        #                 is empty for a beat — looks "unarmed".
+        spear_phase = self._boss_spear_phase
+        if spear_phase != "thrown":
+            # Compute where the spear is in the boss's hand based on phase
+            if spear_phase == "ready":
+                # Default resting position
+                spear_top_x = cx + 30
+                spear_top_y = pauldron_y - 2
+                spear_bot_x = spear_top_x + 5
+                spear_bot_y = spear_top_y + 42
+            else:
+                # "winding" — pull the spear back behind the boss + tilt
+                # Ease-in from 0.0 → 1.0 over 0.3s
+                w_t = min(1.0, self._boss_spear_phase_t / 0.3)
+                ease = 1.0 - (1.0 - w_t) ** 2  # ease-out
+                # Pull back: shift the spear top to the left + up
+                back_off_x = int(8 * ease)
+                back_off_y = int(-4 * ease)
+                # Also tilt the shaft back (negative tilt)
+                tilt = -0.3 * ease  # radians
+                spear_top_x = cx + 30 - back_off_x
+                spear_top_y = pauldron_y - 2 - back_off_y
+                spear_bot_x = spear_top_x + int(5 * math.cos(tilt))
+                spear_bot_y = spear_top_y + int(42 * math.cos(tilt)) + int(5 * math.sin(tilt))
+            # Wooden shaft
+            pygame.draw.line(
+                target, (90, 60, 35),
+                (spear_top_x, spear_top_y), (spear_bot_x, spear_bot_y), 2,
             )
-            target.blit(tip_glow, (spear_tip_x - 5, spear_tip_y - 5))
-        # Top of spear (small tassel / grip)
-        pygame.draw.circle(target, (160, 30, 30), (spear_top_x, spear_top_y), 1)
+            # Shaft highlight
+            pygame.draw.line(
+                target, (130, 90, 55),
+                (spear_top_x - 1, spear_top_y), (spear_bot_x - 1, spear_bot_y), 1,
+            )
+            # Iron spearhead (pointy triangle at the BOTTOM of the shaft)
+            spear_tip_x = spear_bot_x + 1
+            spear_tip_y = spear_bot_y + 8
+            pygame.draw.polygon(target, iron, [
+                (spear_bot_x - 3, spear_bot_y),
+                (spear_bot_x + 5, spear_bot_y),
+                (spear_tip_x, spear_tip_y),
+            ])
+            pygame.draw.polygon(target, (160, 160, 180), [
+                (spear_bot_x - 3, spear_bot_y),
+                (spear_bot_x + 5, spear_bot_y),
+                (spear_tip_x, spear_tip_y),
+            ], 1)
+            # Spear tip glow (pulses — phase 2 brighter, or when winding)
+            tip_glowing = phase2 or flashing or spear_phase == "winding"
+            if tip_glowing:
+                tip_glow = pygame.Surface((10, 10), pygame.SRCALPHA)
+                if spear_phase == "winding":
+                    tip_alpha = int(80 + 120 * w_t)
+                else:
+                    tip_alpha = int(120 + 80 * eye_pulse) if not flashing else 200
+                pygame.draw.circle(
+                    tip_glow, (255, 80, 40, tip_alpha), (5, 5), 4,
+                )
+                target.blit(tip_glow, (spear_tip_x - 5, spear_tip_y - 5))
+            # Top of spear (small tassel / grip)
+            pygame.draw.circle(target, (160, 30, 30), (spear_top_x, spear_top_y), 1)
+        else:
+            # "thrown" — boss hand is empty, show a brief motion blur at
+            # the throw origin (the boss's right shoulder) to sell the
+            # release.
+            throw_x = cx + 30
+            throw_y = pauldron_y
+            # A small white "release" burst that fades quickly
+            burst_t = self._boss_spear_phase_t  # 0.0 → 0.2 visible
+            if burst_t < 0.2:
+                burst_alpha = int(180 * (1.0 - burst_t / 0.2))
+                burst = pygame.Surface((14, 14), pygame.SRCALPHA)
+                pygame.draw.circle(
+                    burst, (255, 200, 140, burst_alpha), (7, 7), 5,
+                )
+                target.blit(burst, (throw_x - 7, throw_y - 7))
         # ------------------------------------------------------------------
         # Layer 11: phase 2 cracks on the armor (glowing red lines)
         # ------------------------------------------------------------------

@@ -190,15 +190,27 @@ class Boss:
         if self.fire_cd > 0.0:
             return -1
         cfg = BOSS_CONFIGS[self.id]
-        # Phase pools
-        if self.phase == 1:
-            pool = [0, 1]  # aimed, 3-spread
-        elif self.phase == 2:
-            pool = [0, 1, 3]  # + ring
-        elif self.phase == 3:
-            pool = [1, 2, 3, 4, 5]  # most patterns
-        else:  # phase 4 (NEMESIS only)
-            pool = [0, 1, 2, 3, 4, 5, 6, 7]  # all 8
+        # BLOQUE 52: attack 8 = "spear throw", only handled for GOLIATH
+        # in _spawn_boss_attack. For other bosses, attack 8 is a no-op
+        # so we exclude it from their pools.
+        if self.id == BossId.GOLIATH:
+            # Phase pools
+            if self.phase == 1:
+                pool = [0, 1, 8]  # aimed, 3-spread, spear throw
+            elif self.phase == 2:
+                pool = [0, 1, 3, 8]  # + ring + spear throw (more variety)
+            else:
+                pool = [0, 1, 3, 8]
+        else:
+            # Phase pools (original)
+            if self.phase == 1:
+                pool = [0, 1]  # aimed, 3-spread
+            elif self.phase == 2:
+                pool = [0, 1, 3]  # + ring
+            elif self.phase == 3:
+                pool = [1, 2, 3, 4, 5]  # most patterns
+            else:  # phase 4 (NEMESIS only)
+                pool = [0, 1, 2, 3, 4, 5, 6, 7]  # all 8
         # Pseudo-random selection based on phase + move_t (deterministic for tests)
         import random
         rng = random.Random(int(self.move_t * 10) + self.phase * 100)
