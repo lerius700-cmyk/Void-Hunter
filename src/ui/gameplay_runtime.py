@@ -48,7 +48,7 @@ from src.ui.hud import HUD
 
 if TYPE_CHECKING:
     from src.audio.synth import AudioEngine
-    from src.systems.wave_manager import WaveManager
+    from src.systems.wave_manager import BossTrigger, WaveChain, WaveManager
     from src.ui.scenes import TransitionFn
 
 
@@ -186,9 +186,12 @@ class GameplayRuntime:
         self._t: float = 0.0
         self._wave_spawn_timer: float = 0.0
         self._wave_idx: int = (act - 1) * 6  # act 1 starts at wave 0
-        self._pending_wave_spawns: list[tuple[float, EnemyKind, float, float]] = []
+        self._pending_wave_spawns: list[tuple[float, EnemyKind, float, float, bool, float]] = []
         self._is_wave_active: bool = True
         self._transition_pending: Optional[str] = None  # "boss_intro" or "act_cleared"
+        # BLOQUE 48: chained wave system (level 1 mode redesign)
+        self._level1_chain: Optional[WaveChain] = None
+        self._level1_boss_trigger: Optional[BossTrigger] = None
 
         # Polish state
         self._score_popups: list[ScorePopup] = []
@@ -312,6 +315,9 @@ class GameplayRuntime:
         self._enemies_spawned_total = 0
         self._enemies_escaped = 0
         self._squadron_id_counter = 0  # BLOQUE 47: reset on each scene reset
+        # BLOQUE 48: reset the chained wave system
+        if self._level1_chain is not None:
+            self._level1_chain.reset()
         self._screen_flash = 0.0
         # BLOQUE 22: reset polish state
         self._muzzle_flash = 0.0
@@ -1068,33 +1074,33 @@ class GameplayRuntime:
             self._pending_wave_spawns[i] = (t,) + item[1:]
 
     def _populate_level1_queue(self) -> None:
-        """BLOQUE 29: first level = 5 min, 100+ ships, 3 distinct types.
+        """BLOQUE 48: chained wave system for level 1 mode.
 
-        Win condition: 50 kills OR 5 min elapsed.
-        Spawns ~110 ships distributed across 5 minutes using 3 enemy kinds:
-          - SCOUT (1 HP, fast, low damage)
-          - CRUISER (3 HP, medium, medium damage)
-          - HEAVY (6 HP, slow, high damage)
+        Replaces the BLOQUE 29 absolute-timestamp spawn loop with a
+        chain of 4 waves that trigger the next one on completion (or
+        max_duration timeout). Each wave has its own spawn cadence,
+        max active count (8), and composition.
+
+        Total ships: 27 (21 SCOUT + 4 CRUISER + 2 HEAVY).
+        Score: 35 flat + 12 perfect = 47pt max.
         """
-        # BLOQUE 29: 3 distinct enemy types
-        kinds = [EnemyKind.SCOUT, EnemyKind.CRUISER, EnemyKind.HEAVY]
-        # 110 ships over 5 min = ~3 sec between spawns
-        total_ships = 110
-        duration_s = 300.0  # 5 minutes
-        interval = duration_s / total_ships  # ~2.7s
-        for i in range(total_ships):
-            kind = random.choice(kinds)
-            x = random.uniform(20, INTERNAL_W - 20)
-            y = -10.0 - random.uniform(0, 60)
-            # Stagger: i-th ship spawns at t = i * interval
-            spawn_t = i * interval
-            self._pending_wave_spawns.append((spawn_t, kind, x, y))
+        from src.systems.wave_manager import WaveChain, BossTrigger
+        from src.core.settings import MAX_ENEMIES_ON_SCREEN
+        self._level1_chain = WaveChain(max_alive=MAX_ENEMIES_ON_SCREEN)
+        self._level1_boss_trigger = BossTrigger()
+        # Clear any leftover pending spawns (legacy mode)
+        self._pending_wave_spawns = []
 
     def _spawn_pending(self, dt: float) -> None:
         if self._is_boss:
             return
+        # BLOQUE 48: level 1 mode uses the chained WaveChain (not the
+        # legacy _pending_wave_spawns list)
+        if self._is_level1_mode() and self._level1_chain is not None:
+            self._spawn_level1_enemies(dt)
+            return
         self._wave_spawn_timer += dt
-        remaining: list[tuple] = []
+        remaining: list[tuple[float, EnemyKind, float, float, bool, float]] = []
         for item in self._pending_wave_spawns:
             # BLOQUE 47: 6-tuple with is_squadron + time_offset_s
             if len(item) == 6:
@@ -1123,6 +1129,74 @@ class GameplayRuntime:
                 else:
                     remaining.append((when, kind, x, y, False, 0.0))
         self._pending_wave_spawns = remaining
+
+    def _spawn_level1_enemies(self, dt: float) -> None:
+        """BLOQUE 48: spawn one enemy per tick from the chained WaveChain.
+
+        Respects:
+          - spawn cadence per wave
+          - density cap (8 simultaneous)
+          - max duration per wave (advances to next on timeout)
+        """
+        from src.entities.enemies.enemy import EnemyKind
+        chain = self._level1_chain
+        assert chain is not None
+        chain.tick(dt)
+        if chain.waves_complete:
+            return  # no more spawns
+        if chain.current_wave_idx >= len(chain.wave_specs):
+            return
+        spec = chain.wave_specs[chain.current_wave_idx]
+        # Find the next enemy to spawn (next index in the spec's enemies list)
+        next_idx = chain._spawned_per_wave[chain.current_wave_idx]
+        if next_idx >= len(spec["enemies"]):
+            return  # this wave fully spawned; wait for next
+        kind_str = spec["enemies"][next_idx]
+        kind = EnemyKind[kind_str]
+        # Try to spawn at top with formation-appropriate position
+        x = self._level1_spawn_x(spec.get("formation", "line"), next_idx, len(spec["enemies"]))
+        y = -10.0
+        if chain.spawn(chain.current_wave_idx, x, y, kind_str):
+            e = self._enemies.spawn(kind, x, y)
+            if e is not None:
+                # Mark the enemy with the wave_idx so kill() can decrement
+                # the right counter. We use a simple approach: every enemy in
+                # level 1 mode increments kills on kill (single source of truth).
+                self._enemies_spawned_total += 1
+
+    def _level1_spawn_x(self, formation: str, idx: int, total: int) -> float:
+        """BLOQUE 48: formation-aware spawn X position for level 1 mode."""
+        cx = INTERNAL_W / 2
+        if formation == "diagonal":
+            # Spread across the width, one per line of sight
+            margin = 30.0
+            if total <= 1:
+                return cx
+            step = (INTERNAL_W - 2 * margin) / max(1, total - 1)
+            return margin + idx * step
+        if formation == "v":
+            # V: middle at top, wings angled down — but we spawn at y=-10,
+            # so use horizontal V (wider than LINE)
+            margin = 20.0
+            if total <= 1:
+                return cx
+            step = (INTERNAL_W - 2 * margin) / max(1, total - 1)
+            return margin + idx * step
+        if formation == "line":
+            # Horizontal line
+            margin = 20.0
+            if total <= 1:
+                return cx
+            step = (INTERNAL_W - 2 * margin) / max(1, total - 1)
+            return margin + idx * step
+        if formation == "diamond":
+            # Diamond: 4 corners, center; with 6 ships, the order is
+            # top, right, bottom, left, top-right, top-left (approx)
+            if total <= 1:
+                return cx
+            step = (INTERNAL_W - 40.0) / max(1, total - 1)
+            return 20.0 + idx * step
+        return cx
 
     def _update_enemies(self, dt: float) -> None:
         # BLOQUE 47: SQUADRON path parameters — shared for all squadron members
@@ -1166,6 +1240,9 @@ class GameplayRuntime:
                 # BLOQUE 43: count enemies that left the screen alive (escaped)
                 if e.y > INTERNAL_H + 30 and e.state.name != "DEAD":
                     self._enemies_escaped += 1
+                    # BLOQUE 48: also mark the chain as broken perfect
+                    if self._is_level1_mode() and self._level1_chain is not None:
+                        self._level1_chain.escape()
                 self._enemies.release(e)
         # Boss
         if self._is_boss and self._boss is not None and self._boss.active:
@@ -1388,6 +1465,10 @@ class GameplayRuntime:
         # Wave progress
         if not self._is_boss:
             self._wave_mgr.current.kills += 1
+            # BLOQUE 48: also tick the level 1 chain (single source of truth
+            # for the new chained boss trigger)
+            if self._is_level1_mode() and self._level1_chain is not None:
+                self._level1_chain.kill()
             self._wave_mgr.on_wave_cleared = self._check_wave_cleared()
         # Free
         self._enemies.release(e)
@@ -1458,19 +1539,11 @@ class GameplayRuntime:
         if self._is_boss:
             return
         self._wave_mgr.current.elapsed_s += dt
-        # BLOQUE 43: boss trigger — 60s+perfect OR 50 kills OR 180s timeout
-        if self._is_level1_mode():
-            kills = self._wave_mgr.current.kills
-            elapsed = self._wave_mgr.current.elapsed_s
-            fast = (elapsed >= BOSS_FAST_TRIGGER_S
-                    and self._enemies_escaped == 0
-                    and kills >= 1)  # require at least 1 kill (no trivial perfect)
-            kill_fallback = kills >= BOSS_FALLBACK_KILLS
-            timeout = elapsed >= BOSS_FALLBACK_TIMEOUT_S
-            if fast or kill_fallback or timeout:
-                from src.core.scene_manager import GameState
-                self._transition_to(GameState.BOSS_INTRO)
+        # BLOQUE 48: level 1 mode uses the chained WaveChain + BossTrigger
+        if self._is_level1_mode() and self._level1_chain is not None:
+            self._update_level1_wave_state()
             return
+        # Non-level1 mode: legacy wave script (kill_target + time_limit)
         if self._wave_mgr.current.kills >= self._wave_mgr.scripts[self._wave_idx].get("kill_target", 0):
             # Wave cleared — trigger boss intro or move on
             from src.core.scene_manager import GameState
@@ -1490,6 +1563,29 @@ class GameplayRuntime:
         elif self._wave_mgr.current.elapsed_s > self._wave_mgr.scripts[self._wave_idx].get("time_limit_s", 60.0):
             # Time out: transition to boss anyway (lenient)
             from src.core.scene_manager import GameState
+            self._transition_to(GameState.BOSS_INTRO)
+
+    def _update_level1_wave_state(self) -> None:
+        """BLOQUE 48: chain tick + boss trigger evaluation for level 1 mode."""
+        from src.core.scene_manager import GameState
+        chain = self._level1_chain
+        trigger = self._level1_boss_trigger
+        if chain is None or trigger is None:
+            return
+        # Wave state is already advanced by _spawn_level1_enemies (tick).
+        # Evaluate boss trigger using chain state.
+        boss = trigger.evaluate(
+            elapsed_s=chain.elapsed_s,
+            waves_complete=chain.waves_complete,
+            perfect=chain.perfect,
+            kills=chain.kills,
+        )
+        if boss is not None:
+            # Award perfect run bonus if applicable
+            if chain.perfect:
+                self._scoring.on_kill(0)  # placeholder; bonus added below
+                from src.core.settings import PERFECT_RUN_BONUS
+                self._scoring.on_kill(PERFECT_RUN_BONUS)
             self._transition_to(GameState.BOSS_INTRO)
 
     # ------------------------------------------------------------------

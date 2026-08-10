@@ -1220,44 +1220,60 @@ def test_movement_world_relative():
     assert abs(p.x - INTERNAL_W / 2) < 5.0
 
 
-def test_level1_mode_has_100_ships():
-    """BLOQUE 29: level 1 queues 100+ ships."""
+def test_level1_mode_has_27_ships():
+    """BLOQUE 48: level 1 chains 27 ships in 4 waves (was 100+)."""
+    from src.systems.wave_manager import LEVEL1_WAVES
     rt = _make_runtime()
-    # Act 1 wave 0 = level 1 mode
     assert rt._is_level1_mode()
-    assert len(rt._pending_wave_spawns) >= 100
+    # BLOQUE 48: chained wave system has 27 ships total (21 SCOUT + 4 CRUISER + 2 HEAVY)
+    total = sum(len(w["enemies"]) for w in LEVEL1_WAVES)
+    assert total == 27
 
 
 def test_level1_uses_3_distinct_kinds():
-    """BLOQUE 29: level 1 uses exactly 3 distinct enemy types."""
+    """BLOQUE 48: level 1 still uses 3 distinct enemy types (SCOUT/CRUISER/HEAVY)."""
+    from src.systems.wave_manager import LEVEL1_WAVES
     rt = _make_runtime()
-    kinds = set(item[1].value for item in rt._pending_wave_spawns)
-    assert len(kinds) == 3
-    assert "scout" in kinds
-    assert "cruiser" in kinds
-    assert "heavy" in kinds
+    all_kinds: set = set()
+    for w in LEVEL1_WAVES:
+        for k in w["enemies"]:
+            all_kinds.add(k)
+    assert all_kinds == {"SCOUT", "CRUISER", "HEAVY"}
 
 
 def test_level1_victory_at_50_kills():
-    """BLOQUE 29: 50 kills triggers boss intro."""
+    """BLOQUE 48: 50 kills was the old fallback. Now safety triggers at 120s
+    OR perfect path at 60s with kills>=1. This test verifies safety.
+    """
+    from src.core.settings import BOSS_SAFETY_TRIGGER_S
+    from src.systems.wave_manager import WaveChain, BossTrigger
     rt = _make_runtime()
+    rt._level1_chain = WaveChain()
+    rt._level1_boss_trigger = BossTrigger()
+    rt._level1_chain.elapsed_s = BOSS_SAFETY_TRIGGER_S
+    rt._level1_chain.kills = 50
+    rt._level1_chain.perfect = False
     state_holder = {"current": None}
     def transition(state):
         state_holder["current"] = state
     rt._transition_to = transition
-    rt._wave_mgr.current.kills = 50
     rt._update_wave_state(0.0)
     assert state_holder["current"] == GameState.BOSS_INTRO
 
 
 def test_level1_victory_at_5_minutes():
-    """BLOQUE 29: 5 min elapsed triggers boss intro."""
+    """BLOQUE 48: 5 min elapsed is now beyond the safety trigger (120s)."""
+    from src.systems.wave_manager import WaveChain, BossTrigger
     rt = _make_runtime()
+    rt._level1_chain = WaveChain()
+    rt._level1_boss_trigger = BossTrigger()
+    rt._level1_chain.elapsed_s = 305.0  # 5 minutes
+    rt._level1_chain.kills = 0
+    rt._level1_chain.perfect = False
     state_holder = {"current": None}
     def transition(state):
         state_holder["current"] = state
     rt._transition_to = transition
-    rt._wave_mgr.current.elapsed_s = 305.0
     rt._update_wave_state(0.0)
     assert state_holder["current"] == GameState.BOSS_INTRO
 
@@ -1624,75 +1640,93 @@ def _recording_transition():
 
 
 def test_boss_trigger_at_60s_with_perfect_score() -> None:
-    """BLOQUE 43: elapsed=60s, no escaped, kills>=1 → BOSS_INTRO."""
-    from src.core.settings import BOSS_FAST_TRIGGER_S
+    """BLOQUE 48: elapsed=60s, no escaped, kills>=1 → BOSS_INTRO via chain."""
+    from src.core.settings import BOSS_PERFECT_TRIGGER_S
     from src.core.scene_manager import GameState
+    from src.systems.wave_manager import WaveChain, BossTrigger
     fn, transitions = _recording_transition()
     rt = GameplayRuntime(transition_to=fn, is_boss=False, act=1)
     rt.on_enter()
     rt._is_level1_mode = lambda: True
-    rt._wave_mgr.current.elapsed_s = BOSS_FAST_TRIGGER_S
-    rt._wave_mgr.current.kills = 4
-    rt._enemies_escaped = 0
+    # Manually set up the chain with the desired state
+    rt._level1_chain = WaveChain()
+    rt._level1_boss_trigger = BossTrigger()
+    rt._level1_chain.elapsed_s = BOSS_PERFECT_TRIGGER_S
+    rt._level1_chain.kills = 4
+    rt._level1_chain.perfect = True
     rt._update_wave_state(0.0)
     assert GameState.BOSS_INTRO in transitions
 
 
 def test_boss_trigger_fallback_at_50_kills() -> None:
-    """BLOQUE 43: kills>=50 (regardless of time) → BOSS_INTRO."""
-    from src.core.settings import BOSS_FALLBACK_KILLS
+    """BLOQUE 48: with old 50-kill fallback gone, the safety trigger
+    fires at 120s instead. Keep the test name for symmetry but check
+    the new behavior."""
+    from src.core.settings import BOSS_SAFETY_TRIGGER_S
     from src.core.scene_manager import GameState
+    from src.systems.wave_manager import WaveChain, BossTrigger
     fn, transitions = _recording_transition()
     rt = GameplayRuntime(transition_to=fn, is_boss=False, act=1)
     rt.on_enter()
     rt._is_level1_mode = lambda: True
-    rt._wave_mgr.current.elapsed_s = 30.0
-    rt._wave_mgr.current.kills = BOSS_FALLBACK_KILLS
-    rt._enemies_escaped = 5
+    rt._level1_chain = WaveChain()
+    rt._level1_boss_trigger = BossTrigger()
+    rt._level1_chain.elapsed_s = BOSS_SAFETY_TRIGGER_S
+    rt._level1_chain.kills = 5  # way less than 50
+    rt._level1_chain.perfect = False
     rt._update_wave_state(0.0)
     assert GameState.BOSS_INTRO in transitions
 
 
-def test_boss_trigger_timeout_at_180s() -> None:
-    """BLOQUE 43: elapsed>=180s, low kills → BOSS_INTRO (lenient timeout)."""
-    from src.core.settings import BOSS_FALLBACK_TIMEOUT_S
+def test_boss_trigger_timeout_at_120s() -> None:
+    """BLOQUE 48: elapsed>=120s → BOSS_INTRO (lenient safety, was 180s)."""
+    from src.core.settings import BOSS_SAFETY_TRIGGER_S
     from src.core.scene_manager import GameState
+    from src.systems.wave_manager import WaveChain, BossTrigger
     fn, transitions = _recording_transition()
     rt = GameplayRuntime(transition_to=fn, is_boss=False, act=1)
     rt.on_enter()
     rt._is_level1_mode = lambda: True
-    rt._wave_mgr.current.elapsed_s = BOSS_FALLBACK_TIMEOUT_S
-    rt._wave_mgr.current.kills = 10
-    rt._enemies_escaped = 0
+    rt._level1_chain = WaveChain()
+    rt._level1_boss_trigger = BossTrigger()
+    rt._level1_chain.elapsed_s = BOSS_SAFETY_TRIGGER_S
+    rt._level1_chain.kills = 10
+    rt._level1_chain.perfect = False
     rt._update_wave_state(0.0)
     assert GameState.BOSS_INTRO in transitions
 
 
 def test_boss_trigger_does_not_fire_below_thresholds() -> None:
-    """BLOQUE 43: under all thresholds, NO transition."""
+    """BLOQUE 48: under all thresholds, NO transition."""
     from src.core.scene_manager import GameState
+    from src.systems.wave_manager import WaveChain, BossTrigger
     fn, transitions = _recording_transition()
     rt = GameplayRuntime(transition_to=fn, is_boss=False, act=1)
     rt.on_enter()
     rt._is_level1_mode = lambda: True
-    rt._wave_mgr.current.elapsed_s = 30.0
-    rt._wave_mgr.current.kills = 10
-    rt._enemies_escaped = 5
+    rt._level1_chain = WaveChain()
+    rt._level1_boss_trigger = BossTrigger()
+    rt._level1_chain.elapsed_s = 30.0
+    rt._level1_chain.kills = 10
+    rt._level1_chain.perfect = False
     rt._update_wave_state(0.0)
     assert GameState.BOSS_INTRO not in transitions
 
 
 def test_boss_trigger_fast_requires_at_least_one_kill() -> None:
-    """BLOQUE 43: even at 60s, the fast path requires at least 1 kill."""
-    from src.core.settings import BOSS_FAST_TRIGGER_S
+    """BLOQUE 48: even at 60s, the perfect path requires at least 1 kill."""
+    from src.core.settings import BOSS_PERFECT_TRIGGER_S
     from src.core.scene_manager import GameState
+    from src.systems.wave_manager import WaveChain, BossTrigger
     fn, transitions = _recording_transition()
     rt = GameplayRuntime(transition_to=fn, is_boss=False, act=1)
     rt.on_enter()
     rt._is_level1_mode = lambda: True
-    rt._wave_mgr.current.elapsed_s = BOSS_FAST_TRIGGER_S
-    rt._wave_mgr.current.kills = 0
-    rt._enemies_escaped = 0
+    rt._level1_chain = WaveChain()
+    rt._level1_boss_trigger = BossTrigger()
+    rt._level1_chain.elapsed_s = BOSS_PERFECT_TRIGGER_S
+    rt._level1_chain.kills = 0  # no kills!
+    rt._level1_chain.perfect = True
     rt._update_wave_state(0.0)
     assert GameState.BOSS_INTRO not in transitions
 

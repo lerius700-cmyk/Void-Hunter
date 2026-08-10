@@ -427,3 +427,187 @@ class WaveManager:
         self.on_wave_cleared = False
         self.on_wave_failed = False
         self.on_sub_boss_trigger = None
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 48: chained wave system for level 1 mode
+# ---------------------------------------------------------------------------
+LEVEL1_WAVES: list[dict[str, Any]] = [
+    # O1 — intro/tutorial: 6 SCOUT diagonal, no fire
+    {
+        "enemies": ["SCOUT"] * 6,
+        "spawn_cadence_s": 1.5,
+        "max_duration_s": 6.0,
+        "formation": "diagonal",
+        "fire_allowed": False,
+    },
+    # O2 — pattern recognition: 6 SCOUT + 2 CRUISER, V formation
+    {
+        "enemies": ["SCOUT"] * 6 + ["CRUISER"] * 2,
+        "spawn_cadence_s": 0.8,
+        "max_duration_s": 12.0,
+        "formation": "v",
+        "fire_allowed": True,
+    },
+    # O3 — mixed composition: 6 SCOUT + 1 HEAVY, line, HEAVY as anchor
+    {
+        "enemies": ["SCOUT"] * 6 + ["HEAVY"],
+        "spawn_cadence_s": 1.0,
+        "max_duration_s": 15.0,
+        "formation": "line",
+        "fire_allowed": True,
+    },
+    # O4 — finale: 3 SCOUT + 2 CRUISER + 1 HEAVY, diamond
+    {
+        "enemies": ["SCOUT"] * 3 + ["CRUISER"] * 2 + ["HEAVY"],
+        "spawn_cadence_s": 1.2,
+        "max_duration_s": 18.0,
+        "formation": "diamond",
+        "fire_allowed": True,
+    },
+]
+
+
+class WaveChain:
+    """BLOQUE 48: chained wave manager for level 1 mode.
+
+    Tracks spawn schedule per wave, advances to next wave when the current
+    one is fully spawned + cleared, OR when its max_duration_s is reached
+    (whichever comes first). Single source of truth for kills.
+    """
+
+    def __init__(
+        self,
+        wave_specs: list[dict[str, Any]] | None = None,
+        max_alive: int = 8,
+    ) -> None:
+        self.wave_specs: list[dict[str, Any]] = wave_specs or LEVEL1_WAVES
+        self.max_alive: int = max_alive
+        self.current_wave_idx: int = 0
+        # Per-wave state
+        self._spawned_per_wave: list[int] = [0] * len(self.wave_specs)
+        self._alive_per_wave: list[int] = [0] * len(self.wave_specs)
+        self._wave_elapsed_s: list[float] = [0.0] * len(self.wave_specs)
+        self._spawn_timer: list[float] = [0.0] * len(self.wave_specs)
+        # Single kill counter
+        self.kills: int = 0
+        # Total elapsed since chain start
+        self.elapsed_s: float = 0.0
+        # Perfect score (no escapes)
+        self.perfect: bool = True
+        # All waves complete?
+        self.waves_complete: bool = False
+        # Total ships in level
+        self.total_ships: int = sum(len(w["enemies"]) for w in self.wave_specs)
+
+    @property
+    def alive_count(self) -> int:
+        return sum(self._alive_per_wave)
+
+    def tick(self, dt: float) -> None:
+        """Advance timers; advance to next wave if current is done."""
+        self.elapsed_s += dt
+        if self.current_wave_idx >= len(self.wave_specs):
+            self.waves_complete = True
+            return
+        spec = self.wave_specs[self.current_wave_idx]
+        self._wave_elapsed_s[self.current_wave_idx] += dt
+        self._spawn_timer[self.current_wave_idx] += dt
+        # Check if current wave is done
+        all_spawned = (
+            self._spawned_per_wave[self.current_wave_idx]
+            >= len(spec["enemies"])
+        )
+        all_dead = self._alive_per_wave[self.current_wave_idx] == 0
+        timed_out = (
+            self._wave_elapsed_s[self.current_wave_idx]
+            >= spec["max_duration_s"]
+        )
+        # Advance if: completed (spawned + dead), OR (spawned + timed out),
+        # OR timed out (escapees become rezagadas for next wave)
+        if (all_spawned and all_dead) or (all_spawned and timed_out) or timed_out:
+            # Advance to next wave
+            self.current_wave_idx += 1
+            if self.current_wave_idx >= len(self.wave_specs):
+                self.waves_complete = True
+
+    def spawn(self, wave_idx: int | None = None, x: float = 0.0, y: float = 0.0,
+              kind: str = "SCOUT") -> bool:
+        """Try to spawn an enemy. Returns True if spawned, False if blocked by
+        density cap or wave already full.
+        """
+        idx = wave_idx if wave_idx is not None else self.current_wave_idx
+        if idx >= len(self.wave_specs):
+            return False
+        spec = self.wave_specs[idx]
+        # Check spawn cadence
+        if self._spawn_timer[idx] < spec["spawn_cadence_s"]:
+            return False
+        # Check density cap
+        if self.alive_count >= self.max_alive:
+            return False
+        # Check wave full
+        if self._spawned_per_wave[idx] >= len(spec["enemies"]):
+            return False
+        # Spawn!
+        self._spawned_per_wave[idx] += 1
+        self._alive_per_wave[idx] += 1
+        self._spawn_timer[idx] = 0.0
+        return True
+
+    def kill(self, wave_idx: int | None = None) -> None:
+        """Mark an enemy killed. Decrements alive, increments kills."""
+        idx = wave_idx if wave_idx is not None else self.current_wave_idx
+        if self._alive_per_wave[idx] > 0:
+            self._alive_per_wave[idx] -= 1
+        self.kills += 1
+
+    def escape(self) -> None:
+        """Mark an enemy that escaped the screen (breaks perfect)."""
+        self.perfect = False
+
+    def reset(self) -> None:
+        self.current_wave_idx = 0
+        self._spawned_per_wave = [0] * len(self.wave_specs)
+        self._alive_per_wave = [0] * len(self.wave_specs)
+        self._wave_elapsed_s = [0.0] * len(self.wave_specs)
+        self._spawn_timer = [0.0] * len(self.wave_specs)
+        self.kills = 0
+        self.elapsed_s = 0.0
+        self.perfect = True
+        self.waves_complete = False
+
+
+class BossTrigger:
+    """BLOQUE 48: 3-tier boss trigger hierarchy.
+
+    Returns the trigger name that fired (or None if no boss yet).
+    Hierarchy:
+      - main: waves_complete AND elapsed >= BOSS_MIN_TRIGGER_S (45s)
+      - perfect: elapsed >= BOSS_PERFECT_TRIGGER_S (60s) AND perfect AND kills >= 1
+      - safety: elapsed >= BOSS_SAFETY_TRIGGER_S (120s)
+    """
+
+    def evaluate(
+        self,
+        elapsed_s: float,
+        waves_complete: bool,
+        perfect: bool,
+        kills: int,
+    ) -> str | None:
+        from src.core.settings import (
+            BOSS_MIN_TRIGGER_S,
+            BOSS_PERFECT_TRIGGER_S,
+            BOSS_SAFETY_TRIGGER_S,
+        )
+        if waves_complete and elapsed_s >= BOSS_MIN_TRIGGER_S:
+            return "main"
+        if (
+            elapsed_s >= BOSS_PERFECT_TRIGGER_S
+            and perfect
+            and kills >= 1
+        ):
+            return "perfect"
+        if elapsed_s >= BOSS_SAFETY_TRIGGER_S:
+            return "safety"
+        return None

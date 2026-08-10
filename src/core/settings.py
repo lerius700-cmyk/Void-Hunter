@@ -160,6 +160,21 @@ FORMATION_TELEGRAPH_FRAMES_MIN: int = 24
 FORMATION_TELEGRAPH_FRAMES_MAX: int = 60
 
 # ---------------------------------------------------------------------------
+# BLOQUE 48: chained wave system (level 1 mode redesign)
+# ---------------------------------------------------------------------------
+WAVE_MAX_DURATION_S: float = 8.0         # max time a wave can take (chaining)
+BOSS_MIN_TRIGGER_S: float = 45.0         # boss won't fire before this (timer hard)
+BOSS_PERFECT_TRIGGER_S: float = 60.0     # perfect-score fast path
+BOSS_SAFETY_TRIGGER_S: float = 120.0     # lenient timeout (no score required)
+LEVEL1_TOTAL_SHIPS: int = 27             # SCOUT*21 + CRUISER*4 + HEAVY*2
+LEVEL1_FLAT_SCORE: int = 35              # 21*1 + 4*2 + 2*3
+PERFECT_RUN_BONUS: int = 12              # awarded on _enemies_escaped == 0 at boss
+# Per-archetype flat score (used by the new level 1 chain)
+SCOUT_FLAT_SCORE: int = 1
+CRUISER_FLAT_SCORE: int = 2
+HEAVY_FLAT_SCORE: int = 3
+
+# ---------------------------------------------------------------------------
 # Scoring
 # ---------------------------------------------------------------------------
 SCORE_PER_SCOUT: int = 50
