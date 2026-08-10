@@ -349,12 +349,13 @@ def test_act1_wave1_is_line_formation() -> None:
     assert f.pattern_speed == 40
 
 
-def test_act1_wave2_is_v_formation() -> None:
-    """BLOQUE 45: Act 1, Wave 2 is a V formation of 5 SCOUT."""
+def test_act1_wave2_is_squadron_formation() -> None:
+    """BLOQUE 47: Act 1, Wave 2 is a SQUADRON formation of 5 SCOUT
+    (Star Fox 64 leader/follower choreography)."""
     from src.systems.wave_manager import DEFAULT_WAVES, parse_formation
     wave = DEFAULT_WAVES[1]
     f = parse_formation(wave["formation"])
-    assert f.formation_type == "v"
+    assert f.formation_type == "squadron"
     assert f.enemy_count == 5
     assert f.enemy_type == "SCOUT"
 
@@ -400,12 +401,13 @@ def test_act1_wave6_is_v_with_sub_boss_goliath() -> None:
     assert wave["sub_boss"] == "goliath"
 
 
-def test_act1_uses_all_4_formation_types() -> None:
-    """BLOQUE 45: act 1 uses all 4 formation types (LINE/V/ARC/STAIRCASE)."""
+def test_act1_uses_all_5_formation_types() -> None:
+    """BLOQUE 47: act 1 uses all 5 formation types
+    (LINE/V/ARC/STAIRCASE/SQUADRON)."""
     from src.systems.wave_manager import DEFAULT_WAVES
     types = {DEFAULT_WAVES[i]["formation"]["formation_type"] for i in range(6)}
-    assert types == {"line", "v", "arc", "staircase"}, (
-        f"Act 1 should use all 4 types; got {types}"
+    assert types == {"line", "v", "arc", "staircase", "squadron"}, (
+        f"Act 1 should use all 5 types; got {types}"
     )
 
 

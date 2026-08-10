@@ -75,14 +75,16 @@ def test_move_tilt_left_negative(p: Player) -> None:
     p.input_left = True
     for _ in range(15):
         p.update(1 / 60)
-    assert p.tilt == -15.0
+    # BLOQUE 47: snappier banking (was -15.0)
+    assert p.tilt == -25.0
 
 
 def test_move_tilt_right_positive(p: Player) -> None:
     p.input_right = True
     for _ in range(15):
         p.update(1 / 60)
-    assert p.tilt == 15.0
+    # BLOQUE 47: snappier banking (was 15.0)
+    assert p.tilt == 25.0
 
 
 # ---------------------------------------------------------------------------

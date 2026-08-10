@@ -221,6 +221,9 @@ class GameplayRuntime:
         # BLOQUE 43: perfect-score tracking
         self._enemies_spawned_total: int = 0   # cumulative across all waves
         self._enemies_escaped: int = 0         # left the screen alive (above the top edge)
+        # BLOQUE 47: SQUADRON formation tracking — each squadron gets a unique
+        # id so we can group leader + followers for choreographed movement.
+        self._squadron_id_counter: int = 0
         from src.core.settings import WINDOW_H, WINDOW_W
         self._game_screen_size: tuple[int, int] = (WINDOW_W, WINDOW_H)
         # BLOQUE 22: extra polish
@@ -299,6 +302,7 @@ class GameplayRuntime:
         # BLOQUE 43: reset perfect-score tracking
         self._enemies_spawned_total = 0
         self._enemies_escaped = 0
+        self._squadron_id_counter = 0  # BLOQUE 47: reset on each scene reset
         self._screen_flash = 0.0
         # BLOQUE 22: reset polish state
         self._muzzle_flash = 0.0
@@ -1016,20 +1020,40 @@ class GameplayRuntime:
         if self._wave_idx >= len(self._wave_mgr.scripts):
             return
         script = self._wave_mgr.scripts[self._wave_idx]
+        # BLOQUE 47: prefer explicit `formation` spec over legacy `mix`
+        formation = self._wave_mgr.current_formation()
+        if formation is not None:
+            from src.systems.wave_manager import spawn_formation
+            spawns = spawn_formation(formation)
+            # Each enemy is spawned with a small stagger so they don't all
+            # appear at the exact same frame. SQUADRON followers get an
+            # extra delay equal to their time_offset_s.
+            base_stagger = 0.12
+            for i, sp in enumerate(spawns):
+                try:
+                    kind = EnemyKind(sp.kind)
+                except ValueError:
+                    continue
+                stagger = i * base_stagger + sp.time_offset_s
+                # Mark for squadron if needed
+                is_squadron = formation.formation_type == "squadron"
+                self._pending_wave_spawns.append((
+                    stagger, kind, sp.x, sp.y, is_squadron,
+                    sp.time_offset_s,
+                ))
+            return
+        # Legacy `mix` path
         mix: dict[str, int] = script.get("mix", {})
-        # Convert string keys to EnemyKind
         for kind_str, count in mix.items():
             try:
                 kind = EnemyKind(kind_str)
             except ValueError:
                 continue
             for _ in range(count):
-                # Stagger spawns over WAVE_SPAWN_INTERVAL_S
                 x = random.uniform(20, INTERNAL_W - 20)
                 y = -10.0 - random.uniform(0, 60)
-                self._pending_wave_spawns.append((0.0, kind, x, y))
+                self._pending_wave_spawns.append((0.0, kind, x, y, False, 0.0))
         random.shuffle(self._pending_wave_spawns)
-        # Stagger
         for i, item in enumerate(self._pending_wave_spawns):
             t = i * WAVE_SPAWN_INTERVAL_S
             self._pending_wave_spawns[i] = (t,) + item[1:]
@@ -1061,22 +1085,59 @@ class GameplayRuntime:
         if self._is_boss:
             return
         self._wave_spawn_timer += dt
-        remaining: list[tuple[float, EnemyKind, float, float]] = []
-        for when, kind, x, y in self._pending_wave_spawns:
+        remaining: list[tuple] = []
+        for item in self._pending_wave_spawns:
+            # BLOQUE 47: 6-tuple with is_squadron + time_offset_s
+            if len(item) == 6:
+                when, kind, x, y, is_squadron, time_offset_s = item
+            else:
+                when, kind, x, y = item
+                is_squadron = False
+                time_offset_s = 0.0
             if self._wave_spawn_timer >= when and self._enemies.active_count < WAVE_MAX_LIVE:
                 e = self._enemies.spawn(kind, x, y)
                 if e is not None:
-                    self._wave_spawn_timer = 0.0  # reset for next spawn slot
-                    self._enemies_spawned_total += 1  # BLOQUE 43
+                    # BLOQUE 47: tag the enemy as a squadron member
+                    if is_squadron:
+                        e.squadron_id = self._squadron_id_counter
+                        e.squadron_origin_x = float(x)
+                        e.squadron_time_offset = float(time_offset_s)
+                        # Only the first enemy of this squadron (offset 0)
+                        # is the leader; the rest are followers
+                        if time_offset_s <= 0.0:
+                            self._squadron_id_counter += 1
+                    self._wave_spawn_timer = 0.0
+                    self._enemies_spawned_total += 1
             else:
-                remaining.append((when, kind, x, y))
+                if len(item) == 6:
+                    remaining.append(item)
+                else:
+                    remaining.append((when, kind, x, y, False, 0.0))
         self._pending_wave_spawns = remaining
 
     def _update_enemies(self, dt: float) -> None:
+        # BLOQUE 47: SQUADRON path parameters — shared for all squadron members
+        # in this scene. The leader sets the curve; followers replay it with delay.
+        squadron_freq_hz = 0.4       # 0.4 Hz = 2.5s per cycle
+        squadron_amplitude = 50.0    # px swing left-right
+        squadron_y_speed = 50.0      # px/s downward (slower than pattern_speed
+                                      # for more readable choreography)
         for e in self._enemies.pool:
             if not e.active:
                 continue
             e.update(dt, self._player.x, self._player.y)
+            # BLOQUE 47: SQUADRON path override
+            if e.squadron_id >= 0:
+                # Initialize age on first frame (start behind the leader by time_offset)
+                if e.squadron_age == 0.0 and e.squadron_time_offset > 0.0:
+                    e.squadron_age = -e.squadron_time_offset
+                e.squadron_age += dt
+                age = e.squadron_age
+                # Path: sine-wave x over linear-falling y
+                e.x = e.squadron_origin_x + math.sin(
+                    age * squadron_freq_hz * 2.0 * math.pi
+                ) * squadron_amplitude
+                e.y = 16.0 + age * squadron_y_speed
             # Fire
             if e.on_fire:
                 e.on_fire = False
@@ -1794,6 +1855,9 @@ class GameplayRuntime:
         # BLOQUE 37: continuous L3 laser (drawn on top of player so it appears
         # to emerge from the muzzle).
         self._draw_continuous_laser(target, shx, shy)
+        # BLOQUE 47: aim reticle (drawn last so it sits on top of everything)
+        if not self._player.is_dead:
+            self._draw_reticle(target, shx, shy)
         # BLOQUE 26: bomb flash overlay on the player
         if self._bomb_flash > 0.0:
             flash_alpha = int(220 * self._bomb_flash)
@@ -2135,6 +2199,44 @@ class GameplayRuntime:
             # Building up — show dim ring
             progress = min(1.0, self._player.charge_time / 0.5)
             self._draw_charge_ring(target, progress, (180, 180, 200), ox, oy)
+
+    def _draw_reticle(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        """BLOQUE 47: aim reticle — visual feedback for mouse position.
+
+        Star Fox-style: small crosshair at the mouse cursor with a center
+        dot and 4 tick marks. Color shifts to cyan when laser is active.
+        """
+        mx, my = int(self._mouse_x + ox), int(self._mouse_y + oy)
+        # Clamp to play area (don't draw outside the borders)
+        from src.core.settings import INTERNAL_W, INTERNAL_H
+        if mx < 4 or mx > INTERNAL_W - 4 or my < 4 or my > INTERNAL_H - 4:
+            return
+        # Color: cyan when laser is active, otherwise warm yellow
+        if self._player.state == PlayerState.CHARGE and self._player.get_charge_level() >= 3:
+            color = (140, 220, 255)  # plasma cyan
+            core_color = (220, 245, 255)
+        else:
+            color = (255, 240, 140)  # warm yellow
+            core_color = (255, 255, 220)
+        # Outer ring (subtle, for depth)
+        pygame.draw.circle(target, (color[0] // 2, color[1] // 2, color[2] // 2), (mx, my), 8, 1)
+        # 4 tick marks (cross pattern, 4px each direction, 2px gap)
+        tick_len = 4
+        gap = 2
+        pygame.draw.line(target, color, (mx - gap - tick_len, my), (mx - gap, my), 1)
+        pygame.draw.line(target, color, (mx + gap, my), (mx + gap + tick_len, my), 1)
+        pygame.draw.line(target, color, (mx, my - gap - tick_len), (mx, my - gap), 1)
+        pygame.draw.line(target, color, (mx, my + gap), (mx, my + gap + tick_len), 1)
+        # Center dot
+        pygame.draw.circle(target, core_color, (mx, my), 1)
+        # Subtle pulsing outer ring
+        pulse = 0.5 + 0.5 * math.sin(self._t * 8.0)
+        ring_r = int(6 + pulse * 2)
+        ring_alpha = int(40 + pulse * 30)
+        ring_surf = pygame.Surface((ring_r * 2 + 2, ring_r * 2 + 2), pygame.SRCALPHA)
+        pygame.draw.circle(ring_surf, (color[0], color[1], color[2], ring_alpha),
+                           (ring_r + 1, ring_r + 1), ring_r, 1)
+        target.blit(ring_surf, (mx - ring_r - 1, my - ring_r - 1))
 
     def _draw_engine_flame(self, target: pygame.Surface, ox: int, oy: int) -> None:
         """Draw an engine flame behind the player. Length scales with |vx|."""

@@ -189,6 +189,16 @@ class Enemy:
     on_death: bool = False
     on_fire: bool = False
     on_spawn_mini: bool = False
+    # BLOQUE 47: SQUADRON (Star Fox 64 style) — leader/follower path tracking.
+    # If squadron_id >= 0, the enemy's position is computed from a shared
+    # sine-wave path each frame, replayed with a time_offset. This makes
+    # followers trail the leader exactly.
+    squadron_id: int = -1
+    squadron_origin_x: float = 0.0
+    squadron_time_offset: float = 0.0  # seconds behind the leader (0 for leader)
+    squadron_age: float = 0.0         # seconds since this enemy "entered" the path
+                                       # starts at -time_offset_s so followers appear
+                                       # at the leader's past position
 
     def on_spawn(self) -> None:
         self.damage_taken = 0
@@ -198,6 +208,11 @@ class Enemy:
         self.pending_spawn_count = 0
         self.sine_t = 0.0
         self.sine_origin_x = 0.0
+        # BLOQUE 47: reset squadron state
+        self.squadron_id = -1
+        self.squadron_origin_x = 0.0
+        self.squadron_time_offset = 0.0
+        self.squadron_age = 0.0
 
     def on_release(self) -> None:
         self.homing_target = None

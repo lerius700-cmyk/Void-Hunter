@@ -359,8 +359,20 @@ class Player:
         accel = min(1.0, dt * 18.0)
         self.vx += (target_vx - self.vx) * accel
         self.vy += (target_vy - self.vy) * accel
-        # Tilt: visual feedback based on horizontal speed (kept for visual juice)
-        self.tilt = -15.0 if self.vx < -10 else (15.0 if self.vx > 10 else 0.0)
+        # BLOQUE 47: snappier, more pronounced banking (Star Fox 64 feel)
+        # Range ±25° (was ±15°), with a subtle Y-axis roll during vertical
+        # movement so the ship feels alive in 4 directions.
+        if self.vx < -10:
+            self.tilt = -25.0
+        elif self.vx > 10:
+            self.tilt = 25.0
+        else:
+            self.tilt = 0.0
+        # Subtle roll for vertical movement (gives the ship a 3D feel)
+        if self.vy < -10:
+            self.tilt += -3.0
+        elif self.vy > 10:
+            self.tilt += 3.0
         # Position integration
         self.x += self.vx * dt
         self.y += self.vy * dt

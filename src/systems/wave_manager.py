@@ -40,7 +40,7 @@ WAVES_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "waves"
 # ---------------------------------------------------------------------------
 # BLOQUE 41: formation types
 # ---------------------------------------------------------------------------
-FORMATION_TYPES: tuple[str, ...] = ("line", "v", "arc", "staircase")
+FORMATION_TYPES: tuple[str, ...] = ("line", "v", "arc", "staircase", "squadron")
 
 
 class Formation(NamedTuple):
@@ -65,6 +65,10 @@ class Spawn(NamedTuple):
     vx: float
     vy: float
     kind: str                     # enemy type
+    # BLOQUE 47: squadron support. time_offset_s is 0 for normal spawns;
+    # >0 for SQUADRON followers (they trail the leader by this many seconds,
+    # replaying the leader's path). Default 0 keeps backward-compat.
+    time_offset_s: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +185,24 @@ def spawn_formation(formation: Formation) -> list[Spawn]:
                 y=y_top + i * step_y,
                 vx=0.0, vy=vy, kind=f.enemy_type,
             ))
+    elif f.formation_type == "squadron":
+        # BLOQUE 47: SQUADRON — Star Fox 64 style. One leader follows a
+        # sine-wave path; N-1 followers replay the same path with a delay.
+        # Each follower is 0.4s behind the previous (scaled by enemy_count).
+        # Spawn position: all start at the same top-center point. The
+        # leader's path is computed in gameplay_runtime from time + time_offset_s.
+        y_top = 16.0
+        vy = f.pattern_speed
+        delay_per_follower = 0.4  # seconds behind the previous follower
+        for i in range(f.enemy_count):
+            spawns.append(Spawn(
+                x=cx,
+                y=y_top,
+                vx=0.0,
+                vy=vy,
+                kind=f.enemy_type,
+                time_offset_s=float(i) * delay_per_follower,
+            ))
     else:  # pragma: no cover — _clamp_formation already forces "line"
         return []
     return spawns
@@ -204,10 +226,13 @@ DEFAULT_WAVES: list[dict[str, Any]] = [
     },
     {
         "act": 1, "wave": 2, "theme": "blue_void",
+        # BLOQUE 47: SQUADRON — 5 SCOUT in a leader+followers choreography
+        # (Star Fox 64 style). Leader traces a sine path; followers replay
+        # the same path 0.4s/0.8s/1.2s/1.6s behind.
         "formation": {
-            "formation_type": "v", "enemy_type": "SCOUT",
+            "formation_type": "squadron", "enemy_type": "SCOUT",
             "count": 5, "spacing_px": 24, "entry_axis": "top",
-            "pattern_speed": 40, "telegraph_frames": 30,
+            "pattern_speed": 50, "telegraph_frames": 30,
         },
         "kill_target": 5, "time_limit_s": 30.0, "sub_boss": None,
     },
