@@ -44,6 +44,22 @@ PLAYER_LIVES: int = 3
 PLAYER_CONTINUES: int = 1
 PLAYER_BOMBS: int = 3
 PLAYER_BOMBS_MAX: int = 4                 # +1 with special unlocked
+# BLOQUE 53b: HP bar (Mega Man / Star Fox style). Bigger pool so
+# healing sources (gold rings, tech upgrades) feel meaningful.
+PLAYER_HP: int = 30
+PLAYER_HP_MAX: int = 30
+PLAYER_HP_SEGMENTS: int = 10              # how many sub-divisions on the bar
+# BLOQUE 53c: gold rings (Star Fox). 3 rings collected = double max HP
+# (one-time per run). Rings also heal.
+GOLD_RING_HEAL: int = 2                   # +HP per ring picked up
+GOLD_RING_DROP_CHANCE: float = 0.08      # chance per enemy kill
+GOLD_RING_DURATION_S: float = 6.0        # how long they float before despawn
+GOLD_RING_DRAW_LIFE: int = 30            # ring powerup special unit (max 30 stacked)
+# BLOQUE 53d: tech upgrade system. Each level drops specific pieces.
+TECH_UPGRADES_PER_LEVEL: int = 2         # level 1 has 2 (sub-boss drop + perfect drop)
+TECH_HP_BOOST_PCT: float = 0.10          # +10% max HP per HP_BOOST upgrade
+# Maximum HP cap (to prevent runaway doubling)
+PLAYER_HP_ABSOLUTE_MAX: int = 999
 PLAYER_SPEED: float = 165.0               # px/s — BLOQUE 38: was 130
 PLAYER_FIRE_COOLDOWN_S: float = 0.10      # 12 shots/s at L1
 PLAYER_DASH_SPEED: float = 480.0          # px/s (3.7x walk)

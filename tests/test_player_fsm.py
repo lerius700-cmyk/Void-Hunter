@@ -217,16 +217,17 @@ def test_dash_creates_afterimage(p: Player) -> None:
 # 7. HIT
 # ---------------------------------------------------------------------------
 def test_take_damage_reduces_hp(p: Player) -> None:
+    # BLOQUE 53b: HP starts at 30, not 3
     p.take_damage(1)
     p.update(1 / 60)
-    assert p.hp == 2
+    assert p.hp == 29
 
 
 def test_take_damage_blocked_in_iframes(p: Player) -> None:
     p.invuln_frames = 30
     result = p.take_damage(1)
     assert result is False
-    assert p.hp == 3
+    assert p.hp == 30  # BLOQUE 53b: HP starts at 30
 
 
 def test_take_damage_enters_hit_state(p: Player) -> None:
@@ -253,13 +254,15 @@ def test_hit_to_dead_when_hp_zero(p: Player) -> None:
 
 
 def test_hit_to_idle_when_hp_remaining(p: Player) -> None:
-    p.hp = 3
-    p.take_damage(1)  # hp -> 2
+    # BLOQUE 53b: HP starts at 30 — set to a small value so we can
+    # take damage and verify we return to IDLE (not DEAD).
+    p.hp = 2
+    p.take_damage(1)  # hp -> 1
     p.update(1 / 60)  # enter HIT
     for _ in range(20):
         p.update(1 / 60)
     assert p.state == PlayerState.IDLE
-    assert p.hp == 2
+    assert p.hp == 1  # BLOQUE 53b: no auto-heal; HP stays at 1
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +327,8 @@ def test_reset_returns_to_spawn(p: Player) -> None:
     p.bombs = 0
     p.state = PlayerState.DEAD
     p.reset()
-    assert p.hp == 3
+    # BLOQUE 53b: HP resets to PLAYER_HP (30)
+    assert p.hp == 30
     assert p.lives == PLAYER_LIVES
     assert p.bombs == 3
     assert p.state == PlayerState.IDLE

@@ -33,6 +33,9 @@ from src.core.settings import (
     PLAYER_DEATH_DURATION_S,
     PLAYER_FIRE_COOLDOWN_S,
     PLAYER_INVULN_FRAMES,
+    PLAYER_HP,
+    PLAYER_HP_MAX,
+    PLAYER_HP_ABSOLUTE_MAX,
     PLAYER_LIVES,
     PLAYER_NOSE_LERP_PER_S,
     PLAYER_RESPAWN_INVULN_S,
@@ -98,8 +101,16 @@ class Player:
     lives: int = PLAYER_LIVES
     bombs: int = PLAYER_BOMBS
     bombs_max: int = PLAYER_BOMBS_MAX
-    hp: int = 3
-    hp_max: int = 3
+    # BLOQUE 53b: HP bar (Mega Man / Star Fox). Starts at 30 — a
+    # bigger pool so healing sources (gold rings, tech upgrades) feel
+    # meaningful. Grows via gold rings (one-time 2x) and tech upgrades.
+    hp: int = PLAYER_HP
+    hp_max: int = PLAYER_HP_MAX
+    # BLOQUE 53c: gold ring stacking (0..3). 3 rings = one-time HP double.
+    gold_rings: int = 0
+    hp_doubled: bool = False
+    # BLOQUE 53d: tech upgrade IDs collected this run
+    tech_upgrades: list[str] = field(default_factory=list)
     # Fire cooldown
     fire_cd: float = 0.0
     # Death/respawn
@@ -157,8 +168,12 @@ class Player:
             self.lives = PLAYER_LIVES
             self.bombs = PLAYER_BOMBS
             self.bombs_max = PLAYER_BOMBS_MAX
-        self.hp = 3
-        self.hp_max = 3
+        self.hp = PLAYER_HP
+        self.hp_max = PLAYER_HP_MAX
+        # BLOQUE 53c: reset gold ring + tech upgrade state
+        self.gold_rings = 0
+        self.hp_doubled = False
+        self.tech_upgrades = []
         self.fire_cd = 0.0
         self.death_timer = 0.0
         self.respawn_invuln = 0.0
@@ -183,6 +198,50 @@ class Player:
         self.hp -= amount
         self.damage_taken = max(self.damage_taken, amount)
         return True
+
+    def heal(self, amount: int) -> int:
+        """BLOQUE 53b/c: add HP, capped at hp_max. Returns actual amount healed."""
+        if amount <= 0:
+            return 0
+        before = self.hp
+        self.hp = min(self.hp_max, self.hp + amount)
+        return self.hp - before
+
+    def add_gold_ring(self) -> int:
+        """BLOQUE 53c: collect a gold ring. Returns 1 if doubled, 0 otherwise.
+
+        Each ring heals GOLD_RING_HEAL HP. When 3 are stacked, the
+        player's max HP is doubled (one-time per run).
+        """
+        from src.core.settings import GOLD_RING_HEAL, PLAYER_HP_ABSOLUTE_MAX
+        self.heal(GOLD_RING_HEAL)
+        if self.hp_doubled:
+            return 0
+        self.gold_rings += 1
+        if self.gold_rings >= 3:
+            # One-time double max HP
+            self.hp_max = min(PLAYER_HP_ABSOLUTE_MAX, self.hp_max * 2)
+            self.hp = self.hp_max
+            self.hp_doubled = True
+            self.gold_rings = 0  # reset counter
+            return 1
+        return 0
+
+    def add_tech_upgrade(self, upgrade_id: str) -> None:
+        """BLOQUE 53d: collect a tech upgrade by ID. Applies its effect.
+
+        Currently recognized IDs:
+          - HP_BOOST_10: +10% max HP (rounded up). One-time per run.
+        """
+        from src.core.settings import TECH_HP_BOOST_PCT, PLAYER_HP_ABSOLUTE_MAX
+        if upgrade_id in self.tech_upgrades:
+            return
+        self.tech_upgrades.append(upgrade_id)
+        if upgrade_id == "HP_BOOST_10":
+            # +10% max HP (rounded up, capped)
+            boost = max(1, int(self.hp_max * TECH_HP_BOOST_PCT))
+            self.hp_max = min(PLAYER_HP_ABSOLUTE_MAX, self.hp_max + boost)
+            self.hp = self.hp_max  # refill on upgrade
 
     @property
     def is_invulnerable(self) -> bool:

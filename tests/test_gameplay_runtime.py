@@ -241,8 +241,8 @@ def test_enemy_bullet_hits_player():
     # Spawn enemy bullet at player position
     rt._bullets.spawn(BULLET_ENEMY, 120, 300, 0.0, 100.0, damage=1, owner=OWNER_ENEMY)
     rt._handle_collisions()
-    # Player should have taken damage
-    assert rt._player.hp < 3
+    # BLOQUE 53b: HP starts at 30, not 3
+    assert rt._player.hp < 30
 
 
 def test_pierce_bullet_hits_multiple_enemies():

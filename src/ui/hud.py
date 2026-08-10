@@ -25,9 +25,19 @@ from src.systems.weapon_system import WeaponLevel, WeaponSystem
 
 # HUD layout constants
 HUD_MARGIN = 4
+# BLOQUE 53b: HP bar (Mega Man / Star Fox) — wider with 10 sub-segments.
+HP_BAR_WIDTH = 100
+HP_BAR_HEIGHT = 8
+HP_BAR_SEGMENTS = 10
 BAR_WIDTH = 60
 BAR_HEIGHT = 6
 ICON_SIZE = 8
+# BLOQUE 53c: gold ring HUD position
+GOLD_RING_ICON_SIZE = 6
+GOLD_RING_HUD_X = 110
+# BLOQUE 53d: tech upgrade HUD position
+TECH_ICON_SIZE = 6
+TECH_HUD_X = 160
 
 
 class HUD:
@@ -61,47 +71,113 @@ class HUD:
     ) -> None:
         self._ensure_fonts()
         # HP bar (top-left) — BLOQUE 25: animated pulse on low HP
+        # BLOQUE 53b: redesigned as Mega Man / Star Fox segmented bar
         self._draw_hp_bar(target, player, x=HUD_MARGIN, y=HUD_MARGIN, t=t)
-        # Bomb icons
-        self._draw_bombs(target, player, weapon, x=HUD_MARGIN, y=HUD_MARGIN + 18, t=t)
+        # Bomb icons — pushed down to make room for gold ring + tech
+        # icon row below the HP bar.
+        self._draw_bombs(target, player, weapon,
+                          x=HUD_MARGIN, y=HUD_MARGIN + 32, t=t)
         # Weapon level + XP
-        self._draw_weapon(target, weapon, x=HUD_MARGIN, y=HUD_MARGIN + 36, t=t)
+        self._draw_weapon(target, weapon,
+                           x=HUD_MARGIN, y=HUD_MARGIN + 50, t=t)
         # Multiplier
-        self._draw_multiplier(target, scoring, x=HUD_MARGIN, y=HUD_MARGIN + 60, t=t)
+        self._draw_multiplier(target, scoring,
+                                x=HUD_MARGIN, y=HUD_MARGIN + 74, t=t)
         # BLOQUE 26: kill counter
         self._draw_kill_count(target, scoring, t=t)
         # Score (top-right)
         self._draw_score(target, scoring, x=INTERNAL_W - HUD_MARGIN, y=HUD_MARGIN, t=t)
 
     def _draw_hp_bar(self, target: pygame.Surface, player: Player, x: int, y: int, t: float = 0.0) -> None:
+        # BLOQUE 53b: redesigned HP bar — Mega Man / Star Fox style.
+        # 100px wide, 8px tall, divided into 10 visible segments. Color
+        # shifts from green to yellow to red. Critical HP pulses.
+        w, h = HP_BAR_WIDTH, HP_BAR_HEIGHT
         ratio = max(0.0, player.hp / max(1, player.hp_max))
-        # BLOQUE 25: pulse + scale shake when HP is critical
+        # Color tier
         if ratio > 0.6:
-            color = (80, 200, 80)
+            color = (80, 220, 100)
+            outline = (180, 230, 200)
         elif ratio > 0.3:
             color = (255, 220, 80)
+            outline = (220, 220, 200)
         else:
-            # BLOQUE 25: low-HP pulse — color shifts toward bright red on beat
             pulse = 0.5 + 0.5 * math.sin(t * 8.0)
             r = int(255 * (0.7 + 0.3 * pulse))
             g = int(40 * (1.0 - pulse))
             color = (r, g, 40)
-        # BLOQUE 25: HP low adds a flash overlay
+            outline = (220, 200, 180)
+        # Critical HP outer glow
         if ratio <= 0.3 and int(t * 8) % 2 == 0:
-            # Bright outer glow when low
-            glow = pygame.Surface((BAR_WIDTH + 6, BAR_HEIGHT + 6), pygame.SRCALPHA)
-            pygame.draw.rect(glow, (255, 60, 40, 80), (0, 0, BAR_WIDTH + 6, BAR_HEIGHT + 6), 1)
-            target.blit(glow, (x - 2, y - 2))
-        # Outline
-        pygame.draw.rect(target, (200, 200, 220), (x, y, BAR_WIDTH + 2, BAR_HEIGHT + 2), 1)
-        # Fill
-        fill = int(BAR_WIDTH * ratio)
+            glow = pygame.Surface((w + 8, h + 8), pygame.SRCALPHA)
+            pygame.draw.rect(glow, (255, 60, 40, 100), (0, 0, w + 8, h + 8), 2)
+            target.blit(glow, (x - 4, y - 4))
+        # Frame (outline)
+        pygame.draw.rect(target, outline, (x - 1, y - 1, w + 2, h + 2), 1)
+        # Empty background
+        pygame.draw.rect(target, (30, 20, 30), (x, y, w, h))
+        # Fill (proportional)
+        fill = int(w * ratio)
         if fill > 0:
-            pygame.draw.rect(target, color, (x + 1, y + 1, fill, BAR_HEIGHT))
+            pygame.draw.rect(target, color, (x, y, fill, h))
+        # Segment dividers (vertical lines every w/HP_BAR_SEGMENTS)
+        seg_w = w // HP_BAR_SEGMENTS
+        for i in range(1, HP_BAR_SEGMENTS):
+            sx = x + i * seg_w
+            pygame.draw.line(target, (10, 10, 15), (sx, y), (sx, y + h), 1)
         # Label
         if self.font_small:
-            label = self.font_small.render(f"HP {player.hp}/{player.hp_max}", True, (220, 220, 240))
-            target.blit(label, (x + BAR_WIDTH + 6, y - 2))
+            label = self.font_small.render(
+                f"HP {player.hp}/{player.hp_max}", True, (220, 220, 240)
+            )
+            target.blit(label, (x + w + 6, y - 2))
+        # BLOQUE 53c: gold ring counter (small icons next to HP)
+        self._draw_gold_ring_counter(target, player, x, y + h + 4, t)
+        # BLOQUE 53d: tech upgrade icons (small squares next to ring counter)
+        self._draw_tech_icons(target, player, x, y + h + 12)
+
+    def _draw_gold_ring_counter(self, target: pygame.Surface, player: Player,
+                                 x: int, y: int, t: float = 0.0) -> None:
+        """BLOQUE 53c: show 3 small gold ring slots. Filled = collected."""
+        for i in range(3):
+            cx = x + i * (GOLD_RING_ICON_SIZE + 3)
+            cy = y + GOLD_RING_ICON_SIZE // 2
+            if i < player.gold_rings and not player.hp_doubled:
+                # Filled gold ring (collected)
+                pygame.draw.circle(target, (255, 220, 80), (cx, cy),
+                                   GOLD_RING_ICON_SIZE // 2, 1)
+                # Inner glow
+                pygame.draw.circle(target, (255, 200, 60), (cx, cy),
+                                   GOLD_RING_ICON_SIZE // 2 - 1, 1)
+            elif player.hp_doubled:
+                # All rings consumed (HP doubled)
+                pygame.draw.circle(target, (255, 240, 160), (cx, cy),
+                                   GOLD_RING_ICON_SIZE // 2, 1)
+                # Checkmark inside
+                pygame.draw.line(target, (255, 255, 200),
+                                  (cx - 2, cy), (cx - 1, cy + 1), 1)
+                pygame.draw.line(target, (255, 255, 200),
+                                  (cx - 1, cy + 1), (cx + 2, cy - 1), 1)
+            else:
+                # Empty slot
+                pygame.draw.circle(target, (80, 80, 100), (cx, cy),
+                                   GOLD_RING_ICON_SIZE // 2, 1)
+
+    def _draw_tech_icons(self, target: pygame.Surface, player: Player,
+                          x: int, y: int) -> None:
+        """BLOQUE 53d: small icons for each tech upgrade collected."""
+        for i, upgrade_id in enumerate(player.tech_upgrades):
+            ix = x + i * (TECH_ICON_SIZE + 2)
+            # Color by upgrade type
+            if upgrade_id == "HP_BOOST_10":
+                color = (120, 255, 180)
+            elif upgrade_id == "GOLIATH_SUMMON":
+                color = (255, 200, 100)
+            else:
+                color = (200, 200, 220)
+            # Filled square
+            pygame.draw.rect(target, color, (ix, y, TECH_ICON_SIZE, TECH_ICON_SIZE))
+            pygame.draw.rect(target, (40, 40, 60), (ix, y, TECH_ICON_SIZE, TECH_ICON_SIZE), 1)
 
     def _draw_bombs(self, target: pygame.Surface, player: Player, weapon: WeaponSystem,
                     x: int, y: int, t: float = 0.0) -> None:
