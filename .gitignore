@@ -47,3 +47,6 @@ highscores.json
 .env
 .env.local
 secrets/
+
+# Temp cleanup backups (recoverable; safe to delete)
+.cleanup_backup/
