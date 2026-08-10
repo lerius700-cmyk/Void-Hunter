@@ -2617,59 +2617,53 @@ class GameplayRuntime:
                                 int(self._player.y - glow_radius + oy)))
 
     def _emit_energy_absorption(self, dt: float) -> None:
-        """BLOQUE 49: energy particles flowing from off-screen toward the
-        player while charging or firing the L3 laser. Gives the visual
-        feel of the ship "absorbing" ambient energy to power the beam.
+        """BLOQUE 49.1: local aura absorption — cyan particles spawned in
+        a small ring around the player, flowing inward and getting
+        "absorbed". The aura is concentrated near the ship (not
+        spread across the whole map) so the visual reads as energy
+        being pulled into the ship.
         """
         level = self._player.get_charge_level()
         if level == 0:
             return
-        # More particles at higher charge levels
-        spawns_per_call = 1 + level
-        # The laser (L3) pulls harder than charging alone
+        # Number of particles per call — more at higher charge
+        spawns_per_call = 2 + level * 2
+        # L3 laser-active mode pulls harder
         is_laser_active = (
             self._laser_active and level >= 3
         )
         if is_laser_active:
-            spawns_per_call *= 2
+            spawns_per_call = int(spawns_per_call * 1.5)
         import random as _r
         px, py = self._player.x, self._player.y
+        # Aura radius scales with level (tighter at L1, wider at L3)
+        aura_radius = 16.0 + level * 4.0
         for _ in range(spawns_per_call):
-            # Spawn at a random point on the playfield edge, slightly
-            # outside the play area in random direction
-            edge = _r.choice(["top", "bottom", "left", "right"])
-            if edge == "top":
-                sx = _r.uniform(0, INTERNAL_W)
-                sy = _r.uniform(-30, -5)
-            elif edge == "bottom":
-                sx = _r.uniform(0, INTERNAL_W)
-                sy = _r.uniform(INTERNAL_H + 5, INTERNAL_H + 30)
-            elif edge == "left":
-                sx = _r.uniform(-30, -5)
-                sy = _r.uniform(0, INTERNAL_H)
-            else:
-                sx = _r.uniform(INTERNAL_W + 5, INTERNAL_W + 30)
-                sy = _r.uniform(0, INTERNAL_H)
-            # Velocity pointing toward the player
+            # Random angle around the player
+            angle = _r.uniform(0.0, 2.0 * math.pi)
+            # Spawn point on a ring around the player
+            sx = px + math.cos(angle) * aura_radius
+            sy = py + math.sin(angle) * aura_radius
+            # Velocity pointing toward the player (inward)
             dx = px - sx
             dy = py - sy
             d = math.hypot(dx, dy) or 1.0
-            speed = 80.0 + level * 30.0
+            speed = 100.0 + level * 40.0 + _r.uniform(-20.0, 20.0)
             vx = (dx / d) * speed
             vy = (dy / d) * speed
-            # Color: cyan-white for high charge, blue for low
+            # Color: brighter as charge level rises
             if level >= 3:
-                color = (140, 220, 255)
+                color = (160, 230, 255)
             elif level >= 2:
-                color = (100, 200, 240)
+                color = (130, 210, 245)
             else:
-                color = (80, 160, 220)
-            # Emit a long-lived spark that travels toward the player
+                color = (100, 180, 230)
+            # Short-lived spark that gets absorbed quickly
             self._particles.emit(
                 0,  # P_SPARK
                 sx, sy, vx=vx, vy=vy,
                 color=color,
-                life=0.6,
+                life=0.25,  # short — absorbed before going far
                 radius=1.5,
             )
 
