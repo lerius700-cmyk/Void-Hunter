@@ -50,3 +50,8 @@ secrets/
 
 # Temp cleanup backups (recoverable; safe to delete)
 .cleanup_backup/
+
+# BLOQUE 54: PyInstaller build artifacts (rebuild with `pyinstaller build.spec`)
+build/
+dist/
+*.spec.bak

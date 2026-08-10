@@ -3,3 +3,5 @@
 pytest>=7.4
 pytest-cov>=4.1
 mypy>=1.5
+# BLOQUE 54: build standalone .exe for distribution to non-developers
+pyinstaller>=6.0

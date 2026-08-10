@@ -2,6 +2,7 @@
 
 Description: parse CLI flags, dispatch to the right runtime path.
 BLOQUE 16 adds --duration to auto-exit after N seconds (for stress/smoke).
+BLOQUE 54: friendly defaults when running as a packaged .exe.
 Dependencies: pygame, src.core.{settings,game}.
 """
 from __future__ import annotations
@@ -9,6 +10,36 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+
+
+def _detect_screen_scale() -> int:
+    """BLOQUE 54: pick a window scale that fits the current monitor.
+
+    Uses the Windows GDI to read primary monitor resolution without spinning
+    up pygame (works inside the frozen .exe before any pygame init).
+    Returns 1, 2, 3, or 4. Falls back to 2 if detection fails.
+    """
+    if sys.platform != "win32":
+        return 2  # safe default for non-Windows hosts
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        gdi32 = ctypes.windll.gdi32
+        user32.SetProcessDPIAware()
+        hdc = user32.GetDC(0)
+        try:
+            w = int(gdi32.GetDeviceCaps(hdc, 8))    # HORZRES
+            h = int(gdi32.GetDeviceCaps(hdc, 10))   # VERTRES
+        finally:
+            user32.ReleaseDC(0, hdc)
+        # Game internal is 320x480 (BLOQUE 34). Pick the largest scale that
+        # fits the screen with a 40 px safety margin on each axis.
+        scale_h = max(1, (h - 80) // 480)
+        scale_w = max(1, (w - 80) // 320)
+        scale = min(scale_h, scale_w, 4)
+        return int(max(1, scale))
+    except Exception:
+        return 2
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -193,13 +224,30 @@ FPS_TARGET = 120  # used by _cmd_play
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
-    if args.easy:
+    # BLOQUE 54: friendly defaults when running as a frozen .exe (PyInstaller).
+    # Developers using `python main.py ...` still get full CLI control.
+    _frozen_launch = getattr(sys, "frozen", False) and argv is None
+    if _frozen_launch:
+        import os
+        if not args.easy:
+            args.easy = True
+            os.environ["VOID_HUNTER_EASY"] = "1"
+        if args.scale == 4:  # default → auto-detect screen
+            auto_scale = _detect_screen_scale()
+            if auto_scale != args.scale:
+                args.scale = auto_scale
+                os.environ["VOID_HUNTER_SCALE"] = str(auto_scale)
+        print("VOID HUNTER: launched as packaged .exe")
+        print(f"  easy mode  = ON (9 lives, 4 bombs)")
+        print(f"  scale      = {args.scale} (auto-detected)")
+
+    if args.easy and not _frozen_launch:
         # BLOQUE 28: set env var so Player.reset() reads it
         import os
         os.environ["VOID_HUNTER_EASY"] = "1"
         print("VOID HUNTER: --easy mode enabled (9 lives, 4 bombs)")
 
-    if args.scale != 4:
+    if args.scale != 4 and not _frozen_launch:
         # BLOQUE 31: override window scale (1x=240x360, 2x=480x720, 3x=720x1080)
         import os
         os.environ["VOID_HUNTER_SCALE"] = str(args.scale)
