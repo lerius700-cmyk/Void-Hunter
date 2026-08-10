@@ -272,9 +272,9 @@ class BossIntroScene(Scene):
             border_color = (255, 80, 80) if pulse > 0.5 else (200, 60, 60)
             pygame.draw.rect(target, border_color, boss_rect, 1)
         # Bottom: "INCOMING HOSTILE" subtitle (blinking)
+        font2 = pygame.font.Font(None, 12)
+        sub = font2.render("INCOMING HOSTILE", True, (255, 100, 100))
         if int(self._t * 2) % 2 == 0 and self._t > 0.5:
-            font2 = pygame.font.Font(None, 12)
-            sub = font2.render("INCOMING HOSTILE", True, (255, 100, 100))
             _center_blit(target, sub, 230)
         # Progress bar (fills over duration)
         bar_w = 200
