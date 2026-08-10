@@ -219,53 +219,50 @@ DEFAULT_WAVES: list[dict[str, Any]] = [
         "act": 1, "wave": 1, "theme": "blue_void",
         "formation": {
             "formation_type": "line", "enemy_type": "SCOUT",
-            "count": 4, "spacing_px": 32, "entry_axis": "top",
+            "count": 6, "spacing_px": 30, "entry_axis": "top",
             "pattern_speed": 40, "telegraph_frames": 30,
         },
-        "kill_target": 4, "time_limit_s": 25.0, "sub_boss": None,
+        "kill_target": 6, "time_limit_s": 25.0, "sub_boss": None,
     },
     {
         "act": 1, "wave": 2, "theme": "blue_void",
-        # BLOQUE 47: SQUADRON — 5 SCOUT in a leader+followers choreography
+        # BLOQUE 47: SQUADRON — 7 SCOUT in a leader+followers choreography
         # (Star Fox 64 style). Leader traces a sine path; followers replay
-        # the same path 0.4s/0.8s/1.2s/1.6s behind.
+        # the same path 0.4s/0.8s/1.2s/1.6s/2.0s/2.4s behind.
         "formation": {
             "formation_type": "squadron", "enemy_type": "SCOUT",
-            "count": 5, "spacing_px": 24, "entry_axis": "top",
+            "count": 7, "spacing_px": 22, "entry_axis": "top",
             "pattern_speed": 50, "telegraph_frames": 30,
         },
-        "kill_target": 5, "time_limit_s": 30.0, "sub_boss": None,
+        "kill_target": 7, "time_limit_s": 30.0, "sub_boss": None,
     },
     {
         "act": 1, "wave": 3, "theme": "blue_void",
         "formation": {
             "formation_type": "arc", "enemy_type": "CRUISER",
-            "count": 5, "spacing_px": 28, "entry_axis": "top",
+            "count": 7, "spacing_px": 26, "entry_axis": "top",
             "pattern_speed": 30, "telegraph_frames": 45,
         },
-        "kill_target": 5, "time_limit_s": 32.0, "sub_boss": None,
+        "kill_target": 7, "time_limit_s": 32.0, "sub_boss": None,
     },
     {
         "act": 1, "wave": 4, "theme": "blue_void",
         "formation": {
             "formation_type": "staircase", "enemy_type": "HEAVY",
-            "count": 4, "spacing_px": 28, "entry_axis": "top",
+            "count": 6, "spacing_px": 28, "entry_axis": "top",
             "pattern_speed": 30, "telegraph_frames": 60,
         },
-        "kill_target": 4, "time_limit_s": 35.0, "sub_boss": None,
+        "kill_target": 6, "time_limit_s": 35.0, "sub_boss": None,
     },
     {
         "act": 1, "wave": 5, "theme": "blue_void",
-        # Mixed formation: 2 SCOUT + 2 DRONE + 2 SNIPER.
-        # The system spawns the dominant kind first; mixed waves are
-        # an iterative BLOQUE 46+ feature. For now, this is a LINE of
-        # SNIPER (the rarest kind) so the player sees mixed encounters.
+        # BLOQUE 50: mixed formation — 8 ships (more than before) for variety.
         "formation": {
             "formation_type": "line", "enemy_type": "SNIPER",
-            "count": 6, "spacing_px": 24, "entry_axis": "top",
+            "count": 8, "spacing_px": 22, "entry_axis": "top",
             "pattern_speed": 35, "telegraph_frames": 40,
         },
-        "kill_target": 6, "time_limit_s": 38.0, "sub_boss": None,
+        "kill_target": 8, "time_limit_s": 38.0, "sub_boss": None,
     },
     {
         "act": 1, "wave": 6, "theme": "blue_void",
@@ -273,10 +270,10 @@ DEFAULT_WAVES: list[dict[str, Any]] = [
         # practices against the toughest non-boss enemy).
         "formation": {
             "formation_type": "v", "enemy_type": "HEAVY",
-            "count": 6, "spacing_px": 26, "entry_axis": "top",
+            "count": 8, "spacing_px": 24, "entry_axis": "top",
             "pattern_speed": 32, "telegraph_frames": 50,
         },
-        "kill_target": 6, "time_limit_s": 40.0, "sub_boss": "goliath",
+        "kill_target": 8, "time_limit_s": 40.0, "sub_boss": "goliath",
     },
     # Act 2 (Pink Void -> Mars -> Teal) — legacy `mix`, formation derived
     {"act": 2, "wave": 1, "theme": "pink_void", "mix": {"scout": 5, "cruiser": 5, "heavy": 4, "kamikaze": 2, "drone": 2}, "kill_target": 18, "time_limit_s": 38.0, "sub_boss": None},
@@ -433,35 +430,37 @@ class WaveManager:
 # BLOQUE 48: chained wave system for level 1 mode
 # ---------------------------------------------------------------------------
 LEVEL1_WAVES: list[dict[str, Any]] = [
-    # O1 — intro/tutorial: 8 SCOUT diagonal, no fire (was 6)
+    # O1 — intro/tutorial: 12 SCOUT diagonal, no fire (was 8)
     {
-        "enemies": ["SCOUT"] * 8,
-        "spawn_cadence_s": 1.2,
-        "max_duration_s": 8.0,
+        "enemies": ["SCOUT"] * 12,
+        "spawn_cadence_s": 1.0,
+        "max_duration_s": 10.0,
         "formation": "diagonal",
         "fire_allowed": False,
     },
-    # O2 — pattern recognition: 10 SCOUT + 3 CRUISER, V formation (was 6+2)
+    # O2 — pattern recognition: 14 SCOUT + 5 CRUISER, V formation (was 10+3)
+    # BLOQUE 50: triggers a sub-boss encounter after this wave is cleared
     {
-        "enemies": ["SCOUT"] * 10 + ["CRUISER"] * 3,
-        "spawn_cadence_s": 0.7,
-        "max_duration_s": 14.0,
+        "enemies": ["SCOUT"] * 14 + ["CRUISER"] * 5,
+        "spawn_cadence_s": 0.6,
+        "max_duration_s": 16.0,
         "formation": "v",
         "fire_allowed": True,
+        "sub_boss_after": True,
     },
-    # O3 — mixed composition: 8 SCOUT + 2 HEAVY, line, HEAVY as anchor (was 6+1)
+    # O3 — mixed composition: 10 SCOUT + 4 HEAVY, line, HEAVY as anchor (was 8+2)
     {
-        "enemies": ["SCOUT"] * 8 + ["HEAVY"] * 2,
-        "spawn_cadence_s": 0.9,
-        "max_duration_s": 17.0,
+        "enemies": ["SCOUT"] * 10 + ["HEAVY"] * 4,
+        "spawn_cadence_s": 0.8,
+        "max_duration_s": 19.0,
         "formation": "line",
         "fire_allowed": True,
     },
-    # O4 — finale: 6 SCOUT + 4 CRUISER + 2 HEAVY, diamond (was 3+2+1)
+    # O4 — finale: 8 SCOUT + 6 CRUISER + 3 HEAVY, diamond (was 6+4+2)
     {
-        "enemies": ["SCOUT"] * 6 + ["CRUISER"] * 4 + ["HEAVY"] * 2,
-        "spawn_cadence_s": 1.0,
-        "max_duration_s": 20.0,
+        "enemies": ["SCOUT"] * 8 + ["CRUISER"] * 6 + ["HEAVY"] * 3,
+        "spawn_cadence_s": 0.9,
+        "max_duration_s": 22.0,
         "formation": "diamond",
         "fire_allowed": True,
     },
@@ -474,6 +473,12 @@ class WaveChain:
     Tracks spawn schedule per wave, advances to next wave when the current
     one is fully spawned + cleared, OR when its max_duration_s is reached
     (whichever comes first). Single source of truth for kills.
+
+    BLOQUE 50: supports an optional `sub_boss_after` flag on each wave
+    spec. When that wave is cleared, the chain sets `_sub_boss_pending`
+    and pauses further wave progression. The runtime is responsible for
+    spawning the sub-boss, then calling `clear_sub_boss_pending()` to
+    resume the chain.
     """
 
     def __init__(
@@ -499,16 +504,41 @@ class WaveChain:
         self.waves_complete: bool = False
         # Total ships in level
         self.total_ships: int = sum(len(w["enemies"]) for w in self.wave_specs)
+        # BLOQUE 50: sub-boss gating
+        self._sub_boss_pending: bool = False
+        self._sub_boss_defeated: bool = False
+        # Pre-compute which wave indices trigger a sub-boss after they clear
+        self._sub_boss_after_waves: set[int] = {
+            i for i, w in enumerate(self.wave_specs)
+            if w.get("sub_boss_after", False)
+        }
 
     @property
     def alive_count(self) -> int:
         return sum(self._alive_per_wave)
 
+    @property
+    def sub_boss_pending(self) -> bool:
+        """True if the chain is paused and a sub-boss should be spawned."""
+        return self._sub_boss_pending
+
+    def clear_sub_boss_pending(self) -> None:
+        """Called by the runtime after the sub-boss is killed. Resumes chain."""
+        self._sub_boss_pending = False
+        self._sub_boss_defeated = True
+
     def tick(self, dt: float) -> None:
-        """Advance timers; advance to next wave if current is done."""
+        """Advance timers; advance to next wave if current is done.
+
+        BLOQUE 50: pauses on sub_boss_pending so the chain doesn't advance
+        while the runtime is fighting the sub-boss.
+        """
         self.elapsed_s += dt
         if self.current_wave_idx >= len(self.wave_specs):
             self.waves_complete = True
+            return
+        # BLOQUE 50: don't tick waves while sub-boss is pending
+        if self._sub_boss_pending:
             return
         spec = self.wave_specs[self.current_wave_idx]
         self._wave_elapsed_s[self.current_wave_idx] += dt
@@ -526,10 +556,15 @@ class WaveChain:
         # Advance if: completed (spawned + dead), OR (spawned + timed out),
         # OR timed out (escapees become rezagadas for next wave)
         if (all_spawned and all_dead) or (all_spawned and timed_out) or timed_out:
+            finished_wave_idx = self.current_wave_idx
             # Advance to next wave
             self.current_wave_idx += 1
             if self.current_wave_idx >= len(self.wave_specs):
                 self.waves_complete = True
+                return
+            # BLOQUE 50: check if the wave we just finished triggers a sub-boss
+            if finished_wave_idx in self._sub_boss_after_waves:
+                self._sub_boss_pending = True
 
     def spawn(self, wave_idx: int | None = None, x: float = 0.0, y: float = 0.0,
               kind: str = "SCOUT") -> bool:
@@ -576,6 +611,9 @@ class WaveChain:
         self.elapsed_s = 0.0
         self.perfect = True
         self.waves_complete = False
+        # BLOQUE 50: sub-boss reset
+        self._sub_boss_pending = False
+        self._sub_boss_defeated = False
 
 
 class BossTrigger:

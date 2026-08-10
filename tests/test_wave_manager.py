@@ -337,67 +337,67 @@ def test_all_default_waves_destructible() -> None:
 # 9. BLOQUE 45: act 1 DEFAULT_WAVES use formations
 # ---------------------------------------------------------------------------
 def test_act1_wave1_is_line_formation() -> None:
-    """BLOQUE 45: Act 1, Wave 1 is a LINE formation of 4 SCOUT."""
+    """BLOQUE 50: Act 1, Wave 1 is a LINE formation of 6 SCOUT (denser)."""
     from src.systems.wave_manager import DEFAULT_WAVES, parse_formation
     wave = DEFAULT_WAVES[0]
     assert wave["act"] == 1 and wave["wave"] == 1
     f = parse_formation(wave["formation"])
     assert f.formation_type == "line"
     assert f.enemy_type == "SCOUT"
-    assert f.enemy_count == 4
+    assert f.enemy_count == 6
     assert f.telegraph_frames == 30
     assert f.pattern_speed == 40
 
 
 def test_act1_wave2_is_squadron_formation() -> None:
-    """BLOQUE 47: Act 1, Wave 2 is a SQUADRON formation of 5 SCOUT
+    """BLOQUE 50: Act 1, Wave 2 is a SQUADRON formation of 7 SCOUT
     (Star Fox 64 leader/follower choreography)."""
     from src.systems.wave_manager import DEFAULT_WAVES, parse_formation
     wave = DEFAULT_WAVES[1]
     f = parse_formation(wave["formation"])
     assert f.formation_type == "squadron"
-    assert f.enemy_count == 5
+    assert f.enemy_count == 7
     assert f.enemy_type == "SCOUT"
 
 
 def test_act1_wave3_is_arc_formation() -> None:
-    """BLOQUE 45: Act 1, Wave 3 is an ARC formation of 5 CRUISER."""
+    """BLOQUE 50: Act 1, Wave 3 is an ARC formation of 7 CRUISER (denser)."""
     from src.systems.wave_manager import DEFAULT_WAVES, parse_formation
     wave = DEFAULT_WAVES[2]
     f = parse_formation(wave["formation"])
     assert f.formation_type == "arc"
-    assert f.enemy_count == 5
+    assert f.enemy_count == 7
     assert f.enemy_type == "CRUISER"
     assert f.telegraph_frames == 45
 
 
 def test_act1_wave4_is_staircase_formation() -> None:
-    """BLOQUE 45: Act 1, Wave 4 is a STAIRCASE formation of 4 HEAVY."""
+    """BLOQUE 50: Act 1, Wave 4 is a STAIRCASE formation of 6 HEAVY (denser)."""
     from src.systems.wave_manager import DEFAULT_WAVES, parse_formation
     wave = DEFAULT_WAVES[3]
     f = parse_formation(wave["formation"])
     assert f.formation_type == "staircase"
-    assert f.enemy_count == 4
+    assert f.enemy_count == 6
     assert f.enemy_type == "HEAVY"
     assert f.telegraph_frames == 60
 
 
 def test_act1_wave5_is_line_mixed() -> None:
-    """BLOQUE 45: Act 1, Wave 5 is a LINE formation of 6 enemies."""
+    """BLOQUE 50: Act 1, Wave 5 is a LINE formation of 8 enemies (denser)."""
     from src.systems.wave_manager import DEFAULT_WAVES, parse_formation
     wave = DEFAULT_WAVES[4]
     f = parse_formation(wave["formation"])
     assert f.formation_type == "line"
-    assert f.enemy_count == 6
+    assert f.enemy_count == 8
 
 
 def test_act1_wave6_is_v_with_sub_boss_goliath() -> None:
-    """BLOQUE 45: Act 1, Wave 6 is a V formation triggering goliath boss."""
+    """BLOQUE 50: Act 1, Wave 6 is a V formation of 8 HEAVY triggering goliath boss."""
     from src.systems.wave_manager import DEFAULT_WAVES, parse_formation
     wave = DEFAULT_WAVES[5]
     f = parse_formation(wave["formation"])
     assert f.formation_type == "v"
-    assert f.enemy_count == 6
+    assert f.enemy_count == 8
     assert wave["sub_boss"] == "goliath"
 
 

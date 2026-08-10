@@ -62,6 +62,7 @@ _ENEMY_SCORE = {
     EnemyKind.SCOUT: 50, EnemyKind.CRUISER: 150, EnemyKind.HEAVY: 400,
     EnemyKind.KAMIKAZE: 200, EnemyKind.DRONE: 80, EnemyKind.SNIPER: 300,
     EnemyKind.TURRET: 250, EnemyKind.CARRIER: 800,
+    EnemyKind.SUB_BOSS: 600,  # BLOQUE 50
 }
 
 # Particle kind by "explosion quality"
@@ -192,6 +193,12 @@ class GameplayRuntime:
         # BLOQUE 48: chained wave system (level 1 mode redesign)
         self._level1_chain: Optional[WaveChain] = None
         self._level1_boss_trigger: Optional[BossTrigger] = None
+        # BLOQUE 50: mid-wave sub-boss state. _sub_boss_alive=True while
+        # the sub-boss enemy is in play. _sub_boss_intro_done prevents
+        # the SUB_BOSS_INTRO scene from re-triggering while the sub-boss
+        # is still alive.
+        self._sub_boss_alive: bool = False
+        self._sub_boss_intro_done: bool = False
 
         # Polish state
         self._score_popups: list[ScorePopup] = []
@@ -323,6 +330,9 @@ class GameplayRuntime:
         # BLOQUE 48: reset the chained wave system
         if self._level1_chain is not None:
             self._level1_chain.reset()
+        # BLOQUE 50: reset sub-boss state
+        self._sub_boss_alive = False
+        self._sub_boss_intro_done = False
         self._screen_flash = 0.0
         # BLOQUE 22: reset polish state
         self._muzzle_flash = 0.0
@@ -1145,6 +1155,25 @@ class GameplayRuntime:
                     remaining.append((when, kind, x, y, False, 0.0))
         self._pending_wave_spawns = remaining
 
+    def _spawn_sub_boss(self) -> None:
+        """BLOQUE 50: spawn the mid-wave sub-boss.
+
+        Spawned near the top-center of the screen, drops in with the
+        frenetic sine wobble from the SUB_BOSS config. The runtime
+        handles the bullet pattern (it has fire_cooldown_s=0.4 — 2.5
+        shots/s aimed at the player).
+        """
+        from src.entities.enemies.enemy import EnemyKind
+        from src.core.settings import INTERNAL_W
+        e = self._enemies.spawn(EnemyKind.SUB_BOSS, INTERNAL_W / 2, -16.0)
+        if e is not None:
+            self._sub_boss_alive = True
+            self._sub_boss_intro_done = True
+            # Mark with a flag so _on_enemy_killed knows to clear the
+            # chain pending and award the sub-boss bonus score. We use
+            # a simple attribute on the enemy.
+            e._is_sub_boss_instance = True  # type: ignore[attr-defined]
+
     def _spawn_level1_enemies(self, dt: float) -> None:
         """BLOQUE 48: spawn one enemy per tick from the chained WaveChain.
 
@@ -1220,6 +1249,17 @@ class GameplayRuntime:
         squadron_amplitude = 50.0    # px swing left-right
         squadron_y_speed = 50.0      # px/s downward (slower than pattern_speed
                                       # for more readable choreography)
+        # BLOQUE 50: ensure the sub-boss is alive if the chain says so.
+        # After SUB_BOSS_INTRO transitions back to GAMEPLAY, the first
+        # _update_enemies tick spawns the sub-boss. The chain stays
+        # paused (sub_boss_pending=True) until the sub-boss is killed.
+        if (
+            self._is_level1_mode()
+            and self._level1_chain is not None
+            and self._level1_chain.sub_boss_pending
+            and not self._sub_boss_alive
+        ):
+            self._spawn_sub_boss()
         for e in self._enemies.pool:
             if not e.active:
                 continue
@@ -1435,6 +1475,14 @@ class GameplayRuntime:
         # Element bonus: plasma bonus vs heavy/cruiser/turret/carrier
         element_bonus = e.kind.value in ("heavy", "cruiser", "turret", "carrier")
         awarded = self._scoring.on_kill(score, is_boss=False, is_element_bonus=element_bonus)
+        # BLOQUE 50: sub-boss gets the SUB_BOSS_FLAT_SCORE bonus on top of
+        # the regular score, and clearing the sub-boss resumes the chain.
+        if e.kind == EnemyKind.SUB_BOSS:
+            from src.core.settings import SUB_BOSS_FLAT_SCORE
+            self._scoring.on_kill(SUB_BOSS_FLAT_SCORE)
+            self._sub_boss_alive = False
+            if self._is_level1_mode() and self._level1_chain is not None:
+                self._level1_chain.clear_sub_boss_pending()
         # BLOQUE 24: detect weapon level-up before/after on_kill
         level_before = self._weapon.level.value
         # Weapon XP
@@ -1481,8 +1529,13 @@ class GameplayRuntime:
         if not self._is_boss:
             self._wave_mgr.current.kills += 1
             # BLOQUE 48: also tick the level 1 chain (single source of truth
-            # for the new chained boss trigger)
-            if self._is_level1_mode() and self._level1_chain is not None:
+            # for the new chained boss trigger). BLOQUE 50: sub-boss kills
+            # are NOT counted in the chain (sub-boss is a separate challenge).
+            if (
+                self._is_level1_mode()
+                and self._level1_chain is not None
+                and e.kind != EnemyKind.SUB_BOSS
+            ):
                 self._level1_chain.kill()
             self._wave_mgr.on_wave_cleared = self._check_wave_cleared()
         # Free
@@ -1581,11 +1634,22 @@ class GameplayRuntime:
             self._transition_to(GameState.BOSS_INTRO)
 
     def _update_level1_wave_state(self) -> None:
-        """BLOQUE 48: chain tick + boss trigger evaluation for level 1 mode."""
+        """BLOQUE 48: chain tick + boss trigger evaluation for level 1 mode.
+
+        BLOQUE 50: also dispatches to SUB_BOSS_INTRO when the chain has
+        just cleared a wave that triggers a mid-level sub-boss.
+        """
         from src.core.scene_manager import GameState
         chain = self._level1_chain
         trigger = self._level1_boss_trigger
         if chain is None or trigger is None:
+            return
+        # BLOQUE 50: sub-boss dispatch. If the chain is paused waiting for
+        # a sub-boss to die and no sub-boss is alive yet, transition to
+        # SUB_BOSS_INTRO. The sub-boss itself is spawned on the way back
+        # to GAMEPLAY (see _spawn_sub_boss_on_resume).
+        if chain.sub_boss_pending and not self._sub_boss_alive:
+            self._transition_to(GameState.SUB_BOSS_INTRO)
             return
         # Wave state is already advanced by _spawn_level1_enemies (tick).
         # Evaluate boss trigger using chain state.
@@ -2617,54 +2681,95 @@ class GameplayRuntime:
                                 int(self._player.y - glow_radius + oy)))
 
     def _emit_energy_absorption(self, dt: float) -> None:
-        """BLOQUE 49.1: local aura absorption — cyan particles spawned in
-        a small ring around the player, flowing inward and getting
-        "absorbed". The aura is concentrated near the ship (not
-        spread across the whole map) so the visual reads as energy
-        being pulled into the ship.
+        """BLOQUE 50a: diffuse energy absorption — particles spawn in a
+        wider ring around the player (24-48px depending on charge level)
+        with visible motion toward the ship, then FADE and SHRINK as they
+        get absorbed. Reads as "the ship is pulling in energy", not a
+        static aura.
+
+        Each emission produces a mix of particle types:
+          - outer ring: small fast sparks (P_SPARK, 0.30s life)
+          - inner halo: larger wisps (P_GLOW, 0.45s life) for soft diffusion
+        Particles get DARKER as they near the ship (alpha-fade via life),
+        so the visual is "energy from outside, dissolving as it gets
+        sucked in".
         """
         level = self._player.get_charge_level()
         if level == 0:
             return
-        # Number of particles per call — more at higher charge
-        spawns_per_call = 2 + level * 2
-        # L3 laser-active mode pulls harder
-        is_laser_active = (
-            self._laser_active and level >= 3
-        )
+        # Spawn count grows with charge. L3 laser pulls harder.
+        is_laser_active = (self._laser_active and level >= 3)
+        sparks_per_call = 3 + level * 2
+        glows_per_call = 1 + level
         if is_laser_active:
-            spawns_per_call = int(spawns_per_call * 1.5)
+            sparks_per_call = int(sparks_per_call * 1.5)
+            glows_per_call = int(glows_per_call * 1.5)
         import random as _r
         px, py = self._player.x, self._player.y
-        # Aura radius scales with level (tighter at L1, wider at L3)
-        aura_radius = 16.0 + level * 4.0
-        for _ in range(spawns_per_call):
-            # Random angle around the player
+        # Outer spawn ring (wider so the absorption has travel distance).
+        # L1 = 24-32, L3 = 36-48 — clearly visible motion before absorption.
+        outer_min = 22.0 + level * 6.0
+        outer_max = outer_min + 10.0
+        # Inner absorb ring (where the particle dies). Tight around the ship.
+        absorb_ring = 4.0 + level
+        # Color by level
+        if level >= 3:
+            color_spark = (180, 240, 255)
+            color_glow = (140, 220, 255)
+        elif level >= 2:
+            color_spark = (150, 220, 250)
+            color_glow = (110, 200, 240)
+        else:
+            color_spark = (110, 200, 240)
+            color_glow = (90, 170, 220)
+        # Outer sparks (sharp, fast)
+        for _ in range(sparks_per_call):
             angle = _r.uniform(0.0, 2.0 * math.pi)
-            # Spawn point on a ring around the player
-            sx = px + math.cos(angle) * aura_radius
-            sy = py + math.sin(angle) * aura_radius
-            # Velocity pointing toward the player (inward)
+            # Spawn at a random radius in the outer ring band
+            r = _r.uniform(outer_min, outer_max)
+            sx = px + math.cos(angle) * r
+            sy = py + math.sin(angle) * r
+            # Aim toward the ship
             dx = px - sx
             dy = py - sy
             d = math.hypot(dx, dy) or 1.0
-            speed = 100.0 + level * 40.0 + _r.uniform(-20.0, 20.0)
+            # Speed varies — slower outer particles, faster near ship
+            speed = 60.0 + (outer_max - r) * 2.0 + _r.uniform(-15.0, 15.0)
             vx = (dx / d) * speed
             vy = (dy / d) * speed
-            # Color: brighter as charge level rises
-            if level >= 3:
-                color = (160, 230, 255)
-            elif level >= 2:
-                color = (130, 210, 245)
-            else:
-                color = (100, 180, 230)
-            # Short-lived spark that gets absorbed quickly
+            # Life scales with travel distance (so the particle fades naturally
+            # before reaching the ship). Average life ~ 0.3s.
+            travel = (r - absorb_ring) / max(speed, 1.0)
+            life = max(0.15, min(0.5, travel * _r.uniform(0.8, 1.2)))
+            # Size starts small (will fade out before reaching ship)
+            size = _r.uniform(1.5, 2.5)
             self._particles.emit(
                 0,  # P_SPARK
                 sx, sy, vx=vx, vy=vy,
-                color=color,
-                life=0.25,  # short — absorbed before going far
-                radius=1.5,
+                color=color_spark,
+                life=life,
+                radius=size,
+            )
+        # Inner halo (soft diffusion layer)
+        for _ in range(glows_per_call):
+            angle = _r.uniform(0.0, 2.0 * math.pi)
+            # Glow spawns in a tighter band (closer to ship)
+            r = _r.uniform(outer_min * 0.6, outer_min * 0.9)
+            sx = px + math.cos(angle) * r
+            sy = py + math.sin(angle) * r
+            dx = px - sx
+            dy = py - sy
+            d = math.hypot(dx, dy) or 1.0
+            # Slower speed — these are the "wisps" that linger
+            speed = 30.0 + _r.uniform(-10.0, 10.0)
+            vx = (dx / d) * speed
+            vy = (dy / d) * speed
+            self._particles.emit(
+                9,  # P_GLOW (fuzzy halo, slow fade)
+                sx, sy, vx=vx, vy=vy,
+                color=color_glow,
+                life=_r.uniform(0.35, 0.55),
+                radius=_r.uniform(3.0, 5.0),
             )
 
     def _draw_enemy(self, target: pygame.Surface, e: Enemy, ox: int, oy: int) -> None:
@@ -2767,6 +2872,47 @@ class GameplayRuntime:
             pygame.draw.rect(target, color, rect)
             # Red laser aim line (vertical)
             pygame.draw.line(target, (255, 60, 60), (cx, cy + h // 2), (cx, cy + h // 2 + 6), 1)
+        elif e.kind == EnemyKind.SUB_BOSS:
+            # BLOQUE 50: SUB_BOSS — fierce yellow/orange dart. Aggressive
+            # forward-swept wings, glowing red core, dual tail engines for
+            # motion read. Distinct from SCOUT/CRUISER/HEAVY by color and
+            # silhouette (the wide wing-span + pointed nose signals "boss").
+            # Main body: sharp forward-pointed dart
+            pygame.draw.polygon(target, color, [
+                (cx, cy - h // 2 - 2),       # nose (extends past hitbox)
+                (cx + w // 2 + 1, cy - 1),   # right shoulder
+                (cx + w // 2, cy + h // 3),  # right hip
+                (cx + w // 3, cy + h // 2),  # right tail tip
+                (cx, cy + h // 3),           # tail center notch
+                (cx - w // 3, cy + h // 2),  # left tail tip
+                (cx - w // 2, cy + h // 3),  # left hip
+                (cx - w // 2 - 1, cy - 1),   # left shoulder
+            ])
+            # Forward-swept wings (orange darker)
+            wing_c = (max(0, color[0] - 40), max(0, color[1] - 30), max(0, color[2]))
+            pygame.draw.polygon(target, wing_c, [
+                (cx - w // 3, cy - 1),
+                (cx - w // 2 - 3, cy + h // 2),
+                (cx - w // 4, cy + h // 4),
+            ])
+            pygame.draw.polygon(target, wing_c, [
+                (cx + w // 3, cy - 1),
+                (cx + w // 2 + 3, cy + h // 2),
+                (cx + w // 4, cy + h // 4),
+            ])
+            # Glowing red core (the "boss eye")
+            pulse = 200 + int(55 * math.sin(self._t * 10))
+            pygame.draw.circle(target, (255, 50, 50), (cx, cy), 2)
+            pygame.draw.circle(target, (255, 220, 100), (cx, cy), 1)
+            # Dual tail engines (yellow exhaust, shows motion)
+            pygame.draw.rect(target, (255, 220, 80), (cx - 3, cy + h // 2 - 1, 2, 2))
+            pygame.draw.rect(target, (255, 220, 80), (cx + 1, cy + h // 2 - 1, 2, 2))
+            # Subtle outer halo to mark it as a mini-boss
+            halo = pygame.Surface((w + 12, h + 12), pygame.SRCALPHA)
+            halo_alpha = 40 + int(20 * math.sin(self._t * 6))
+            pygame.draw.ellipse(halo, (*color, halo_alpha),
+                                (0, 0, w + 12, h + 12), 1)
+            target.blit(halo, (cx - (w + 12) // 2, cy - (h + 12) // 2))
         else:
             # Default: rectangle with inner detail
             rect = pygame.Rect(cx - w // 2, cy - h // 2, w, h)

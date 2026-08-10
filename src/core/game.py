@@ -27,6 +27,7 @@ from src.ui.scenes import (
     GameOverScene,
     GameplayScene,
     PauseScene,
+    SubBossIntroScene,  # BLOQUE 50
     TitleScene,
     VictoryScene,
 )
@@ -143,6 +144,8 @@ class Game:
         self.scenes.register_scene(GameState.GAME_OVER, GameOverScene(transition_to))
         self.scenes.register_scene(GameState.VICTORY, VictoryScene(transition_to))
         self.scenes.register_scene(GameState.CREDITS, CreditsScene(transition_to))
+        # BLOQUE 50: sub-boss mid-wave warning (yellow)
+        self.scenes.register_scene(GameState.SUB_BOSS_INTRO, SubBossIntroScene(transition_to))
         self.scenes.register_scene(GameState.PAUSE, PauseScene(transition_to))
 
     def run(self) -> int:

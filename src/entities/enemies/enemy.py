@@ -36,6 +36,7 @@ class EnemyKind(Enum):
     SNIPER = "sniper"
     TURRET = "turret"
     CARRIER = "carrier"
+    SUB_BOSS = "sub_boss"  # BLOQUE 50: mid-waves frenetic mini-boss
 
 
 # Enemy state (FSM)
@@ -140,6 +141,19 @@ ENEMY_CONFIGS: dict[EnemyKind, _EnemyConfig] = {
         drop_powerup_pct=0.25, drop_bomb_pct=0.08, drop_1up_pct=0.03,
         spawns_carrier_children=True,
     ),
+    # BLOQUE 50: SUB_BOSS — mid-wave mini-boss. Fast (90 px/s, 1.5x cruiser),
+    # HP 20 (more than cruiser, less than full boss), high fire rate (every
+    # 0.4s = 2.5 shots/s), and a frenetic sine wobble (3 Hz, 22px amplitude)
+    # so it's hard to track. Aim-shot at the player, so the player has to
+    # dodge constantly. Visually a yellow/orange dart.
+    EnemyKind.SUB_BOSS: _EnemyConfig(
+        hp=20, speed=90.0, width=16, height=10, score=600,
+        color=(255, 200, 80),
+        fire_cooldown_s=0.4, fire_damage=1, bullet_speed=280.0,
+        telegraph_frames=6,
+        drop_powerup_pct=0.30, drop_bomb_pct=0.15, drop_1up_pct=0.05,
+        sine_wobble=True, sine_amplitude=22.0, sine_freq_hz=3.0,
+    ),
 }
 
 
@@ -218,10 +232,18 @@ class Enemy:
         self.homing_target = None
 
     def hitbox(self) -> pygame.Rect:
-        """70% forgiving hitbox per GDD §5."""
+        """70% forgiving hitbox per GDD §5. SUB_BOSS gets a tighter 55%
+        hitbox (BLOQUE 50) to make it harder to track + hit, matching
+        its frenetic movement and high fire rate.
+        """
         cfg = ENEMY_CONFIGS[self.kind]
-        w = int(cfg.width * 0.7)
-        h = int(cfg.height * 0.7)
+        # BLOQUE 50: SUB_BOSS is harder to hit (50% — boss-like evasion)
+        if self.kind == EnemyKind.SUB_BOSS:
+            scale = 0.5
+        else:
+            scale = 0.7
+        w = int(cfg.width * scale)
+        h = int(cfg.height * scale)
         return pygame.Rect(int(self.x - w // 2), int(self.y - h // 2), w, h)
 
     def apply_damage(self, amount: int) -> bool:

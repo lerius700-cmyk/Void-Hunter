@@ -26,8 +26,9 @@ def pool() -> EnemyPool:
 # 1. 8 archetypes exist
 # ---------------------------------------------------------------------------
 def test_eight_archetypes_exist() -> None:
-    assert len(ENEMY_CONFIGS) == 8
-    assert len(ENEMY_ARCHETYPES) == 8
+    """BLOQUE 50: 9 archetypes now (added SUB_BOSS)."""
+    assert len(ENEMY_CONFIGS) == 9
+    assert len(ENEMY_ARCHETYPES) == 9
 
 
 def test_all_kinds_have_config() -> None:

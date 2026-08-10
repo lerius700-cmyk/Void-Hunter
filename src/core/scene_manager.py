@@ -25,6 +25,8 @@ class GameState(Enum):
     GAME_OVER = "game_over"
     VICTORY = "victory"
     CREDITS = "credits"
+    # BLOQUE 50: mid-wave sub-boss intro scene (yellow WARNING)
+    SUB_BOSS_INTRO = "sub_boss_intro"
     # Overlay state (not in main sequence, pushed onto stack)
     PAUSE = "pause"
 
@@ -35,6 +37,7 @@ VALID_TRANSITIONS: dict[GameState, set[GameState]] = {
     GameState.ACT_INTRO: {GameState.GAMEPLAY, GameState.TITLE},
     GameState.GAMEPLAY: {
         GameState.BOSS_INTRO,
+        GameState.SUB_BOSS_INTRO,  # BLOQUE 50
         GameState.ACT_CLEARED,
         GameState.GAME_OVER,
         GameState.PAUSE,
@@ -45,6 +48,7 @@ VALID_TRANSITIONS: dict[GameState, set[GameState]] = {
     GameState.GAME_OVER: {GameState.TITLE, GameState.CREDITS},
     GameState.VICTORY: {GameState.CREDITS, GameState.TITLE},
     GameState.CREDITS: {GameState.TITLE},
+    GameState.SUB_BOSS_INTRO: {GameState.GAMEPLAY},  # BLOQUE 50: back to gameplay with sub-boss
     GameState.PAUSE: {GameState.GAMEPLAY, GameState.BOSS_FIGHT, GameState.TITLE},
 }
 

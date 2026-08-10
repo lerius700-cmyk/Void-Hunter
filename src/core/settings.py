@@ -166,13 +166,16 @@ WAVE_MAX_DURATION_S: float = 8.0         # max time a wave can take (chaining)
 BOSS_MIN_TRIGGER_S: float = 45.0         # boss won't fire before this (timer hard)
 BOSS_PERFECT_TRIGGER_S: float = 60.0     # perfect-score fast path
 BOSS_SAFETY_TRIGGER_S: float = 120.0     # lenient timeout (no score required)
-LEVEL1_TOTAL_SHIPS: int = 43             # BLOQUE 49: 8+10+3+8+2+6+4+2 ships across 4 waves
-LEVEL1_FLAT_SCORE: int = 57              # 32*1 + 7*2 + 4*3 = 32+14+12
+LEVEL1_TOTAL_SHIPS: int = 62             # BLOQUE 50: 12+19+14+17 ships across 4 waves (was 43)
+LEVEL1_FLAT_SCORE: int = 87              # 44*1 + 11*2 + 7*3 = 44+22+21 = 87 (was 57)
 PERFECT_RUN_BONUS: int = 15              # awarded on _enemies_escaped == 0 at boss
 # Per-archetype flat score (used by the new level 1 chain)
 SCOUT_FLAT_SCORE: int = 1
 CRUISER_FLAT_SCORE: int = 2
 HEAVY_FLAT_SCORE: int = 3
+SUB_BOSS_FLAT_SCORE: int = 5             # BLOQUE 50: sub-boss gives 5pt flat on kill
+# BLOQUE 50: sub-boss trigger point in level 1 chain — fires between O2 and O3
+SUB_BOSS_TRIGGER_AFTER_WAVE: int = 1     # 0-indexed: after wave index 1 (O2)
 
 # ---------------------------------------------------------------------------
 # Scoring

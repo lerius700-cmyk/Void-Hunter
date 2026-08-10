@@ -275,11 +275,10 @@ def test_kill_increments_score():
 
 
 def test_wave_clears_when_kill_target_reached():
+    """BLOQUE 50: Wave 0 (Act 1, wave 1) is now 6 SCOUT in LINE (was 4)."""
     rt = _make_runtime()
-    # BLOQUE 45: Wave 0 (Act 1, wave 1) is now a LINE formation of 4 SCOUT,
-    # so kill_target is 4 (matches the formation count).
-    assert rt._wave_mgr.scripts[0]["kill_target"] == 4
-    for _ in range(4):
+    assert rt._wave_mgr.scripts[0]["kill_target"] == 6
+    for _ in range(6):
         e = rt._enemies.spawn(EnemyKind.SCOUT, 100, 50)
         if e is not None:
             rt._on_enemy_killed(e)
@@ -1220,13 +1219,17 @@ def test_movement_world_relative():
     assert abs(p.x - INTERNAL_W / 2) < 5.0
 
 
-def test_level1_mode_has_43_ships():
-    """BLOQUE 49: level 1 chains 43 ships in 4 waves (was 27 in BLOQUE 48)."""
+def test_level1_mode_has_62_ships():
+    """BLOQUE 50: level 1 chains 62 ships in 4 waves (was 43 in BLOQUE 49).
+    Plus a mid-wave sub-boss is triggered after wave index 1.
+    """
     from src.systems.wave_manager import LEVEL1_WAVES
     rt = _make_runtime()
     assert rt._is_level1_mode()
     total = sum(len(w["enemies"]) for w in LEVEL1_WAVES)
-    assert total == 43
+    assert total == 62
+    # Sub-boss after wave 1 (O2) — verification of mid-wave challenge
+    assert LEVEL1_WAVES[1].get("sub_boss_after") is True
 
 
 def test_level1_uses_3_distinct_kinds():

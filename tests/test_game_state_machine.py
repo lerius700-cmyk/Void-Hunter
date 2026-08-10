@@ -41,12 +41,13 @@ class _MockScene(Scene):
 # 1. 10 states (9 main + PAUSE overlay)
 # ---------------------------------------------------------------------------
 def test_ten_states_total() -> None:
-    assert len(GameState) == 10
+    """BLOQUE 50: 11 states now (added SUB_BOSS_INTRO)."""
+    assert len(GameState) == 11
 
 
 def test_valid_transitions_table_populated() -> None:
-    """9 main states have transition entries; PAUSE is overlay-only."""
-    assert len(VALID_TRANSITIONS) == 10
+    """BLOQUE 50: 11 states have transition entries; PAUSE is overlay-only."""
+    assert len(VALID_TRANSITIONS) == 11
     # Spot check
     assert GameState.TITLE in VALID_TRANSITIONS
     assert GameState.GAMEPLAY in VALID_TRANSITIONS
