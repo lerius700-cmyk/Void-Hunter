@@ -41,8 +41,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Stress test, e.g. '1500particles 400bullets'. BLOQUE 16.",
     )
     parser.add_argument(
-        "--duration", type=int, default=30,
-        help="Profile/stress duration in seconds (default 30).",
+        "--duration", type=int, default=0,
+        help="Profile/stress duration in seconds (default 0 = no auto-exit; --duration 30 for 30s play).",
     )
     parser.add_argument(
         "--validate-waves", action="store_true",
@@ -130,26 +130,58 @@ def _cmd_play(duration: int) -> int:
     # Wrap run() to honor --duration
     import pygame
     import time
+    import traceback
+    from pathlib import Path
     start = time.perf_counter()
+    # BLOQUE 46: heartbeat + crash log — if game exits unexpectedly, we know why
+    crash_log = Path(__file__).resolve().parent / "logs" / "crash.log"
+    crash_log.parent.mkdir(parents=True, exist_ok=True)
+    last_heartbeat = 0.0
     try:
         while game._running:
-            if time.perf_counter() - start > duration:
+            now = time.perf_counter()
+            # BLOQUE 46: only auto-exit if --duration was specified (>0)
+            if duration > 0 and now - start > duration:
                 break
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    game._running = False
-            frame_time = game.clock.tick(FPS_TARGET := 120) / 1000.0
-            frame_time = min(frame_time, 1.0 / 30.0)
-            game._accumulator += frame_time
-            while game._accumulator >= (1.0 / 120):
-                game.scenes.update(1.0 / 120)
-                game._accumulator -= 1.0 / 120
-            # Clear internal, draw scenes to internal, scale to display
-            game.internal.fill((0, 0, 0))
-            game.scenes.draw(game.internal)
-            game._present()
+            # Heartbeat every 2s
+            if now - last_heartbeat >= 2.0:
+                with crash_log.open("a", encoding="utf-8") as f:
+                    f.write(f"[{now - start:6.1f}s] heartbeat — state={game.scenes.current_state.name}\n")
+                last_heartbeat = now
+            # BLOQUE 46 FIX: only check QUIT here; let scenes drain KEYDOWN
+            # themselves. The previous code drained ALL events in the main loop,
+            # which created a race condition where scenes saw an empty KEYDOWN
+            # queue (events posted between drain and scene.update were caught by
+            # the next frame's drain, missing the scene entirely).
+            for event in pygame.event.get(pygame.QUIT):
+                with crash_log.open("a", encoding="utf-8") as f:
+                    f.write(f"[{now - start:6.1f}s] QUIT event received (window close). exiting.\n")
+                game._running = False
+            try:
+                frame_time = game.clock.tick(FPS_TARGET := 120) / 1000.0
+                frame_time = min(frame_time, 1.0 / 30.0)
+                game._accumulator += frame_time
+                while game._accumulator >= (1.0 / 120):
+                    game.scenes.update(1.0 / 120)
+                    game._accumulator -= 1.0 / 120
+                game.internal.fill((0, 0, 0))
+                game.scenes.draw(game.internal)
+                game._present()
+            except Exception as inner_exc:
+                # Defensive: scene error doesn't kill the game; log and continue
+                with crash_log.open("a", encoding="utf-8") as f:
+                    f.write(f"[{now - start:6.1f}s] SCENE ERROR: {type(inner_exc).__name__}: {inner_exc}\n")
+                    f.write(traceback.format_exc())
+                    f.write("\n")
+                # Reset accumulator so we don't try to catch up many frames
+                game._accumulator = 0.0
     except KeyboardInterrupt:
         pass
+    except Exception as outer_exc:
+        with crash_log.open("a", encoding="utf-8") as f:
+            f.write(f"[{time.perf_counter() - start:6.1f}s] CRASH: {type(outer_exc).__name__}: {outer_exc}\n")
+            f.write(traceback.format_exc())
+        raise
     finally:
         pygame.quit()
     return 0

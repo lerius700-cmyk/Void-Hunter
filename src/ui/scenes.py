@@ -69,6 +69,9 @@ class TitleScene(Scene):
     def __init__(self, transition_to: TransitionFn) -> None:
         self._transition_to = transition_to
         self._t: float = 0.0
+        # BLOQUE 46: auto-start after 3s if user hasn't pressed anything
+        # (fix for "user doesn't realize they need to press Enter")
+        self._auto_start_s: float = 3.0
 
     def on_enter(self) -> None:
         self._t = 0.0
@@ -80,6 +83,9 @@ class TitleScene(Scene):
                 self._transition_to(GameState.ACT_INTRO)
             elif event.key == pygame.K_c:
                 self._transition_to(GameState.CREDITS)
+        # Auto-start if user idle
+        if self._t >= self._auto_start_s:
+            self._transition_to(GameState.ACT_INTRO)
 
     def draw(self, target: pygame.Surface) -> None:
         target.fill((0, 0, 0))
@@ -93,6 +99,14 @@ class TitleScene(Scene):
         # Blink
         if int(self._t * 2) % 2 == 0:
             _center_blit(target, sub, 200)
+        # BLOQUE 46: auto-start countdown
+        if self._t < self._auto_start_s:
+            remaining = int(self._auto_start_s - self._t) + 1
+            auto = font2.render(f"AUTO-START IN {remaining}s", True, (140, 140, 160))
+            _center_blit(target, auto, 220)
+        else:
+            auto = font2.render("STARTING...", True, (180, 220, 180))
+            _center_blit(target, auto, 220)
         # Credits hint
         sub2 = font2.render("C: CREDITS", True, (120, 120, 140))
         _center_blit(target, sub2, 230)
