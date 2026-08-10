@@ -3454,7 +3454,7 @@ class GameplayRuntime:
     def _draw_boss(self, target: pygame.Surface, ox: int, oy: int) -> None:
         """BLOQUE 51: dispatch to per-boss visual.
         - GOLIATH (Act 1): biblical giant warrior — armor, helmet, spear, shield.
-        - HYDRA/PHANTOM/NEMESIS: keep the simple rect (TODO polish in future BLOQUE).
+        - HYDRA/PHANTOM/NEMESIS: simple rect (per-boss redesign deferred to future BLOQUE).
         """
         if self._boss is None:
             return
