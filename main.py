@@ -87,6 +87,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--scale", type=int, default=4, choices=(1, 2, 3, 4),
         help="Window scale multiplier (default 4 = 960x1440; use 2 for 480x720 on small screens).",
     )
+    parser.add_argument(
+        "--roguelike", type=int, nargs="?", const=0, default=None, metavar="SEED",
+        help="BLOQUE 57: enable procedural roguelike mode. SEED is an optional int; "
+             "if omitted, derived from level+attempt+salt. Default waves (18 JSON) "
+             "are replaced by procedurally generated waves with the same seed.",
+    )
     return parser.parse_args(argv)
 
 
@@ -252,6 +258,14 @@ def main(argv: list[str] | None = None) -> int:
         import os
         os.environ["VOID_HUNTER_SCALE"] = str(args.scale)
         print(f"VOID HUNTER: --scale {args.scale} (window = {240*args.scale}x{360*args.scale})")
+
+    if args.roguelike is not None:
+        # BLOQUE 57: enable procedural roguelike mode. The seed is
+        # optional: if user passed `--roguelike 42`, use 42; if just
+        # `--roguelike`, derive a default.
+        from src.roguelike.integration import enable_roguelike
+        seed = enable_roguelike(seed=args.roguelike if args.roguelike != 0 else None)
+        print(f"VOID HUNTER: --roguelike mode enabled (seed={seed}, procedurally generated waves)")
 
     if args.check:
         return _cmd_check()

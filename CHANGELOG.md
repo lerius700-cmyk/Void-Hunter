@@ -181,7 +181,7 @@ void-hunter/
 
 ---
 
-## [0.2.0] - 2026-08-10 — BLOQUE 18..56 (Polish + Boss Mechanics + 6 New Formations + Bezier + Wingman)
+## [0.2.0] - 2026-08-10 — BLOQUE 18..57 (Polish + Boss + 6 Formations + Bezier + Roguelike Core)
 
 Closed every "Future Work" item from v0.1.0. Game now plays end-to-end:
 title screen → 4 chained waves with sub-boss → Act 1 boss (GOLIATH) with
@@ -334,6 +334,43 @@ shield, spear, laser → HP bar + gold rings + tech upgrades → victory.
   GOLIATH bezier-then-sine, GOLIATH on_spawn clears bezier).
 - Total tests: 773 (was 751, +22).
 - All math: stdlib only, no numpy (per GDD §0).
+
+#### BLOQUE 57 — Roguelike core (opt-in via --roguelike [seed])
+- New package `src/roguelike/` (9 modules, ~1000 lines, stdlib only).
+- **RoguelikeSeed**: splitmix64 PRNG (period 2^64, no attractor at 0)
+  with hierarchical derivation: `derive(level, attempt, salt) -> master`,
+  then `derive_wave_seed / derive_slot_seed / derive_audio_seed /
+  derive_drop_seed / derive_particle_seed`. JSON round-trip.
+- **SeededRNG**: drop-in replacement for `random` with `random / randint /
+  choice / choices / shuffle / gauss` (Box-Muller). State save/restore
+  via `state_dict / load_state_dict` for replay.
+- **ProceduralFormationGenerator**: 9 family builders (LINE / V / ARC /
+  STAIRCASE / SPIRAL / HILERA / X / DIAMOND / BOX) with weighted family
+  selection. `FormationParams` validates family_weights (normalization,
+  non-negative, non-zero sum, length-mismatch).
+- **RoguelikeRun**: lifecycle (start / checkpoint / restore / log_action
+  / finalize), JSON serialization. Bounded action log (1000) and
+  checkpoint list (10) to keep memory under 1 MB/run.
+- **StuckPatternDetector**: sliding-window detector for repeated
+  families and weight deviation. `record_formation / is_stuck_pattern /
+  check_distribution` for dev-mode diagnostics.
+- **DistributionTelemetry**: 5 metrics (run_count, family_distribution,
+  seed_uniqueness, replay_fidelity, pattern_diversity, entropy_per_run).
+  Optional JSON persistence to `data/roguelike_stats.json`. Shannon
+  entropy utility.
+- **ReplaySystem**: play / verify / watch / export_replay (JSON only) /
+  import_replay. `ReplayDivergenceError` raised on RNG state mismatch.
+  1000-trial fidelity test confirms byte-identical replays.
+- **Integration**: opt-in via `--roguelike [seed]` CLI flag. Without
+  the flag, the 18 hand-tuned wave JSONs continue to work unchanged.
+  With the flag, `inject_roguelike_waves(wave_manager)` replaces the
+  scripts list with 6 procedurally generated waves using the given seed.
+- **76 new tests** in `tests/roguelike/` (8 test files): seed (8),
+  rng (10), formation_generator (8), run (8), anti_stuck (5),
+  telemetry (8), replay (9), integration (5).
+- Total tests: 849 (was 773, +76).
+- Hard rules: no numpy, no global `random` import in the module
+  (verified by test), no scipy.
 
 ### Known Limitations (v0.2.0)
 
