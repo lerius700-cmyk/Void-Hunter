@@ -297,3 +297,92 @@ def test_pool_exhaustion_returns_none(pool: BossPool) -> None:
     spawned = [pool.spawn(b) for b in BossId]
     assert all(s is not None for s in spawned)
     assert pool.spawn(BossId.GOLIATH) is None  # pool of 4, all used
+
+
+# ---------------------------------------------------------------------------
+# 10. BLOQUE 56: GOLIATH bezier entrance path
+# ---------------------------------------------------------------------------
+def test_goliath_default_motion_is_sine() -> None:
+    """BLOQUE 56: Without a bezier path, GOLIATH uses the default sine
+    oscillation around its anchor (legacy behavior preserved)."""
+    b = Boss()
+    b.id = BossId.GOLIATH
+    b.on_spawn()
+    assert b.bezier_path is None
+    # After 1s of updates, x should have oscillated around the anchor
+    b.update(1.0)
+    cfg = BOSS_CONFIGS[BossId.GOLIATH]
+    # x should be within ±80 of anchor
+    assert abs(b.x - cfg.anchor_x) <= 80.5, f"x={b.x} out of oscillation range"
+
+
+def test_goliath_with_bezier_path_follows_curve() -> None:
+    """BLOQUE 56: When bezier_path is set, GOLIATH follows the curve
+    instead of the sine oscillation, and lands at the endpoint."""
+    from src.systems.bezier_path import BezierPath, ControlPoint
+    b = Boss()
+    b.id = BossId.GOLIATH
+    b.on_spawn()
+    # Cubic path from (160, -40) to (160, 80) via side controls
+    b.bezier_path = BezierPath([
+        ControlPoint(160, -40),
+        ControlPoint(80, 60),
+        ControlPoint(240, 60),
+        ControlPoint(160, 80),
+    ])
+    # Path length ~200 px, GOLIATH speed is 30 px/s -> ~6.7s to complete.
+    # Run updates until path completes (or up to 30s safety).
+    for _ in range(300):
+        b.update(0.1)
+        if b.bezier_path.is_complete:
+            break
+    assert b.bezier_path.is_complete, "Path should complete within 30s"
+    # Right after completion, boss is at endpoint (160, 80).
+    # The very next update starts the sine fallback, so we just check
+    # the position at completion time by capturing before the next update.
+    assert abs(b.y - 80.0) < 1.0, f"Final y={b.y}, expected 80"
+
+
+def test_goliath_bezier_then_falls_back_to_sine() -> None:
+    """BLOQUE 56: After bezier path completes, GOLIATH resumes the
+    default sine oscillation (no longer stuck at endpoint)."""
+    from src.systems.bezier_path import BezierPath, ControlPoint
+    b = Boss()
+    b.id = BossId.GOLIATH
+    b.on_spawn()
+    # Short path that completes in ~1s.
+    b.bezier_path = BezierPath([
+        ControlPoint(160, 80),
+        ControlPoint(160, 80),
+        ControlPoint(160, 80),
+        ControlPoint(160, 80),  # all same point: zero-length, complete immediately
+    ])
+    # A zero-length path is complete from t=0.
+    b.update(0.016)
+    # When complete, falls back to sine. Capture x at t=0 (no sine yet).
+    b.update(0.0)  # no-op, but sets is_complete
+    # Force is_complete by setting t = 1 manually if not already
+    if b.bezier_path is not None:
+        b.bezier_path._t = 1.0
+        b.bezier_path._is_complete = True
+    # Now sine oscillation kicks in over time.
+    initial_x = b.x
+    b.update(0.5)
+    cfg = BOSS_CONFIGS[BossId.GOLIATH]
+    # After sine has been active, x should be within oscillation range
+    assert abs(b.x - cfg.anchor_x) <= 80.5, (
+        f"After sine fallback, x={b.x} out of range"
+    )
+
+
+def test_goliath_on_spawn_resets_bezier_path() -> None:
+    """BLOQUE 56: on_spawn() must clear bezier_path so each new spawn
+    starts with the default motion (unless explicitly re-assigned)."""
+    from src.systems.bezier_path import BezierPath, ControlPoint
+    b = Boss()
+    b.id = BossId.GOLIATH
+    b.bezier_path = BezierPath([
+        ControlPoint(0, 0), ControlPoint(50, 50), ControlPoint(100, 0),
+    ])
+    b.on_spawn()
+    assert b.bezier_path is None, "on_spawn must clear bezier_path"

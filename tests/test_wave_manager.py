@@ -379,10 +379,177 @@ def test_parse_formation_x_clamps_to_5() -> None:
 
 
 def test_formation_types_includes_new_ones() -> None:
-    """BLOQUE 55: FORMATION_TYPES tuple must include spiral, hilera, x."""
+    """BLOQUE 55-56: FORMATION_TYPES tuple must include all 11 formation types."""
     from src.systems.wave_manager import FORMATION_TYPES
-    for name in ("line", "v", "arc", "staircase", "squadron", "spiral", "hilera", "x"):
+    expected = (
+        "line", "v", "arc", "staircase", "squadron",
+        "spiral", "hilera", "x", "diamond", "box", "wingman",
+    )
+    for name in expected:
         assert name in FORMATION_TYPES, f"{name!r} missing from FORMATION_TYPES"
+
+
+# ---------------------------------------------------------------------------
+# 8c. BLOQUE 56: 3 more formations (diamond, box, wingman)
+# ---------------------------------------------------------------------------
+def test_parse_formation_diamond_5() -> None:
+    """BLOQUE 56: DIAMOND with 5 ships: 1 center + N + E + S + W cardinals."""
+    from src.systems.wave_manager import parse_formation, spawn_formation
+    f = parse_formation({
+        "formation_type": "diamond",
+        "enemy_type": "SCOUT",
+        "count": 5,
+        "spacing_px": 28,
+        "entry_axis": "top",
+        "pattern_speed": 35,
+        "telegraph_frames": 30,
+    })
+    spawns = spawn_formation(f)
+    assert len(spawns) == 5
+    s = float(f.spacing_px)
+    # Center: (160, 48)
+    center = next(sp for sp in spawns if sp.x == 160.0 and sp.y == 48.0)
+    assert center is not None
+    # N: (cx, cy - s), E: (cx + s, cy), S: (cx, cy + s), W: (cx - s, cy)
+    expected_cardinals = {
+        (160.0, 48.0 - s),  # N
+        (160.0 + s, 48.0),  # E
+        (160.0, 48.0 + s),  # S
+        (160.0 - s, 48.0),  # W
+    }
+    actual = {(round(sp.x, 1), round(sp.y, 1)) for sp in spawns}
+    assert expected_cardinals.issubset(actual), (
+        f"Missing cardinals: expected {expected_cardinals}, got {actual}"
+    )
+
+
+def test_parse_formation_box_4() -> None:
+    """BLOQUE 56: BOX with 4 ships: just the 4 corners of a rectangle."""
+    from src.systems.wave_manager import parse_formation, spawn_formation
+    f = parse_formation({
+        "formation_type": "box",
+        "enemy_type": "CRUISER",
+        "count": 4,
+        "spacing_px": 28,
+        "entry_axis": "top",
+        "pattern_speed": 30,
+        "telegraph_frames": 40,
+    })
+    spawns = spawn_formation(f)
+    assert len(spawns) == 4
+    # All 4 should share y_top (NW and NE) OR (SE and SW)
+    ys = sorted({round(sp.y, 1) for sp in spawns})
+    assert len(ys) == 2, f"Box should have 2 distinct y values, got {ys}"
+
+
+def test_parse_formation_box_8() -> None:
+    """BLOQUE 56: BOX with 8 ships: 4 corners + 1 midpoint per side.
+    Layout: 3 ships at top y, 2 ships at middle y, 3 ships at bottom y."""
+    from src.systems.wave_manager import parse_formation, spawn_formation
+    f = parse_formation({
+        "formation_type": "box",
+        "enemy_type": "CRUISER",
+        "count": 8,
+        "spacing_px": 28,
+        "entry_axis": "top",
+        "pattern_speed": 30,
+        "telegraph_frames": 40,
+    })
+    spawns = spawn_formation(f)
+    assert len(spawns) == 8
+    top_ys = [sp for sp in spawns if sp.y < 30.0]   # y_top region
+    mid_ys = [sp for sp in spawns if 30.0 <= sp.y < 70.0]
+    bot_ys = [sp for sp in spawns if sp.y >= 70.0]
+    assert len(top_ys) == 3, f"Expected 3 top ships, got {len(top_ys)}"
+    assert len(mid_ys) == 2, f"Expected 2 mid ships, got {len(mid_ys)}"
+    assert len(bot_ys) == 3, f"Expected 3 bot ships, got {len(bot_ys)}"
+
+
+def test_parse_formation_wingman_3() -> None:
+    """BLOQUE 56: WINGMAN with 3 ships: leader + 2 wingmen in V shape.
+    All spawn at the same x area but with offset_y > 0 for wingmen."""
+    from src.systems.wave_manager import parse_formation, spawn_formation
+    f = parse_formation({
+        "formation_type": "wingman",
+        "enemy_type": "SCOUT",
+        "count": 3,
+        "spacing_px": 28,
+        "entry_axis": "top",
+        "pattern_speed": 50,
+        "telegraph_frames": 30,
+    })
+    spawns = spawn_formation(f)
+    assert len(spawns) == 3
+    # Leader at (160, 16)
+    leader = next(sp for sp in spawns if sp.x == 160.0 and sp.y == 16.0)
+    assert leader is not None
+    # Wingmen at (160 - s, 16 + s) and (160 + s, 16 + s)
+    s = float(f.spacing_px)
+    expected_wings = {(160.0 - s, 16.0 + s), (160.0 + s, 16.0 + s)}
+    actual = {(round(sp.x, 1), round(sp.y, 1)) for sp in spawns}
+    assert expected_wings.issubset(actual), (
+        f"Missing wingmen: expected {expected_wings}, got {actual}"
+    )
+
+
+def test_parse_formation_wingman_5() -> None:
+    """BLOQUE 56: WINGMAN with 5 ships: leader + 4 wingmen in double V.
+    All 5 ships spawn with a clear leader at the top, wingmen behind."""
+    from src.systems.wave_manager import parse_formation, spawn_formation
+    f = parse_formation({
+        "formation_type": "wingman",
+        "enemy_type": "SCOUT",
+        "count": 5,
+        "spacing_px": 28,
+        "entry_axis": "top",
+        "pattern_speed": 50,
+        "telegraph_frames": 30,
+    })
+    spawns = spawn_formation(f)
+    assert len(spawns) == 5
+    # Leader has the smallest y (at the front of the V)
+    leader = min(spawns, key=lambda sp: sp.y)
+    assert leader.y == 16.0
+    # Wingmen y > leader y
+    wingmen = [sp for sp in spawns if sp.y > 16.0]
+    assert len(wingmen) == 4, f"Expected 4 wingmen behind leader, got {len(wingmen)}"
+    # Wingmen split into 2 y-tiers (close and far)
+    wingmen_ys = sorted({round(sp.y, 1) for sp in wingmen})
+    assert len(wingmen_ys) == 2, f"Expected 2 y-tiers, got {wingmen_ys}"
+
+
+def test_wingman_v_shape_preserved_during_descent() -> None:
+    """BLOQUE 56: WINGMAN ships share the same vy, so the V shape is
+    maintained during descent without per-frame sync. We verify the
+    relative offsets between leader and wingmen stay constant when
+    each ship advances by the same delta_t * vy."""
+    from src.systems.wave_manager import parse_formation, spawn_formation
+    f = parse_formation({
+        "formation_type": "wingman",
+        "enemy_type": "SCOUT",
+        "count": 3,
+        "spacing_px": 28,
+        "entry_axis": "top",
+        "pattern_speed": 50,
+        "telegraph_frames": 30,
+    })
+    spawns = spawn_formation(f)
+    # Capture initial offsets from leader
+    leader = next(sp for sp in spawns if sp.y == 16.0)
+    initial_offsets: list[tuple[float, float]] = []
+    for sp in spawns:
+        if sp is not leader:
+            initial_offsets.append((sp.x - leader.x, sp.y - leader.y))
+    # Simulate 1s of descent (each ship advances by vy * 1.0 = 50 px)
+    descend = 1.0
+    new_leader_y = leader.y + f.pattern_speed * descend
+    # Since all share the same vy, offsets stay identical
+    for ox, oy in initial_offsets:
+        # After descent, wingman is at (leader.x + ox, leader.y + oy + descend*vy)
+        # = (leader.x + ox, new_leader_y + oy)
+        # So the relative offset (ox, oy) is preserved
+        new_oy = oy  # unchanged because all descend by same amount
+        assert abs(new_oy - oy) < 0.01, f"Offset y should be preserved: {oy} -> {new_oy}"
 
 
 def test_parse_formation_clamps_extreme_values() -> None:

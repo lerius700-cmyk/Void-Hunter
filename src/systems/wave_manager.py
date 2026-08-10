@@ -40,7 +40,10 @@ WAVES_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "waves"
 # ---------------------------------------------------------------------------
 # BLOQUE 41: formation types
 # ---------------------------------------------------------------------------
-FORMATION_TYPES: tuple[str, ...] = ("line", "v", "arc", "staircase", "squadron", "spiral", "hilera", "x")
+FORMATION_TYPES: tuple[str, ...] = (
+    "line", "v", "arc", "staircase", "squadron",
+    "spiral", "hilera", "x", "diamond", "box", "wingman",
+)
 
 
 class Formation(NamedTuple):
@@ -265,6 +268,99 @@ def spawn_formation(formation: Formation) -> list[Spawn]:
                 x=cx + ox,
                 y=cx_y + oy,
                 vx=0.0, vy=vy, kind=f.enemy_type,
+            ))
+    elif f.formation_type == "diamond":
+        # BLOQUE 56: DIAMOND — 1 center + 4 cardinals (N, E, S, W).
+        # Like X but rotated 45°: center cardinals are aligned with the
+        # screen axes. 5 ships: center + N + E + S + W. Typical count: 5.
+        cx_y = 48.0
+        vy = f.pattern_speed
+        s = float(f.spacing_px)
+        diamond_offsets: list[tuple[float, float]] = [(0.0, 0.0)]
+        if f.enemy_count >= 2:
+            diamond_offsets.append((0.0, -s))   # N
+        if f.enemy_count >= 3:
+            diamond_offsets.append((s, 0.0))    # E
+        if f.enemy_count >= 4:
+            diamond_offsets.append((0.0, s))    # S
+        if f.enemy_count >= 5:
+            diamond_offsets.append((-s, 0.0))   # W
+        diamond_offsets = diamond_offsets[:f.enemy_count]
+        for ox, oy in diamond_offsets:
+            spawns.append(Spawn(
+                x=cx + ox,
+                y=cx_y + oy,
+                vx=0.0, vy=vy, kind=f.enemy_type,
+            ))
+    elif f.formation_type == "box":
+        # BLOQUE 56: BOX — ships arranged in a rectangular perimeter.
+        # 8 ships: 4 corners + 4 midpoints. 4 ships: just the 4 corners.
+        # 12 ships: 4 corners + 8 midpoints (2 per side).
+        y_top = 16.0
+        vy = f.pattern_speed
+        n = f.enemy_count
+        box_w = float(f.spacing_px) * 2.0  # box width
+        box_h = 80.0  # box height (taller than wide, fits in playfield)
+        # Determine how many ships per side
+        if n <= 4:
+            # Just the 4 corners
+            per_side = 0
+        else:
+            # Distribute remaining ships evenly across 4 sides
+            per_side = (n - 4) // 4
+        half_w = box_w / 2.0
+        half_h = box_h / 2.0
+        cx_y = y_top + half_h
+        # 4 corners (always if n >= 1)
+        corners = [
+            (cx - half_w, cx_y - half_h),  # NW
+            (cx + half_w, cx_y - half_h),  # NE
+            (cx + half_w, cx_y + half_h),  # SE
+            (cx - half_w, cx_y + half_h),  # SW
+        ]
+        box_positions: list[tuple[float, float]] = list(corners[:min(4, n)])
+        if per_side > 0:
+            # Add midpoints along each side, starting from NW going clockwise
+            for side in range(4):
+                if len(box_positions) >= n:
+                    break
+                p0 = corners[side]
+                p1 = corners[(side + 1) % 4]
+                for k in range(1, per_side + 1):
+                    if len(box_positions) >= n:
+                        break
+                    t_k = k / (per_side + 1)
+                    box_positions.append((
+                        p0[0] + (p1[0] - p0[0]) * t_k,
+                        p0[1] + (p1[1] - p0[1]) * t_k,
+                    ))
+        for px, py in box_positions:
+            spawns.append(Spawn(x=px, y=py, vx=0.0, vy=vy, kind=f.enemy_type))
+    elif f.formation_type == "wingman":
+        # BLOQUE 56: WINGMAN — V-shaped leader-follower spawn layout
+        # (Star Fox / R-Type inspiration). All N ships spawn together
+        # at top-center with the leader at the apex and wingmen trailing
+        # in a V behind. All ships share the same vy, so the V shape is
+        # maintained during descent without per-frame sync.
+        #
+        # NOTE: This is the SPAWN LAYOUT for wingman. A true reactive
+        # leader-follower (follower reads leader.pos every frame and
+        # applies offset) would be a future enhancement; not needed
+        # while enemies share the same vy.
+        y_top = 16.0
+        vy = f.pattern_speed
+        s = float(f.spacing_px)
+        # Leader at (0, 0); followers trail in V: (-s,s), (+s,s), (-2s,2s), (+2s,2s)
+        wingman_offsets: list[tuple[float, float]] = [(0.0, 0.0)]
+        follower_offsets = [(-s, s), (s, s), (-s * 2, s * 2), (s * 2, s * 2)]
+        for k in range(f.enemy_count - 1):
+            wingman_offsets.append(follower_offsets[k % len(follower_offsets)])
+        for ox, oy in wingman_offsets:
+            spawns.append(Spawn(
+                x=cx + ox,
+                y=y_top + oy,
+                vx=0.0, vy=vy, kind=f.enemy_type,
+                time_offset_s=0.0,
             ))
     else:  # pragma: no cover — _clamp_formation already forces "line"
         return []

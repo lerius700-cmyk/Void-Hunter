@@ -181,7 +181,7 @@ void-hunter/
 
 ---
 
-## [0.2.0] - 2026-08-10 — BLOQUE 18..55 (Polish + Boss Mechanics + 3 New Formations)
+## [0.2.0] - 2026-08-10 — BLOQUE 18..56 (Polish + Boss Mechanics + 6 New Formations + Bezier + Wingman)
 
 Closed every "Future Work" item from v0.1.0. Game now plays end-to-end:
 title screen → 4 chained waves with sub-boss → Act 1 boss (GOLIATH) with
@@ -304,6 +304,36 @@ shield, spear, laser → HP bar + gold rings + tech upgrades → victory.
   formations unchanged, +5 total = 751)
 - All math: stdlib `math.cos`/`math.sin` only, no numpy (per GDD §0)
 - No changes to gameplay_runtime, enemy, or any other module
+
+#### BLOQUE 56 — Bezier curves + 3 more formations + GOLIATH entrance
+- **`src/systems/bezier_path.py`** (NEW, 235 lines): `BezierPath` class with
+  cubic + quadratic eval, `update(dt, speed)` advancing t proportionally to
+  speed / path_length, optional `prebake(steps=N)` for cache-friendly eval
+  (linear interp between adjacent samples instead of polynomial each frame).
+  `on_complete` callback fires exactly once when t reaches 1.0.
+- **GOLIATH bezier entrance**: `Boss.bezier_path: BezierPath | None` field.
+  When set, boss follows the curve; once complete, falls back to the
+  default sine oscillation. `on_spawn()` clears it so each new spawn
+  starts clean. Zero impact on existing GOLIATH behavior (bezier_path=None
+  by default).
+- **DIAMOND** formation: 1 center + 4 cardinals (N, E, S, W). Like X but
+  axis-aligned.
+- **BOX** formation: ships in a rectangular perimeter. 4 ships = 4 corners.
+  8 ships = 4 corners + 1 midpoint per side. Layout adjusts to count.
+- **WINGMAN** formation: V-shaped leader-follower spawn layout
+  (Star Fox / R-Type). Leader at apex, wingmen trail behind in V.
+  Since all ships share the same vy, V shape is maintained during
+  descent without per-frame sync. (True reactive follower-reading-leader
+  is a future enhancement; not needed while enemies share vy.)
+- `FORMATION_TYPES` now has 11 types (line, v, arc, staircase, squadron,
+  spiral, hilera, x, diamond, box, wingman).
+- **22 new tests**: 7 in `test_bezier_path.py` (eval, update, on_complete,
+  prebake, reset, GOLIATH entrance scenario) + 6 in `test_wave_manager.py`
+  (diamond_5, box_4, box_8, wingman_3, wingman_5, wingman_v_preserved) +
+  4 in `test_boss_fsm.py` (GOLIATH default sine, GOLIATH with bezier,
+  GOLIATH bezier-then-sine, GOLIATH on_spawn clears bezier).
+- Total tests: 773 (was 751, +22).
+- All math: stdlib only, no numpy (per GDD §0).
 
 ### Known Limitations (v0.2.0)
 

@@ -13,6 +13,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # avoid runtime import cycles
+    from src.systems.bezier_path import BezierPath
 from enum import Enum
 
 import pygame
@@ -105,6 +109,10 @@ class Boss:
     on_death: bool = False
     # Internal
     _phase_reported: int = 1
+    # BLOQUE 56: optional bezier path for entrance / cinematic motion.
+    # When set and not complete, the boss follows this path instead of
+    # the default sine oscillation. After completion, falls back to sin.
+    bezier_path: "BezierPath | None" = None
 
     def on_spawn(self) -> None:
         self.on_phase_transition = 0
@@ -116,6 +124,7 @@ class Boss:
         self.bgm_tempo_mult = 1.0
         self.hitbox_factor = 0.7
         self.vx = 0.0
+        self.bezier_path = None  # BLOQUE 56: default to legacy sin motion
         self.vy = 0.0
 
     def on_release(self) -> None:
@@ -165,9 +174,16 @@ class Boss:
         """Advance movement, fire cooldown, attack selection."""
         if dt <= 0.0:
             return
-        # Sine oscillation around anchor
         cfg = BOSS_CONFIGS[self.id]
-        if cfg.speed > 0.0:
+        # BLOQUE 56: if a bezier path is set and not yet complete, follow
+        # the path. Once complete, fall back to the default sine oscillation
+        # so existing boss behavior (e.g. GOLIATH) is preserved.
+        if self.bezier_path is not None and not self.bezier_path.is_complete:
+            bx, by = self.bezier_path.update(dt, speed=cfg.speed)
+            self.x = bx
+            self.y = by
+        elif cfg.speed > 0.0:
+            # Sine oscillation around anchor (default behavior).
             self.move_t += dt
             self.x = cfg.anchor_x + math.sin(self.move_t * 0.5) * 80.0
         # Fire cooldown
