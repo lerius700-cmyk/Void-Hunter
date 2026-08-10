@@ -85,6 +85,9 @@ POWERUP_BOMB = "bomb"
 POWERUP_POWER = "power"
 POWERUP_SCORE = "score"
 POWERUP_1UP = "1up"
+# BLOQUE 53c: gold ring (Star Fox). Heals on touch; 3 stacked doubles
+# the player's max HP (one-time per run).
+POWERUP_GOLD_RING = "gold_ring"
 
 # Color the play-area frame uses (matches the parallax palette vibe)
 _BORDER_COLOR = (60, 60, 90)
@@ -2276,11 +2279,21 @@ class GameplayRuntime:
             self._play_sfx("act_clear", volume=0.8)
 
     def _maybe_drop_powerup(self, e: Enemy) -> None:
-        """Roll for a power-up drop on enemy kill (per ENEMY_CONFIGS)."""
+        """Roll for a power-up drop on enemy kill (per ENEMY_CONFIGS).
+
+        BLOQUE 53c: gold rings have a separate fixed drop chance
+        (GOLD_RING_DROP_CHANCE). They roll BEFORE the regular drop
+        table so the player gets a steady supply.
+        """
         from src.entities.enemies.enemy import ENEMY_CONFIGS
+        from src.core.settings import GOLD_RING_DROP_CHANCE
         cfg = ENEMY_CONFIGS.get(e.kind)
         if cfg is None:
             return
+        # BLOQUE 53c: gold ring drop (independent of the regular drop table)
+        if random.random() < GOLD_RING_DROP_CHANCE:
+            self._spawn_powerup(POWERUP_GOLD_RING, e.x, e.y)
+        # Regular drop roll
         roll = random.random()
         # Power-up priority: bomb > 1up > power > score
         if roll < cfg.drop_bomb_pct and self._player.bombs_max > 0:
@@ -2294,6 +2307,7 @@ class GameplayRuntime:
     def _spawn_powerup(self, kind: str, x: float, y: float) -> None:
         color_map = {
             POWERUP_BOMB: (255, 180, 80),
+            POWERUP_GOLD_RING: (255, 220, 100),  # BLOQUE 53c
             POWERUP_POWER: (180, 220, 255),
             POWERUP_SCORE: (255, 240, 100),
             POWERUP_1UP: (120, 255, 180),
@@ -2328,6 +2342,33 @@ class GameplayRuntime:
         elif kind == POWERUP_POWER:
             # "Power" = score bonus in this simplified game
             self._scoring.on_kill(1000)
+        elif kind == POWERUP_GOLD_RING:
+            # BLOQUE 53c: Star Fox gold ring — heal + stack toward
+            # one-time HP double. Visual feedback handled in the draw
+            # and HUD layers.
+            doubled = self._player.add_gold_ring()
+            if doubled:
+                # Big visual + score popup for the HP double event
+                self._emit_burst(self._player.x, self._player.y,
+                                  count=24, kind="explosion")
+                self._emit_burst(self._player.x, self._player.y,
+                                  count=16, kind="spark",
+                                  color=(255, 220, 100))
+                self._add_shockwave(self._player.x, self._player.y, 60.0)
+                self._score_popups.append(ScorePopup(
+                    x=self._player.x, y=self._player.y - 16, vy=-50.0,
+                    text="HP x2 !", color=(255, 240, 120),
+                    life=2.0, max_life=2.0,
+                ))
+                self._play_sfx("multiplier_up", volume=0.9)
+                self._hitstop.trigger(4)
+                self._shake.add_trauma(0.4)
+            else:
+                self._score_popups.append(ScorePopup(
+                    x=self._player.x, y=self._player.y - 16, vy=-30.0,
+                    text=f"+HP", color=(255, 220, 80),
+                    life=0.8, max_life=0.8,
+                ))
             self._score_popups.append(ScorePopup(
                 x=self._player.x, y=self._player.y - 16, vy=-40.0,
                 text="+1000", color=(180, 220, 255), life=1.2, max_life=1.2,
@@ -2351,9 +2392,34 @@ class GameplayRuntime:
             flash.fill((255, 60, 40, 100))
             target.blit(flash, (0, 0))
         # Power-ups — BLOQUE 23: pulsing halo so they stand out
+        # BLOQUE 53c: gold rings get a special swirling render
         for p in self._powerups:
             alpha = max(0, min(255, int(255 * (p.life / 2.0))))
             cx, cy = int(p.x) + shx, int(p.y) + shy
+            if p.kind == POWERUP_GOLD_RING:
+                # Special gold ring render — outer ring + inner core,
+                # slowly spinning for that "collectible" feel
+                pulse = 1.0 + 0.4 * math.sin(self._t * 4.0)
+                outer_r = int(8 * pulse)
+                # Outer glow
+                glow = pygame.Surface((outer_r * 2 + 6, outer_r * 2 + 6), pygame.SRCALPHA)
+                pygame.draw.circle(glow, (255, 220, 100, max(0, alpha // 3)),
+                                   (outer_r + 3, outer_r + 3), outer_r + 2)
+                target.blit(glow, (cx - outer_r - 3, cy - outer_r - 3))
+                # Ring body (just the outline)
+                pygame.draw.circle(target, (255, 220, 100, alpha),
+                                   (cx, cy), outer_r, 2)
+                # Inner core (golden)
+                pygame.draw.circle(target, (255, 240, 180, alpha),
+                                   (cx, cy), outer_r // 2)
+                # Sparkle (4 tiny dots rotating around the ring)
+                for i in range(4):
+                    a = self._t * 3.0 + i * (math.pi / 2)
+                    spx = cx + int(math.cos(a) * (outer_r + 3))
+                    spy = cy + int(math.sin(a) * (outer_r + 3))
+                    pygame.draw.circle(target, (255, 255, 200, alpha),
+                                       (spx, spy), 1)
+                continue
             # Pulsing halo (radius oscillates with time)
             pulse = 1.0 + 0.5 * math.sin(self._t * 6.0)
             halo_r = int(7 * pulse)
