@@ -224,8 +224,17 @@ class GameplayRuntime:
         # BLOQUE 47: SQUADRON formation tracking — each squadron gets a unique
         # id so we can group leader + followers for choreographed movement.
         self._squadron_id_counter: int = 0
-        from src.core.settings import WINDOW_H, WINDOW_W
-        self._game_screen_size: tuple[int, int] = (WINDOW_W, WINDOW_H)
+        # BLOQUE 47.1: cache the actual display size from pygame so the
+        # mouse-to-internal scaling uses the real window dimensions, not
+        # the default WINDOW_W x WINDOW_H (which is 960x1440 = 4x scale).
+        # With --scale 3 the actual window is 720x1080, and using 960x1440
+        # here would make the reticle land at only 75% of the mouse pos.
+        surf = pygame.display.get_surface()
+        if surf is not None:
+            self._game_screen_size: tuple[int, int] = surf.get_size()
+        else:
+            from src.core.settings import WINDOW_H, WINDOW_W
+            self._game_screen_size = (WINDOW_W, WINDOW_H)
         # BLOQUE 22: extra polish
         self._muzzle_flash: float = 0.0  # 0..1 alpha of muzzle flash overlay
         # BLOQUE 38: which input caused the most recent muzzle flash
