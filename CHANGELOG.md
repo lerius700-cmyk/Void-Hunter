@@ -181,4 +181,136 @@ void-hunter/
 
 ---
 
+## [0.2.0] - 2026-08-10 — BLOQUE 18..53 (Polish + Boss Mechanics)
+
+Closed every "Future Work" item from v0.1.0. Game now plays end-to-end:
+title screen → 4 chained waves with sub-boss → Act 1 boss (GOLIATH) with
+shield, spear, laser → HP bar + gold rings + tech upgrades → victory.
+
+### Added
+
+#### BLOQUE 18-26 — Polish pass (sprite scale, mouse aim, charge aura)
+- Player sprite scaled 0.75, nose_lerp 28 px/s, removed legacy 360° spin bug
+- BGM disabled, 320x480 internal playfield, fast mouse tracking
+- WASD movement confirmed, shift-only dash, boost removed
+- 360° mouse aim (no clamp), snappier banking ±25° (was 15°)
+- LMB charge aura with energy absorption
+- Title screen "PRESS ANY KEY" (no auto-start)
+- Dense local energy aura (24-48px ring around player, not from screen edges)
+- 19 polish_*.png visual frames captured
+
+#### BLOQUE 36-39 — Weapons polish (L3 beam + continuous laser + homing missile)
+- L3 beam plasma recolored (cyan)
+- Continuous L3 plasma laser (no bullet spam, held saw SFX)
+- RMB rapid fire fix (165 px/s mouse follow, 50 deg/s)
+- Homing missile (B/L key, follows mouse, explodes on contact)
+
+#### BLOQUE 40-45 — Encounter refactor (formation system)
+- Formation types: LINE / V / ARC / STAIRCASE / SQUADRON
+- Density cap on overlapping spawns
+- Act 1 DEFAULT_WAVES use formations
+- Boss trigger 60s + perfect run
+- 28 wave JSONs (3 acts × 6 waves + boss)
+
+#### BLOQUE 46-47.1 — Star Fox squadron + reticle fix
+- Squadron formation (1 leader + 2 followers replaying path)
+- Reticle aligned to actual display size (was using stale display size)
+- 8 polish_*.png visual frames
+
+#### BLOQUE 48-49.1 — Chained wave system + local aura
+- WaveChain: 4 chained waves (O1=8, O2=13, O3=10, O4=12 ships) → sub-boss → boss
+- BossTrigger: 3-tier (main 45s, perfect 60s+kills≥1, safety 120s)
+- Title screen "PRESS ANY KEY" + charge aura + orange laser sparks
+- Localized energy aura (particles in 16-20px ring around player)
+
+#### BLOQUE 50-50.1 — Diffuse aura + sub-boss + warning signs
+- Diffuse energy aura (double-layer: P_SPARK outer + P_GLOW inner)
+- 43 → 62 ships in level 1 mode (O1:8→12, O2:13→19, O3:10→14, O4:12→17)
+- Act 1 default waves 4-6 → 6-8 ships each
+- New `EnemyKind.SUB_BOSS` — HP 20, speed 90, 2.5 shots/s, 3 Hz sine wobble
+- `sub_boss_after: True` on wave O2, runtime spawns in `_update_enemies`
+- BossIntroScene → RED ALARM (8 Hz pulse, diagonal stripes, !! INCOMING HOSTILE !!)
+- SubBossIntroScene → YELLOW WARNING (5 Hz pulse, subtler, ! WARNING !, HOSTILE FRENETIC)
+- New `GameState.SUB_BOSS_INTRO` registered in scene_manager + game.py
+- BLOQUE 50.1 fix: sub-boss intro no longer loops (resume from SUB_BOSS_INTRO
+  preserves player/weapon/score/chain, only clears transient visuals)
+
+#### BLOQUE 51-52 — GOLIATH redesigned + spear throw
+- GOLIATH = biblical giant warrior (12 visual layers, 64x60 px)
+  - Bronze armor, helmet with horns, visor, glowing red eyes
+  - Round shield with rivets, long spear, phase 2 armor cracks
+- `src/entities/boss_spear.py` — BossSpear dataclass with serpentine motion
+  - State machine: ready → winding (0.3s) → thrown (1.2s) → ready
+  - Main spear 3 HP, splits into 3 fragments in 40° cone on destroy
+  - +500 SPEAR bonus + score popup + hitstop on split
+  - 17 tests, 3 polish_*.png frames (winding, flight, split)
+
+#### BLOQUE 53a-d — Shield charge + HP bar + gold rings + tech upgrades
+- **53a** GOLIATH shield charge (20 hits) + 1s vertical laser
+  - Shield circle at (boss.x-30, boss.y+12, r=13)
+  - Player bullets consumed + counter++
+  - At 20 hits → 1s beam (8px wide), 1 dmg/frame
+  - Shield color: iron → blue → cyan-white based on charge
+- **53b** HP bar (Mega Man / Star Fox) — 30 max + 10 segments
+  - `Player.hp/hp_max` use `PLAYER_HP` (was 3)
+  - New `Player.heal(amount)` with cap
+  - HUD: 100x8px bar, 10 segments, color tier green/yellow/red
+- **53c** Gold rings (Star Fox) — 8% drop, +2 HP, 3-stack = HP double
+  - New `POWERUP_GOLD_RING` kind
+  - `Player.add_gold_ring()` increments counter
+  - At 3 → one-time `hp_max *= 2` + refill + `hp_doubled=True`
+  - 4 rotating sparkles, big "HP x2 !" popup on double
+- **53d** Tech upgrades — HP_BOOST_10 + GOLIATH_SUMMON
+  - HP_BOOST_10: +10% max HP (min +1, cap 999)
+  - GOLIATH_SUMMON: at elapsed ≥ 60s, destroys all live enemies
+    - +2000 score bonus, "GOLIATH SUMMONED!" popup
+    - Transitions to BOSS_INTRO
+
+### Quality Gates (Final)
+
+| Gate | Target | Actual |
+| --- | --- | --- |
+| `python main.py --check` | exit 0 | exit 0 |
+| `pytest -q` | all pass | **746 passed** |
+| `mypy src/` (strict) | 0 errors | **0 errors in 35 source files** |
+| `rg 'import motor' src/` | 0 matches | 0 matches (soberanía) |
+| Visual frames committed | 40 polish_*.png | 40 frames BLOQUE 1-40 |
+| Commits since v0.1.0 | – | 47 (BLOQUE 18-53) |
+
+### Architecture Notes (v0.2.0)
+
+- `src/ui/gameplay_runtime.py` — 4088 lines, 79 methods (god class)
+  - 16 `_draw_*` methods, 7 `_update_*` methods
+  - Clear sub-system clusters (input, weapons, wave, boss, collision, VFX)
+  - **Refactor deferred to v0.3.0** (would split into InputController,
+    WeaponManager, EnemySpawner, BossController, PlayerVFX, EnemyVFX,
+    CollisionManager, PowerupManager)
+- `src/entities/boss_spear.py` (BLOQUE 52) — new file, dataclass-based
+- `src/entities/player/player.py` — 621 lines, 7-state FSM + 6 new methods
+  (reset, take_damage, heal, add_gold_ring, add_tech_upgrade, is_invulnerable)
+- `src/ui/scenes.py` — 622 lines, 12 scenes (added SubBossIntroScene)
+- `src/systems/wave_manager.py` — 575 lines, formations + chained waves
+
+### Known Limitations (v0.2.0)
+
+- `gameplay_runtime.py` is a 4088-line god class (refactor in v0.3.0)
+- HUD rendering still embedded in gameplay_runtime (separate in v0.3.0)
+- No E2E integration test for full level 1 → sub-boss → boss flow
+- BLOQUE 47, 48, 49, 50, 51, 53a, 53b, 53d lack dedicated test files
+  (covered by gameplay_runtime + regression tests)
+- HYDRA / PHANTOM / NEMESIS still render as simple rect (only GOLIATH
+  got the full biblical giant redesign in BLOQUE 51)
+
+### Future Work (v0.3.0)
+
+- Split `gameplay_runtime.py` into 8-9 focused classes
+- Add integration test for full chained level 1 → sub-boss → boss
+- Add dedicated test files for BLOQUE 47-53d gaps
+- Redesign HYDRA / PHANTOM / NEMESIS visual (BLOQUE 51+ pattern)
+- Online leaderboard (currently local JSON)
+- Per-act audio theme switching (BGM off for now)
+
+---
+
 [0.1.0]: Initial production MVP. 17 BLOQUE delivered. 538 tests. 89.59% coverage. 0 mypy errors. 117.7 FPS stress.
+[0.2.0]: Polish + boss mechanics. BLOQUE 18-53 delivered. 746 tests. 0 mypy errors. 40 visual frames. Game is end-to-end playable.
