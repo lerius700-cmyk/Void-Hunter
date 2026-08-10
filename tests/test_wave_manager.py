@@ -270,6 +270,121 @@ def test_parse_formation_rejects_unknown_type() -> None:
         parse_formation({"formation_type": "circle", "enemy_type": "SCOUT", "count": 4})
 
 
+# ---------------------------------------------------------------------------
+# 8b. BLOQUE 55: 3 new formations (spiral, hilera, x)
+# ---------------------------------------------------------------------------
+def test_parse_formation_spiral_8() -> None:
+    """BLOQUE 55: SPIRAL with 8 ships in 2 turns produces 8 spiral spawns.
+    All ships have the same vy (= pattern_speed) and stay within the playfield
+    horizontally (cx ± 60 px) and vertically (y >= 32)."""
+    from src.systems.wave_manager import parse_formation, spawn_formation
+    f = parse_formation({
+        "formation_type": "spiral",
+        "enemy_type": "SCOUT",
+        "count": 8,
+        "spacing_px": 28,
+        "entry_axis": "top",
+        "pattern_speed": 35,
+        "telegraph_frames": 40,
+    })
+    spawns = spawn_formation(f)
+    assert len(spawns) == 8
+    # All ships descend at the same rate
+    for s in spawns:
+        assert s.vy == 35.0
+        assert s.vx == 0.0
+        assert s.kind == "SCOUT"
+    # Spiral stays within the 320-wide playfield (cx=160, max radius 60)
+    for s in spawns:
+        assert 100.0 <= s.x <= 220.0, f"x={s.x} out of spiral range"
+        assert 32.0 <= s.y <= 152.0, f"y={s.y} out of spiral vertical range [32, 152]"
+
+
+def test_parse_formation_hilera_5() -> None:
+    """BLOQUE 55: HILERA with 5 ships produces a tight vertical column.
+    All ships share the same x (center) and y increases by spacing_px
+    (clamped to [24, 32] by _clamp_formation)."""
+    from src.systems.wave_manager import parse_formation, spawn_formation
+    f = parse_formation({
+        "formation_type": "hilera",
+        "enemy_type": "DRONE",
+        "count": 5,
+        "spacing_px": 28,
+        "entry_axis": "top",
+        "pattern_speed": 50,
+        "telegraph_frames": 30,
+    })
+    spawns = spawn_formation(f)
+    assert len(spawns) == 5
+    # All same x (center)
+    xs = {round(s.x, 1) for s in spawns}
+    assert len(xs) == 1, f"Hilera must share x: {xs}"
+    # y stacked with clamped spacing (24..32)
+    spacing_used = round(spawns[1].y - spawns[0].y, 1)
+    assert 24.0 <= spacing_used <= 32.0, f"spacing_used={spacing_used} outside [24, 32]"
+    for i in range(2, len(spawns)):
+        assert abs(spawns[i].y - spawns[i - 1].y - spacing_used) < 0.01
+    # All descend
+    for s in spawns:
+        assert s.vy == 50.0
+
+
+def test_parse_formation_x_5() -> None:
+    """BLOQUE 55: X with 5 ships produces a cross pattern.
+    1 center at (cx, 48) + 4 cardinals (NW, NE, SW, SE) at spacing_px offset."""
+    from src.systems.wave_manager import parse_formation, spawn_formation
+    f = parse_formation({
+        "formation_type": "x",
+        "enemy_type": "HEAVY",
+        "count": 5,
+        "spacing_px": 28,
+        "entry_axis": "top",
+        "pattern_speed": 30,
+        "telegraph_frames": 45,
+    })
+    spawns = spawn_formation(f)
+    assert len(spawns) == 5
+    s = float(f.spacing_px)  # clamped to [24, 32]
+    # 1 ship at the exact center (cx, 48)
+    center = next(sp for sp in spawns if sp.x == 160.0 and sp.y == 48.0)
+    assert center is not None
+    # 4 cardinals: NW (-s,-s), NE (+s,-s), SW (-s,+s), SE (+s,+s)
+    expected_cardinals = {
+        (160.0 - s, 48.0 - s),
+        (160.0 + s, 48.0 - s),
+        (160.0 - s, 48.0 + s),
+        (160.0 + s, 48.0 + s),
+    }
+    actual = {(round(sp.x, 1), round(sp.y, 1)) for sp in spawns}
+    assert expected_cardinals.issubset(actual), (
+        f"Missing cardinals: expected {expected_cardinals}, got {actual}"
+    )
+
+
+def test_parse_formation_x_clamps_to_5() -> None:
+    """BLOQUE 55: X formation with count > 5 still returns only 5 spawns.
+    Extra ships are dropped (X is a fixed-shape pattern)."""
+    from src.systems.wave_manager import parse_formation, spawn_formation
+    f = parse_formation({
+        "formation_type": "x",
+        "enemy_type": "HEAVY",
+        "count": 7,  # over-spec
+        "spacing_px": 28,
+        "entry_axis": "top",
+        "pattern_speed": 30,
+        "telegraph_frames": 45,
+    })
+    spawns = spawn_formation(f)
+    assert len(spawns) == 5, f"X must cap at 5 ships, got {len(spawns)}"
+
+
+def test_formation_types_includes_new_ones() -> None:
+    """BLOQUE 55: FORMATION_TYPES tuple must include spiral, hilera, x."""
+    from src.systems.wave_manager import FORMATION_TYPES
+    for name in ("line", "v", "arc", "staircase", "squadron", "spiral", "hilera", "x"):
+        assert name in FORMATION_TYPES, f"{name!r} missing from FORMATION_TYPES"
+
+
 def test_parse_formation_clamps_extreme_values() -> None:
     """BLOQUE 41: out-of-range values are clamped, not passed through."""
     from src.systems.wave_manager import parse_formation

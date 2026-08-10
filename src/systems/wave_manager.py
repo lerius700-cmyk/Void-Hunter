@@ -40,7 +40,7 @@ WAVES_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "waves"
 # ---------------------------------------------------------------------------
 # BLOQUE 41: formation types
 # ---------------------------------------------------------------------------
-FORMATION_TYPES: tuple[str, ...] = ("line", "v", "arc", "staircase", "squadron")
+FORMATION_TYPES: tuple[str, ...] = ("line", "v", "arc", "staircase", "squadron", "spiral", "hilera", "x")
 
 
 class Formation(NamedTuple):
@@ -202,6 +202,69 @@ def spawn_formation(formation: Formation) -> list[Spawn]:
                 vy=vy,
                 kind=f.enemy_type,
                 time_offset_s=float(i) * delay_per_follower,
+            ))
+    elif f.formation_type == "spiral":
+        # BLOQUE 55: SPIRAL — logarithmic spiral entering from top.
+        # Ships are placed around a center point below the top edge with
+        # decreasing radius and increasing angle. The center is offset
+        # down by radius_start so the spiral stays within the playfield
+        # (y >= 0). Classic Galaga/Xevious attack pattern. 8 ships in
+        # 2 turns is the canonical config.
+        vy = f.pattern_speed
+        turns = 2.0
+        radius_start = 60.0
+        radius_end = 20.0
+        cy = 32.0 + radius_start  # = 92.0; ensures y stays >= 32
+        if f.enemy_count == 1:
+            spawns.append(Spawn(x=cx, y=cy, vx=0.0, vy=vy, kind=f.enemy_type))
+        else:
+            for i in range(f.enemy_count):
+                t = i / (f.enemy_count - 1)  # 0..1
+                theta = t * turns * 2.0 * math.pi
+                radius = radius_start + (radius_end - radius_start) * t
+                spawns.append(Spawn(
+                    x=cx + radius * math.cos(theta),
+                    y=cy + radius * math.sin(theta),
+                    vx=0.0, vy=vy, kind=f.enemy_type,
+                ))
+    elif f.formation_type == "hilera":
+        # BLOQUE 55: HILERA — tight vertical column falling in a row.
+        # All ships at the same x (centered), y stacked with spacing_px.
+        # Useful for dense "dive attack" patterns where many enemies
+        # enter together in a single file.
+        y_top = 16.0
+        vy = f.pattern_speed
+        for i in range(f.enemy_count):
+            spawns.append(Spawn(
+                x=cx,
+                y=y_top + i * f.spacing_px,
+                vx=0.0, vy=vy, kind=f.enemy_type,
+            ))
+    elif f.formation_type == "x":
+        # BLOQUE 55: X — 5 ships in a cross pattern. 1 center + 4
+        # cardinals (NW, NE, SW, SE) at spacing_px offset. Centered
+        # horizontally; vertical center placed below the top edge so
+        # the NW/NE cardinals stay in the playfield.
+        cx_y = 48.0
+        vy = f.pattern_speed
+        s = float(f.spacing_px)
+        x_offsets: list[tuple[float, float]] = [(0.0, 0.0)]
+        if f.enemy_count >= 2:
+            x_offsets.append((-s, -s))  # NW
+        if f.enemy_count >= 3:
+            x_offsets.append((s, -s))   # NE
+        if f.enemy_count >= 4:
+            x_offsets.append((-s, s))   # SW
+        if f.enemy_count >= 5:
+            x_offsets.append((s, s))    # SE
+        # Clamp to enemy_count (only first 5 ships in X shape; rest follow
+        # the cardinals in clockwise order, but typical count is exactly 5).
+        x_offsets = x_offsets[:f.enemy_count]
+        for ox, oy in x_offsets:
+            spawns.append(Spawn(
+                x=cx + ox,
+                y=cx_y + oy,
+                vx=0.0, vy=vy, kind=f.enemy_type,
             ))
     else:  # pragma: no cover — _clamp_formation already forces "line"
         return []

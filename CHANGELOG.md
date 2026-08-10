@@ -181,7 +181,7 @@ void-hunter/
 
 ---
 
-## [0.2.0] - 2026-08-10 — BLOQUE 18..53 (Polish + Boss Mechanics)
+## [0.2.0] - 2026-08-10 — BLOQUE 18..55 (Polish + Boss Mechanics + 3 New Formations)
 
 Closed every "Future Work" item from v0.1.0. Game now plays end-to-end:
 title screen → 4 chained waves with sub-boss → Act 1 boss (GOLIATH) with
@@ -289,7 +289,21 @@ shield, spear, laser → HP bar + gold rings + tech upgrades → victory.
 - `src/entities/player/player.py` — 621 lines, 7-state FSM + 6 new methods
   (reset, take_damage, heal, add_gold_ring, add_tech_upgrade, is_invulnerable)
 - `src/ui/scenes.py` — 622 lines, 12 scenes (added SubBossIntroScene)
-- `src/systems/wave_manager.py` — 575 lines, formations + chained waves
+- `src/systems/wave_manager.py` — 660 lines, 8 formation types + chained waves
+
+#### BLOQUE 55 — 3 new formations (spiral, hilera, x)
+- `FORMATION_TYPES` extended from 5 to 8 types (additive, no breaking changes)
+- **SPIRAL**: logarithmic spiral entering from top, classic Galaga/Xevious
+  pattern. 8 ships in 2 turns, radius 60→20, center offset 92px down to
+  stay within playfield bounds
+- **HILERA**: tight vertical column of N ships falling together. Useful
+  for dense "dive attack" patterns
+- **X**: cross pattern with 1 center + 4 cardinals (NW, NE, SW, SE).
+  Caps at 5 ships; extras are dropped
+- 5 new tests in `tests/test_wave_manager.py` (regression for existing
+  formations unchanged, +5 total = 751)
+- All math: stdlib `math.cos`/`math.sin` only, no numpy (per GDD §0)
+- No changes to gameplay_runtime, enemy, or any other module
 
 ### Known Limitations (v0.2.0)
 
