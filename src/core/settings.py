@@ -58,6 +58,10 @@ GOLD_RING_DRAW_LIFE: int = 30            # ring powerup special unit (max 30 sta
 # BLOQUE 53d: tech upgrade system. Each level drops specific pieces.
 TECH_UPGRADES_PER_LEVEL: int = 2         # level 1 has 2 (sub-boss drop + perfect drop)
 TECH_HP_BOOST_PCT: float = 0.10          # +10% max HP per HP_BOOST upgrade
+# GOLIATH_SUMMON upgrade: triggers at second 60 of the level, skipping
+# the rest of the chain and going to the boss fight with a giant
+# "friendly GOLIATH sweeps the screen" visual.
+GOLIATH_SUMMON_AT_S: float = 60.0
 # Maximum HP cap (to prevent runaway doubling)
 PLAYER_HP_ABSOLUTE_MAX: int = 999
 PLAYER_SPEED: float = 165.0               # px/s — BLOQUE 38: was 130

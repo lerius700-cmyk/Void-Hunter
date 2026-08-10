@@ -1825,12 +1825,42 @@ class GameplayRuntime:
         awarded = self._scoring.on_kill(score, is_boss=False, is_element_bonus=element_bonus)
         # BLOQUE 50: sub-boss gets the SUB_BOSS_FLAT_SCORE bonus on top of
         # the regular score, and clearing the sub-boss resumes the chain.
+        # BLOQUE 53d: in level 1 mode, the sub-boss drops a tech upgrade
+        # (HP_BOOST_10 = +10% max HP).
         if e.kind == EnemyKind.SUB_BOSS:
             from src.core.settings import SUB_BOSS_FLAT_SCORE
             self._scoring.on_kill(SUB_BOSS_FLAT_SCORE)
             self._sub_boss_alive = False
             if self._is_level1_mode() and self._level1_chain is not None:
                 self._level1_chain.clear_sub_boss_pending()
+                # BLOQUE 53d: drop HP_BOOST_10 tech upgrade
+                if "HP_BOOST_10" not in self._player.tech_upgrades:
+                    self._player.add_tech_upgrade("HP_BOOST_10")
+                    self._emit_burst(e.x, e.y, count=20, kind="spark",
+                                      color=(120, 255, 180))
+                    self._score_popups.append(ScorePopup(
+                        x=e.x, y=e.y - 6, vy=-30.0,
+                        text="HP+10%", color=(120, 255, 180),
+                        life=1.4, max_life=1.4,
+                    ))
+                    self._play_sfx("multiplier_up", volume=0.8)
+        # BLOQUE 53d: in level 1 mode, killing the LAST ship on a perfect
+        # run drops the GOLIATH_SUMMON tech upgrade (summons a friendly
+        # GOLIATH at the end of minute 1, i.e. second 59+).
+        if (self._is_level1_mode()
+                and self._level1_chain is not None
+                and self._level1_chain.perfect
+                and "GOLIATH_SUMMON" not in self._player.tech_upgrades
+                and self._level1_chain.kills + 1 >= self._level1_chain.total_ships):
+            self._player.add_tech_upgrade("GOLIATH_SUMMON")
+            self._emit_burst(e.x, e.y, count=20, kind="spark",
+                              color=(255, 200, 100))
+            self._score_popups.append(ScorePopup(
+                x=e.x, y=e.y - 6, vy=-30.0,
+                text="GOLIATH SUMMON", color=(255, 220, 140),
+                life=1.6, max_life=1.6,
+            ))
+            self._play_sfx("act_clear", volume=0.7)
         # BLOQUE 24: detect weapon level-up before/after on_kill
         level_before = self._weapon.level.value
         # Weapon XP
@@ -1986,8 +2016,13 @@ class GameplayRuntime:
 
         BLOQUE 50: also dispatches to SUB_BOSS_INTRO when the chain has
         just cleared a wave that triggers a mid-level sub-boss.
+
+        BLOQUE 53d: at second 60, if the player has the GOLIATH_SUMMON
+        tech upgrade, a friendly GOLIATH sweeps the remaining enemies
+        and the boss fight is triggered immediately.
         """
         from src.core.scene_manager import GameState
+        from src.core.settings import GOLIATH_SUMMON_AT_S
         chain = self._level1_chain
         trigger = self._level1_boss_trigger
         if chain is None or trigger is None:
@@ -1998,6 +2033,16 @@ class GameplayRuntime:
         # to GAMEPLAY (see _spawn_sub_boss_on_resume).
         if chain.sub_boss_pending and not self._sub_boss_alive:
             self._transition_to(GameState.SUB_BOSS_INTRO)
+            return
+        # BLOQUE 53d: GOLIATH_SUMMON trigger. If the player has the
+        # upgrade and the chain has been running for GOLIATH_SUMMON_AT_S
+        # seconds, summon the friendly GOLIATH. This skips the rest of
+        # the level and goes straight to the boss fight.
+        if ("GOLIATH_SUMMON" in self._player.tech_upgrades
+                and not getattr(self, "_goliath_summon_used", False)
+                and chain.elapsed_s >= GOLIATH_SUMMON_AT_S
+                and not chain.waves_complete):
+            self._trigger_goliath_summon()
             return
         # Wave state is already advanced by _spawn_level1_enemies (tick).
         # Evaluate boss trigger using chain state.
@@ -2014,6 +2059,54 @@ class GameplayRuntime:
                 from src.core.settings import PERFECT_RUN_BONUS
                 self._scoring.on_kill(PERFECT_RUN_BONUS)
             self._transition_to(GameState.BOSS_INTRO)
+
+    def _trigger_goliath_summon(self) -> None:
+        """BLOQUE 53d: friendly GOLIATH sweeps remaining enemies.
+
+        The friendly GOLIATH sweeps from the top of the screen downward,
+        destroying every remaining enemy with a giant sword slash. After
+        1.5s the boss fight is triggered. This is the player's reward
+        for collecting the GOLIATH_SUMMON upgrade (dropped by the last
+        ship on a perfect run).
+        """
+        from src.core.scene_manager import GameState
+        from src.core.settings import PERFECT_RUN_BONUS
+        self._goliath_summon_used = True
+        # Big visual: friendly GOLIATH materializes at the top, then
+        # a vertical sweep destroys all enemies.
+        if self._boss is None:
+            # Center "phantom" GOLIATH at top of screen for the sweep.
+            sweep_x = INTERNAL_W // 2
+            sweep_y = -10
+        # Destroy all live enemies with a giant burst
+        from src.entities.enemies.enemy import EnemyKind
+        for e in self._enemies.pool:
+            if not e.active or e.state.name == "DEAD":
+                continue
+            # Big explosion at each enemy
+            self._emit_burst(e.x, e.y, count=24, kind="explosion")
+            self._emit_burst(e.x, e.y, count=14, kind="shrapnel")
+            self._emit_burst(e.x, e.y, count=8, kind="spark",
+                              color=(255, 220, 140))
+            e.apply_damage(99)  # overkill — any enemy dies
+        # Mark waves complete + perfect so boss trigger fires next tick
+        if self._level1_chain is not None:
+            self._level1_chain.waves_complete = True
+        # Award the perfect bonus + a bonus for using GOLIATH_SUMMON
+        self._scoring.on_kill(2000)
+        # Big visual: screen flash + giant "GOLIATH" text overlay
+        self._screen_flash = 1.0
+        self._shake.add_trauma(0.7)
+        self._hitstop.trigger(8)
+        # Floating "GOLIATH" text at the player
+        self._score_popups.append(ScorePopup(
+            x=self._player.x, y=self._player.y - 16, vy=-60.0,
+            text="GOLIATH SUMMONED!", color=(255, 220, 100),
+            life=2.0, max_life=2.0,
+        ))
+        self._play_sfx("act_clear", volume=1.0)
+        # Trigger the boss fight next frame (or via the boss trigger)
+        self._transition_to(GameState.BOSS_INTRO)
 
     # ------------------------------------------------------------------
     # Player death
