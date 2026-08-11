@@ -105,11 +105,32 @@ PLAYER_PROPULSION_TRAIL_INTERVAL_S: float = 0.025  # ~40 Hz
 PLAYER_PROPULSION_WAKE_DELAY_S: float = 1.0
 PLAYER_PROPULSION_WAKE_LIFE_S: float = 0.8
 PLAYER_PROPULSION_WAKE_INTERVAL_S: float = 0.04  # ~25 Hz (sparser than main trail)
+# BLOQUE 58.11: Tron-style light trail. When the player PROPULSIONs, the
+# ship leaves a continuous chain of cyan wall segments behind it. Each
+# segment is a thick line drawn with a soft cyan gradient (Tron Legacy
+# neon). Enemies that touch the trail take 3x the L1 bullet damage
+# (TRON_TRAIL_DAMAGE_MULT), with a per-enemy hit cooldown to prevent
+# melting in a single frame.
+TRON_TRAIL_DAMAGE_MULT: float = 3.0
+TRON_TRAIL_SEGMENT_LENGTH: float = 8.0
+TRON_TRAIL_SEGMENT_THICKNESS: float = 3.0
+TRON_TRAIL_MAX_AGE_S: float = 2.5
+TRON_TRAIL_SPAWN_INTERVAL_S: float = 0.018  # ~55 Hz (smooth ribbon)
+TRON_TRAIL_MAX_SEGMENTS: int = 240
+TRON_TRAIL_HIT_COOLDOWN_S: float = 0.15   # ~7 Hz max hit rate per enemy
 PLAYER_INVULN_FRAMES: int = 60            # post-hit
 PLAYER_DEATH_DURATION_S: float = 1.20
 PLAYER_RESPAWN_INVULN_S: float = 1.0
 # BLOQUE 38: nose smoothing — snappier mouse follow (50°/s, was 28)
-PLAYER_NOSE_LERP_PER_S: float = 50.0
+# BLOQUE 58.13: bumped to 180°/s. At 50°/s the visible lag when
+# moving the mouse fast made the ship tip feel disconnected from
+# the cursor (the bullets tracked the mouse correctly because they
+# use a different code path, but the visual tip lagged). 180°/s
+# is the sweet spot: the tip follows the mouse with almost no
+# visible lag, but the lerp still gives the ship a sense of
+# "weight" when the player makes sharp turns. Above 360°/s the
+# rotation starts to feel robotic.
+PLAYER_NOSE_LERP_PER_S: float = 180.0
 # BLOQUE 35: sprite scale factors (visual reduction, hitbox unchanged)
 PLAYER_SPRITE_SCALE: float = 0.75   # player 32x24 -> 24x18
 BULLET_SPRITE_SCALE: float = 0.75   # player bullet 4x6 -> 3x5, etc.

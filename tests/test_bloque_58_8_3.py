@@ -76,12 +76,16 @@ def test_p_wake_kind_registered():
     )
 
 
-def test_player_has_wake_timer():
-    """BLOQUE 58.8.3: Player has a propulsion_wake_timer field."""
+def test_player_no_longer_has_wake_timer():
+    """BLOQUE 58.11: removed propulsion_wake_timer. The Tron trail
+    replaces the delayed wake and is managed by the engine, not the
+    Player.
+    """
     from src.entities.player import Player
     p = Player()
-    assert hasattr(p, "propulsion_wake_timer")
-    assert p.propulsion_wake_timer == 0.0
+    assert not hasattr(p, "propulsion_wake_timer"), (
+        "propulsion_wake_timer should be removed in BLOQUE 58.11"
+    )
 
 
 # -----------------------------------------------------------------------
@@ -168,58 +172,22 @@ def test_p_wake_full_lifecycle():
 # -----------------------------------------------------------------------
 # 4) End-to-end: player propulsion emits the wake
 # -----------------------------------------------------------------------
-def test_propulsion_emits_p_wake_particle():
-    """BLOQUE 58.8.3/58.8.4: _emit_propulsion_trail spawns a LAYERED
-    3-particle burst (P_GLOW halo + P_WAKE body + P_SPARK core) for
-    the spectral/neon feel. All three layers use the configured
-    PLAYER_PROPULSION_WAKE_DELAY_S as the base delay.
+def test_propulsion_emits_p_wake_particle_REMOVED():
+    """BLOQUE 58.11: the delayed wake emission was REMOVED. The
+    Tron-style light trail replaces it. The _emit_propulsion_trail
+    now only emits the main yellow/cyan thruster sparks (BLOQUE 58.8.1).
+
+    This test is intentionally a no-op — it documents the removal.
+    For the Tron trail, see tests/test_bloque_58_11.py.
     """
     from src.ui import gameplay_runtime as gpr
-    from src.entities.player import Player
-    from src.entities.player.player import PlayerState
-
-    rt = gpr.GameplayRuntime.__new__(gpr.GameplayRuntime)
-    rt._t = 0.0
-    rt._player = Player()
-    rt._player.state = PlayerState.PROPULSION
-    rt._player.x = 100.0
-    rt._player.y = 200.0
-    # Force the wake timer to be ready to fire
-    rt._player.propulsion_wake_timer = 999.0
-    rt._player.propulsion_trail_timer = 999.0
-
-    # Recording engine
-    calls: list[dict] = []
-    from src.systems.particle_engine import P_WAKE, P_SPARK, P_GLOW
-
-    class _RecordingEngine:
-        def __init__(self) -> None:
-            self.calls = []
-        def emit(self, kind, x, y, **kwargs):
-            self.calls.append({"kind": kind, "x": x, "y": y, **kwargs})
-            return None
-    eng = _RecordingEngine()
-    rt._particles = eng
-
-    rt._emit_propulsion_trail(1.0 / 60.0)
-
-    # BLOQUE 58.8.4: 3 layered particles per wake (P_GLOW + P_WAKE + P_SPARK)
-    wake_calls = [c for c in eng.calls if c["kind"] == P_WAKE]
-    glow_calls = [c for c in eng.calls if c["kind"] == P_GLOW]
-    spark_calls = [c for c in eng.calls if c["kind"] == P_SPARK]
-
-    assert len(wake_calls) >= 1, "Expected P_WAKE emission"
-    assert len(glow_calls) >= 1, "Expected P_GLOW halo emission"
-    assert len(spark_calls) >= 1, "Expected P_SPARK core emission"
-
-    # The P_WAKE must use a delay near the configured value
-    from src.core.settings import PLAYER_PROPULSION_WAKE_DELAY_S
-    assert abs(wake_calls[0]["delay_s"] - PLAYER_PROPULSION_WAKE_DELAY_S) < 0.2
-    # The neon color: high R, low G, high B (magenta-pink)
-    r, g, b = wake_calls[0]["color"]
-    assert r > 200 and b > 150, (
-        f"P_WAKE should be neon magenta (high R, high B). "
-        f"Got ({r}, {g}, {b})"
+    import inspect
+    src = inspect.getsource(gpr.GameplayRuntime._emit_propulsion_trail)
+    # The wake emission was removed — P_WAKE should not be in the
+    # propulsion trail source anymore.
+    assert "P_WAKE" not in src, (
+        "P_WAKE wake emission should be REMOVED from _emit_propulsion_trail "
+        "in BLOQUE 58.11 (only Tron trail now)"
     )
 
 

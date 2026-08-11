@@ -590,9 +590,13 @@ def test_resolution_grew_to_320x480():
 
 
 def test_nose_lerp_faster_per_spec():
-    """BLOQUE 38: PLAYER_NOSE_LERP_PER_S is 50 (was 28, was 12 originally)."""
+    """BLOQUE 38: PLAYER_NOSE_LERP_PER_S = 50 (was 28, was 12 originally).
+    BLOQUE 58.13: bumped to 180 (3.6x faster). The mouse follow now
+    tracks the cursor with almost no visible lag while keeping a
+    slight "weight" feel for sharp turns.
+    """
     from src.core.settings import PLAYER_NOSE_LERP_PER_S
-    assert PLAYER_NOSE_LERP_PER_S == 50.0
+    assert PLAYER_NOSE_LERP_PER_S == 180.0
 
 
 def test_nose_angle_lerps_when_stopped():
@@ -1698,12 +1702,16 @@ def test_bloque_38_player_speed_increased() -> None:
 
 
 def test_bloque_38_nose_lerp_snappier() -> None:
-    """BLOQUE 38: PLAYER_NOSE_LERP_PER_S is 50 (was 28, ~1.78x snappier)."""
+    """BLOQUE 38: PLAYER_NOSE_LERP_PER_S is 50 (was 28, ~1.78x snappier).
+    BLOQUE 58.13: bumped to 180 (3.6x faster). The mouse follow now
+    tracks the cursor with almost no visible lag while keeping a
+    slight "weight" feel for sharp turns.
+    """
     from src.core.settings import PLAYER_NOSE_LERP_PER_S
-    assert PLAYER_NOSE_LERP_PER_S >= 40.0, (
+    assert PLAYER_NOSE_LERP_PER_S >= 100.0, (
         f"Nose lerp too slow: {PLAYER_NOSE_LERP_PER_S}"
     )
-    assert PLAYER_NOSE_LERP_PER_S <= 80.0, (
+    assert PLAYER_NOSE_LERP_PER_S <= 400.0, (
         f"Nose lerp too aggressive: {PLAYER_NOSE_LERP_PER_S}"
     )
 

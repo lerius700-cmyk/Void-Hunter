@@ -44,6 +44,7 @@ from src.systems.projectile import (
 from src.systems.scoring_system import ScoringSystem
 from src.systems.screen_shake import ScreenShake
 from src.systems.slowmo import SlowMo
+from src.systems.tron_trail import TronTrail
 from src.systems.weapon_system import WeaponLevel, WeaponPath, WeaponSystem
 from src.ui.hud import HUD
 
@@ -182,6 +183,25 @@ class GameplayRuntime:
         # V apex + engines stay correctly oriented during the L-pattern
         # entries. 64x64 fits the 24x14 hitbox in all 4 orientations.
         self._sub_boss_scratch = pygame.Surface((64, 64), pygame.SRCALPHA)
+        # BLOQUE 58.11: Tron-style light trail for the player PROPULSION.
+        # When the player holds shift (PROPULSION state), the ship leaves
+        # a continuous chain of cyan wall segments behind it. Enemies that
+        # touch the trail take 3x bullet damage.
+        from src.core.settings import (
+            TRON_TRAIL_MAX_AGE_S, TRON_TRAIL_MAX_SEGMENTS,
+            TRON_TRAIL_SEGMENT_LENGTH, TRON_TRAIL_SEGMENT_THICKNESS,
+            TRON_TRAIL_HIT_COOLDOWN_S,
+        )
+        self._tron_trail = TronTrail(
+            max_segments=TRON_TRAIL_MAX_SEGMENTS,
+            segment_length=TRON_TRAIL_SEGMENT_LENGTH,
+            segment_thickness=TRON_TRAIL_SEGMENT_THICKNESS,
+            max_age=TRON_TRAIL_MAX_AGE_S,
+        )
+        self._tron_trail.hit_cooldown_s = TRON_TRAIL_HIT_COOLDOWN_S
+        # Game time used for the trail (separate from self._t which is
+        # wall-clock, so the trail continues to age during hitstop too).
+        self._game_time: float = 0.0
         self._wave_mgr = self._build_wave_manager()
         self._bosses = BossPool()
         self._boss: Optional[Boss] = None
@@ -2273,6 +2293,10 @@ class GameplayRuntime:
         slowmo_factor = self._slowmo.get_factor()
         effective_dt = dt * slowmo_factor
         self._t += effective_dt
+        # BLOQUE 58.11: game time advances in REAL dt (not effective_dt
+        # with slowmo) so the Tron trail's hit cooldown ages correctly
+        # even during hitstop / slowmo.
+        self._game_time += dt
         prev_player_state = self._player.state
         self._read_input()
         # BLOQUE 29: compute nose angle from mouse position
@@ -2320,6 +2344,21 @@ class GameplayRuntime:
             # BLOQUE 58.8.1: PROPULSION light trail (x2 speed, shift held)
             if self._player.state == PlayerState.PROPULSION:
                 self._emit_propulsion_trail(effective_dt)
+                # BLOQUE 58.11: Tron trail — spawn wall segments at the
+                # back of the ship while propelling. The angle matches
+                # the ship's current facing direction so the wall
+                # extends naturally along the flight path.
+                self._spawn_tron_trail_segment(effective_dt)
+        else:
+            # Player just died — clear the Tron trail so it doesn't
+            # linger forever or damage enemies after the player is gone.
+            self._tron_trail.reset()
+        # BLOQUE 58.11: age the Tron trail + check enemy collisions.
+        # Collision is 3x bullet damage (TRON_TRAIL_DAMAGE_MULT) with a
+        # per-enemy cooldown so a single enemy can't be melted in one
+        # frame.
+        self._tron_trail.update(effective_dt)
+        self._update_tron_trail_collisions()
         self._check_player_death_explosion()
         self._particles.update(effective_dt)
         self._hitstop.update()
@@ -2516,110 +2555,98 @@ class GameplayRuntime:
         dense stream of bright white/yellow sparks + a few cyan/blue
         core glows to give it the "rocket thruster" look.
 
-        BLOQUE 58.8.3: also emits a delayed orange WAKE particle every
-        PLAYER_PROPULSION_WAKE_INTERVAL_S seconds. The wake stays
-        invisible for PLAYER_PROPULSION_WAKE_DELAY_S (default 1.0s),
-        then becomes a bright orange glow at the player's POSITION 1
-        SECOND AGO. Since new wake particles are emitted every frame
-        at the player's CURRENT position, the visible trail lags the
-        ship by ~1 second — a delayed afterglow that "follows" the
-        player.
+        BLOQUE 58.11: the delayed orange WAKE emission (BLOQUE 58.8.3-
+        58.8.4) was REMOVED — the user wants ONLY the Tron-style
+        light trail (see self._tron_trail). The main propulsion trail
+        (yellow/cyan sparks) is kept for the immediate thruster feel.
         """
-        from src.systems.particle_engine import P_GLOW, P_SPARK, P_WAKE
+        from src.systems.particle_engine import P_GLOW, P_SPARK
         from src.core.settings import (
             PLAYER_PROPULSION_TRAIL_INTERVAL_S,
-            PLAYER_PROPULSION_WAKE_DELAY_S,
-            PLAYER_PROPULSION_WAKE_INTERVAL_S,
-            PLAYER_PROPULSION_WAKE_LIFE_S,
         )
         # Throttle: respect the per-frame interval (~40 Hz) for the
         # main propulsion trail (yellow sparks + cyan glows).
         if self._player.propulsion_trail_timer < PLAYER_PROPULSION_TRAIL_INTERVAL_S:
-            # Even if the main trail is throttled, still allow the wake
-            # to be emitted (it has its own timer).
-            pass
-        else:
-            self._player.propulsion_trail_timer = 0.0
-            px, py = self._player.x, self._player.y
-            # Engine positions (back of the ship, where the engines are drawn)
-            for sign in (-1, 1):
-                ex = px + sign * 2
-                ey = py + 4  # slightly behind the ship
-                # Bright yellow/white spark (the "thrust glow")
+            return
+        self._player.propulsion_trail_timer = 0.0
+        px, py = self._player.x, self._player.y
+        # Engine positions (back of the ship, where the engines are drawn)
+        for sign in (-1, 1):
+            ex = px + sign * 2
+            ey = py + 4  # slightly behind the ship
+            # Bright yellow/white spark (the "thrust glow")
+            self._particles.emit(
+                P_SPARK, ex, ey,
+                vx=(random.random() - 0.5) * 8.0,
+                vy=20.0 + (random.random() - 0.5) * 6.0,  # trailing BEHIND
+                life=0.22, radius=1.2,
+                color=(255, 240, 180),
+            )
+            # Cyan/white core (the "hot thruster")
+            if random.random() < 0.5:
+                self._particles.emit(
+                    P_GLOW, ex, ey,
+                    vx=(random.random() - 0.5) * 4.0,
+                    vy=15.0 + (random.random() - 0.5) * 4.0,
+                    life=0.18, radius=2.5,
+                    color=(180, 230, 255),
+                )
+            # Occasional orange ember
+            if random.random() < 0.3:
                 self._particles.emit(
                     P_SPARK, ex, ey,
-                    vx=(random.random() - 0.5) * 8.0,
-                    vy=20.0 + (random.random() - 0.5) * 6.0,  # trailing BEHIND
-                    life=0.22, radius=1.2,
-                    color=(255, 240, 180),
+                    vx=(random.random() - 0.5) * 6.0,
+                    vy=22.0 + (random.random() - 0.5) * 4.0,
+                    life=0.18, radius=1.0,
+                    color=(255, 180, 80),
                 )
-                # Cyan/white core (the "hot thruster")
-                if random.random() < 0.5:
-                    self._particles.emit(
-                        P_GLOW, ex, ey,
-                        vx=(random.random() - 0.5) * 4.0,
-                        vy=15.0 + (random.random() - 0.5) * 4.0,
-                        life=0.18, radius=2.5,
-                        color=(180, 230, 255),
-                    )
-                # Occasional orange ember
-                if random.random() < 0.3:
-                    self._particles.emit(
-                        P_SPARK, ex, ey,
-                        vx=(random.random() - 0.5) * 6.0,
-                        vy=22.0 + (random.random() - 0.5) * 4.0,
-                        life=0.18, radius=1.0,
-                        color=(255, 180, 80),
-                    )
-        # BLOQUE 58.8.3: spawn the delayed spectral wake at the player's
-        # CURRENT position. Throttled to ~25 Hz so the trail isn't
-        # too dense. The wake will be invisible for 1 second, then
-        # appear at the position where it was spawned (which is where
-        # the player was 1 second ago) and fade out over its life.
-        # BLOQUE 58.8.4: each wake is now a LAYERED 3-particle burst
-        # for the spectral/neon feel:
-        #   - P_GLOW (16x16 soft orange halo) — the ethereal outer glow
-        #   - P_WAKE (16x16 magenta-pink core) — the bright neon body
-        #   - P_SPARK (1x1 hot white center) — the hot inner dot
-        # The color mix (orange halo + magenta core + white center) +
-        # overlapping soft gradients gives the "spectral but colorful"
-        # look the user asked for. Each layer has a slightly different
-        # delay so they appear in sequence (orange first, then magenta,
-        # then white), creating a brief color shift effect.
-        if self._player.propulsion_wake_timer < PLAYER_PROPULSION_WAKE_INTERVAL_S:
-            return
-        self._player.propulsion_wake_timer = 0.0
-        # Spawn point: the ship's center with a small random offset
-        # for variety (so the trail isn't a single straight line).
-        wx = self._player.x + (random.random() - 0.5) * 4.0
-        wy = self._player.y + (random.random() - 0.5) * 4.0
-        # Layer 1: outer ethereal halo (soft orange, 16x16 glow)
-        self._particles.emit(
-            P_GLOW, wx, wy,
-            vx=0.0, vy=0.0,
-            life=PLAYER_PROPULSION_WAKE_LIFE_S * 1.1,
-            radius=16.0,
-            color=(255, 140, 60),  # warm orange
-            delay_s=PLAYER_PROPULSION_WAKE_DELAY_S,
+
+    # -----------------------------------------------------------------------
+    # BLOQUE 58.11: Tron trail helpers
+    # -----------------------------------------------------------------------
+    def _spawn_tron_trail_segment(self, dt: float) -> None:
+        """Spawn a new Tron wall segment at the back of the ship.
+
+        The segment is aligned with the ship's current facing direction
+        (so the wall extends along the flight path). The spawn position
+        is the ship's center, offset backward by `ship_back_offset`
+        world units.
+        """
+        # Ship angle is 0=right, pi/2=down in screen coords.
+        # We need to convert from the player's nose_angle (which uses
+        # the same convention) into a radians value.
+        from src.core.settings import PLAYER_SPRITE_SCALE
+        import math as _m
+        ship_angle_rad = _m.radians(self._player.nose_angle)
+        # Back offset = half the ship's "length" (nose-to-tail) so the
+        # segment spawns at the engine, not the center. The 0.75 sprite
+        # scale is the BLOQUE 35 visual scale.
+        ship_back_offset = 12.0 * PLAYER_SPRITE_SCALE
+        self._tron_trail.spawn_if_ready(
+            self._player.x, self._player.y,
+            ship_angle_rad, ship_back_offset, dt,
         )
-        # Layer 2: main body (magenta-pink neon, soft radial gradient)
-        self._particles.emit(
-            P_WAKE, wx, wy,
-            vx=0.0, vy=0.0,
-            life=PLAYER_PROPULSION_WAKE_LIFE_S,
-            radius=16.0,
-            color=(255, 110, 200),  # neon magenta-pink — spectral feel
-            delay_s=PLAYER_PROPULSION_WAKE_DELAY_S + 0.05,
-        )
-        # Layer 3: hot white center (tiny bright dot)
-        self._particles.emit(
-            P_SPARK, wx, wy,
-            vx=0.0, vy=0.0,
-            life=PLAYER_PROPULSION_WAKE_LIFE_S * 0.7,
-            radius=1.0,
-            color=(255, 255, 255),  # hot white core
-            delay_s=PLAYER_PROPULSION_WAKE_DELAY_S + 0.1,
-        )
+
+    def _update_tron_trail_collisions(self) -> None:
+        """Check every alive enemy against the Tron trail.
+
+        On hit, the enemy takes TRON_TRAIL_DAMAGE_MULT * L1_BULLET_DAMAGE
+        damage (currently 3x = 3 HP per touch). A per-enemy cooldown
+        prevents re-hit within TRON_TRAIL_HIT_COOLDOWN_S, so a single
+        enemy cannot be melted in one frame.
+        """
+        from src.core.settings import TRON_TRAIL_DAMAGE_MULT
+        from src.systems.weapon_system import WeaponSystem
+        # L1 bullet damage is 1 (see weapon_system.WEAPON_SPECS).
+        # We pass `damage = TRON_TRAIL_DAMAGE_MULT` directly so the
+        # enemy takes 3 HP per touch.
+        trail_damage = int(TRON_TRAIL_DAMAGE_MULT)
+        for e in self._enemies.pool:
+            if not e.active or e.state.name == "DEAD":
+                continue
+            if e.state.name == "DYING":
+                continue
+            self._tron_trail.check_enemy_collision(e, self._game_time, trail_damage)
 
     def _add_shockwave(self, x: float, y: float, max_radius: float = 60.0) -> None:
         """Add an expanding ring shockwave (bomb/charged-shot visual)."""
@@ -2874,6 +2901,12 @@ class GameplayRuntime:
         self._draw_bullets_with_glow(target, shx, shy)
         # BLOQUE 39: homing missiles (drawn after bullets, before player)
         self._draw_missiles(target, shx, shy)
+        # BLOQUE 58.11: Tron trail — drawn BEFORE the player so the ship
+        # sits on top of the wall, but AFTER the enemies so the trail
+        # overlaps the enemy hitboxes (which is the whole point — the
+        # wall damages enemies that overlap it).
+        if self._tron_trail.is_active():
+            self._tron_trail.draw(target, (shx, shy))
         # Player (only if not in DEAD state and not i-frames invisible)
         if not self._player.is_dead:
             self._draw_player(target, shx, shy)

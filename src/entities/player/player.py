@@ -122,10 +122,9 @@ class Player:
     dash_held_time: float = 0.0
     # BLOQUE 58.8.1: trail spawn timer (PROPULSION light trail).
     propulsion_trail_timer: float = 0.0
-    # BLOQUE 58.8.3: wake spawn timer (delayed orange afterglow).
-    # Separate from propulsion_trail_timer because the wake is throttled
-    # to a different rate (~25 Hz vs ~40 Hz for the main trail).
-    propulsion_wake_timer: float = 0.0
+    # BLOQUE 58.11: removed propulsion_wake_timer (was for the
+    # BLOQUE 58.8.3-58.8.4 delayed wake). The Tron trail replaces it
+    # and is managed by the engine (self._tron_trail), not the Player.
     # Hit
     invuln_frames: int = 0
     # Lifecycle
@@ -636,9 +635,8 @@ class Player:
         # gameplay_runtime (which has access to the particle engine).
         # We just expose the timer so the runtime knows when to spawn.
         self.propulsion_trail_timer += dt
-        # BLOQUE 58.8.3: wake spawn timer (separate throttle for the
-        # delayed orange afterglow).
-        self.propulsion_wake_timer += dt
+        # BLOQUE 58.11: removed propulsion_wake_timer (no more delayed
+        # wake). The Tron trail is managed by the engine.
         # Can fire during propulsion (brief SHOOT state, then back here)
         if self.input_fire and self.fire_cd <= 0.0:
             self.wants_to_shoot = True
