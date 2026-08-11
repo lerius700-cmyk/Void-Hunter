@@ -1,16 +1,20 @@
-"""Roguelike integration hooks (BLOQUE 57).
+"""Roguelike integration hooks (BLOQUE 57 / BLOQUE 58).
 
 Connects the roguelike core to the existing game systems WITHOUT
 modifying them. The hooks are opt-in: a CLI flag (--roguelike [seed])
-enables procedural wave generation; without the flag, the existing
+enables procedural level generation; without the flag, the existing
 18-wave JSON setup is used unchanged.
+
+BLOQUE 58: full level structure with sub-boss + final boss + powerups.
 
 API:
     is_roguelike_enabled() -> bool
     get_active_seed() -> int | None
     enable_roguelike(seed: int) -> None
     disable_roguelike() -> None
+    generate_procedural_level(level_idx, seed) -> ProceduralLevel
     generate_procedural_waves(level_idx, num_waves=6) -> list[dict]
+        (LEGACY: per-wave dict, kept for backward compat with BLOQUE 57)
 """
 from __future__ import annotations
 
@@ -21,6 +25,10 @@ from src.roguelike.formation_generator import (
     FormationFamily,
     FormationParams,
     ProceduralFormationGenerator,
+)
+from src.roguelike.level_generator import (
+    ProceduralLevel,
+    generate_procedural_level,
 )
 from src.roguelike.seed import RoguelikeSeed
 

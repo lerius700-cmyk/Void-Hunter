@@ -27,15 +27,29 @@ from src.roguelike.formation_generator import (
     FormationParams,
     ProceduralFormationGenerator,
 )
+from src.roguelike.boss_pool import BossSelection, select_boss
+from src.roguelike.powerup_pool import PowerupDrop, PowerupKind, select_powerup
+from src.roguelike.level_generator import (
+    LevelEvent,
+    LevelEventKind,
+    ProceduralLevel,
+    generate_procedural_level,
+)
 from src.roguelike.run import RoguelikeRun
 from src.roguelike.anti_stuck import StuckPatternDetector
 from src.roguelike.telemetry import DistributionTelemetry
 from src.roguelike.replay import ReplaySystem, ReplayDivergenceError
 
 __all__ = [
+    "BossSelection",
     "FormationFamily",
     "FormationParams",
+    "LevelEvent",
+    "LevelEventKind",
+    "PowerupDrop",
+    "PowerupKind",
     "ProceduralFormationGenerator",
+    "ProceduralLevel",
     "ReplayDivergenceError",
     "ReplaySystem",
     "RoguelikeRun",
@@ -43,4 +57,7 @@ __all__ = [
     "SeededRNG",
     "StuckPatternDetector",
     "DistributionTelemetry",
+    "generate_procedural_level",
+    "select_boss",
+    "select_powerup",
 ]

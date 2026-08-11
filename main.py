@@ -89,9 +89,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--roguelike", type=int, nargs="?", const=0, default=None, metavar="SEED",
-        help="BLOQUE 57: enable procedural roguelike mode. SEED is an optional int; "
-             "if omitted, derived from level+attempt+salt. Default waves (18 JSON) "
-             "are replaced by procedurally generated waves with the same seed.",
+        help="BLOQUE 58: full roguelike mode. SEED is an optional int; "
+             "if omitted, derived from level+attempt+salt. Procedurally generates "
+             "4 chained waves + sub-boss + final boss + powerup drops. "
+             "This is now the default mode (--campaign for the 18 hand-tuned JSON waves).",
+    )
+    parser.add_argument(
+        "--campaign", action="store_true",
+        help="BLOQUE 58: opt back into the 18 hand-tuned JSON waves (legacy mode).",
     )
     return parser.parse_args(argv)
 
@@ -260,12 +265,27 @@ def main(argv: list[str] | None = None) -> int:
         print(f"VOID HUNTER: --scale {args.scale} (window = {240*args.scale}x{360*args.scale})")
 
     if args.roguelike is not None:
-        # BLOQUE 57: enable procedural roguelike mode. The seed is
-        # optional: if user passed `--roguelike 42`, use 42; if just
-        # `--roguelike`, derive a default.
+        # BLOQUE 58: full roguelike mode. The seed is optional: if user
+        # passed `--roguelike 42`, use 42; if just `--roguelike`, derive.
         from src.roguelike.integration import enable_roguelike
         seed = enable_roguelike(seed=args.roguelike if args.roguelike != 0 else None)
-        print(f"VOID HUNTER: --roguelike mode enabled (seed={seed}, procedurally generated waves)")
+        print(f"VOID HUNTER: --roguelike mode (seed={seed})")
+        print(f"  - 4 chained waves per level (ship counts fixed)")
+        print(f"  - sub-boss at fixed position (after wave 2)")
+        print(f"  - final boss at fixed position (end of level)")
+        print(f"  - boss identity random per seed (4-boss pool)")
+        print(f"  - powerup drops between waves (seeded pool)")
+    elif args.campaign:
+        # BLOQUE 58: opt back into the 18 hand-tuned JSON waves.
+        from src.roguelike.integration import disable_roguelike
+        disable_roguelike()
+        print("VOID HUNTER: --campaign mode (18 hand-tuned JSON waves)")
+    else:
+        # BLOQUE 58: default is now --roguelike. The 18 JSON waves
+        # become opt-in via --campaign.
+        from src.roguelike.integration import enable_roguelike
+        seed = enable_roguelike(seed=None)
+        print(f"VOID HUNTER: default roguelike mode (seed={seed})")
 
     if args.check:
         return _cmd_check()

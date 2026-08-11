@@ -181,7 +181,7 @@ void-hunter/
 
 ---
 
-## [0.2.0] - 2026-08-10 — BLOQUE 18..57 (Polish + Boss + 6 Formations + Bezier + Roguelike Core)
+## [0.2.0] - 2026-08-10 — BLOQUE 18..58 (Polish + Boss + Formations + Bezier + Roguelike)
 
 Closed every "Future Work" item from v0.1.0. Game now plays end-to-end:
 title screen → 4 chained waves with sub-boss → Act 1 boss (GOLIATH) with
@@ -371,6 +371,62 @@ shield, spear, laser → HP bar + gold rings + tech upgrades → victory.
 - Total tests: 849 (was 773, +76).
 - Hard rules: no numpy, no global `random` import in the module
   (verified by test), no scipy.
+
+#### BLOQUE 58 — Full roguelike redesign (with shmup invariants)
+The game is now a **space-shooter & roguelike hybrid**. Default mode is
+roguelike (procedural); `--campaign` opts back into the 18 hand-tuned
+JSON waves.
+
+**BLOQUE 58 INVARIANTS** (per user requirement: not random, these are
+part of the shmup balance and scoring system):
+  - **Ship count per wave is FIXED**: Act 1 = 12/19/14/17, Act 2 =
+    15/22/18/20, Act 3 = 18/25/22/24. Same for all seeds.
+  - **Sub-boss appears at FIXED position** (after wave 2). Only the
+    boss identity is randomized.
+  - **Final boss appears at FIXED position** (end of level). Only the
+    boss identity is randomized.
+
+**ROGUELIKE content** (random per seed):
+  - **Formation type per wave**: 11-family pool with level-weighted
+    distribution (Act 1 basic-heavy, Act 3 all-equal).
+  - **Boss identity from 4-pool**: GOLIATH, HYDRA, PHANTOM, NEMESIS.
+    Level bias: Act 1 favors GOLIATH (0.55), Act 2 favors HYDRA (0.45),
+    Act 3 favors PHANTOM (0.40) and NEMESIS (0.30). But "any of 4 can
+    come out" — in 500 Act-1 seeds we see 3+ of the 4 bosses.
+  - **Bezier entrance path** for each boss: 4 control points derived
+    from seed (start off-screen top + 2 mid controls + anchor).
+  - **Powerup drops** between waves: 5-kind pool (gold_ring 50%,
+    heal_small 20%, bomb 15%, damage_boost 10%, nothing 5%).
+
+**New modules** (3 files in `src/roguelike/`):
+  - `boss_pool.py` — boss selection with level bias + procedural bezier
+  - `powerup_pool.py` — 5-kind weighted powerup pool
+  - `level_generator.py` — full level (4 waves + sub-boss + final boss
+    + powerup drops) with the BLOQUE 58 invariants
+
+**CLI changes**:
+  - `python main.py` → **default = roguelike mode** (procedural)
+  - `python main.py --roguelike 42` → explicit seed
+  - `python main.py --campaign` → opt back into the 18 hand-tuned JSON
+    waves (legacy mode)
+
+**27 new tests** in `tests/roguelike/`:
+  - test_boss_pool.py (7): valid boss, same-seed determinism,
+    variety, all-4-bosses-can-appear-in-Act-1, bezier 4 control points,
+    level bias, weight sum
+  - test_powerup_pool.py (6): valid kind, same-seed determinism,
+    variety, weight sum, gold_ring most common, nothing rare
+  - test_level_generator.py (14): 4 waves per level, sub-boss fixed
+    position, final boss at end, ship counts fixed per level (BLOQUE 58
+    invariant), formation varies by seed, same seed same level,
+    powerup drops between waves, boss bezier entrances, act 1/2/3
+    ship counts, default seed derivation
+
+**Total tests: 876** (was 849, +27).
+
+**Visual proof**: `polish_44_roguelike_level.png` — annotated frame of
+a procedural level (4 waves + sub-boss Hydra + final boss GOLIATH +
+3 powerup drops) at seed=42.
 
 ### Known Limitations (v0.2.0)
 
