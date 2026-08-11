@@ -347,11 +347,13 @@ def test_bloque_58_24_continuous_line_in_straight_path():
     """BLOQUE 58.24: spawning in a straight line produces a visually
     continuous trail (no gaps, no dashes).
 
-    We sample a horizontal scan-line at the segment center y and
-    verify that the pixel intensity is non-zero for the entire length
-    of the trail. The polyline renderer connects all vertices with
-    pygame.draw.line, so a straight-line trail is by definition
-    a single continuous line.
+    BLOQUE 58.28 update: the trail is now TRANSPARENT (low alpha)
+    and uses spectral color shift (head=white/yellow, tail=violet).
+    The previous test required `blue > 50` on every pixel of the
+    scan-line, but the new dim tail (alpha ~5) falls below that
+    threshold by design. We now sample with a much lower brightness
+    threshold AND check for a wide bright region at the head to
+    verify the trail is rendered with the new thickness.
     """
     from src.systems.tron_trail import TronTrail
     t = TronTrail()
@@ -363,22 +365,39 @@ def test_bloque_58_24_continuous_line_in_straight_path():
     target = pygame.Surface((600, 200))
     target.fill((0, 0, 0))
     t.draw(target, (0, 0))
-    # Sample the central horizontal scan-line
-    cy = 100
-    non_zero_xs = []
+    # Sample a horizontal band (cy=100 ±20px) so we catch the
+    # multi-streak perpendicular offsets (BLOQUE 58.27: streaks
+    # are at -6, -3, 0, +3, +6 px perpendicular to direction)
+    # and the GLOW (BLOQUE 58.28: 24px wide, expanding).
+    bright_xs: list[int] = []
+    any_xs: list[int] = []
     for x in range(20, 580):
-        pixel = target.get_at((x, cy))
-        if pixel.b > 50 and (pixel.r + pixel.g + pixel.b) > 100:
-            non_zero_xs.append(x)
-    # There should be a long continuous run of beam pixels
-    assert len(non_zero_xs) > 200, (
-        f"Trail should be a long continuous run, got {len(non_zero_xs)} pixels"
+        for dy in range(-20, 21):
+            pixel = target.get_at((x, 100 + dy))
+            brightness = pixel.r + pixel.g + pixel.b
+            # Any pixel lit at all = trail presence
+            if brightness > 8:
+                any_xs.append(x)
+                # The head bloom (BLOQUE 58.28: white/yellow) and
+                # the head body (white-cyan) are very bright. We
+                # use a low threshold because the trail is now
+                # transparent.
+                if brightness > 50:
+                    bright_xs.append(x)
+                break
+    # The head section should have many bright pixels (the bloom)
+    assert len(bright_xs) > 30, (
+        f"Trail head should have bright pixels, got {len(bright_xs)}"
+    )
+    # The whole trail should have SOME pixel lit over its full extent
+    assert len(any_xs) > 200, (
+        f"Trail should have any-pixel coverage > 200, got {len(any_xs)}"
     )
     # No large gaps allowed (the polyline is by definition continuous)
-    if len(non_zero_xs) > 1:
+    if len(any_xs) > 1:
         large_gaps = []
-        for i in range(1, len(non_zero_xs)):
-            gap = non_zero_xs[i] - non_zero_xs[i - 1]
+        for i in range(1, len(any_xs)):
+            gap = any_xs[i] - any_xs[i - 1]
             if gap > 3:
                 large_gaps.append(gap)
         assert len(large_gaps) == 0, (

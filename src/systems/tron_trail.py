@@ -1,7 +1,17 @@
-"""BLOQUE 58.11 + 58.22 + 58.24 + 58.25 + 58.27: Tron-style light trail for the player PROPULSION.
+"""BLOQUE 58.11 + 58.22 + 58.24 + 58.25 + 58.27 + 58.28: Tron-style light trail for the player PROPULSION.
 
 When the player enters PROPULSION state, the ship leaves a continuous
 glowing wall behind it (think Tron lightcycle / drift_loud reference).
+
+BLOQUE 58.28: trail thickness matches the engine fire plume.
+  The user pointed out the Tron trail looked like a thin line while
+  the engine fire plume (red-to-yellow animation) is a THICK puff.
+  Fix: bumped all layer widths (core 2→4, body 5→8, halo 10→16,
+  glow 18→24) so the visible beam matches the engine fire's
+  thickness (~14-18px). The spectral head now also starts with
+  yellow/orange (matching the fire color) and cools to cyan/blue
+  as the line ages, so the trail "leaves the engine fire behind"
+  and gradually cools into the Tron wall.
 
 BLOQUE 58.27: spectral multi-streak transparent trail.
   The user wanted the trail to feel like the reference images
@@ -334,37 +344,54 @@ class TronTrail:
             return
 
         # -----------------------------------------------------------------
-        # Spectral color shift: hot at the head, cool at the tail
+        # Spectral color shift: hot FIRE at the head, cool at the tail
         # -----------------------------------------------------------------
-        # The color is interpolated from "hot white" (head) to
-        # "cool blue/violet" (tail). This gives the "spectral" feel
-        # from the reference images.
+        # BLOQUE 58.28: the head color now matches the ship's
+        # propulsion fire (red/orange/yellow), then transitions to
+        # white-cyan, then cyan, then blue, then violet as the line
+        # cools. This makes the trail feel like the engine fire is
+        # "leaving a mark" that cools as it ages.
         def _spectral_color(life: float) -> tuple[int, int, int]:
-            """Interpolate color from hot-white to cool-violet by life.
+            """Interpolate color from FIRE (head) to violet (tail).
 
-            life=1.0 -> white-cyan (hot core, just emitted)
-            life=0.7 -> bright cyan
-            life=0.4 -> blue
+            life=1.0 -> yellow-white (hottest, just emitted)
+            life=0.9 -> orange/yellow (fire zone)
+            life=0.7 -> red-orange (cooling)
+            life=0.5 -> white-cyan
+            life=0.3 -> bright cyan
+            life=0.1 -> blue
             life=0.0 -> violet (cool, dissipating)
             """
-            if life > 0.7:
-                # Hot zone: white-cyan
-                t = (life - 0.7) / 0.3
-                r = int(210 + (255 - 210) * t)
-                g = int(255)
-                b = int(255)
-            elif life > 0.4:
-                # Bright cyan
-                t = (life - 0.4) / 0.3
-                r = int(0 + 80 * t)
-                g = int(255)
+            if life > 0.9:
+                # Hottest: yellow-white (just out of the engine)
+                t = (life - 0.9) / 0.1
+                r = int(255)
+                g = int(180 + 75 * t)
+                b = int(60 + 100 * t)
+            elif life > 0.7:
+                # Fire zone: orange/yellow
+                t = (life - 0.7) / 0.2
+                r = int(255)
+                g = int(120 + 60 * t)
+                b = int(40 + 20 * t)
+            elif life > 0.5:
+                # Red-orange (cooling)
+                t = (life - 0.5) / 0.2
+                r = int(200 + 55 * t)
+                g = int(100 + 100 * t)
+                b = int(100 + 100 * t)
+            elif life > 0.3:
+                # White-cyan transition
+                t = (life - 0.3) / 0.2
+                r = int(80 + 100 * t)
+                g = int(200 + 55 * t)
                 b = int(255)
             elif life > 0.1:
-                # Blue
-                t = (life - 0.1) / 0.3
+                # Bright cyan to blue
+                t = (life - 0.1) / 0.2
                 r = int(0)
                 g = int(160 + 80 * t)
-                b = int(220 + 35 * t)
+                b = int(255)
             else:
                 # Cool violet (dying)
                 t = life / 0.1
@@ -478,52 +505,67 @@ class TronTrail:
                         )
 
         # Pass 1: GLOW (very wide, very transparent, expands a lot)
-        # Lower base alpha for more transparency. The "transparent"
-        # the user wanted = low alpha throughout, so the line is
-        # see-through even at the head.
-        _draw_pass(width=18, base_alpha=18, life_curve_power=1.5,
+        # BLOQUE 58.28: thicker than 58.27 to match the engine fire
+        # thickness. The fire plume from the propulsor is ~14-18px
+        # wide; the Tron trail's overall visible extent should
+        # match that.
+        _draw_pass(width=24, base_alpha=18, life_curve_power=1.5,
                    width_expand=1.4)
         # Pass 2: HALO (wide, transparent, expands moderately)
-        _draw_pass(width=10, base_alpha=32, life_curve_power=1.6,
+        _draw_pass(width=16, base_alpha=32, life_curve_power=1.6,
                    width_expand=0.8)
-        # Pass 3: BODY (medium, semi-transparent)
-        _draw_pass(width=5, base_alpha=70, life_curve_power=1.7,
+        # Pass 3: BODY (medium, semi-transparent) — this is the
+        # "visible solid" part of the beam. The user wants this
+        # to be AS THICK AS the engine fire (~6-8px).
+        _draw_pass(width=8, base_alpha=85, life_curve_power=1.7,
                    width_expand=0.4)
-        # Pass 4: CORE (thin, but still semi-transparent)
-        # Core has the steepest falloff (1.9) so the bright center
-        # disappears FAST — the line "softens" into the body before
-        # the body fades. This is the ethereal feel.
-        _draw_pass(width=2, base_alpha=120, life_curve_power=2.0,
+        # Pass 4: CORE (the bright center of the beam)
+        # BLOQUE 58.28: bumped from 2 to 4 px to match the engine
+        # fire's "puffy center". Still semi-transparent so the
+        # trail doesn't look opaque.
+        _draw_pass(width=4, base_alpha=150, life_curve_power=2.0,
                    width_expand=0.0)
 
         # -----------------------------------------------------------------
         # Head bloom: extra bright burst at the very tip
         # -----------------------------------------------------------------
-        # The newest segment is the "head" of the trail. We add a
-        # small SRCALPHA glow burst there so the head feels like a
-        # fresh light source.
+        # BLOQUE 58.28: thicker head bloom to match the engine fire
+        # plume. The bloom is a 2-circle stack (wide soft + tight
+        # bright), both rendered in the fire color (yellow/orange)
+        # to feel like the engine fire is "leading" the trail.
         head_x, head_y, head_life = pts[-1]
         if head_life > 0.4:
-            bloom_alpha = int(min(255.0, 200.0 * (head_life - 0.4) / 0.6))
+            bloom_alpha = int(min(255.0, 220.0 * (head_life - 0.4) / 0.6))
             if bloom_alpha > 5:
-                hot_color = _spectral_color(1.0)  # white-cyan
+                # Fire color (yellow-orange) for the head bloom
+                fire_color = _spectral_color(0.95)  # yellow-white
                 try:
+                    # Wide soft outer glow
                     pygame.draw.circle(
                         target,
-                        (hot_color[0], hot_color[1], hot_color[2],
-                         int(bloom_alpha * 0.4)),
+                        (fire_color[0], fire_color[1], fire_color[2],
+                         int(bloom_alpha * 0.35)),
                         (head_x, head_y),
-                        7,
+                        12,
                     )
+                    # Medium orange ring
+                    pygame.draw.circle(
+                        target,
+                        (255, 180, 60, int(bloom_alpha * 0.7)),
+                        (head_x, head_y),
+                        8,
+                    )
+                    # Bright white-cyan core
                     pygame.draw.circle(
                         target,
                         (255, 255, 255, bloom_alpha),
                         (head_x, head_y),
-                        3,
+                        4,
                     )
                 except TypeError:
-                    pygame.draw.circle(target, hot_color, (head_x, head_y), 7)
-                    pygame.draw.circle(target, (255, 255, 255), (head_x, head_y), 3)
+                    pygame.draw.circle(target, fire_color, (head_x, head_y), 12)
+                    pygame.draw.circle(target, (255, 180, 60), (head_x, head_y), 8)
+                    pygame.draw.circle(target, (255, 255, 255), (head_x, head_y), 4)
 
         # -----------------------------------------------------------------
         # Sparkle particles: tiny stars along the trail
