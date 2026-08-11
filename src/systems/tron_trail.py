@@ -1,17 +1,24 @@
-"""BLOQUE 58.11 + 58.22 + 58.24 + 58.25 + 58.27 + 58.28: Tron-style light trail for the player PROPULSION.
+"""BLOQUE 58.11 + 58.22 + 58.24 + 58.25 + 58.27 + 58.28 + 58.29: Tron-style light trail for the player PROPULSION.
 
 When the player enters PROPULSION state, the ship leaves a continuous
 glowing wall behind it (think Tron lightcycle / drift_loud reference).
 
-BLOQUE 58.28: trail thickness matches the engine fire plume.
-  The user pointed out the Tron trail looked like a thin line while
-  the engine fire plume (red-to-yellow animation) is a THICK puff.
-  Fix: bumped all layer widths (core 2→4, body 5→8, halo 10→16,
-  glow 18→24) so the visible beam matches the engine fire's
-  thickness (~14-18px). The spectral head now also starts with
-  yellow/orange (matching the fire color) and cools to cyan/blue
-  as the line ages, so the trail "leaves the engine fire behind"
-  and gradually cools into the Tron wall.
+BLOQUE 58.29: thin trail — match the engine fire plume thickness.
+  BLOQUE 58.28 went too far in the opposite direction: it made the
+  trail a THICK puff (core=4, body=8, halo=16, glow=24) thinking the
+  user wanted a thick beam. The user actually wanted a THIN line
+  matching the engine fire plume (which is a narrow column, not a
+  wide puff). Reverted to thin:
+    - CORE:  2 px
+    - BODY:  3 px
+    - HALO:  5 px
+    - GLOW:  8 px
+  Plus a tight multi-streak (offsets +/- 1 and +/- 2 px) so the
+  spectral feel remains but the line stays narrow.
+
+BLOQUE 58.28 history: tried to match the engine fire by making
+  the trail thicker. User said the opposite — the fire is THIN
+  and the trail should match that thinness, not a thick puff.
 
 BLOQUE 58.27: spectral multi-streak transparent trail.
   The user wanted the trail to feel like the reference images
@@ -401,24 +408,21 @@ class TronTrail:
             return (r, g, b)
 
         # -----------------------------------------------------------------
-        # Multi-streak: 5 parallel lines with perpendicular offsets
+        # Multi-streak: 5 thin parallel lines with small perpendicular offsets
         # -----------------------------------------------------------------
-        # We compute the perpendicular offset for each line by
-        # sampling consecutive segment angles. The center streak
-        # is at offset 0 (the actual polyline), the side streaks
-        # are at +/- 3 and +/- 6 px perpendicular to the local
-        # direction. Each side streak has lower alpha and slightly
-        # wider width to create a softer "spectrum" / "ghost
-        # trail" effect — like multiple parallel light streaks
-        # in the reference image.
+        # BLOQUE 58.29: tight offsets to keep the line NARROW like the
+        # engine fire plume (which is a thin column, not a wide puff).
+        # The streaks are at +/- 1 and +/- 2 px from the centerline.
+        # Each side streak has lower alpha to create a soft "spectrum"
+        # feel while keeping the total line width small.
         #
         # Per-streak config: (perp_offset, alpha_mult, width_mult)
         streak_configs = [
-            (-6.0, 0.25, 1.4),  # far-left ghost
-            (-3.0, 0.5,  1.2),  # left ghost
+            (-2.0, 0.25, 1.0),  # far-left ghost (very faint)
+            (-1.0, 0.5,  1.0),  # left ghost
             ( 0.0, 1.0,  1.0),  # center bright streak
-            (+3.0, 0.5,  1.2),  # right ghost
-            (+6.0, 0.25, 1.4),  # far-right ghost
+            (+1.0, 0.5,  1.0),  # right ghost
+            (+2.0, 0.25, 1.0),  # far-right ghost (very faint)
         ]
 
         # -----------------------------------------------------------------
@@ -504,35 +508,31 @@ class TronTrail:
                             actual_width,
                         )
 
-        # Pass 1: GLOW (very wide, very transparent, expands a lot)
-        # BLOQUE 58.28: thicker than 58.27 to match the engine fire
-        # thickness. The fire plume from the propulsor is ~14-18px
-        # wide; the Tron trail's overall visible extent should
-        # match that.
-        _draw_pass(width=24, base_alpha=18, life_curve_power=1.5,
+        # Pass 1: GLOW (thin, very transparent, slight expand)
+        # BLOQUE 58.29: thin as the engine fire plume. Total visible
+        # width is ~8px (GLOW) + the perpendicular multi-streak.
+        _draw_pass(width=8, base_alpha=18, life_curve_power=1.5,
                    width_expand=1.4)
-        # Pass 2: HALO (wide, transparent, expands moderately)
-        _draw_pass(width=16, base_alpha=32, life_curve_power=1.6,
+        # Pass 2: HALO (thin, transparent)
+        _draw_pass(width=5, base_alpha=32, life_curve_power=1.6,
                    width_expand=0.8)
-        # Pass 3: BODY (medium, semi-transparent) — this is the
-        # "visible solid" part of the beam. The user wants this
-        # to be AS THICK AS the engine fire (~6-8px).
-        _draw_pass(width=8, base_alpha=85, life_curve_power=1.7,
+        # Pass 3: BODY (the visible solid of the beam)
+        # BLOQUE 58.29: 3 px (was 8 in 58.28) — matches the fire's
+        # narrow column thickness.
+        _draw_pass(width=3, base_alpha=85, life_curve_power=1.7,
                    width_expand=0.4)
         # Pass 4: CORE (the bright center of the beam)
-        # BLOQUE 58.28: bumped from 2 to 4 px to match the engine
-        # fire's "puffy center". Still semi-transparent so the
-        # trail doesn't look opaque.
-        _draw_pass(width=4, base_alpha=150, life_curve_power=2.0,
+        # BLOQUE 58.29: 2 px (was 4 in 58.28) — a tight bright line,
+        # like the engine fire's hottest center.
+        _draw_pass(width=2, base_alpha=150, life_curve_power=2.0,
                    width_expand=0.0)
 
         # -----------------------------------------------------------------
-        # Head bloom: extra bright burst at the very tip
+        # Head bloom: tight bright burst at the very tip
         # -----------------------------------------------------------------
-        # BLOQUE 58.28: thicker head bloom to match the engine fire
-        # plume. The bloom is a 2-circle stack (wide soft + tight
-        # bright), both rendered in the fire color (yellow/orange)
-        # to feel like the engine fire is "leading" the trail.
+        # BLOQUE 58.29: small tight head bloom (3 small circles) so
+        # the head doesn't look like a wide puff. It should feel
+        # like the engine fire's hottest point leading the line.
         head_x, head_y, head_life = pts[-1]
         if head_life > 0.4:
             bloom_alpha = int(min(255.0, 220.0 * (head_life - 0.4) / 0.6))
@@ -540,32 +540,32 @@ class TronTrail:
                 # Fire color (yellow-orange) for the head bloom
                 fire_color = _spectral_color(0.95)  # yellow-white
                 try:
-                    # Wide soft outer glow
+                    # Soft outer glow (4 px — tight)
                     pygame.draw.circle(
                         target,
                         (fire_color[0], fire_color[1], fire_color[2],
-                         int(bloom_alpha * 0.35)),
+                         int(bloom_alpha * 0.4)),
                         (head_x, head_y),
-                        12,
+                        4,
                     )
-                    # Medium orange ring
+                    # Bright orange ring (3 px)
                     pygame.draw.circle(
                         target,
                         (255, 180, 60, int(bloom_alpha * 0.7)),
                         (head_x, head_y),
-                        8,
+                        3,
                     )
-                    # Bright white-cyan core
+                    # White-cyan hot core (2 px)
                     pygame.draw.circle(
                         target,
                         (255, 255, 255, bloom_alpha),
                         (head_x, head_y),
-                        4,
+                        2,
                     )
                 except TypeError:
-                    pygame.draw.circle(target, fire_color, (head_x, head_y), 12)
-                    pygame.draw.circle(target, (255, 180, 60), (head_x, head_y), 8)
-                    pygame.draw.circle(target, (255, 255, 255), (head_x, head_y), 4)
+                    pygame.draw.circle(target, fire_color, (head_x, head_y), 4)
+                    pygame.draw.circle(target, (255, 180, 60), (head_x, head_y), 3)
+                    pygame.draw.circle(target, (255, 255, 255), (head_x, head_y), 2)
 
         # -----------------------------------------------------------------
         # Sparkle particles: tiny stars along the trail
