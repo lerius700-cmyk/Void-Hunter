@@ -176,6 +176,12 @@ class GameplayRuntime:
         self._scoring = ScoringSystem()
         self._particles = ParticleEngine(pool_size=512)
         self._hud = HUD()
+        # BLOQUE 58.6.5: pre-allocated scratch surface for the rotating
+        # SUB_BOSS. The ship is drawn nose-DOWN to this surface, then
+        # rotated to face the velocity direction (0/90/180/270) so the
+        # V apex + engines stay correctly oriented during the L-pattern
+        # entries. 64x64 fits the 24x14 hitbox in all 4 orientations.
+        self._sub_boss_scratch = pygame.Surface((64, 64), pygame.SRCALPHA)
         self._wave_mgr = self._build_wave_manager()
         self._bosses = BossPool()
         self._boss: Optional[Boss] = None
@@ -2432,42 +2438,76 @@ class GameplayRuntime:
                                   vy=-15.0, life=0.5, radius=1.5)
 
     def _emit_sub_boss_propulsion(self, e: "Enemy", dt: float) -> None:
-        """BLOQUE 58.6.3: SUB_BOSS propulsion animation.
+        """BLOQUE 58.6.5: SUB_BOSS purple propulsion animation.
 
-        Emits a continuous stream of P_FIRE (orange flames) and P_SMOKE
-        (gray exhaust) particles from the engines at the TOP of the
-        sub-boss. The particles trail UPWARD (opposite to the ship's
-        downward motion), giving a "rocket thruster descending" feel.
+        Emits a continuous PURPLE/MAGENTA stream of P_SPARK (bright
+        purple), P_GLOW (magenta core) and P_SMOKE (dark violet)
+        particles from the engines at the BACK of the sub-boss. The
+        exhaust direction is the NEGATIVE of the ship's velocity, so
+        the trail follows the ship correctly during the L-pattern
+        entries (vertical L's and horizontal L's both work).
+
+        The palette is intentionally a magenta/violet family so the
+        SUB_BOSS reads as a different "ship class" than the player
+        (yellow/cyan) and the boss enemies (orange/red).
 
         Spawn rate is throttled to ~30 particles/s to avoid pool pressure.
         """
         from src.entities.enemies.enemy import ENEMY_CONFIGS
-        from src.systems.particle_engine import P_FIRE, P_SMOKE
+        from src.systems.particle_engine import P_GLOW, P_SMOKE, P_SPARK
         # Throttle: only emit every 2nd frame at 60 fps (so ~30 Hz)
         if int(self._t * 60) % 2 != 0:
             return
         cfg = ENEMY_CONFIGS[e.kind]
-        # Engine positions (back of the ship, where the engines are drawn)
-        # The hitbox is 24x14, so engines are at cx +/- 2 from center top
-        eng_y = e.y - cfg.height / 2  # top of the body
-        # Two engine positions (left and right of center)
+        vx, vy = e.vx, e.vy
+        speed_mag = math.hypot(vx, vy)
+        if speed_mag < 1.0:
+            return  # not moving, no exhaust
+        # Unit velocity (direction the ship is moving)
+        ux, uy = vx / speed_mag, vy / speed_mag
+        # Perpendicular (rotated 90° CCW in screen coords) — used to
+        # place the two engines side-by-side at the back of the ship
+        perpx, perpy = -uy, ux
+        # Back of the ship: opposite of velocity direction. Use the
+        # half-extent of the hitbox along the velocity axis so the
+        # engines sit at the actual rear edge (the 24x14 hitbox is
+        # wider than tall, so vertical/horizontal use different extents).
+        back_dist = (cfg.width / 2) * abs(ux) + (cfg.height / 2) * abs(uy) + 1
+        back_x = e.x - ux * back_dist
+        back_y = e.y - uy * back_dist
+        # PURPLE palette (BLOQUE 58.6.5 — matches the new engine color)
+        purple_spark = (220, 100, 255)   # bright magenta-violet spark
+        purple_glow = (200, 70, 240)     # saturated magenta core glow
+        purple_smoke = (110, 50, 140)    # dark violet smoke
+        # Two engines, 2 px apart along the perpendicular axis
         for sign in (-1, 1):
-            ex = e.x + sign * 2
-            ey = eng_y
-            # P_FIRE: small orange flame, fast upward, short life
+            ex = back_x + sign * perpx * 2
+            ey = back_y + sign * perpy * 2
+            # Exhaust velocity: OPPOSITE of ship velocity, with a bit of
+            # random spread so the trail looks organic.
+            spread = 6.0
+            exh_vx = -ux * 30.0 + (random.random() - 0.5) * spread
+            exh_vy = -uy * 30.0 + (random.random() - 0.5) * spread
+            # P_SPARK: small bright purple dot, fast
             self._particles.emit(
-                P_FIRE, ex, ey,
-                vx=(random.random() - 0.5) * 12.0,
-                vy=-30.0 + (random.random() - 0.5) * 10.0,
-                life=0.25, radius=1.5,
+                P_SPARK, ex, ey,
+                vx=exh_vx, vy=exh_vy,
+                color=purple_spark, life=0.25, radius=1.5,
             )
-            # P_SMOKE: gray puffy trail, slower upward, longer life
-            if random.random() < 0.6:
+            # P_GLOW: magenta core glow, slower, longer life
+            self._particles.emit(
+                P_GLOW, ex, ey,
+                vx=exh_vx * 0.5, vy=exh_vy * 0.5,
+                color=purple_glow, life=0.35, radius=2.0,
+            )
+            # P_SMOKE: dark violet puffy trail, ~40% of the time
+            if random.random() < 0.4:
                 self._particles.emit(
-                    P_SMOKE, ex + (random.random() - 0.5) * 3.0, ey,
-                    vx=(random.random() - 0.5) * 8.0,
-                    vy=-20.0 + (random.random() - 0.5) * 6.0,
-                    life=0.5, radius=1.5,
+                    P_SMOKE,
+                    ex + (random.random() - 0.5) * 3.0,
+                    ey + (random.random() - 0.5) * 3.0,
+                    vx=exh_vx * 0.7, vy=exh_vy * 0.7,
+                    color=purple_smoke, life=0.5, radius=1.5,
                 )
 
     def _emit_propulsion_trail(self, dt: float) -> None:
@@ -3754,118 +3794,30 @@ class GameplayRuntime:
             pygame.draw.circle(target, pink, (cx, cy), 2)
             pygame.draw.circle(target, pink_bright, (cx, cy), 1)
         elif e.kind == EnemyKind.SUB_BOSS:
-            # BLOQUE 58.6.3: SUB_BOSS — clean WIDE V silhouette, BIGGER (24x14).
-            # The visual scales with the hitbox (w, h) so the bigger 24x14
-            # hitbox naturally produces a 50% larger ship. The fangs still
-            # form a clear WIDE V (apex at bottom), with no ')' / '(' shape.
-            # User feedback: "nave del subjefe sea mas grande", "que el
-            # punto por el que entre al mapa sea random" (handled in
-            # _spawn_sub_boss and the wrap-around code in enemy.py), and
-            # "ponle una animacion de propulsion" (handled in
-            # _emit_sub_boss_propulsion below — particle trail behind the
-            # ship as it descends).
-            wolf_base = (160, 170, 185)  # silver body
-            wolf_dark = (80, 90, 105)
-            wolf_red = (220, 50, 60)
-            cyan_eye = (80, 220, 240)
-            pink_fang = (255, 100, 180)  # venom/maligno fang tip color
-            pink_fang_bright = (255, 200, 230)
-            wolf_engine = (255, 180, 60)
-            # BLOQUE 58.6.3: scale all visual offsets with the hitbox so
-            # the 24x14 hitbox renders a 50% bigger ship.
-            # Original offsets were designed for w=16, h=10.
-            sx = w / 16.0
-            sy = h / 10.0
-            # Subtle vertical bob (2 Hz, ±1 px) for warp-thrust feel
-            bob = int(round(math.sin(self._t * 2.0 * math.pi) * 1.0))
-            cy_b = cy + bob
-            # Engine pulse: brightness varies 0.7..1.0 (6 Hz)
-            engine_pulse = 0.7 + 0.3 * (0.5 + 0.5 * math.sin(self._t * 6.0))
-            # Eye pulse: 3 Hz for menacing "scanning" feel
-            eye_pulse = 0.85 + 0.15 * math.sin(self._t * 3.0)
-            # Layout (top to bottom of the sprite):
-            #   1. 2 FANGS forming a WIDE V (apex at the BOTTOM)
-            #   2. Center spine (collapsed wings) — vertical line
-            #   3. Engines at the top (back of ship, pulsing)
-            #   4. Central body with menacing cyan eye
-            #   5. Sharp pointed nose at the BOTTOM (V apex)
-            body_top_y = cy_b - h // 2
-            body_bot_y = cy_b + h // 2
-            # 1) 2 SHARP FANGS forming a WIDE V — apex at the BOTTOM
-            #    The fangs extend from the EDGES of the body to a point
-            #    at the bottom-center. Edges scale with the hitbox.
-            fang_tip_y = body_bot_y + max(1, int(round(sy)))
-            fang_tip_x_l = cx
-            fang_tip_x_r = cx
-            # Left fang (V leg) — from LEFT EDGE of body to center bottom
-            pygame.draw.polygon(target, wolf_base, [
-                (cx - max(2, int(round(3 * sx))), body_top_y + max(1, int(round(sy)))),
-                (cx - max(5, int(round(7 * sx))), body_top_y),
-                (fang_tip_x_l, fang_tip_y),
-                (cx - 1, body_bot_y - 1),
-            ])
-            # Right fang (V leg)
-            pygame.draw.polygon(target, wolf_base, [
-                (cx + max(2, int(round(3 * sx))), body_top_y + max(1, int(round(sy)))),
-                (cx + max(5, int(round(7 * sx))), body_top_y),
-                (fang_tip_x_r, fang_tip_y),
-                (cx + 1, body_bot_y - 1),
-            ])
-            # Red Star Wolf accent stripe along fang leading edge (V outline)
-            pygame.draw.line(target, wolf_red,
-                             (cx - max(4, int(round(6 * sx))), body_top_y),
-                             (fang_tip_x_l, fang_tip_y - 1), 1)
-            pygame.draw.line(target, wolf_red,
-                             (cx + max(4, int(round(6 * sx))), body_top_y),
-                             (fang_tip_x_r, fang_tip_y - 1), 1)
-            # Pink/magenta fang TIPS at the V apex
-            pygame.draw.circle(target, pink_fang, (fang_tip_x_l, fang_tip_y), 1)
-            pygame.draw.circle(target, pink_fang, (fang_tip_x_r, fang_tip_y), 1)
-            pygame.draw.circle(target, pink_fang_bright,
-                               (fang_tip_x_l, fang_tip_y), 1)
-            pygame.draw.circle(target, pink_fang_bright,
-                               (fang_tip_x_r, fang_tip_y), 1)
-            # 2) CENTER SPINE (collapsed wings) — vertical line in the
-            #    middle of the V. No more ")" / "(" shape.
-            spine_y_top = body_top_y + max(1, int(round(2 * sy)))
-            spine_y_bot = body_bot_y - 1
-            pygame.draw.line(target, wolf_dark, (cx, spine_y_top), (cx, spine_y_bot), 1)
-            # 3) ENGINES at the top (back of ship, pulsing)
-            eng_y = body_top_y
-            eng_c = (
-                int(255 * engine_pulse),
-                int(180 * engine_pulse),
-                int(60 * engine_pulse),
+            # BLOQUE 58.6.5: SUB_BOSS now rotates to face its velocity
+            # direction. We draw the sprite (nose-DOWN by design) to a
+            # scratch surface, then pygame.transform.rotate it by 0/90/
+            # 180/270 so the V apex + engines point correctly during the
+            # 4-entry L-pattern movement cycle. Without this, the ship
+            # would slide sideways with its fangs still pointing down.
+            self._sub_boss_scratch.fill((0, 0, 0, 0))
+            scratch_cx = self._sub_boss_scratch.get_width() // 2
+            scratch_cy = self._sub_boss_scratch.get_height() // 2
+            self._draw_sub_boss_sprite(
+                self._sub_boss_scratch, scratch_cx, scratch_cy, w, h,
             )
-            # Wider engine strip (scales with hitbox)
-            eng_w = max(2, int(round(2 * sx)))
-            pygame.draw.rect(target, eng_c, (cx - eng_w, eng_y, eng_w, max(2, int(round(2 * sy)))))
-            pygame.draw.rect(target, eng_c, (cx + 1, eng_y, eng_w, max(2, int(round(2 * sy)))))
-            # 4) MAIN BODY — wider central spine inside the V (scales with hitbox)
-            mid_y = cy_b - 1
-            body_w = max(1, int(round(1 * sx)))
-            pygame.draw.polygon(target, wolf_base, [
-                (cx, body_bot_y),               # sharp nose DOWN (V apex)
-                (cx + body_w, mid_y),
-                (cx, body_top_y + 1),
-                (cx - body_w, mid_y),
-            ])
-            # 5) MENACING CYAN EYE in the body center (3 layers, 3 Hz pulse)
-            #    Scales with hitbox so the bigger ship has a bigger eye.
-            eye_scale = max(1.0, (sx + sy) / 2.0)
-            eye_r1 = max(2, int(round(4 * eye_pulse * eye_scale)))
-            eye_r2 = max(1, int(round(3 * eye_pulse * eye_scale)))
-            eye_r3 = max(1, int(round(2 * eye_pulse * eye_scale)))
-            pygame.draw.circle(target, (40, 80, 110), (cx, cy_b), eye_r1 + 1)  # dark outer
-            pygame.draw.circle(target, cyan_eye, (cx, cy_b), eye_r1)  # main eye
-            pygame.draw.circle(target, (200, 240, 255), (cx, cy_b), eye_r2)  # bright glow
-            pygame.draw.circle(target, (255, 255, 255), (cx, cy_b), eye_r3)  # white-hot
-            # 9) Subtle outer red halo to mark it as a mini-boss (the menace aura)
-            halo = pygame.Surface((w + 16, h + 16), pygame.SRCALPHA)
-            halo_alpha = 40 + int(20 * math.sin(self._t * 6))
-            pygame.draw.ellipse(halo, (*wolf_red, halo_alpha),
-                                (0, 0, w + 16, h + 16), 1)
-            target.blit(halo, (cx - (w + 16) // 2, cy_b - (h + 16) // 2))
+            # BLOQUE 58.6.5: facing angle from velocity. See
+            # src.entities.enemies.enemy.sub_boss_facing_angle for the
+            # full mapping (DOWN=0, RIGHT=90, UP=180, LEFT=270).
+            from src.entities.enemies.enemy import sub_boss_facing_angle
+            facing = sub_boss_facing_angle(e.vx, e.vy)
+            rotated = pygame.transform.rotate(self._sub_boss_scratch, facing)
+            # Blit centered on the ship's world position
+            target.blit(
+                rotated,
+                (cx - rotated.get_width() // 2,
+                 cy - rotated.get_height() // 2),
+            )
         else:
             # Default: rectangle with inner detail
             rect = pygame.Rect(cx - w // 2, cy - h // 2, w, h)
@@ -3878,6 +3830,114 @@ class GameplayRuntime:
         if cfg.is_mini:
             pygame.draw.rect(target, (180, 230, 255),
                              (cx - w // 2 + 1, cy - h // 2 + 1, w - 2, h - 2))
+
+    def _draw_sub_boss_sprite(
+        self, target: pygame.Surface, cx: int, cy: int, w: int, h: int,
+    ) -> None:
+        """BLOQUE 58.6.5: extract the SUB_BOSS visuals into a helper so
+        the parent _draw_enemy can draw it to a scratch surface, rotate
+        it to face the velocity direction, and blit the result.
+
+        The sprite is drawn with the V apex at the BOTTOM (nose-DOWN by
+        design — the BLOQUE 58.6 closed-V silhouette). Engines are at
+        the TOP. Eye is in the center. All visual offsets scale with
+        the hitbox so a 24x14 sub-boss renders 50% larger than the
+        original 16x10 reference.
+        """
+        wolf_base = (160, 170, 185)  # silver body
+        wolf_dark = (80, 90, 105)
+        wolf_red = (220, 50, 60)
+        cyan_eye = (80, 220, 240)
+        pink_fang = (255, 100, 180)  # venom/maligno fang tip color
+        pink_fang_bright = (255, 200, 230)
+        # Scale visual offsets with the hitbox (16x10 = reference)
+        sx = w / 16.0
+        sy = h / 10.0
+        # Subtle vertical bob (2 Hz, ±1 px) for warp-thrust feel
+        bob = int(round(math.sin(self._t * 2.0 * math.pi) * 1.0))
+        cy_b = cy + bob
+        # Engine pulse: brightness varies 0.7..1.0 (6 Hz)
+        engine_pulse = 0.7 + 0.3 * (0.5 + 0.5 * math.sin(self._t * 6.0))
+        # Eye pulse: 3 Hz for menacing "scanning" feel
+        eye_pulse = 0.85 + 0.15 * math.sin(self._t * 3.0)
+        # Layout (top to bottom of the sprite):
+        #   1. 2 FANGS forming a WIDE V (apex at the BOTTOM)
+        #   2. Center spine (collapsed wings) — vertical line
+        #   3. Engines at the top (back of ship, pulsing)
+        #   4. Central body with menacing cyan eye
+        #   5. Sharp pointed nose at the BOTTOM (V apex)
+        body_top_y = cy_b - h // 2
+        body_bot_y = cy_b + h // 2
+        # 1) 2 SHARP FANGS forming a WIDE V — apex at the BOTTOM
+        fang_tip_y = body_bot_y + max(1, int(round(sy)))
+        pygame.draw.polygon(target, wolf_base, [
+            (cx - max(2, int(round(3 * sx))), body_top_y + max(1, int(round(sy)))),
+            (cx - max(5, int(round(7 * sx))), body_top_y),
+            (cx, fang_tip_y),
+            (cx - 1, body_bot_y - 1),
+        ])
+        pygame.draw.polygon(target, wolf_base, [
+            (cx + max(2, int(round(3 * sx))), body_top_y + max(1, int(round(sy)))),
+            (cx + max(5, int(round(7 * sx))), body_top_y),
+            (cx, fang_tip_y),
+            (cx + 1, body_bot_y - 1),
+        ])
+        # Red Star Wolf accent stripe along fang leading edge (V outline)
+        pygame.draw.line(target, wolf_red,
+                         (cx - max(4, int(round(6 * sx))), body_top_y),
+                         (cx, fang_tip_y - 1), 1)
+        pygame.draw.line(target, wolf_red,
+                         (cx + max(4, int(round(6 * sx))), body_top_y),
+                         (cx, fang_tip_y - 1), 1)
+        # Pink/magenta fang TIPS at the V apex
+        pygame.draw.circle(target, pink_fang, (cx, fang_tip_y), 1)
+        pygame.draw.circle(target, pink_fang_bright, (cx, fang_tip_y), 1)
+        # 2) CENTER SPINE (collapsed wings) — vertical line
+        spine_y_top = body_top_y + max(1, int(round(2 * sy)))
+        spine_y_bot = body_bot_y - 1
+        pygame.draw.line(target, wolf_dark, (cx, spine_y_top), (cx, spine_y_bot), 1)
+        # 3) ENGINES at the top (back of ship, pulsing) — PURPLE in
+        #    BLOQUE 58.6.5 to match the new purple propulsion palette.
+        eng_y = body_top_y
+        # Purple engine color: bright magenta (255, 120, 240) modulated
+        # by the engine pulse for the throbbing rocket glow.
+        eng_c = (
+            int(255 * engine_pulse),
+            int(120 * engine_pulse),
+            int(240 * engine_pulse),
+        )
+        eng_w = max(2, int(round(2 * sx)))
+        pygame.draw.rect(target, eng_c, (cx - eng_w, eng_y, eng_w, max(2, int(round(2 * sy)))))
+        pygame.draw.rect(target, eng_c, (cx + 1, eng_y, eng_w, max(2, int(round(2 * sy)))))
+        # 4) MAIN BODY — wider central spine inside the V
+        mid_y = cy_b - 1
+        body_w = max(1, int(round(1 * sx)))
+        pygame.draw.polygon(target, wolf_base, [
+            (cx, body_bot_y),               # sharp nose DOWN (V apex)
+            (cx + body_w, mid_y),
+            (cx, body_top_y + 1),
+            (cx - body_w, mid_y),
+        ])
+        # 5) MENACING CYAN EYE in the body center (3 layers, 3 Hz pulse)
+        eye_scale = max(1.0, (sx + sy) / 2.0)
+        eye_r1 = max(2, int(round(4 * eye_pulse * eye_scale)))
+        eye_r2 = max(1, int(round(3 * eye_pulse * eye_scale)))
+        eye_r3 = max(1, int(round(2 * eye_pulse * eye_scale)))
+        pygame.draw.circle(target, (40, 80, 110), (cx, cy_b), eye_r1 + 1)
+        pygame.draw.circle(target, cyan_eye, (cx, cy_b), eye_r1)
+        pygame.draw.circle(target, (200, 240, 255), (cx, cy_b), eye_r2)
+        pygame.draw.circle(target, (255, 255, 255), (cx, cy_b), eye_r3)
+        # 6) Subtle outer red halo to mark it as a mini-boss (the menace aura)
+        halo_w = w + 16
+        halo_h = h + 16
+        # Use the parent target's alpha — halo drawn on the scratch
+        # surface so it rotates with the ship (it's radially symmetric
+        # so rotation doesn't change its appearance).
+        halo_alpha = 40 + int(20 * math.sin(self._t * 6))
+        pygame.draw.ellipse(
+            target, (*wolf_red, halo_alpha),
+            (cx - halo_w // 2, cy_b - halo_h // 2, halo_w, halo_h), 1,
+        )
 
     def _draw_boss(self, target: pygame.Surface, ox: int, oy: int) -> None:
         """BLOQUE 51: dispatch to per-boss visual.

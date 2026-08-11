@@ -571,6 +571,27 @@ def create_enemy(kind: EnemyKind, x: float, y: float) -> Enemy:
     return e
 
 
+def sub_boss_facing_angle(vx: float, vy: float) -> int:
+    """BLOQUE 58.6.5: compute the rotation angle (in degrees) for the
+    SUB_BOSS sprite to face its velocity direction.
+
+    The sprite is drawn with the V apex at the BOTTOM (nose-DOWN by
+    design), and pygame.transform.rotate(surf, deg) rotates CCW in
+    math (which is CW on screen because pygame y-axis points down).
+    So:
+        vy > 0  (going DOWN)  -> 0   (no rotation, nose already down)
+        vy < 0  (going UP)    -> 180 (nose flips up)
+        vx > 0  (going RIGHT) -> 90  (nose goes right)
+        vx < 0  (going LEFT)  -> 270 (nose goes left)
+
+    When both axes are non-zero, the dominant axis wins (the ship
+    moves mostly in 4 cardinal directions, so this is robust).
+    """
+    if abs(vy) >= abs(vx):
+        return 0 if vy >= 0 else 180
+    return 90 if vx > 0 else 270
+
+
 class EnemyPool:
     """Pool of Enemy instances. Default size 64 per GDD."""
 
