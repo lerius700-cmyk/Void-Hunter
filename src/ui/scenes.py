@@ -191,18 +191,32 @@ class BossIntroScene(Scene):
       3.5 - 4.5s : Pulsing red, boss locked in
     """
 
-    def __init__(self, transition_to: TransitionFn, boss_name: str = "BOSS") -> None:
+    def __init__(self, transition_to: TransitionFn, boss_name: str = "BOSS",
+                 audio: Optional["AudioEngine"] = None) -> None:
         self._transition_to = transition_to
         self._boss_name = boss_name
+        self._audio = audio
         self._t: float = 0.0
         self._duration: float = 4.5
 
     def on_enter(self) -> None:
         self._t = 0.0
-        # Try to play boss warning SFX
+        # BLOQUE 58.23: reuse the game's existing audio engine.
+        # The previous code did `AudioEngine()` here, which calls
+        # `_prebake_all()` and re-renders EVERY SFX + BGM from scratch.
+        # That took ~1.2s, blocking the game loop right at the
+        # moment the wave cleared and the boss intro was supposed
+        # to start. Using the shared engine is O(1) instead.
+        audio = self._audio
+        if audio is None:
+            # Fallback: construct one if no shared engine was passed
+            # (keeps backward-compat for any callers that don't pass audio).
+            try:
+                from src.audio.synth import AudioEngine
+                audio = AudioEngine()
+            except Exception:
+                return
         try:
-            from src.audio.synth import AudioEngine
-            audio = AudioEngine()
             audio.play_sfx("boss_warning", volume=0.9)
         except Exception:
             pass
@@ -339,16 +353,27 @@ class SubBossIntroScene(Scene):
     threat, but not as bad as a real boss".
     """
 
-    def __init__(self, transition_to: TransitionFn) -> None:
+    def __init__(self, transition_to: TransitionFn,
+                 audio: Optional["AudioEngine"] = None) -> None:
         self._transition_to = transition_to
+        self._audio = audio
         self._t: float = 0.0
         self._duration: float = 2.5  # shorter than boss (4.5s)
 
     def on_enter(self) -> None:
         self._t = 0.0
+        # BLOQUE 58.23: reuse the shared audio engine (see BossIntroScene).
+        # Creating a new AudioEngine() here would re-bake all SFX + BGM
+        # (~1.2s freeze) right when the sub-boss warning is supposed
+        # to start playing.
+        audio = self._audio
+        if audio is None:
+            try:
+                from src.audio.synth import AudioEngine
+                audio = AudioEngine()
+            except Exception:
+                return
         try:
-            from src.audio.synth import AudioEngine
-            audio = AudioEngine()
             audio.play_sfx("boss_warning", volume=0.7)
         except Exception:
             pass

@@ -138,14 +138,18 @@ class Game:
         self.scenes.register_scene(GameState.TITLE, TitleScene(transition_to))
         self.scenes.register_scene(GameState.ACT_INTRO, ActIntroScene(transition_to, act=1))
         self.scenes.register_scene(GameState.GAMEPLAY, GameplayScene(transition_to, audio=self.audio))
-        self.scenes.register_scene(GameState.BOSS_INTRO, BossIntroScene(transition_to))
+        # BLOQUE 58.23: pass the shared audio engine to BOSS_INTRO and
+        # SUB_BOSS_INTRO. The previous versions did `AudioEngine()` in
+        # on_enter, which re-initialized pygame.mixer and re-baked all
+        # SFX + BGM (~1.2s freeze) right when the wave cleared.
+        self.scenes.register_scene(GameState.BOSS_INTRO, BossIntroScene(transition_to, audio=self.audio))
         self.scenes.register_scene(GameState.BOSS_FIGHT, BossFightScene(transition_to, act=1, audio=self.audio))
         self.scenes.register_scene(GameState.ACT_CLEARED, ActClearedScene(transition_to))
         self.scenes.register_scene(GameState.GAME_OVER, GameOverScene(transition_to))
         self.scenes.register_scene(GameState.VICTORY, VictoryScene(transition_to))
         self.scenes.register_scene(GameState.CREDITS, CreditsScene(transition_to))
         # BLOQUE 50: sub-boss mid-wave warning (yellow)
-        self.scenes.register_scene(GameState.SUB_BOSS_INTRO, SubBossIntroScene(transition_to))
+        self.scenes.register_scene(GameState.SUB_BOSS_INTRO, SubBossIntroScene(transition_to, audio=self.audio))
         self.scenes.register_scene(GameState.PAUSE, PauseScene(transition_to))
 
     def run(self) -> int:
