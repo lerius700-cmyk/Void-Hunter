@@ -112,12 +112,13 @@ PLAYER_PROPULSION_WAKE_INTERVAL_S: float = 0.04  # ~25 Hz (sparser than main tra
 # (TRON_TRAIL_DAMAGE_MULT), with a per-enemy hit cooldown to prevent
 # melting in a single frame.
 TRON_TRAIL_DAMAGE_MULT: float = 3.0
-# BLOQUE 58.22: segment is now 28px long (was 8) so at 330 px/s
-# propulsion speed with 55Hz spawn (~5.94px between spawns), the
-# soft-edge sprites overlap by 22px and blend into a seamless beam.
-# The previous 8px length gave only 2px overlap, producing the
-# hard-edge "dashes" look the user reported.
-TRON_TRAIL_SEGMENT_LENGTH: float = 28.0
+# BLOQUE 58.24: segment_length is now 6px (was 28). In the polyline
+# renderer, this is the spacing between polyline vertices, not a
+# sprite dimension. A smaller value means more vertices per curve
+# segment, so the polyline follows the ship's path more smoothly.
+# The previous 28px "long sprites" approach was superseded because
+# rotated rectangles produced visible "rungs" along curves.
+TRON_TRAIL_SEGMENT_LENGTH: float = 6.0
 TRON_TRAIL_SEGMENT_THICKNESS: float = 4.0
 TRON_TRAIL_MAX_AGE_S: float = 2.5
 TRON_TRAIL_SPAWN_INTERVAL_S: float = 0.018  # ~55 Hz (smooth ribbon)

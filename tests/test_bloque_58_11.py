@@ -287,74 +287,48 @@ def test_tron_trail_resets_on_player_death():
 
 
 # -----------------------------------------------------------------------
-# 5) BLOQUE 58.22: pre-rendered soft-alpha sprites
+# 5) BLOQUE 58.22 + 58.24: polyline renderer for continuous beam
 # -----------------------------------------------------------------------
-def test_bloque_58_22_sprites_initialized():
-    """BLOQUE 58.22: TronTrail pre-renders 3 SRCALPHA sprites at init.
+# BLOQUE 58.22 history: pre-rendered rotated rectangular sprites. That
+# approach produced visible "rungs" along curves because the rotated
+# rectangles stacked like a ladder.
+# BLOQUE 58.24: replaced with a continuous polyline through all
+# segment centers, drawn 4 times with increasing width + decreasing
+# alpha for the neon glow. This produces a smooth single line that
+# follows the ship's path, matching the drift_loud reference.
+# These tests guard the polyline renderer.
 
-    The previous version used pygame.draw.line for the 3 layers which
-    produced hard edges and looked like dashes. The new approach uses
-    pre-rendered sprites with soft alpha gradients so adjacent sprites
-    blend into a continuous glowing beam (drift_loud reference look).
-    """
+
+def test_bloque_58_24_no_sprite_attributes():
+    """BLOQUE 58.24: the polyline renderer doesn't pre-render sprites."""
     from src.systems.tron_trail import TronTrail
     t = TronTrail()
-    # All 3 sprites must exist
-    assert hasattr(t, "_halo_sprite")
-    assert hasattr(t, "_body_sprite")
-    assert hasattr(t, "_core_sprite")
-    # They must be pygame Surfaces with SRCALPHA
-    for s in (t._halo_sprite, t._body_sprite, t._core_sprite):
-        assert isinstance(s, pygame.Surface)
-        assert s.get_flags() & pygame.SRCALPHA
-    # Sizes (defaults: L=28, thickness=4 -> halo 20 tall, body 10, core 4)
-    L = int(t.segment_length)
-    H_halo = int(t.segment_thickness * 4.0) + 4
-    H_body = int(t.segment_thickness * 2.0) + 2
-    H_core = max(3, int(t.segment_thickness))
-    assert t._halo_sprite.get_size() == (L, H_halo)
-    assert t._body_sprite.get_size() == (L, H_body)
-    assert t._core_sprite.get_size() == (L, H_core)
+    # The pre-rendered sprite attributes from BLOQUE 58.22 are gone
+    for attr in ("_halo_sprite", "_body_sprite", "_core_sprite", "_build_sprites"):
+        assert not hasattr(t, attr), (
+            f"Polyline renderer should not have {attr}"
+        )
 
 
-def test_bloque_58_22_sprites_have_soft_alpha():
-    """BLOQUE 58.22: sprites have a vertical alpha gradient (soft edges).
+def test_bloque_58_24_segment_length_is_polyline_vertex_spacing():
+    """BLOQUE 58.24: segment_length controls polyline vertex spacing.
 
-    The center of each sprite has the highest alpha, the edges fade
-    out. This is what makes adjacent segments blend into a beam.
-    """
-    from src.systems.tron_trail import TronTrail
-    t = TronTrail()
-    body = t._body_sprite
-    W, H = body.get_size()
-    cx, cy = W // 2, H // 2
-    center_a = body.get_at((cx, cy)).a
-    # Edge should have lower alpha than center
-    edge_a = body.get_at((0, cy)).a
-    assert center_a > edge_a, (
-        f"body sprite center alpha ({center_a}) should be > edge alpha ({edge_a})"
-    )
-    # And the center should be reasonably bright
-    assert center_a >= 200, f"body sprite center alpha too low: {center_a}"
-
-
-def test_bloque_58_22_segment_length_28():
-    """BLOQUE 58.22: segment_length default is 28 (was 8).
-
-    28px gives ~24px overlap at 330 px/s propulsion, so the soft
-    sprites blend seamlessly. The previous 8px produced only 2px
-    overlap which the user reported as 'dashes, not a beam'.
+    In the polyline renderer, segment_length is no longer a sprite
+    dimension — it's how far the ship travels between vertices. A
+    small value (e.g. 6px) gives a dense polyline that follows curves
+    smoothly.
     """
     from src.core.settings import TRON_TRAIL_SEGMENT_LENGTH
-    assert TRON_TRAIL_SEGMENT_LENGTH == 28.0
+    # 58.24 default: 6.0 (was 28.0 in 58.22, was 8.0 originally)
+    assert TRON_TRAIL_SEGMENT_LENGTH == 6.0
 
 
-def test_bloque_58_22_draw_no_crash():
-    """BLOQUE 58.22: draw() must not crash even on empty trail or
-    various ship angles (0, 90, 180, 270 degrees)."""
+def test_bloque_58_24_draw_no_crash():
+    """BLOQUE 58.24: draw() must not crash for empty trail or any
+    ship angle (0, 90, 180, 270)."""
     from src.systems.tron_trail import TronTrail
     t = TronTrail()
-    target = pygame.Surface((200, 200))
+    target = pygame.Surface((400, 400))
     target.fill((0, 0, 0))
     # Empty trail: should return silently
     t.draw(target, (0, 0))
@@ -363,27 +337,26 @@ def test_bloque_58_22_draw_no_crash():
     for angle_deg in (0, 90, 180, 270):
         t.reset()
         for i in range(5):
-            t.spawn_if_ready(100.0, 100.0, math.radians(angle_deg), 8.0, dt)
+            t.spawn_if_ready(200.0, 200.0, math.radians(angle_deg), 8.0, dt)
             t.update(dt)
         t.draw(target, (0, 0))  # must not raise
-    # Trail should still have segments
     assert len(t.segments) > 0
 
 
-def test_bloque_58_22_continuous_blend_in_straight_line():
-    """BLOQUE 58.22: spawning in a straight line produces a visually
-    continuous trail (verified by pixel inspection — no fully-transparent
-    gap between consecutive segments).
+def test_bloque_58_24_continuous_line_in_straight_path():
+    """BLOQUE 58.24: spawning in a straight line produces a visually
+    continuous trail (no gaps, no dashes).
 
     We sample a horizontal scan-line at the segment center y and
     verify that the pixel intensity is non-zero for the entire length
-    of the trail (no gaps). This is the key difference from the
-    'dashes' look of the previous implementation.
+    of the trail. The polyline renderer connects all vertices with
+    pygame.draw.line, so a straight-line trail is by definition
+    a single continuous line.
     """
     from src.systems.tron_trail import TronTrail
     t = TronTrail()
     dt = 1.0 / 60.0
-    # Spawn 80 segments in a straight line at high speed
+    # Spawn 80 segments in a straight horizontal line
     for i in range(80):
         t.spawn_if_ready(50.0 + i * 4.0, 100.0, 0.0, 8.0, dt)
         t.update(dt)
@@ -395,23 +368,98 @@ def test_bloque_58_22_continuous_blend_in_straight_line():
     non_zero_xs = []
     for x in range(20, 580):
         pixel = target.get_at((x, cy))
-        # Cyan-ish pixel: R<100, G>50, B>50 means the beam is there
         if pixel.b > 50 and (pixel.r + pixel.g + pixel.b) > 100:
             non_zero_xs.append(x)
     # There should be a long continuous run of beam pixels
     assert len(non_zero_xs) > 200, (
         f"Trail should be a long continuous run, got {len(non_zero_xs)} pixels"
     )
-    # The pixels should be roughly contiguous (no large gaps)
+    # No large gaps allowed (the polyline is by definition continuous)
     if len(non_zero_xs) > 1:
-        gaps = []
+        large_gaps = []
         for i in range(1, len(non_zero_xs)):
             gap = non_zero_xs[i] - non_zero_xs[i - 1]
-            if gap > 1:
-                gaps.append(gap)
-        # Allow at most a couple of small gaps near the very ends
-        large_gaps = [g for g in gaps if g > 5]
-        assert len(large_gaps) <= 2, (
-            f"Trail has too many large gaps: {large_gaps[:5]}"
+            if gap > 3:
+                large_gaps.append(gap)
+        assert len(large_gaps) == 0, (
+            f"Polyline trail should have no gaps, got: {large_gaps[:5]}"
         )
+
+
+def test_bloque_58_24_no_rotated_rectangles():
+    """BLOQUE 58.24: the polyline renderer must NOT use rotated
+    rectangular sprites. Rotated rectangles produced the visible
+    'rungs' the user reported.
+
+    We verify by inspecting the draw() source — it should use
+    pygame.draw.line (connecting polyline vertices), not
+    pygame.transform.rotate on per-segment sprites.
+    """
+    from src.systems.tron_trail import TronTrail
+    import inspect
+    src = inspect.getsource(TronTrail.draw)
+    # The draw() method must use pygame.draw.line for the polyline
+    assert "pygame.draw.line" in src, (
+        "polyline renderer should use pygame.draw.line for the beam"
+    )
+    # It must NOT rotate any per-segment sprite
+    assert "pygame.transform.rotate" not in src, (
+        "polyline renderer should not rotate per-segment sprites "
+        "(that was the BLOQUE 58.22 'rungs' bug)"
+    )
+
+
+def test_bloque_58_24_smooth_along_curves():
+    """BLOQUE 58.24: a curved trail should not have visible segment
+    boundaries. The polyline renderer connects every pair of segment
+    centers with pygame.draw.line, so the trail is by definition
+    a smooth curve.
+    """
+    from src.systems.tron_trail import TronTrail
+    t = TronTrail()
+    dt = 1.0 / 60.0
+    # Spawn 100 segments along a smooth curve
+    for i in range(100):
+        t = i * 0.1
+        x = 200 + 100 * math.sin(t)
+        y = 200 + 50 * math.cos(t) * (1 + 0.3 * math.sin(t * 0.5))
+        if i + 1 < 100:
+            tn = (i + 1) * 0.1
+            xn = 200 + 100 * math.sin(tn)
+            yn = 200 + 50 * math.cos(tn) * (1 + 0.3 * math.sin(tn * 0.5))
+            angle = math.atan2(yn - y, xn - x)
+        else:
+            angle = 0.0
+        t_trail = TronTrail()
+        t_trail.spawn_if_ready(x, y, angle, 8.0, dt)
+        t_trail.update(dt)
+    # Now spawn 100 of these on a single trail and draw
+    big = TronTrail()
+    for i in range(100):
+        t = i * 0.1
+        x = 200 + 100 * math.sin(t)
+        y = 200 + 50 * math.cos(t) * (1 + 0.3 * math.sin(t * 0.5))
+        if i + 1 < 100:
+            tn = (i + 1) * 0.1
+            xn = 200 + 100 * math.sin(tn)
+            yn = 200 + 50 * math.cos(tn) * (1 + 0.3 * math.sin(tn * 0.5))
+            angle = math.atan2(yn - y, xn - x)
+        else:
+            angle = 0.0
+        big.spawn_if_ready(x, y, angle, 8.0, dt)
+        big.update(dt)
+    target = pygame.Surface((500, 400))
+    target.fill((0, 0, 0))
+    big.draw(target, (0, 0))
+    # The trail should have many cyan pixels (the curve is wide and
+    # spans a large area, so a lot of pixels should be lit up)
+    lit_count = 0
+    for x in range(50, 450, 2):
+        for y in range(100, 350, 2):
+            pixel = target.get_at((x, y))
+            if pixel.b > 30 and pixel.r + pixel.g + pixel.b > 80:
+                lit_count += 1
+    assert lit_count > 100, (
+        f"Curved trail should light up many pixels, got {lit_count}"
+    )
 

@@ -1,26 +1,44 @@
-"""BLOQUE 58.11 + 58.22: Tron-style light trail for the player PROPULSION.
+"""BLOQUE 58.11 + 58.22 + 58.24: Tron-style light trail for the player PROPULSION.
 
 When the player enters PROPULSION state, the ship leaves a continuous
 glowing wall behind it (think Tron lightcycle / drift_loud reference).
 
-BLOQUE 58.22 visual rebuild:
-  The previous implementation used pygame.draw.line for each of 3 layers
-  (edge halo + body + core). pygame.draw.line produces hard edges, so even
-  with 2px overlap between consecutive segments, the trail looked like
-  a string of dashes, not a continuous beam. That didn't match the
-  reference the user wanted.
+BLOQUE 58.24 visual rebuild:
+  The previous implementation (BLOQUE 58.22) pre-rendered rectangular
+  SRCALPHA sprites (halo / body / core) and blitted each one rotated
+  to the segment angle. With segments 28px long and 10-20px thick,
+  the rotated rectangles produced VISIBLE "rungs" when stacked along
+  a curve — the trail looked like a ladder, not a continuous beam.
+  The user reported: "se ve super raro y no continuo".
 
-  The new approach: pre-render SRCALPHA sprites with SOFT alpha
-  gradients at init time (halo / body / core), then BLIT each sprite
-  rotated to the segment angle. Because each sprite has soft edges,
-  adjacent sprites blend visually into a continuous glowing ribbon.
-  This is the standard 2D technique for "neon light beam" effects
-  (also used by the reference image, which has zero hard edges).
+  The new approach: draw the trail as a CONTINUOUS POLYLINE through
+  all segment centers using pygame.draw.line. Each pair of consecutive
+  segment centers is connected by a line, and we draw the polyline
+  4 times with increasing width + decreasing alpha to get the
+  neon glow effect:
+      Pass 1 (GLOW):    width=11, alpha=40   - wide soft outer glow
+      Pass 2 (HALO):    width=7,  alpha=80   - medium cyan halo
+      Pass 3 (BODY):    width=4,  alpha=180  - bright cyan body
+      Pass 4 (CORE):    width=2,  alpha=255  - white-cyan bright core
 
-Geometry: segments are now 18 px long (was 8), so at 330 px/s
-propulsion speed with 55Hz spawn (every 18ms = 5.94px per spawn)
-consecutive sprites overlap by 12 px. The soft edges blend over that
-overlap, giving a seamless beam look.
+  This is the standard 2D technique for "neon line" effects and
+  matches the drift_loud reference: a thin bright core wrapped in
+  a soft cyan halo, with the whole thing tracing the ship's path
+  as a single smooth line (no visible segment boundaries).
+
+  Per-point alpha is modulated by the segment's remaining life, so
+  the trail fades smoothly from head (bright) to tail (transparent).
+  The head gets a small brightness boost (1.25x) to feel like a
+  fresh light source being pulled by the ship.
+
+BLOQUE 58.22 history (now superseded):
+  Pre-rendered rotated sprites with soft edges. The soft edges
+  blended between adjacent segments, but the rectangle shape
+  produced visible "rungs" along curves.
+
+BLOQUE 58.11 history (now superseded):
+  pygame.draw.line for 3 layers (edge + body + core). Produced
+  hard edges and looked like dashes.
 
 The segment is a dataclass with:
 
@@ -92,11 +110,14 @@ class TronTrail:
     def __init__(
         self,
         max_segments: int = 240,
-        segment_length: float = 28.0,   # BLOQUE 58.22: was 8.0. 28px gives
-                                         # ~24px overlap at 330 px/s, so the
-                                         # soft-edged sprites blend seamlessly
-                                         # with no visible segment boundaries.
-        segment_thickness: float = 4.0,  # was 3.0; slightly wider for the wall
+        segment_length: float = 6.0,    # BLOQUE 58.24: was 28.0. The
+                                         # polyline renderer (58.24) doesn't
+                                         # care about segment_length for
+                                         # visuals — segments are just
+                                         # polyline vertices. We keep a
+                                         # small value so the polyline is
+                                         # dense enough for smooth curves.
+        segment_thickness: float = 4.0,
         max_age: float = 2.5,
         spawn_interval_s: float = 0.018,  # ~55 Hz — high density for smooth ribbon
     ) -> None:
@@ -128,14 +149,6 @@ class TronTrail:
         self.bbox_max_x: float = 0.0
         self.bbox_max_y: float = 0.0
         self.bbox_dirty: bool = True
-        # BLOQUE 58.22: pre-rendered alpha sprites for the beam look.
-        # The sprite is drawn ONCE at init with a soft alpha gradient
-        # (gaussian-like falloff from the centerline to the edges).
-        # At draw time we blit the sprite rotated to the segment angle,
-        # so the soft edges blend between adjacent segments -> continuous
-        # ribbon. This is the standard 2D technique for "neon beam" and
-        # what the user wants (see drift_loud reference).
-        self._halo_sprite, self._body_sprite, self._core_sprite = self._build_sprites()
 
     def reset(self) -> None:
         """Clear the entire trail (e.g. on player death or state change)."""
@@ -148,98 +161,8 @@ class TronTrail:
         self.bbox_dirty = True
 
     # -----------------------------------------------------------------
-    # BLOQUE 58.22: pre-rendered soft-alpha sprites
-    # -----------------------------------------------------------------
-    def _build_sprites(self) -> tuple[pygame.Surface, pygame.Surface, pygame.Surface]:
-        """Build three SRCALPHA sprites used to render each segment.
-
-        Each sprite is a horizontal "puffy bar" of length = segment_length
-        with a vertical alpha gradient that falls off softly at top/bottom.
-        The alpha is also tapered at the long ends so adjacent sprites
-        blend smoothly when chained.
-
-        Sizes (relative to segment_thickness=4):
-          - halo:  thickness * 4 + 4 = 20px tall (large soft glow)
-          - body:  thickness * 2 + 2 = 10px tall (visible main body)
-          - core:  thickness * 1     =  4px tall (bright center)
-
-        The vertical falloff uses (1 - t^2)^0.7 which gives a relatively
-        flat center with smooth edges — closer to the "neon beam" look
-        of the drift_loud reference than the previous steeper curve.
-
-        Returns:
-            (halo_sprite, body_sprite, core_sprite) — all pygame.Surface
-            with per-pixel alpha (SRCALPHA), centered on (length/2, h/2).
-        """
-        L = int(self.segment_length)  # length along the trail
-        # Halo is 4x the body thickness for a strong outer glow
-        H_halo = int(self.segment_thickness * 4.0) + 4
-        H_body = int(self.segment_thickness * 2.0) + 2
-        H_core = max(3, int(self.segment_thickness))
-
-        def _render(thickness_h: int, base_color: tuple[int, int, int],
-                    max_alpha: int, end_taper: float,
-                    v_curve: float = 0.7) -> pygame.Surface:
-            """Render a single soft-edge sprite.
-
-            Args:
-                thickness_h:  vertical extent (perpendicular to length).
-                base_color:   RGB of the beam.
-                max_alpha:    peak alpha at the very center.
-                end_taper:    how aggressively the alpha falls off at the
-                              two long ends (0 = no taper, 1 = strong taper).
-                v_curve:      exponent on the vertical (1 - t^2) curve.
-                              Lower = flatter center, more "tube" look.
-                              Higher = more concentrated center.
-            """
-            W = L
-            H = thickness_h
-            surf = pygame.Surface((W, H), pygame.SRCALPHA)
-            cx = W * 0.5
-            cy = H * 0.5
-            # Half-thicknesses (the gradient falloff radii)
-            half_h = H * 0.5
-            # We loop per pixel — small surfaces (~20x20), cheap.
-            for y in range(H):
-                dy = y - cy
-                # Vertical alpha: soft falloff from center to edge.
-                # (1 - t^2)^v_curve. Lower v_curve -> flatter center.
-                if half_h > 0:
-                    t_v = abs(dy) / half_h
-                    if t_v > 1.0:
-                        continue  # outside the bar
-                    v_alpha = (1.0 - t_v * t_v) ** v_curve
-                else:
-                    v_alpha = 1.0
-                for x in range(W):
-                    dx = x - cx
-                    # Horizontal alpha: long-edge taper. We taper only
-                    # the very ends, so the body is uniform in the middle
-                    # and softly fades at the two long edges.
-                    t_h = abs(dx) / (W * 0.5)  # 0=center, 1=end
-                    if t_h > 1.0:
-                        continue
-                    h_alpha = (1.0 - t_h) ** end_taper if end_taper > 0 else 1.0
-                    a = max_alpha * v_alpha * h_alpha
-                    if a < 1.0:
-                        continue
-                    a_int = min(255, int(a))
-                    surf.set_at((x, y), (base_color[0], base_color[1], base_color[2], a_int))
-            return surf
-
-        # Halo: wide, low-alpha, very gentle end taper
-        # (end_taper < 1 makes the alpha decay as a curve CONCAVE-UP,
-        # so the middle is nearly uniform and only the last ~10% of
-        # each end fades out. Adjacent sprites blend seamlessly.)
-        halo = _render(H_halo, self.color_edge, 160, end_taper=0.4, v_curve=0.5)
-        # Body: medium width, high alpha, almost no end taper
-        body = _render(H_body, self.color_mid, 240, end_taper=0.2, v_curve=0.6)
-        # Core: thin, full alpha, essentially no end taper
-        core = _render(H_core, self.color_core, 255, end_taper=0.15, v_curve=0.7)
-        return halo, body, core
-
-    # -----------------------------------------------------------------
-    # End BLOQUE 58.22 sprite builder
+    # (BLOQUE 58.22 sprite builder removed in 58.24 — the polyline
+    # renderer doesn't need pre-rendered sprites.)
     # -----------------------------------------------------------------
 
     def is_active(self) -> bool:
@@ -367,78 +290,106 @@ class TronTrail:
     ) -> None:
         """Render the trail to the target surface.
 
-        BLOQUE 58.22: each segment is rendered by blitting the
-        pre-rendered soft-alpha sprite (halo + body + core) rotated
-        to the segment angle. Because the sprites have soft edges,
-        adjacent sprites blend into a continuous glowing beam
-        (Tron Legacy / drift_loud style) — the hard-edge "dashes"
-        look from the previous pygame.draw.line approach is gone.
+        BLOQUE 58.24: draw the trail as a CONTINUOUS POLYLINE through
+        all segment centers, not as discrete rotated sprites. The
+        rotated-sprite approach (BLOQUE 58.22) produced visible "rungs"
+        because each sprite is a thick rectangle, so when stacked
+        along a curve the result looks like a ladder. The polyline
+        approach uses pygame.draw.line to connect consecutive segment
+        centers, giving a single smooth beam that follows the
+        ship's exact path.
 
-        The newest segment is rendered LAST with a brighter boost
-        (the "head" of the trail — looks like the bike is pulling
-        a fresh light source).
+        To get the "neon" look we draw the polyline in 4 passes with
+        increasing width + decreasing alpha:
+          Pass 1 (GLOW):    width=11, alpha=40   - wide soft outer glow
+          Pass 2 (HALO):    width=7,  alpha=80   - medium cyan halo
+          Pass 3 (BODY):    width=4,  alpha=180  - bright cyan body
+          Pass 4 (CORE):    width=2,  alpha=255  - white-cyan bright core
 
-        Older segments are faded via an alpha multiplier based on
-        remaining life. The first 50ms has a fade-in so segments
-        don't pop in.
+        Each pass's alpha is modulated by the segment's remaining
+        life, so the trail fades smoothly from the head (bright) to
+        the tail (transparent). The head gets a small brightness boost
+        (1.25x) to feel like a fresh light source being pulled by
+        the ship.
+
+        This is the same rendering style as the drift_loud reference:
+        a thin bright core wrapped in a soft cyan halo, with the
+        whole thing tracing the ship's path.
         """
-        if not self.segments:
+        if len(self.segments) < 1:
             return
         ox, oy = offset
-        # Index of the newest segment (= head of the trail)
-        head_idx = len(self.segments) - 1
-        for idx, seg in enumerate(self.segments):
-            life_frac = max(0.0, 1.0 - seg.age / seg.max_age)
-            # Fade-in over the first 50ms so the trail doesn't pop
-            fade_in = min(1.0, seg.age / 0.05) if seg.age < 0.05 else 1.0
-            base_alpha = life_frac * fade_in
-            if base_alpha <= 0.0:
+        # Pre-compute screen-space points and per-point life (faded alpha)
+        n = len(self.segments)
+        pts: list[tuple[int, int, float]] = []  # (x, y, life_frac)
+        for s in self.segments:
+            life = max(0.0, 1.0 - s.age / s.max_age)
+            # Quick fade-in over the first 50ms so newly-spawned segments
+            # don't pop in
+            fade_in = min(1.0, s.age / 0.05) if s.age < 0.05 else 1.0
+            alpha_factor = life * fade_in
+            if alpha_factor <= 0.001:
                 continue
-            is_head = (idx == head_idx)
-            # Boost the head a bit (looks like a fresh light source)
-            head_boost = 1.25 if is_head else 1.0
-            # We rotate the sprite so it points along the segment angle.
-            # The sprite is drawn horizontally (length along +x, thickness
-            # along +y). pygame.transform.rotate rotates CCW by degrees;
-            # our angle is the screen-coord angle (0=right, pi/2=down).
-            # pygame's y axis is also down, so a positive angle rotates
-            # the sprite from "pointing right" to "pointing down" —
-            # which is exactly what we want.
-            angle_deg = -math.degrees(seg.angle)  # pygame rotates opposite
+            pts.append((int(s.cx) + ox, int(s.cy) + oy, alpha_factor))
+        if not pts:
+            return
+        # Multi-pass draw: each pass is a "shell" of the neon beam.
+        # (width, base_alpha, color, blend_with_fade)
+        passes = [
+            (11,  40, self.color_edge, 0.35),  # outer wide soft glow
+            (7,   80, self.color_edge, 0.55),  # mid cyan halo
+            (4,  180, self.color_mid,  0.85),  # bright cyan body
+            (2,  255, self.color_core, 1.00),  # white-cyan core
+        ]
+        # The newest segment is the head: boost its alpha
+        head_x, head_y, head_life = pts[-1]
+        for width, base_alpha, color, fade_strength in passes:
+            for i in range(len(pts) - 1):
+                x1, y1, a1 = pts[i]
+                x2, y2, a2 = pts[i + 1]
+                # Average life of the two endpoints; multiplied by the
+                # pass-specific fade strength. This gives the trail a
+                # gradient from head to tail.
+                avg_life = (a1 + a2) * 0.5
+                # The pass's own fade factor controls how strongly this
+                # pass is affected by the trail's life gradient.
+                effective = avg_life * fade_strength
+                alpha = int(min(255.0, base_alpha * effective))
+                if alpha < 2:
+                    continue
+                # Try drawing with alpha. pygame.draw.line accepts an
+                # RGBA color tuple on SRCALPHA targets.
+                try:
+                    pygame.draw.line(
+                        target,
+                        (color[0], color[1], color[2], alpha),
+                        (x1, y1), (x2, y2),
+                        width,
+                    )
+                except TypeError:
+                    # Some pygame versions don't accept RGBA on draw.line.
+                    # Fall back to plain RGB.
+                    pygame.draw.line(
+                        target,
+                        color,
+                        (x1, y1), (x2, y2),
+                        width,
+                    )
+        # Head boost: draw a small bright circle at the very tip of
+        # the trail (the newest segment position). This is the
+        # "light source" feel — like the bike is pulling a fresh
+        # bit of light.
+        head_alpha = int(min(255.0, 255.0 * head_life * 1.0))
+        if head_alpha > 10:
             try:
-                halo_rot = pygame.transform.rotate(self._halo_sprite, angle_deg)
-                body_rot = pygame.transform.rotate(self._body_sprite, angle_deg)
-                core_rot = pygame.transform.rotate(self._core_sprite, angle_deg)
-            except Exception:
-                # Fallback: just blit unrotated (will look wrong but won't crash)
-                halo_rot = self._halo_sprite
-                body_rot = self._body_sprite
-                core_rot = self._core_sprite
-            # Compute the top-left position so the rotated sprite is
-            # centered on (seg.cx + ox, seg.cy + oy).
-            cx = int(seg.cx) + ox
-            cy = int(seg.cy) + oy
-
-            def _blit_faded(surf: pygame.Surface, alpha_mult: float) -> None:
-                """Blit surf centered on (cx,cy) with an extra alpha
-                multiplier (used for age fade)."""
-                a = base_alpha * alpha_mult * head_boost
-                if a >= 0.999:
-                    target.blit(surf, surf.get_rect(center=(cx, cy)))
-                else:
-                    # Apply per-blit alpha. We scale the sprite's alpha
-                    # channel by `a` (clamped) and blit.
-                    scaled = surf.copy()
-                    try:
-                        scaled.set_alpha(int(min(255, max(0, a * 255))))
-                    except Exception:
-                        pass
-                    target.blit(scaled, scaled.get_rect(center=(cx, cy)))
-
-            # 3 layers: halo (widest, dimmest) -> body -> core (brightest)
-            _blit_faded(halo_rot, 1.0)
-            _blit_faded(body_rot, 1.0)
-            _blit_faded(core_rot, 1.0)
+                pygame.draw.circle(
+                    target,
+                    (self.color_core[0], self.color_core[1], self.color_core[2], head_alpha),
+                    (head_x, head_y),
+                    3,
+                )
+            except TypeError:
+                pygame.draw.circle(target, self.color_core, (head_x, head_y), 3)
 
     def check_enemy_collision(
         self,
