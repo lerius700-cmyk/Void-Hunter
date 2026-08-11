@@ -1,10 +1,14 @@
-"""Capture: render all 7 redesigned enemy ships in a grid.
+"""Capture: render all 8 redesigned enemy ships (BLOQUE 58.5).
 
-BLOQUE 58.4: visual proof for the Star Fox / Star Wolf redesign of
-all enemy sprites. Each enemy now uses the silver-military base +
-per-type color accent + glowing cockpit aesthetic. Gameplay unchanged.
+BLOQUE 58.5: visual proof for the nose-DOWN orientation fix.
+Socratic insight: enemies move DOWN toward the player, so the nose
+(front, direction of motion) must point DOWN. All enemy sprites
+have been flipped 180° accordingly. Engines (back of ship) are at
+the TOP, wings sweep BACKWARD-AND-UP. SUB_BOSS also gets:
+  - Subtle vertical bob (2 Hz, ±1 px) for "warp thrust" feel
+  - Engine pulse (6 Hz) for HOT exhaust glow
 
-Output: tools/playtest_out/polish_46_all_enemies_starfox.png
+Output: tools/playtest_out/polish_47_all_enemies_nosedown.png
 """
 import os
 os.environ["SDL_VIDEODRIVER"] = "dummy"
@@ -38,10 +42,10 @@ font_md = pygame.font.SysFont("consolas", 13)
 font_sm = pygame.font.SysFont("consolas", 10)
 
 # Title
-title = font_lg.render("ALL ENEMY SHIPS - STAR FOX / STAR WOLF redesign", True, (255, 255, 255))
+title = font_lg.render("ALL ENEMY SHIPS - nose DOWN (BLOQUE 58.5)", True, (255, 255, 255))
 screen.blit(title, (12, 8))
 sub = font_md.render(
-    "BLOQUE 58.4: silver military base + per-type color accent + glowing cockpit",
+    "Enemies move DOWN, so nose points DOWN. Engines at TOP, wings swept back UP.",
     True, (180, 200, 255),
 )
 screen.blit(sub, (12, 30))
@@ -70,40 +74,54 @@ def draw_enemy(target, kind, cx, cy, w, h, t):
         silver = (170, 180, 195)
         silver_dark = (90, 100, 115)
         cyan = (80, 220, 240)
+        # Body vertical dart, nose at bottom
+        body_top_y = cy - h // 2
+        body_bot_y = cy + h // 2
+        shoulder_y = body_top_y + 1
+        wing_tip_y = shoulder_y - 1
         pygame.draw.polygon(target, silver, [
-            (cx, cy - h // 2), (cx + 2, cy + 1), (cx + w // 2, cy + h // 2),
-            (cx, cy + h // 3 + 1), (cx - w // 2, cy + h // 2), (cx - 2, cy + 1),
+            (cx, body_bot_y),
+            (cx + 1, cy + 1), (cx + 2, shoulder_y),
+            (cx + w // 2, wing_tip_y),
+            (cx, body_top_y - 1),
+            (cx - w // 2, wing_tip_y),
+            (cx - 2, shoulder_y), (cx - 1, cy + 1),
         ])
         wing_hi = (200, 210, 225)
-        pygame.draw.line(target, wing_hi, (cx, cy - h // 2), (cx + w // 2, cy + h // 2), 1)
-        pygame.draw.line(target, wing_hi, (cx, cy - h // 2), (cx - w // 2, cy + h // 2), 1)
-        pygame.draw.line(target, silver_dark, (cx, cy - h // 2 + 1), (cx, cy + h // 3), 1)
+        pygame.draw.line(target, wing_hi, (cx + 2, shoulder_y), (cx + w // 2, wing_tip_y), 1)
+        pygame.draw.line(target, wing_hi, (cx - 2, shoulder_y), (cx - w // 2, wing_tip_y), 1)
+        pygame.draw.line(target, silver_dark, (cx, body_top_y), (cx, body_bot_y - 1), 1)
         pygame.draw.circle(target, cyan, (cx, cy), 2)
         pygame.draw.circle(target, (180, 240, 255), (cx, cy), 1)
-        pygame.draw.rect(target, (255, 200, 80), (cx - 1, cy + h // 2 - 1, 2, 1))
+        pygame.draw.rect(target, (255, 200, 80), (cx - 1, body_top_y - 1, 2, 1))
     elif kind == EnemyKind.CRUISER:
         silver = (160, 170, 185)
         silver_dark = (85, 95, 110)
         green = (100, 220, 100)
         green_dark = (50, 140, 60)
+        body_top_y = cy - h // 2
+        body_bot_y = cy + h // 2
         pygame.draw.polygon(target, silver, [
-            (cx, cy - h // 2), (cx + w // 2, cy - 1), (cx + w // 2 - 1, cy + h // 3),
-            (cx + w // 3, cy + h // 2), (cx, cy + h // 3), (cx - w // 3, cy + h // 2),
-            (cx - w // 2 + 1, cy + h // 3), (cx - w // 2, cy - 1),
+            (cx, body_bot_y), (cx + w // 3, body_top_y + 2),
+            (cx + w // 2, body_top_y + 3), (cx + w // 2 - 1, body_top_y + 1),
+            (cx + w // 2, body_top_y - 1), (cx, body_top_y - 1),
+            (cx - w // 2, body_top_y - 1), (cx - w // 2 + 1, body_top_y + 1),
+            (cx - w // 2, body_top_y + 3), (cx - w // 3, body_top_y + 2),
         ])
         pygame.draw.polygon(target, silver_dark, [
-            (cx, cy - h // 2 + 2), (cx + w // 3, cy + 1), (cx + w // 4, cy + h // 3),
-            (cx, cy + h // 4), (cx - w // 4, cy + h // 3), (cx - w // 3, cy + 1),
+            (cx, body_bot_y - 1), (cx + w // 4, body_top_y + 3),
+            (cx + w // 4, body_top_y + 2), (cx, body_top_y + 1),
+            (cx - w // 4, body_top_y + 2), (cx - w // 4, body_top_y + 3),
         ])
         wing_hi = (195, 205, 220)
-        pygame.draw.line(target, wing_hi, (cx, cy - h // 2), (cx + w // 2, cy - 1), 1)
-        pygame.draw.line(target, wing_hi, (cx, cy - h // 2), (cx - w // 2, cy - 1), 1)
-        pygame.draw.rect(target, green_dark, (cx - w // 3, cy + h // 4, 1, 3))
-        pygame.draw.rect(target, green_dark, (cx + w // 3, cy + h // 4, 1, 3))
-        pygame.draw.circle(target, green, (cx, cy - 1), 2)
-        pygame.draw.circle(target, (200, 255, 200), (cx, cy - 1), 1)
-        pygame.draw.rect(target, (255, 200, 80), (cx - w // 3 - 1, cy + h // 2, 2, 1))
-        pygame.draw.rect(target, (255, 200, 80), (cx + w // 3 - 1, cy + h // 2, 2, 1))
+        pygame.draw.line(target, wing_hi, (cx, body_bot_y), (cx + w // 2, body_top_y - 1), 1)
+        pygame.draw.line(target, wing_hi, (cx, body_bot_y), (cx - w // 2, body_top_y - 1), 1)
+        pygame.draw.rect(target, green_dark, (cx - w // 3, cy - 1, 1, 3))
+        pygame.draw.rect(target, green_dark, (cx + w // 3, cy - 1, 1, 3))
+        pygame.draw.circle(target, green, (cx, cy + 1), 2)
+        pygame.draw.circle(target, (200, 255, 200), (cx, cy + 1), 1)
+        pygame.draw.rect(target, (255, 200, 80), (cx - w // 3 - 1, body_top_y - 1, 2, 1))
+        pygame.draw.rect(target, (255, 200, 80), (cx + w // 3 - 1, body_top_y - 1, 2, 1))
     elif kind == EnemyKind.HEAVY:
         silver = (150, 160, 175)
         silver_dark = (80, 90, 105)
@@ -121,12 +139,12 @@ def draw_enemy(target, kind, cx, cy, w, h, t):
         pygame.draw.circle(target, red_dark, (cx, cy), 3)
         pygame.draw.circle(target, red, (cx, cy), 2)
         pygame.draw.circle(target, (255, 200, 200), (cx, cy), 1)
-        pygame.draw.rect(target, red_dark, (cx - 1, cy, 2, h // 2 - 1))
+        pygame.draw.rect(target, red_dark, (cx - 1, cy + 1, 2, h // 2 - 2))
         pygame.draw.circle(target, red, (cx, cy + h // 2 - 1), 1)
-        pygame.draw.circle(target, (255, 80, 80), (cx - 3, cy - h // 2 + 1), 1)
-        pygame.draw.circle(target, (80, 220, 100), (cx + 3, cy - h // 2 + 1), 1)
-        pygame.draw.rect(target, (255, 200, 80), (cx - w // 4, cy + h // 2, 2, 1))
-        pygame.draw.rect(target, (255, 200, 80), (cx + w // 4 - 2, cy + h // 2, 2, 1))
+        pygame.draw.circle(target, (255, 80, 80), (cx - 3, cy + h // 2 - 2), 1)
+        pygame.draw.circle(target, (80, 220, 100), (cx + 3, cy + h // 2 - 2), 1)
+        pygame.draw.rect(target, (255, 200, 80), (cx - w // 4, cy - h // 2, 2, 1))
+        pygame.draw.rect(target, (255, 200, 80), (cx + w // 4 - 2, cy - h // 2, 2, 1))
     elif kind == EnemyKind.KAMIKAZE:
         silver = (180, 130, 80)
         silver_dark = (110, 70, 30)
@@ -139,10 +157,11 @@ def draw_enemy(target, kind, cx, cy, w, h, t):
             (cx - w // 3, cy - h // 2 + 1), (cx + w // 3, cy - h // 2 + 1), (cx, cy + h // 3),
         ])
         pulse = 200 + int(55 * math.sin(t * 8))
-        pygame.draw.circle(target, (pulse, 80, 30), (cx, cy - 1), 2)
-        pygame.draw.circle(target, orange_bright, (cx, cy - 1), 1)
-        pygame.draw.circle(target, orange, (cx, cy + h // 2 - 1), 2)
-        pygame.draw.circle(target, (255, 255, 200), (cx, cy + h // 2 - 1), 1)
+        pygame.draw.circle(target, (pulse, 80, 30), (cx, cy), 2)
+        pygame.draw.circle(target, orange_bright, (cx, cy), 1)
+        pygame.draw.circle(target, orange, (cx - 1, cy - h // 2), 1)
+        pygame.draw.circle(target, orange, (cx + 1, cy - h // 2), 1)
+        pygame.draw.circle(target, (255, 255, 200), (cx, cy - h // 2 - 1), 1)
     elif kind == EnemyKind.SNIPER:
         silver = (160, 170, 190)
         silver_dark = (85, 95, 115)
@@ -199,35 +218,45 @@ def draw_enemy(target, kind, cx, cy, w, h, t):
         pygame.draw.circle(target, pink, (cx, cy), 2)
         pygame.draw.circle(target, pink_bright, (cx, cy), 1)
     elif kind == EnemyKind.SUB_BOSS:
-        # V-shape Star Wolf (BLOQUE 58.3)
+        # BLOQUE 58.5: nose DOWN, V opening UP (flipped 180°)
         wolf_base = (90, 100, 130)
         wolf_dark = (50, 55, 75)
         wolf_red = (220, 50, 60)
         wolf_red_bright = (255, 100, 100)
         wolf_engine = (255, 180, 60)
-        v_root_x = cx
-        v_root_y = cy - h // 2 - 2
-        left_tip_x = cx - w - 2
-        left_tip_y = cy + h // 2 + 1
-        right_tip_x = cx + w + 2
-        right_tip_y = cy + h // 2 + 1
+        body_top_y = cy - h // 2
+        body_bot_y = cy + h // 2
+        shoulder_y = body_top_y + 2
+        wing_tip_y = shoulder_y - h // 2
+        wing_tip_dx = w + 1
+        # Engines at the top
+        eng_y = body_top_y - 1
+        pygame.draw.rect(target, (255, 180, 60), (cx - 2, eng_y, 1, 2))
+        pygame.draw.rect(target, (255, 180, 60), (cx + 1, eng_y, 1, 2))
+        # Body + wings
         pygame.draw.polygon(target, wolf_base, [
-            (v_root_x, v_root_y), (cx + 2, cy - 1), (right_tip_x, right_tip_y),
-            (cx, cy + 2), (left_tip_x, left_tip_y), (cx - 2, cy - 1),
+            (cx, body_bot_y),
+            (cx + 2, cy + h // 4),
+            (cx + 2, shoulder_y),
+            (cx + wing_tip_dx, wing_tip_y),
+            (cx + 1, eng_y),
+            (cx, body_top_y - 1),
+            (cx - 1, eng_y),
+            (cx - wing_tip_dx, wing_tip_y),
+            (cx - 2, shoulder_y),
+            (cx - 2, cy + h // 4),
         ])
         wing_hi = (130, 140, 170)
-        pygame.draw.line(target, wing_hi, (v_root_x, v_root_y), (right_tip_x, right_tip_y), 1)
-        pygame.draw.line(target, wing_hi, (v_root_x, v_root_y), (left_tip_x, left_tip_y), 1)
-        pygame.draw.line(target, wolf_red, (cx + 1, cy), (right_tip_x - 1, right_tip_y - 1), 1)
-        pygame.draw.line(target, wolf_red, (cx - 1, cy), (left_tip_x + 1, left_tip_y - 1), 1)
-        pygame.draw.line(target, wolf_dark, (cx, cy - 1), (cx, cy + 2), 1)
-        pygame.draw.circle(target, wolf_red, (cx, cy + 1), 3)
-        pygame.draw.circle(target, wolf_red_bright, (cx, cy + 1), 2)
-        pygame.draw.circle(target, (255, 240, 200), (cx, cy + 1), 1)
-        pygame.draw.rect(target, wolf_engine, (left_tip_x - 1, left_tip_y, 2, 2))
-        pygame.draw.rect(target, wolf_engine, (right_tip_x - 1, right_tip_y, 2, 2))
-        pygame.draw.circle(target, (255, 100, 60), (left_tip_x, left_tip_y + 1), 2)
-        pygame.draw.circle(target, (255, 100, 60), (right_tip_x, right_tip_y + 1), 2)
+        pygame.draw.line(target, wing_hi, (cx + 2, shoulder_y), (cx + wing_tip_dx, wing_tip_y), 1)
+        pygame.draw.line(target, wing_hi, (cx - 2, shoulder_y), (cx - wing_tip_dx, wing_tip_y), 1)
+        pygame.draw.line(target, wolf_red, (cx + 1, shoulder_y - 1), (cx + wing_tip_dx - 1, wing_tip_y + 1), 1)
+        pygame.draw.line(target, wolf_red, (cx - 1, shoulder_y - 1), (cx - wing_tip_dx + 1, wing_tip_y + 1), 1)
+        pygame.draw.line(target, wolf_dark, (cx, body_top_y), (cx, body_bot_y - 1), 1)
+        pygame.draw.circle(target, wolf_red, (cx, cy), 3)
+        pygame.draw.circle(target, wolf_red_bright, (cx, cy), 2)
+        pygame.draw.circle(target, (255, 240, 200), (cx, cy), 1)
+        pygame.draw.circle(target, (255, 80, 80), (cx + wing_tip_dx, wing_tip_y), 1)
+        pygame.draw.circle(target, (255, 80, 80), (cx - wing_tip_dx, wing_tip_y), 1)
 
 # Draw each enemy
 for i, (kind, name, desc) in enumerate(ENEMIES):
@@ -258,12 +287,12 @@ for i, (kind, name, desc) in enumerate(ENEMIES):
 
 # Footer
 foot = font_sm.render(
-    "BLOQUE 58.4: all 8 enemy sprites redesigned  -  visual only, gameplay unchanged",
+    "BLOQUE 58.5: all 8 enemy sprites nose-DOWN + SUB_BOSS bob/pulse  -  visual only, gameplay unchanged",
     True, (140, 140, 160),
 )
 screen.blit(foot, (12, H - 18))
 
-out_path = ROOT / "tools" / "playtest_out" / "polish_46_all_enemies_starfox.png"
+out_path = ROOT / "tools" / "playtest_out" / "polish_47_all_enemies_nosedown.png"
 out_path.parent.mkdir(parents=True, exist_ok=True)
 pygame.image.save(screen, str(out_path))
 print(f"Saved: {out_path}")
