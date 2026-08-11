@@ -76,6 +76,19 @@ PLAYER_DASH_HEAT_MAX: float = 100.0
 PLAYER_DASH_HEAT_PER_S: float = 280.0     # ~0.36s of continuous dashing to overheat
 PLAYER_DASH_HEAT_DECAY_PER_S: float = 55.0  # ~1.8s to cool from max to 0
 PLAYER_DASH_HEAT_RESUME_THRESHOLD: float = 25.0  # must drop below 25% to dash again
+# BLOQUE 58.8.1: DASH and PROPULSION are now TWO SEPARATE modes that
+# share the same heat bar. DASH is a quick 0.18s burst (one-shot),
+# PROPULSION is a continuous thrust while shift is held.
+# - DASH: consumes a flat 10 heat per use (regardless of duration)
+# - PROPULSION: builds heat continuously at 30/s (overheats in ~3.3s)
+PLAYER_DASH_HEAT_COST: float = 10.0
+PLAYER_PROPULSION_SPEED_MULT: float = 2.0  # x2 speed during propulsion
+PLAYER_PROPULSION_HEAT_PER_S: float = 30.0
+# Click vs hold threshold: shift pressed for less than this = DASH
+# (one-shot), shift held for >= this = PROPULSION (continuous).
+PLAYER_CLICK_VS_HOLD_THRESHOLD_S: float = 0.15
+# Trail particle spawn rate during PROPULSION (one particle per N seconds)
+PLAYER_PROPULSION_TRAIL_INTERVAL_S: float = 0.025  # ~40 Hz
 PLAYER_INVULN_FRAMES: int = 60            # post-hit
 PLAYER_DEATH_DURATION_S: float = 1.20
 PLAYER_RESPAWN_INVULN_S: float = 1.0

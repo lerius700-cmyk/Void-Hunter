@@ -405,9 +405,17 @@ def test_dash_8way_diagonal_down_right():
 # BLOQUE 33: Shift = dash, K freed, Boost removed
 # -----------------------------------------------------------------------
 def test_dash_triggers_on_shift_left_down():
-    """BLOQUE 33: pressing K_LSHIFT (KEYDOWN) sets input_dash → DASH state."""
+    """BLOQUE 58.8.1: shift = DASH (click, < 0.15s) OR PROPULSION (hold).
+
+    On KEYDOWN shift: dash_held is set to True, but input_dash is NOT
+    set (it would be a "hold" not a "click"). input_dash is only set
+    on KEYUP if the hold was shorter than the click threshold.
+
+    The simple KEYDOWN-only test now expects dash_held=True and
+    input_dash=False. The full click cycle (KEYDOWN + KEYUP) is
+    tested separately in test_dash_triggers_on_shift_click.
+    """
     import pygame
-    # Patch the event queue: synthesize a K_LSHIFT KEYDOWN
     original_get = pygame.event.get
 
     def fake_get(event_type=None):
@@ -418,7 +426,41 @@ def test_dash_triggers_on_shift_left_down():
     try:
         rt = _make_runtime()
         rt._read_input()
+        # KEYDOWN only — input_dash should be False (we haven't released yet)
+        assert rt._player.input_dash is False
+        # But dash_held is True (so a hold could enter PROPULSION)
+        assert rt._player.dash_held is True
+    finally:
+        pygame.event.get = original_get
+
+
+def test_dash_triggers_on_shift_click():
+    """BLOQUE 58.8.1: click (KEYDOWN + KEYUP within threshold) triggers DASH.
+
+    After the click, input_dash is set to True, and dash_held is False.
+    """
+    import pygame
+    original_get = pygame.event.get
+
+    call_count = {"n": 0}
+
+    def fake_get(event_type=None):
+        if event_type is None or event_type in (pygame.KEYDOWN, pygame.KEYUP):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return [pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_LSHIFT})]
+            else:
+                return [pygame.event.Event(pygame.KEYUP, {"key": pygame.K_LSHIFT})]
+        return []
+    pygame.event.get = fake_get
+    try:
+        rt = _make_runtime()
+        # Call 1 returns KEYDOWN — sets dash_held
+        rt._read_input()
+        # Call 2 returns KEYUP — triggers DASH (input_dash=True)
+        rt._read_input()
         assert rt._player.input_dash is True
+        assert rt._player.dash_held is False
     finally:
         pygame.event.get = original_get
 

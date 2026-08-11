@@ -24,7 +24,7 @@ import pygame
 
 from src.core.settings import (
     BOSS_FALLBACK_KILLS, BOSS_FALLBACK_TIMEOUT_S, BOSS_FAST_TRIGGER_S,
-    INTERNAL_H, INTERNAL_W, FIXED_DT,
+    INTERNAL_H, INTERNAL_W, FIXED_DT, PLAYER_CLICK_VS_HOLD_THRESHOLD_S,
 )
 from src.entities.enemies import EnemyKind, EnemyPool, Enemy
 from src.entities.enemies.boss import Boss, BossId, BossPool, BOSS_CONFIGS
@@ -473,15 +473,15 @@ class GameplayRuntime:
         # These are independent — you can RMB-spam while LMB charges.
         self._player.input_fire = self._mouse_held
         self._player.input_rapid_fire = self._mouse_r_held
-        # BLOQUE 58.8: detect shift held (for prolonged dash). Process
-        # all events in a single pass so we don't miss KEYUP.
+        # BLOQUE 58.8.1: shift = DASH (click, < 0.15s) or PROPULSION (hold).
+        # Process all events in a single pass so we don't miss KEYUP.
         for event in pygame.event.get():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_LSHIFT:
-                    # BLOQUE 33: Shift left = dash (one-shot, consumed)
-                    # BLOQUE 58.8: also mark dash_held so a held shift
-                    # can continue the dash (heat permitting).
-                    self._player.input_dash = True
+                    # BLOQUE 58.8.1: only mark dash_held. The actual DASH
+                    # input is set on KEYUP if the hold was < threshold
+                    # (i.e. a quick click). If held past the threshold,
+                    # the player enters PROPULSION state automatically.
                     self._player.dash_held = True
                 elif event.key == pygame.K_l:
                     # BLOQUE 39: L still triggers bomb (back-compat), but B
@@ -498,7 +498,13 @@ class GameplayRuntime:
                     self._transition_to(GameState.PAUSE)
             elif event.type == pygame.KEYUP:
                 if event.key == pygame.K_LSHIFT:
-                    # BLOQUE 58.8: releasing shift ends the prolonged dash
+                    # BLOQUE 58.8.1: if shift was released quickly (click),
+                    # trigger a DASH. If held past the threshold, just
+                    # end the PROPULSION (player update handles exit).
+                    if (self._player.dash_held_time
+                            < PLAYER_CLICK_VS_HOLD_THRESHOLD_S):
+                        # Click — trigger DASH (consumed by _enter_dash)
+                        self._player.input_dash = True
                     self._player.dash_held = False
 
     def _update_nose_angle(self) -> None:
@@ -2301,6 +2307,9 @@ class GameplayRuntime:
         # BLOQUE 26: continuous engine smoke + dash stars
         if not self._player.is_dead:
             self._emit_player_motion_particles(effective_dt)
+            # BLOQUE 58.8.1: PROPULSION light trail (x2 speed, shift held)
+            if self._player.state == PlayerState.PROPULSION:
+                self._emit_propulsion_trail(effective_dt)
         self._check_player_death_explosion()
         self._particles.update(effective_dt)
         self._hitstop.update()
@@ -2455,6 +2464,50 @@ class GameplayRuntime:
                     vx=(random.random() - 0.5) * 8.0,
                     vy=-20.0 + (random.random() - 0.5) * 6.0,
                     life=0.5, radius=1.5,
+                )
+
+    def _emit_propulsion_trail(self, dt: float) -> None:
+        """BLOQUE 58.8.1: emit a LIGHT TRAIL behind the player while
+        in PROPULSION state (shift held, x2 speed). The trail is a
+        dense stream of bright white/yellow sparks + a few cyan/blue
+        core glows to give it the "rocket thruster" look.
+        """
+        from src.systems.particle_engine import P_GLOW, P_SPARK
+        from src.core.settings import PLAYER_PROPULSION_TRAIL_INTERVAL_S
+        # Throttle: respect the per-frame interval (~40 Hz)
+        if self._player.propulsion_trail_timer < PLAYER_PROPULSION_TRAIL_INTERVAL_S:
+            return
+        self._player.propulsion_trail_timer = 0.0
+        px, py = self._player.x, self._player.y
+        # Engine positions (back of the ship, where the engines are drawn)
+        for sign in (-1, 1):
+            ex = px + sign * 2
+            ey = py + 4  # slightly behind the ship
+            # Bright yellow/white spark (the "thrust glow")
+            self._particles.emit(
+                P_SPARK, ex, ey,
+                vx=(random.random() - 0.5) * 8.0,
+                vy=20.0 + (random.random() - 0.5) * 6.0,  # trailing BEHIND
+                life=0.22, radius=1.2,
+                color=(255, 240, 180),
+            )
+            # Cyan/white core (the "hot thruster")
+            if random.random() < 0.5:
+                self._particles.emit(
+                    P_GLOW, ex, ey,
+                    vx=(random.random() - 0.5) * 4.0,
+                    vy=15.0 + (random.random() - 0.5) * 4.0,
+                    life=0.18, radius=2.5,
+                    color=(180, 230, 255),
+                )
+            # Occasional orange ember
+            if random.random() < 0.3:
+                self._particles.emit(
+                    P_SPARK, ex, ey,
+                    vx=(random.random() - 0.5) * 6.0,
+                    vy=22.0 + (random.random() - 0.5) * 4.0,
+                    life=0.18, radius=1.0,
+                    color=(255, 180, 80),
                 )
 
     def _add_shockwave(self, x: float, y: float, max_radius: float = 60.0) -> None:

@@ -1,9 +1,12 @@
-"""Capture: render the new dash heat bar HUD element (BLOQUE 58.8).
+"""Capture: render the new dash heat bar HUD element (BLOQUE 58.8.1).
 
 Visual proof that the Star Fox style dash overheat bar is in place:
 - 4 frames showing different heat levels (0%, 40%, 75%, 100% overheat)
 - Color shifts cyan -> yellow -> red as heat increases
 - Threshold marker (small vertical line) shows where dash becomes available again
+- DASH and PROPULSION share the same heat bar
+- DASH: flat +10 per use (click, < 0.15s)
+- PROPULSION: continuous +30/s while held (hold, >= 0.15s, x2 speed + light trail)
 """
 import os
 os.environ["SDL_VIDEODRIVER"] = "dummy"
@@ -66,8 +69,9 @@ for i, (heat, label) in enumerate(heat_levels):
 
 # Footer
 foot = font_sm.render(
-    "BLOQUE 58.8: shift = dash (one-shot) or hold = prolonged dash  -  "
-    "heat builds at 280/s, cools at 55/s, must drop below 25% to dash again",
+    "BLOQUE 58.8.1: shift click (< 0.15s) = DASH (+10 heat)  -  "
+    "shift hold (>= 0.15s) = PROPULSION (+30/s heat, x2 speed, light trail)  -  "
+    "auto-cancel at 100%",
     True, (140, 140, 160),
 )
 screen.blit(foot, (12, H - 16))

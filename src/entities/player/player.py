@@ -27,7 +27,9 @@ from src.core.settings import (
     INTERNAL_W,
     PLAYER_BOMBS,
     PLAYER_BOMBS_MAX,
+    PLAYER_CLICK_VS_HOLD_THRESHOLD_S,
     PLAYER_DASH_DURATION_S,
+    PLAYER_DASH_HEAT_COST,
     PLAYER_DASH_HEAT_DECAY_PER_S,
     PLAYER_DASH_HEAT_MAX,
     PLAYER_DASH_HEAT_PER_S,
@@ -42,6 +44,8 @@ from src.core.settings import (
     PLAYER_HP_ABSOLUTE_MAX,
     PLAYER_LIVES,
     PLAYER_NOSE_LERP_PER_S,
+    PLAYER_PROPULSION_HEAT_PER_S,
+    PLAYER_PROPULSION_SPEED_MULT,
     PLAYER_RESPAWN_INVULN_S,
     PLAYER_SPEED,
 )
@@ -53,6 +57,7 @@ class PlayerState(Enum):
     SHOOT = "shoot"
     CHARGE = "charge"
     DASH = "dash"
+    PROPULSION = "propulsion"  # BLOQUE 58.8.1: shift held = continuous thruster
     HIT = "hit"
     DEAD = "dead"
 
@@ -107,6 +112,11 @@ class Player:
     # BLOQUE 58.8: dash_held — True while shift is held down. Allows
     # prolonged dash: hold shift = continuous dash (heat-permitting).
     dash_held: bool = False
+    # BLOQUE 58.8.1: time shift has been held down. Used to distinguish
+    # a quick click (DASH, < 0.15s) from a sustained hold (PROPULSION).
+    dash_held_time: float = 0.0
+    # BLOQUE 58.8.1: trail spawn timer (PROPULSION light trail).
+    propulsion_trail_timer: float = 0.0
     # Hit
     invuln_frames: int = 0
     # Lifecycle
@@ -283,20 +293,30 @@ class Player:
             self.invuln_frames = max(0, self.invuln_frames - 1)
         if self.dash_iframes_left > 0:
             self.dash_iframes_left = max(0, self.dash_iframes_left - 1)
-        # BLOQUE 58.8: dash overheat — heat builds while dashing, decays
-        # when not. Caps at MAX (overheat triggers auto-cancel) and
-        # bottoms out at 0. While in DASH, also exit if heat hits MAX.
-        if self.state == PlayerState.DASH:
+        # BLOQUE 58.8.1: dash_heat + propulsion_heat (shared bar).
+        # - DASH: consumes a flat 10 heat on entry (no continuous build)
+        # - PROPULSION: builds heat continuously at PROPULSION_HEAT_PER_S
+        # - Both modes: auto-cancel on heat >= MAX
+        # - All other states: heat cools down at DECAY_PER_S
+        if self.state == PlayerState.PROPULSION:
             self.dash_heat = min(PLAYER_DASH_HEAT_MAX,
-                                 self.dash_heat + PLAYER_DASH_HEAT_PER_S * dt)
-            # Overheat: auto-cancel the dash
+                                 self.dash_heat + PLAYER_PROPULSION_HEAT_PER_S * dt)
             if self.dash_heat >= PLAYER_DASH_HEAT_MAX:
+                # Overheat: auto-cancel the propulsion (must release
+                # shift and re-press to use again, per user requirement)
+                self.dash_held = False
                 self._enter_idle()
         else:
-            # Cool down when not dashing
+            # Cool down when not in PROPULSION (including IDLE, DASH, etc.)
             if self.dash_heat > 0.0:
                 self.dash_heat = max(0.0,
                                      self.dash_heat - PLAYER_DASH_HEAT_DECAY_PER_S * dt)
+        # BLOQUE 58.8.1: track how long shift has been held (used to
+        # distinguish click from hold — click = DASH, hold = PROPULSION)
+        if self.dash_held:
+            self.dash_held_time += dt
+        else:
+            self.dash_held_time = 0.0
         # Fire cooldown
         if self.fire_cd > 0.0:
             self.fire_cd = max(0.0, self.fire_cd - dt)
@@ -347,6 +367,8 @@ class Player:
             self._update_charge(dt)
         elif self.state == PlayerState.DASH:
             self._update_dash(dt)
+        elif self.state == PlayerState.PROPULSION:
+            self._update_propulsion(dt)
         elif self.state == PlayerState.HIT:
             self._update_hit(dt)
         elif self.state == PlayerState.DEAD:
@@ -369,13 +391,17 @@ class Player:
     # State updates
     # -----------------------------------------------------------------------
     def _update_idle(self, dt: float) -> None:
-        # BLOQUE 58.8: dash takes priority over move. Triggered by either
-        # one-shot input_dash (KEYDOWN) or sustained dash_held (shift held).
+        # BLOQUE 58.8.1: DASH (click) takes priority over PROPULSION (hold).
+        # Click = input_dash flag set on KEYUP if shift was held < threshold.
+        # Hold = dash_held=True and dash_held_time >= threshold -> PROPULSION.
         if self.input_dash and self._can_dash():
             self._enter_dash()
             return
-        if self.dash_held and self._can_dash() and self.dash_iframes_left == 0:
-            self._enter_dash()
+        # Shift held past the click threshold -> enter PROPULSION
+        if (self.dash_held
+                and self.dash_held_time >= PLAYER_CLICK_VS_HOLD_THRESHOLD_S
+                and self._can_dash()):
+            self._enter_propulsion()
             return
         # BLOQUE 38: RMB rapid fire (independent of LMB charge)
         if self.input_rapid_fire and self.fire_cd <= 0.0:
@@ -410,12 +436,14 @@ class Player:
         self._clamp_position()
 
     def _update_move(self, dt: float) -> None:
-        # BLOQUE 58.8: dash takes priority
+        # BLOQUE 58.8.1: DASH (click) or PROPULSION (hold) takes priority
         if self.input_dash and self._can_dash():
             self._enter_dash()
             return
-        if self.dash_held and self._can_dash() and self.dash_iframes_left == 0:
-            self._enter_dash()
+        if (self.dash_held
+                and self.dash_held_time >= PLAYER_CLICK_VS_HOLD_THRESHOLD_S
+                and self._can_dash()):
+            self._enter_propulsion()
             return
         # Bomb
         if self.input_bomb and self.bombs > 0:
@@ -508,8 +536,10 @@ class Player:
         if self.input_dash and self._can_dash():
             self._enter_dash()
             return
-        if self.dash_held and self._can_dash() and self.dash_iframes_left == 0:
-            self._enter_dash()
+        if (self.dash_held
+                and self.dash_held_time >= PLAYER_CLICK_VS_HOLD_THRESHOLD_S
+                and self._can_dash()):
+            self._enter_propulsion()
             return
 
     def _update_charge(self, dt: float) -> None:
@@ -544,8 +574,77 @@ class Player:
         if self.input_dash and self._can_dash():
             self._enter_dash()
             return
-        if self.dash_held and self._can_dash() and self.dash_iframes_left == 0:
-            self._enter_dash()
+        if (self.dash_held
+                and self.dash_held_time >= PLAYER_CLICK_VS_HOLD_THRESHOLD_S
+                and self._can_dash()):
+            self._enter_propulsion()
+            return
+
+    def _update_propulsion(self, dt: float) -> None:
+        """BLOQUE 58.8.1: PROPULSION state — continuous thruster while
+        shift is held. 2x speed, light trail from the back, heat builds
+        at PROPULSION_HEAT_PER_S. Auto-cancels on overheat or shift
+        release. Must release shift and re-press to use again.
+        """
+        # Heat is updated in the main update() loop
+        # Overheat already handled in main update() (sets dash_held=False
+        # and enters IDLE), so if we're here, heat is below MAX.
+        # Cancel on shift release (already handled if heat max).
+        if not self.dash_held:
+            self._enter_idle()
+            return
+        # Movement: 2x speed, 8 directions (WASD or arrows)
+        prop_speed = PLAYER_SPEED * PLAYER_PROPULSION_SPEED_MULT
+        target_vx = 0.0
+        target_vy = 0.0
+        if self.input_left and not self.input_right:
+            target_vx -= prop_speed
+        if self.input_right and not self.input_left:
+            target_vx += prop_speed
+        if self.input_up and not self.input_down:
+            target_vy -= prop_speed
+        if self.input_down and not self.input_up:
+            target_vy += prop_speed
+        # Smooth velocity (snappier than MOVE for propulsion feel)
+        lerp = min(1.0, dt * 12.0)
+        self.vx += (target_vx - self.vx) * lerp
+        self.vy += (target_vy - self.vy) * lerp
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        self._clamp_position()
+        # Banking tilt (subtle, same as MOVE)
+        if self.vx < -10:
+            self.tilt = -25.0
+        elif self.vx > 10:
+            self.tilt = 25.0
+        else:
+            self.tilt = 0.0
+        if self.vy < -10:
+            self.tilt += -3.0
+        elif self.vy > 10:
+            self.tilt += 3.0
+        # Trail timer — the actual particles are emitted by the
+        # gameplay_runtime (which has access to the particle engine).
+        # We just expose the timer so the runtime knows when to spawn.
+        self.propulsion_trail_timer += dt
+        # Can fire during propulsion (brief SHOOT state, then back here)
+        if self.input_fire and self.fire_cd <= 0.0:
+            self.wants_to_shoot = True
+            self.fire_cd = PLAYER_FIRE_COOLDOWN_S
+            # Briefly exit to SHOOT for recoil animation
+            self._enter_shoot()
+            return
+        # Can drop bomb during propulsion
+        if self.input_bomb and self.bombs > 0:
+            self.wants_to_bomb = True
+            self._consume_bomb()
+            return
+        # If user is charging (fire held > 0.5s), exit to CHARGE
+        # (CHARGE keeps its own movement restrictions per the user
+        # request: 'deja las limitaciones de movimiento que ya tiene
+        # cuando use el laser')
+        if self.input_fire and self.charge_time >= CHARGE_L1_S:
+            self._enter_charge()
             return
 
     def _update_dash(self, dt: float) -> None:
@@ -636,6 +735,8 @@ class Player:
         """Enter DASH state with 8-way direction based on input.
 
         BLOQUE 58.8: gated by _can_dash() (heat below resume threshold).
+        BLOQUE 58.8.1: DASH now consumes a flat 10 heat (PLAYER_DASH_HEAT_COST)
+        instead of building heat continuously. Heat still caps at MAX.
         Direction priority:
           1. Active directional input (WASD or arrows when K is pressed)
           2. Last horizontal velocity (continues motion)
@@ -656,6 +757,9 @@ class Player:
         if not self._can_dash():
             self.input_dash = False
             return
+        # BLOQUE 58.8.1: consume flat DASH heat cost (one-shot)
+        self.dash_heat = min(PLAYER_DASH_HEAT_MAX,
+                             self.dash_heat + PLAYER_DASH_HEAT_COST)
         self.state = PlayerState.DASH
         self.state_timer = 0.0
         self.dash_iframes_left = PLAYER_DASH_IFRAMES
@@ -690,6 +794,20 @@ class Player:
         self.dash_dir_y = dy
         # Consume dash input (one-shot)
         self.input_dash = False
+
+    def _enter_propulsion(self) -> None:
+        """BLOQUE 58.8.1: enter PROPULSION state (continuous thruster).
+
+        Triggered when shift is held for >= PLAYER_CLICK_VS_HOLD_THRESHOLD_S.
+        Gives x2 speed, emits a light trail from the back, and builds
+        heat at PLAYER_PROPULSION_HEAT_PER_S. Auto-cancels on overheat
+        or shift release. Must release shift and re-press to use again
+        (per user requirement).
+        """
+        self.state = PlayerState.PROPULSION
+        self.state_timer = 0.0
+        # Reset trail timer so the first particle is emitted quickly
+        self.propulsion_trail_timer = 0.0
 
     def _enter_hit(self) -> None:
         self.state = PlayerState.HIT
