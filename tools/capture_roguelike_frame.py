@@ -65,12 +65,17 @@ for i, e in enumerate(events):
         )
         screen.blit(info, (x + 8, y + 24))
     elif kind == "sub_boss":
-        bid = e.boss_selection.boss_id.value
+        # BLOQUE 58.1: sub-boss is the BLOQUE 50 SUB_BOSS dart archetype,
+        # NOT a real boss from the 4-pool.
+        arch = e.sub_boss_archetype or "SUB_BOSS"
         pygame.draw.rect(screen, (90, 50, 30), (x, y, 270, line_h - 6), border_radius=4)
         pygame.draw.rect(screen, (255, 160, 60), (x, y, 270, line_h - 6), 1, border_radius=4)
-        lbl = font_md.render("!! SUB-BOSS !!", True, (255, 200, 100))
+        lbl = font_md.render("!! SUB-BOSS (mini) !!", True, (255, 200, 100))
         screen.blit(lbl, (x + 8, y + 4))
-        info = font_sm.render(f"boss={bid}  (fixed position, identity randomized)", True, (240, 200, 160))
+        info = font_sm.render(
+            f"archetype={arch}  (BLOQUE 50 dart, fixed position, NOT from boss pool)",
+            True, (240, 200, 160),
+        )
         screen.blit(info, (x + 8, y + 24))
     elif kind == "final_boss":
         bid = e.boss_selection.boss_id.value
@@ -111,7 +116,7 @@ pygame.image.save(screen, str(out_path))
 print(f"Saved: {out_path}")
 print(f"Events in level: {len(level.events)}")
 print(f"  waves: {len(level.waves())}")
-print(f"  sub-boss: {level.sub_boss().boss_selection.boss_id.value if level.sub_boss() else 'none'}")
+print(f"  sub-boss: {level.sub_boss().sub_boss_archetype if level.sub_boss() else 'none'}")
 print(f"  final-boss: {level.final_boss().boss_selection.boss_id.value if level.final_boss() else 'none'}")
 print(f"  powerup-drops: {len(level.powerup_drops())}")
 pygame.quit()

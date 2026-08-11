@@ -29,6 +29,29 @@ def test_sub_boss_at_fixed_position() -> None:
     assert sub.kind == LevelEventKind.SUB_BOSS
 
 
+def test_sub_boss_is_bloque_50_dart_not_real_boss() -> None:
+    """BLOQUE 58.1: sub-boss is the BLOQUE 50 SUB_BOSS dart archetype,
+    NOT one of the 4 big bosses (GOLIATH/HYDRA/PHANTOM/NEMESIS)."""
+    level = generate_procedural_level(level_idx=1, seed=42)
+    sub = level.sub_boss()
+    assert sub is not None
+    # Has the dart archetype, NOT a boss_selection
+    assert sub.sub_boss_archetype == "SUB_BOSS"
+    assert sub.boss_selection is None
+
+
+def test_sub_boss_archetype_does_not_vary_by_seed() -> None:
+    """BLOQUE 58.1 invariant: the sub-boss is ALWAYS SUB_BOSS, regardless
+    of seed. Only the final boss varies by seed."""
+    for seed_val in [1, 42, 99, 1000]:
+        level = generate_procedural_level(level_idx=1, seed=seed_val)
+        sub = level.sub_boss()
+        assert sub is not None
+        assert sub.sub_boss_archetype == "SUB_BOSS", (
+            f"Sub-boss archetype must be 'SUB_BOSS' for seed {seed_val}"
+        )
+
+
 def test_final_boss_at_end() -> None:
     level = generate_procedural_level(level_idx=1, seed=42)
     final = level.final_boss()
@@ -89,10 +112,15 @@ def test_powerup_drops_between_waves() -> None:
 # ---------------------------------------------------------------------------
 # 5. Boss pool integration
 # ---------------------------------------------------------------------------
-def test_sub_boss_has_bezier_entrance() -> None:
+def test_sub_boss_does_not_have_bezier_entrance() -> None:
+    """BLOQUE 58.1: the sub-boss is a dart, not a real boss. It does not
+    have a procedural bezier entrance (only the FINAL_BOSS does)."""
     level = generate_procedural_level(level_idx=1, seed=42)
     sub = level.sub_boss()
-    assert sub.boss_selection.bezier_path is not None
+    assert sub is not None
+    assert sub.boss_selection is None
+    # The dart has no bezier path
+    assert not hasattr(sub, "bezier_path") or sub.boss_selection is None
 
 
 def test_final_boss_has_bezier_entrance() -> None:

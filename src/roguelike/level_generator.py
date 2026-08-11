@@ -1,22 +1,31 @@
-"""Level generator (BLOQUE 58).
+"""Level generator (BLOQUE 58 + 58.1).
 
 Generates a complete level structure for the roguelike:
   - 4 chained waves
-  - sub-boss trigger after wave 2 (FIXED position)
-  - final boss at the end (FIXED position)
-  - boss identity randomized from pool of 4
-  - boss entrance via procedural bezier path
+  - SUB-BOSS dart (BLOQUE 50 mini-boss) after wave 2 — ALWAYS the
+    SUB_BOSS archetype, NOT a boss from the 4-pool. The sub-boss is a
+    frenetic dart enemy, not a real boss.
+  - FINAL BOSS at the end — one of the 4-pool (GOLIATH/HYDRA/PHANTOM/
+    NEMESIS), random per seed with level bias.
+  - Bezier entrance path for the final boss (procedural)
+  - Powerup drops between waves (random per seed)
 
-Invariants (per user requirement):
-  - Number of ships per wave is FIXED (not random)
-  - Sub-boss appears at FIXED position (after wave 2)
-  - Final boss appears at FIXED position (end of level)
+BLOQUE 58 invariants:
+  - Number of ships per wave is FIXED
+  - Sub-boss dart appears at FIXED position (after wave 2), and is
+    ALWAYS the SUB_BOSS archetype (not a real boss)
+  - Final boss appears at FIXED position (end), and is one of the
+    4-pool (GOLIATH/HYDRA/PHANTOM/NEMESIS)
 
 What IS randomized per seed:
   - Formation type for each wave (11 families)
-  - Bezier path for boss entrance
-  - Boss identity (any of 4, with level bias)
+  - Final boss identity from 4-pool (level-biased)
+  - Bezier path for final boss entrance
   - Powerup drops between waves
+
+The mid-level sub-boss is the BLOQUE 50 SUB_BOSS dart enemy (a small
+tough-but-not-boss enemy, not one of the 4 big bosses). This avoids
+confusing the sub-boss archetype with the 4 big bosses.
 """
 from __future__ import annotations
 
@@ -73,9 +82,17 @@ LEVEL_TELEGRAPH_RANGE: dict[int, tuple[int, int]] = {
 }
 
 
+# BLOQUE 58.1: the mid-level sub-boss is the BLOQUE 50 SUB_BOSS dart
+# archetype. This is the value that gets passed to EnemyKind.SUB_BOSS
+# when the runtime spawns the mid-boss. It's a fixed value, NOT random.
+SUB_BOSS_ARCHETYPE: str = "SUB_BOSS"
+
+
 class LevelEventKind(str, Enum):
     """Markers between wave segments."""
     WAVE = "wave"
+    # BLOQUE 58.1: SUB_BOSS is the BLOQUE 50 dart enemy, not a real boss.
+    # Real bosses (GOLIATH/HYDRA/PHANTOM/NEMESIS) only appear as FINAL_BOSS.
     SUB_BOSS = "sub_boss"
     FINAL_BOSS = "final_boss"
     POWERUP_DROP = "powerup_drop"
@@ -88,7 +105,9 @@ class LevelEvent:
     # WAVE-specific
     wave_idx: int | None = None
     formation: dict[str, Any] | None = None
-    # BOSS-specific
+    # SUB_BOSS-specific: archetype name (always "SUB_BOSS")
+    sub_boss_archetype: str | None = None
+    # FINAL_BOSS-specific: one of the 4 big bosses with bezier entrance
     boss_selection: BossSelection | None = None
     # POWERUP-specific
     powerup: PowerupDrop | None = None
@@ -130,14 +149,14 @@ def generate_procedural_level(
     """Generate a complete procedural level.
 
     Structure (BLOQUE 58 invariants):
-      Wave 1 -> (powerup) -> Wave 2 -> SUB_BOSS -> Wave 3 -> (powerup)
-      -> Wave 4 -> (powerup) -> FINAL_BOSS
+      Wave 1 -> (powerup) -> Wave 2 -> SUB_BOSS (BLOQUE 50 dart) ->
+      Wave 3 -> (powerup) -> Wave 4 -> (powerup) -> FINAL_BOSS (4-pool)
 
     Args:
         level_idx: 1, 2, 3 (controls ship counts, enemy types, weights)
         seed: master seed (None = derive from level+attempt=1+salt=0)
         num_waves: number of chained waves before final boss (default 4)
-        include_sub_boss: if True, sub-boss appears after wave 2
+        include_sub_boss: if True, sub-boss dart appears after wave 2
     """
     if seed is None:
         seed = RoguelikeSeed.derive(level_idx, 1, 0).master
@@ -185,16 +204,16 @@ def generate_procedural_level(
                 kind=LevelEventKind.POWERUP_DROP,
                 powerup=select_powerup(seed=drop_seed),
             ))
-        # Sub-boss after wave 2 (FIXED position, per user requirement)
+        # BLOQUE 58.1: sub-boss after wave 2 = BLOQUE 50 SUB_BOSS dart
+        # archetype. NOT one of the 4 big bosses. The sub-boss is a
+        # frenetic dart enemy that exists to test the player mid-level.
         if wave_i == 1 and include_sub_boss:
             level.events.append(LevelEvent(
                 kind=LevelEventKind.SUB_BOSS,
-                boss_selection=select_boss(
-                    seed=seed_obj.derive_wave_seed(wave_i),
-                    level_idx=level_idx,
-                ),
+                sub_boss_archetype=SUB_BOSS_ARCHETYPE,
             ))
-    # Final boss at the end (FIXED position)
+    # BLOQUE 58: final boss at the end. This is where the 4-pool
+    # randomization happens — GOLIATH/HYDRA/PHANTOM/NEMESIS.
     final_boss_seed = seed_obj.derive_wave_seed(num_waves)
     level.events.append(LevelEvent(
         kind=LevelEventKind.FINAL_BOSS,
@@ -204,3 +223,4 @@ def generate_procedural_level(
         ),
     ))
     return level
+
