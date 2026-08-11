@@ -86,13 +86,15 @@ for i in range(n_frames):
         angle = ship_path[-1][2] if ship_path else 0.0
     ship_path.append((px, py, angle))
 
-# Spawn trail at the back of the ship
+# Spawn trail at the back of the ship, aging it frame by frame so the
+# segment ages are realistic (a segment spawned at frame i has age
+# (n_frames - i) * dt_frame at draw time, not 5s like in the previous
+# capture script which aged all segments uniformly).
 for i, (px, py, angle) in enumerate(ship_path):
     # Use a fixed back offset (8 px) so the trail is right behind the ship
     trail.spawn_if_ready(px, py, angle, 8.0, dt_frame)
-
-# Age the trail 5s
-for _ in range(n_frames):
+    # Age everything by one frame each spawn (so the head is always
+    # age 0 and the tail is the oldest)
     trail.update(dt_frame)
 
 # Draw a faint "ship path" line in the background
