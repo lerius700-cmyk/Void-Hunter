@@ -576,11 +576,17 @@ class GameplayRuntime:
         elif self._player.wants_to_shoot:
             self._weapon.request_fire(charge_level=0)
         # BLOQUE 39: Bomb → spawn a homing missile (replaces screen-clear)
-        if self._player.wants_to_bomb and self._player.bombs > 0:
-            self._player._consume_bomb()
+        # BLOQUE 58.26 FIX: the bomb is consumed in player.update (which
+        # decrements self.bombs and sets wants_to_bomb=True). Previously
+        # we ALSO called _consume_bomb() here, which decremented a second
+        # time — so each bomb press dropped the count by 2. The fix: only
+        # apply the SIDE EFFECTS here (scoring, missile spawn, SFX) and
+        # clear the flag. The decrement already happened in player.update.
+        if self._player.wants_to_bomb:
             self._scoring.on_bomb()
             self._spawn_homing_missile()
             self._play_sfx("bomb", volume=0.6)
+            self._player.wants_to_bomb = False
         # Charge SFX: rising pitch as charge level increases
         if current_charge > self._last_charge_level:
             self._play_sfx("charge_loop", volume=0.5)

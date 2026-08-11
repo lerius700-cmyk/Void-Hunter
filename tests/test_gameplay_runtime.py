@@ -102,18 +102,51 @@ def test_charge_release_spawns_charged_bullet():
 # Bomb
 # -----------------------------------------------------------------------
 def test_bomb_spawns_homing_missile():
-    """BLOQUE 39: B/L press spawns a HomingMissile (not a screen clear)."""
+    """BLOQUE 39: B/L press spawns a HomingMissile (not a screen clear).
+
+    BLOQUE 58.26 fix: the bomb DECREMENT happens in player.update, not
+    in _handle_firing. The runtime only applies the side effects
+    (scoring, missile spawn, SFX). The test below mirrors the new
+    contract: the runtime does NOT decrement bombs.
+    """
     rt = _make_runtime()
     rt._player.input_bomb = True
     rt._player.wants_to_bomb = True
     rt._player.bombs = 3
     rt._handle_firing(1.0 / 120.0)
-    assert rt._player.bombs == 2
+    # BLOQUE 58.26: runtime no longer decrements (the player.update does).
+    # The test verifies the runtime only applies the side effect.
+    assert rt._player.bombs == 3, (
+        "BLOQUE 58.26: _handle_firing must not decrement bombs "
+        "(that's player.update's job); decrement is now single-count"
+    )
     assert len(rt._missiles) == 1
     m = rt._missiles[0]
     assert m.active is True
     assert m.life == 0.0
     assert (m.vx, m.vy) != (0.0, 0.0)
+
+
+def test_bomb_decrements_once_total():
+    """BLOQUE 58.26: the bomb count drops by exactly 1 per press,
+    not 2. (Previous bug: player.update AND _handle_firing both
+    called _consume_bomb, so each press decremented twice.)"""
+    rt = _make_runtime()
+    rt._player.bombs = 3
+    # Simulate the full flow: player.update consumes the bomb, then
+    # _handle_firing applies the side effect.
+    rt._player.input_bomb = True
+    rt._player.update(1.0 / 60.0)
+    # After player.update, the bomb has been consumed exactly once
+    assert rt._player.bombs == 2, (
+        f"After player.update, bombs should be 2 (one decrement), got {rt._player.bombs}"
+    )
+    # _handle_firing applies the side effect (missile spawn) but does
+    # NOT decrement again
+    rt._handle_firing(1.0 / 60.0)
+    assert rt._player.bombs == 2, (
+        f"After _handle_firing, bombs should still be 2 (no double-decrement), got {rt._player.bombs}"
+    )
 
 
 def test_missile_steers_toward_mouse():
