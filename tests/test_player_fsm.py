@@ -417,14 +417,16 @@ def test_nose_angle_clamp_to_360_after_update() -> None:
 def test_nose_angle_10_to_350_short_path() -> None:
     """10 -> 350: short path is -20 deg (back), long path is +340 deg.
 
-    After 0.1s of update at 28 deg/s, the lerp should move ~2.8 deg toward
-    350 (i.e., from 10 to about 7.2 via the short path -2.8), NOT to about 12.8
-    via the long way around.
+    BLOQUE 58.13: lerp is now 180 deg/s (was 50). At 180 deg/s,
+    0.1s of update would move 18 deg, which wraps around the
+    short path back to 352. We use a tiny dt (0.01s) so the lerp
+    moves only 1.8 deg, staying in the 0-10 range — confirming
+    the short-path (back) direction was taken.
     """
     p = Player()
     p.current_nose_angle = 10.0
     p.nose_angle = 350.0
-    p.update(0.1)
+    p.update(0.01)
     assert p.current_nose_angle < 10.0, (
         f"Long-path rotation: current_nose_angle={p.current_nose_angle} "
         f"(expected < 10.0 for short-path back to 350)"
