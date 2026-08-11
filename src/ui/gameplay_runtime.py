@@ -2571,27 +2571,54 @@ class GameplayRuntime:
                         life=0.18, radius=1.0,
                         color=(255, 180, 80),
                     )
-        # BLOQUE 58.8.3: spawn the delayed orange wake at the player's
+        # BLOQUE 58.8.3: spawn the delayed spectral wake at the player's
         # CURRENT position. Throttled to ~25 Hz so the trail isn't
         # too dense. The wake will be invisible for 1 second, then
         # appear at the position where it was spawned (which is where
         # the player was 1 second ago) and fade out over its life.
+        # BLOQUE 58.8.4: each wake is now a LAYERED 3-particle burst
+        # for the spectral/neon feel:
+        #   - P_GLOW (16x16 soft orange halo) — the ethereal outer glow
+        #   - P_WAKE (16x16 magenta-pink core) — the bright neon body
+        #   - P_SPARK (1x1 hot white center) — the hot inner dot
+        # The color mix (orange halo + magenta core + white center) +
+        # overlapping soft gradients gives the "spectral but colorful"
+        # look the user asked for. Each layer has a slightly different
+        # delay so they appear in sequence (orange first, then magenta,
+        # then white), creating a brief color shift effect.
         if self._player.propulsion_wake_timer < PLAYER_PROPULSION_WAKE_INTERVAL_S:
             return
         self._player.propulsion_wake_timer = 0.0
-        # Spawn at the ship's center with a small offset for variety.
-        # No velocity — wake particles are stationary (the trail
-        # "follows" the ship only because new wakes are continuously
-        # added at the player's NEW positions).
+        # Spawn point: the ship's center with a small random offset
+        # for variety (so the trail isn't a single straight line).
+        wx = self._player.x + (random.random() - 0.5) * 4.0
+        wy = self._player.y + (random.random() - 0.5) * 4.0
+        # Layer 1: outer ethereal halo (soft orange, 16x16 glow)
         self._particles.emit(
-            P_WAKE,
-            self._player.x + (random.random() - 0.5) * 4.0,
-            self._player.y + (random.random() - 0.5) * 4.0,
+            P_GLOW, wx, wy,
+            vx=0.0, vy=0.0,
+            life=PLAYER_PROPULSION_WAKE_LIFE_S * 1.1,
+            radius=16.0,
+            color=(255, 140, 60),  # warm orange
+            delay_s=PLAYER_PROPULSION_WAKE_DELAY_S,
+        )
+        # Layer 2: main body (magenta-pink neon, soft radial gradient)
+        self._particles.emit(
+            P_WAKE, wx, wy,
             vx=0.0, vy=0.0,
             life=PLAYER_PROPULSION_WAKE_LIFE_S,
-            radius=10.0,
-            color=(255, 160, 60),  # bright orange — distinct from yellow trail
-            delay_s=PLAYER_PROPULSION_WAKE_DELAY_S,
+            radius=16.0,
+            color=(255, 110, 200),  # neon magenta-pink — spectral feel
+            delay_s=PLAYER_PROPULSION_WAKE_DELAY_S + 0.05,
+        )
+        # Layer 3: hot white center (tiny bright dot)
+        self._particles.emit(
+            P_SPARK, wx, wy,
+            vx=0.0, vy=0.0,
+            life=PLAYER_PROPULSION_WAKE_LIFE_S * 0.7,
+            radius=1.0,
+            color=(255, 255, 255),  # hot white core
+            delay_s=PLAYER_PROPULSION_WAKE_DELAY_S + 0.1,
         )
 
     def _add_shockwave(self, x: float, y: float, max_radius: float = 60.0) -> None:

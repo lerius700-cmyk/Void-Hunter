@@ -90,14 +90,16 @@ KIND_CONFIG: dict[int, _KindConfig] = {
     P_SQUARE:       _KindConfig((255, 255, 255), 4, 0.50, 0.0, 1.0, True,  0.0, False),
     P_LINE:         _KindConfig((255, 255, 255), 1, 0.30, 0.0, 1.0, True,  0.0, False),
     P_LIGHT_FLASH:  _KindConfig((255, 255, 255), 6, 0.07, 0.0, 1.0, True,  0.0, False),
-    # BLOQUE 58.8.3: P_WAKE — bright orange afterglow with built-in
+    # BLOQUE 58.8.3: P_WAKE — bright neon afterglow with built-in
     # delay. The engine sets Particle.delay_s on emit, and the particle
     # is invisible (and frozen) until delay_s reaches 0. Once the delay
     # expires, the particle becomes visible and starts fading over its
-    # normal life. This lets the player PROPULSION emit one wake per
-    # frame, but the trail only "appears" 1 second later — creating the
-    # delayed-afterglow effect the user asked for.
-    P_WAKE:         _KindConfig((255, 160, 60),  10, 0.80, 0.0, 1.0, True,  0.0, False),
+    # normal life. The base surface is a soft radial gradient (drawn in
+    # _init_base_surfaces) so the wake has ethereal/soft edges, not a
+    # hard square. Color is a neon orange-magenta (the color tint is
+    # applied via the kind config's base_color; engine callers can also
+    # pass a different `color` arg to recolor individual particles).
+    P_WAKE:         _KindConfig((255, 110, 200), 16, 1.00, 0.0, 1.0, True,  0.0, False),
 }
 
 
@@ -482,6 +484,25 @@ class ParticleEngine:
             elif kind == P_LIGHT_FLASH:
                 surf = pygame.Surface((6, 6), pygame.SRCALPHA)
                 pygame.draw.circle(surf, (255, 255, 255, 255), (3, 3), 3)
+            elif kind == P_WAKE:
+                # BLOQUE 58.8.3: soft radial gradient (ethereal/neon
+                # look). 16x16 with 4 concentric circles — bright core,
+                # soft mid, faint outer halo, very faint edge. The
+                # alpha gradient gives the "spectral" feel: the wake
+                # fades smoothly from a hot center to a barely-there
+                # edge, instead of a hard square. The tint cache then
+                # multiplies this white gradient by the particle's
+                # `color` to produce the final neon look.
+                surf = pygame.Surface((16, 16), pygame.SRCALPHA)
+                cx, cy = 8, 8
+                # Layer 1: faint outer halo
+                pygame.draw.circle(surf, (255, 255, 255, 30), (cx, cy), 8)
+                # Layer 2: soft mid
+                pygame.draw.circle(surf, (255, 255, 255, 80), (cx, cy), 6)
+                # Layer 3: bright body
+                pygame.draw.circle(surf, (255, 255, 255, 180), (cx, cy), 4)
+                # Layer 4: hot center
+                pygame.draw.circle(surf, (255, 255, 255, 255), (cx, cy), 2)
             elif kind == P_DEBRIS:
                 # 4x4 chunk, rotation applied at draw
                 surf = pygame.Surface((4, 4), pygame.SRCALPHA)

@@ -50,18 +50,29 @@ def test_wake_constants_exist():
 # 2) P_WAKE kind is registered
 # -----------------------------------------------------------------------
 def test_p_wake_kind_registered():
-    """BLOQUE 58.8.3: P_WAKE = 18 with bright orange config."""
+    """BLOQUE 58.8.3/58.8.4: P_WAKE = 18. The base color is a neon
+    magenta-pink (BLOQUE 58.8.4) and the base surface is a soft
+    radial gradient (4 concentric circles). The actual on-screen
+    appearance is a 3-particle layered burst (P_GLOW halo + P_WAKE
+    body + P_SPARK core) for the "spectral neon" feel.
+    """
     from src.systems.particle_engine import (
         P_WAKE, P_KIND_COUNT, KIND_CONFIG,
     )
     assert P_WAKE == 18
     assert P_KIND_COUNT == 19
     assert P_WAKE in KIND_CONFIG
-    # Bright orange palette
+    # Neon magenta-pink palette (BLOQUE 58.8.4: changed from pure
+    # orange to magenta-pink for the spectral feel).
     r, g, b = KIND_CONFIG[P_WAKE].base_color
-    assert r > 200 and g > 100 and b < 100, (
-        f"P_WAKE should be bright orange (high R, mid G, low B). "
+    assert r > 200 and b > 150, (
+        f"P_WAKE should be neon magenta-pink (high R, high B). "
         f"Got ({r}, {g}, {b})"
+    )
+    # Base size should be 16 (the radial gradient is 16x16)
+    assert KIND_CONFIG[P_WAKE].base_size == 16, (
+        f"P_WAKE base size should be 16 for the soft gradient, got "
+        f"{KIND_CONFIG[P_WAKE].base_size}"
     )
 
 
@@ -158,8 +169,10 @@ def test_p_wake_full_lifecycle():
 # 4) End-to-end: player propulsion emits the wake
 # -----------------------------------------------------------------------
 def test_propulsion_emits_p_wake_particle():
-    """BLOQUE 58.8.3: _emit_propulsion_trail spawns a P_WAKE particle
-    with delay_s == PLAYER_PROPULSION_WAKE_DELAY_S.
+    """BLOQUE 58.8.3/58.8.4: _emit_propulsion_trail spawns a LAYERED
+    3-particle burst (P_GLOW halo + P_WAKE body + P_SPARK core) for
+    the spectral/neon feel. All three layers use the configured
+    PLAYER_PROPULSION_WAKE_DELAY_S as the base delay.
     """
     from src.ui import gameplay_runtime as gpr
     from src.entities.player import Player
@@ -190,18 +203,24 @@ def test_propulsion_emits_p_wake_particle():
 
     rt._emit_propulsion_trail(1.0 / 60.0)
 
-    # At least one P_WAKE call must have happened
+    # BLOQUE 58.8.4: 3 layered particles per wake (P_GLOW + P_WAKE + P_SPARK)
     wake_calls = [c for c in eng.calls if c["kind"] == P_WAKE]
-    assert len(wake_calls) >= 1, (
-        f"Expected at least one P_WAKE emission during propulsion, "
-        f"got {len(wake_calls)}"
-    )
-    # The wake must use the configured delay (1.0s)
+    glow_calls = [c for c in eng.calls if c["kind"] == P_GLOW]
+    spark_calls = [c for c in eng.calls if c["kind"] == P_SPARK]
+
+    assert len(wake_calls) >= 1, "Expected P_WAKE emission"
+    assert len(glow_calls) >= 1, "Expected P_GLOW halo emission"
+    assert len(spark_calls) >= 1, "Expected P_SPARK core emission"
+
+    # The P_WAKE must use a delay near the configured value
     from src.core.settings import PLAYER_PROPULSION_WAKE_DELAY_S
-    assert wake_calls[0]["delay_s"] == PLAYER_PROPULSION_WAKE_DELAY_S
-    # And the wake should be orange (high R, mid G, low B)
+    assert abs(wake_calls[0]["delay_s"] - PLAYER_PROPULSION_WAKE_DELAY_S) < 0.2
+    # The neon color: high R, low G, high B (magenta-pink)
     r, g, b = wake_calls[0]["color"]
-    assert r > 200 and g > 100 and b < 100
+    assert r > 200 and b > 150, (
+        f"P_WAKE should be neon magenta (high R, high B). "
+        f"Got ({r}, {g}, {b})"
+    )
 
 
 # -----------------------------------------------------------------------
