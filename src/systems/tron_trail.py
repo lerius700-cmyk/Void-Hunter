@@ -32,8 +32,15 @@ import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import pygame
+import pygame  # BLOQUE 58.20: runtime import. The draw() method uses
+             # pygame.draw.line and pygame.Surface, which are not
+             # available under TYPE_CHECKING-only imports. Without
+             # this, the trail crashes with NameError on the first
+             # draw, every frame, blocking the game loop.
+             # TYPE_CHECKING is kept for static type hints elsewhere.
+
+if TYPE_CHECKING:  # noqa: F401  (keep for type checker only)
+    pass
 
 
 @dataclass
