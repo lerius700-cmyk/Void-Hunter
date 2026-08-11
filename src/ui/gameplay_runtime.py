@@ -3398,78 +3398,69 @@ class GameplayRuntime:
             # Red laser aim line (vertical)
             pygame.draw.line(target, (255, 60, 60), (cx, cy + h // 2), (cx, cy + h // 2 + 6), 1)
         elif e.kind == EnemyKind.SUB_BOSS:
-            # BLOQUE 58.2: SUB_BOSS redesigned as a Star Wolf / Star Fox 64
-            # fighter. Inspired by the Wolfen / Wolfen II ships: aggressive
-            # swept-back wings, dark military base + red Star Wolf accent,
-            # prominent glowing red "wolf eye" cockpit, angular tail fins,
-            # dual engine exhaust. Much more visual presence than the
-            # previous yellow/orange dart.
-            # Color palette (Star Wolf style): dark blue-gray base, red accent.
+            # BLOQUE 58.3: SUB_BOSS redesigned as a V-SHAPED Star Wolf
+            # fighter. The whole ship forms a clear V silhouette from the
+            # player's perspective: sharp nose at top, two wing tips
+            # extending DOWN and OUT at 45° forming the V, glowing red
+            # "wolf eye" cockpit in the center of the V, and engines
+            # at the wing tips. Inspired by the Arwing / Wolfen viewed
+            # from below.
+            # Color palette (Star Wolf style): dark silver-blue base + red.
             wolf_base = (90, 100, 130)        # dark silver-blue
             wolf_dark = (50, 55, 75)          # shadow / panel gaps
             wolf_red = (220, 50, 60)          # Star Wolf red accent
             wolf_red_bright = (255, 100, 100)  # cockpit glow
             wolf_engine = (255, 180, 60)      # yellow exhaust
-            # 1) Swept-back main wings (drawn first, behind body)
-            #    These are the signature Star Wolf feature — wings angle
-            #    back and DOWN, giving the ship an aggressive forward-thrust
-            #    silhouette. They extend BEYOND the hitbox for visual punch.
+            # The V is built from 3 elements: a top nose spike (the
+            # apex of the V) and two wings angling DOWN and OUT at 45°
+            # (the legs of the V). All drawn from the same root point.
+            v_root_x = cx
+            v_root_y = cy - h // 2 - 2  # top of the V (nose)
+            # 1) LEFT wing (forms the left leg of the V)
+            #    Goes from the nose down-and-left to the wing tip
+            left_tip_x = cx - w - 2
+            left_tip_y = cy + h // 2 + 1
+            # 2) RIGHT wing (forms the right leg of the V)
+            right_tip_x = cx + w + 2
+            right_tip_y = cy + h // 2 + 1
+            # 3) Draw the V silhouette: a single polygon with 4 points
+            #    (nose, right-tip, center-bottom, left-tip) — this gives
+            #    a clean V-shape with the cockpit cavity in the middle.
             pygame.draw.polygon(target, wolf_base, [
-                (cx - 2, cy - 2),                  # root (near body)
-                (cx - w - 4, cy + h // 2 + 2),     # wing tip (down-left)
-                (cx - 4, cy + h // 2),             # trailing edge
+                (v_root_x, v_root_y),          # apex (nose)
+                (cx + 2, cy - 1),              # right shoulder
+                (right_tip_x, right_tip_y),    # right wing tip
+                (cx, cy + 2),                  # V notch (bottom center)
+                (left_tip_x, left_tip_y),      # left wing tip
+                (cx - 2, cy - 1),              # left shoulder
             ])
-            pygame.draw.polygon(target, wolf_base, [
-                (cx + 2, cy - 2),
-                (cx + w + 4, cy + h // 2 + 2),
-                (cx + 4, cy + h // 2),
-            ])
-            # Wing leading-edge highlight (lighter strip)
+            # 4) Wing leading-edge highlights (the outer edges of the V)
             wing_hi = (130, 140, 170)
-            pygame.draw.line(target, wing_hi, (cx - 2, cy - 2), (cx - w - 2, cy + h // 2), 1)
-            pygame.draw.line(target, wing_hi, (cx + 2, cy - 2), (cx + w + 2, cy + h // 2), 1)
-            # Red accent stripes on wings (Star Wolf livery)
-            pygame.draw.line(target, wolf_red, (cx - 3, cy + 1), (cx - w, cy + h // 3), 1)
-            pygame.draw.line(target, wolf_red, (cx + 3, cy + 1), (cx + w, cy + h // 3), 1)
-            # 2) Main body: angular dart (similar to current but sharper)
-            pygame.draw.polygon(target, wolf_base, [
-                (cx, cy - h // 2 - 2),       # sharp nose
-                (cx + w // 3, cy - 1),       # right shoulder
-                (cx + w // 3, cy + h // 3),  # right hip
-                (cx + w // 4, cy + h // 2),  # right tail tip
-                (cx, cy + h // 3),           # tail center notch
-                (cx - w // 4, cy + h // 2),  # left tail tip
-                (cx - w // 3, cy + h // 3),  # left hip
-                (cx - w // 3, cy - 1),       # left shoulder
-            ])
-            # Body panel detail (darker stripes for mechanical look)
-            pygame.draw.line(target, wolf_dark, (cx, cy - h // 2), (cx, cy + h // 3), 1)
-            pygame.draw.line(target, wolf_dark, (cx - w // 3, cy - 1), (cx + w // 3, cy - 1), 1)
-            # 3) Angular tail fins (Star Wolf signature — 2 swept-back fins)
-            pygame.draw.polygon(target, wolf_dark, [
-                (cx - w // 4, cy + h // 2),
-                (cx - w // 3 - 1, cy + h // 2 + 3),
-                (cx - w // 6, cy + h // 2),
-            ])
-            pygame.draw.polygon(target, wolf_dark, [
-                (cx + w // 4, cy + h // 2),
-                (cx + w // 3 + 1, cy + h // 2 + 3),
-                (cx + w // 6, cy + h // 2),
-            ])
-            # 4) Glowing red "wolf eye" cockpit (the boss visual signature)
-            #    Pulses at 4 Hz for menacing feel
-            pulse = 200 + int(55 * math.sin(self._t * 4))
-            pygame.draw.circle(target, wolf_red, (cx, cy - 1), 3)
-            pygame.draw.circle(target, (wolf_red_bright[0], wolf_red_bright[1], wolf_red_bright[2]),
-                               (cx, cy - 1), 2)
+            pygame.draw.line(target, wing_hi,
+                             (v_root_x, v_root_y), (right_tip_x, right_tip_y), 1)
+            pygame.draw.line(target, wing_hi,
+                             (v_root_x, v_root_y), (left_tip_x, left_tip_y), 1)
+            # 5) Red Star Wolf accent stripes along the V edges
+            pygame.draw.line(target, wolf_red,
+                             (cx + 1, cy), (right_tip_x - 1, right_tip_y - 1), 1)
+            pygame.draw.line(target, wolf_red,
+                             (cx - 1, cy), (left_tip_x + 1, left_tip_y - 1), 1)
+            # 6) Body panel detail (darker stripes at the V notch)
+            pygame.draw.line(target, wolf_dark, (cx, cy - 1), (cx, cy + 2), 1)
+            # 7) Glowing red "wolf eye" cockpit at the V center
+            #    This is the focal point of the V — the menacing red eye
+            #    that the player sees between the two wing legs.
+            pygame.draw.circle(target, wolf_red, (cx, cy + 1), 3)
+            pygame.draw.circle(target, wolf_red_bright, (cx, cy + 1), 2)
             # White-hot center
-            pygame.draw.circle(target, (255, 240, 200), (cx, cy - 1), 1)
-            # 5) Dual tail engines with red-to-yellow gradient
-            pygame.draw.rect(target, wolf_engine, (cx - 3, cy + h // 2 - 1, 2, 2))
-            pygame.draw.rect(target, wolf_engine, (cx + 1, cy + h // 2 - 1, 2, 2))
-            # Engine glow halo (red, shows the engines are HOT)
-            pygame.draw.circle(target, (255, 100, 60), (cx - 2, cy + h // 2 + 1), 2)
-            pygame.draw.circle(target, (255, 100, 60), (cx + 2, cy + h // 2 + 1), 2)
+            pygame.draw.circle(target, (255, 240, 200), (cx, cy + 1), 1)
+            # 8) Engine exhaust at the WING TIPS (where the V legs end)
+            #    Two bright engines at the bottom corners of the V.
+            pygame.draw.rect(target, wolf_engine, (left_tip_x - 1, left_tip_y, 2, 2))
+            pygame.draw.rect(target, wolf_engine, (right_tip_x - 1, right_tip_y, 2, 2))
+            # Red glow halos around the engines (they're HOT)
+            pygame.draw.circle(target, (255, 100, 60), (left_tip_x, left_tip_y + 1), 2)
+            pygame.draw.circle(target, (255, 100, 60), (right_tip_x, right_tip_y + 1), 2)
             # Subtle outer halo to mark it as a mini-boss
             halo = pygame.Surface((w + 12, h + 12), pygame.SRCALPHA)
             halo_alpha = 40 + int(20 * math.sin(self._t * 6))

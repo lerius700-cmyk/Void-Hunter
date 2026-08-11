@@ -1,13 +1,12 @@
-"""Capture: render the redesigned SUB_BOSS as a Star Wolf-style fighter.
+"""Capture: render the redesigned SUB_BOSS as a V-shaped Star Wolf fighter.
 
-BLOQUE 58.2: visual proof for the SUB_BOSS sprite redesign.
-Shows 3 frames of the Star Wolf-inspired sub-boss: idle, banking
-right, banking left. The sprite has:
-  - Swept-back wings (Star Wolf signature)
-  - Dark silver-blue base with red Star Wolf accents
-  - Glowing red "wolf eye" cockpit (pulses at 4 Hz)
-  - Angular tail fins
-  - Dual engine exhaust with red glow halos
+BLOQUE 58.3: visual proof for the SUB_BOSS V-shape redesign.
+The whole ship forms a clear V silhouette:
+  - Sharp nose at top (V apex)
+  - Two wing tips extending DOWN and OUT at 45° (V legs)
+  - Glowing red "wolf eye" cockpit at the V center
+  - Engines at the wing tips (V leg ends)
+Inspired by the Arwing / Wolfen viewed from below.
 
 Output: tools/playtest_out/polish_45_sub_boss_starwolf.png
 """
@@ -70,49 +69,42 @@ import src.ui.gameplay_runtime as gpr
 # the whole game.
 
 def draw_sub_boss(target: pygame.Surface, cx: int, cy: int, w: int, h: int, t: float) -> None:
-    """BLOQUE 58.2: Star Wolf-style sub-boss (extracted from gameplay_runtime)."""
+    """BLOQUE 58.3: V-shaped Star Wolf-style sub-boss."""
     wolf_base = (90, 100, 130)
     wolf_dark = (50, 55, 75)
     wolf_red = (220, 50, 60)
     wolf_red_bright = (255, 100, 100)
     wolf_engine = (255, 180, 60)
-    # Wings
+    v_root_x = cx
+    v_root_y = cy - h // 2 - 2
+    left_tip_x = cx - w - 2
+    left_tip_y = cy + h // 2 + 1
+    right_tip_x = cx + w + 2
+    right_tip_y = cy + h // 2 + 1
+    # V silhouette
     pygame.draw.polygon(target, wolf_base, [
-        (cx - 2, cy - 2), (cx - w - 4, cy + h // 2 + 2), (cx - 4, cy + h // 2),
-    ])
-    pygame.draw.polygon(target, wolf_base, [
-        (cx + 2, cy - 2), (cx + w + 4, cy + h // 2 + 2), (cx + 4, cy + h // 2),
+        (v_root_x, v_root_y),
+        (cx + 2, cy - 1),
+        (right_tip_x, right_tip_y),
+        (cx, cy + 2),
+        (left_tip_x, left_tip_y),
+        (cx - 2, cy - 1),
     ])
     wing_hi = (130, 140, 170)
-    pygame.draw.line(target, wing_hi, (cx - 2, cy - 2), (cx - w - 2, cy + h // 2), 1)
-    pygame.draw.line(target, wing_hi, (cx + 2, cy - 2), (cx + w + 2, cy + h // 2), 1)
-    pygame.draw.line(target, wolf_red, (cx - 3, cy + 1), (cx - w, cy + h // 3), 1)
-    pygame.draw.line(target, wolf_red, (cx + 3, cy + 1), (cx + w, cy + h // 3), 1)
-    # Body
-    pygame.draw.polygon(target, wolf_base, [
-        (cx, cy - h // 2 - 2), (cx + w // 3, cy - 1), (cx + w // 3, cy + h // 3),
-        (cx + w // 4, cy + h // 2), (cx, cy + h // 3), (cx - w // 4, cy + h // 2),
-        (cx - w // 3, cy + h // 3), (cx - w // 3, cy - 1),
-    ])
-    pygame.draw.line(target, wolf_dark, (cx, cy - h // 2), (cx, cy + h // 3), 1)
-    pygame.draw.line(target, wolf_dark, (cx - w // 3, cy - 1), (cx + w // 3, cy - 1), 1)
-    # Tail fins
-    pygame.draw.polygon(target, wolf_dark, [
-        (cx - w // 4, cy + h // 2), (cx - w // 3 - 1, cy + h // 2 + 3), (cx - w // 6, cy + h // 2),
-    ])
-    pygame.draw.polygon(target, wolf_dark, [
-        (cx + w // 4, cy + h // 2), (cx + w // 3 + 1, cy + h // 2 + 3), (cx + w // 6, cy + h // 2),
-    ])
+    pygame.draw.line(target, wing_hi, (v_root_x, v_root_y), (right_tip_x, right_tip_y), 1)
+    pygame.draw.line(target, wing_hi, (v_root_x, v_root_y), (left_tip_x, left_tip_y), 1)
+    pygame.draw.line(target, wolf_red, (cx + 1, cy), (right_tip_x - 1, right_tip_y - 1), 1)
+    pygame.draw.line(target, wolf_red, (cx - 1, cy), (left_tip_x + 1, left_tip_y - 1), 1)
+    pygame.draw.line(target, wolf_dark, (cx, cy - 1), (cx, cy + 2), 1)
     # Cockpit
-    pulse = 200 + int(55 * math.sin(t * 4))
-    pygame.draw.circle(target, wolf_red, (cx, cy - 1), 3)
-    pygame.draw.circle(target, wolf_red_bright, (cx, cy - 1), 2)
-    pygame.draw.circle(target, (255, 240, 200), (cx, cy - 1), 1)
-    # Engines
-    pygame.draw.rect(target, wolf_engine, (cx - 3, cy + h // 2 - 1, 2, 2))
-    pygame.draw.rect(target, wolf_engine, (cx + 1, cy + h // 2 - 1, 2, 2))
-    pygame.draw.circle(target, (255, 100, 60), (cx - 2, cy + h // 2 + 1), 2)
-    pygame.draw.circle(target, (255, 100, 60), (cx + 2, cy + h // 2 + 1), 2)
+    pygame.draw.circle(target, wolf_red, (cx, cy + 1), 3)
+    pygame.draw.circle(target, wolf_red_bright, (cx, cy + 1), 2)
+    pygame.draw.circle(target, (255, 240, 200), (cx, cy + 1), 1)
+    # Engines at wing tips
+    pygame.draw.rect(target, wolf_engine, (left_tip_x - 1, left_tip_y, 2, 2))
+    pygame.draw.rect(target, wolf_engine, (right_tip_x - 1, right_tip_y, 2, 2))
+    pygame.draw.circle(target, (255, 100, 60), (left_tip_x, left_tip_y + 1), 2)
+    pygame.draw.circle(target, (255, 100, 60), (right_tip_x, right_tip_y + 1), 2)
 
 # 3 frames: idle, bank right, bank left
 positions = [
