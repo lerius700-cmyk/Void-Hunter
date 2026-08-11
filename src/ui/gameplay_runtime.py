@@ -3313,90 +3313,215 @@ class GameplayRuntime:
         if flash_t > 0.0:
             color = (255, 255, 255)
         # Different shapes per kind (BLOQUE 30: more Star Fox-style detail)
+        # BLOQUE 58.4: all enemy sprites redesigned in the Star Fox /
+        # Star Wolf aesthetic. Silver military base + per-type color accent
+        # + glowing cockpit. Gameplay (HP, speed, fire rate) is unchanged.
         if e.kind == EnemyKind.SCOUT:
-            # BLOQUE 30: Mono-Raptor style — sleek dart with wings
-            # Main body: long pointed dart
-            pygame.draw.polygon(target, color, [
-                (cx, cy - h // 2),          # nose
-                (cx + w // 3, cy + h // 3),  # right shoulder
-                (cx + w // 4, cy + h // 2),  # right tail tip
-                (cx, cy + h // 3),           # tail center
-                (cx - w // 4, cy + h // 2),  # left tail tip
-                (cx - w // 3, cy + h // 3),  # left shoulder
+            # BLOQUE 58.4: SCOUT — sleek Mono-Raptor dart, silver + cyan.
+            # V-shaped swept wings (smaller than the SUB_BOSS V), cyan
+            # glowing canopy, yellow exhaust.
+            silver = (170, 180, 195)
+            silver_dark = (90, 100, 115)
+            cyan = (80, 220, 240)
+            # V wings (small)
+            pygame.draw.polygon(target, silver, [
+                (cx, cy - h // 2),       # nose
+                (cx + 2, cy + 1),       # right shoulder
+                (cx + w // 2, cy + h // 2),
+                (cx, cy + h // 3 + 1),  # V notch
+                (cx - w // 2, cy + h // 2),
+                (cx - 2, cy + 1),
             ])
-            # Wings (slim, swept back)
-            wing_c = (max(0, color[0] - 40), max(0, color[1] - 40), max(0, color[2] - 40))
-            pygame.draw.polygon(target, wing_c, [
-                (cx - w // 3, cy + h // 3),
-                (cx - w // 2 - 1, cy + h // 2 + 1),
-                (cx - w // 4, cy + h // 2 + 1),
-            ])
-            pygame.draw.polygon(target, wing_c, [
-                (cx + w // 3, cy + h // 3),
-                (cx + w // 2 + 1, cy + h // 2 + 1),
-                (cx + w // 4, cy + h // 2 + 1),
-            ])
-            # Cockpit/canopy (green glass)
-            pygame.draw.circle(target, (180, 255, 200), (cx, cy - 1), 1)
-            # Engine glow at the tail
-            pygame.draw.rect(target, (255, 180, 100), (cx - 1, cy + h // 2 - 1, 3, 1))
+            # Wing leading-edge highlights
+            wing_hi = (200, 210, 225)
+            pygame.draw.line(target, wing_hi, (cx, cy - h // 2), (cx + w // 2, cy + h // 2), 1)
+            pygame.draw.line(target, wing_hi, (cx, cy - h // 2), (cx - w // 2, cy + h // 2), 1)
+            # Body panel detail
+            pygame.draw.line(target, silver_dark, (cx, cy - h // 2 + 1), (cx, cy + h // 3), 1)
+            # Cyan glowing canopy (the "eye")
+            pygame.draw.circle(target, cyan, (cx, cy), 2)
+            pygame.draw.circle(target, (180, 240, 255), (cx, cy), 1)
+            # Yellow exhaust at tail
+            pygame.draw.rect(target, (255, 200, 80), (cx - 1, cy + h // 2 - 1, 2, 1))
         elif e.kind == EnemyKind.CRUISER:
-            # BLOQUE 30: Granga-style heavy fighter — wider hex with twin cannons
+            # BLOQUE 58.4: CRUISER — Granga-style delta wing fighter.
+            # Silver base + green accent, twin side cannons, green eye.
+            silver = (160, 170, 185)
+            silver_dark = (85, 95, 110)
+            green = (100, 220, 100)
+            green_dark = (50, 140, 60)
+            # Delta wing body (hex-like, wider at base)
+            pygame.draw.polygon(target, silver, [
+                (cx, cy - h // 2),           # nose
+                (cx + w // 2, cy - 1),       # right shoulder
+                (cx + w // 2 - 1, cy + h // 3),
+                (cx + w // 3, cy + h // 2),  # right tail
+                (cx, cy + h // 3),           # V notch
+                (cx - w // 3, cy + h // 2),
+                (cx - w // 2 + 1, cy + h // 3),
+                (cx - w // 2, cy - 1),
+            ])
+            # Inner panel (darker, for depth)
+            pygame.draw.polygon(target, silver_dark, [
+                (cx, cy - h // 2 + 2),
+                (cx + w // 3, cy + 1),
+                (cx + w // 4, cy + h // 3),
+                (cx, cy + h // 4),
+                (cx - w // 4, cy + h // 3),
+                (cx - w // 3, cy + 1),
+            ])
+            # Wing leading-edge highlight
+            wing_hi = (195, 205, 220)
+            pygame.draw.line(target, wing_hi,
+                             (cx, cy - h // 2), (cx + w // 2, cy - 1), 1)
+            pygame.draw.line(target, wing_hi,
+                             (cx, cy - h // 2), (cx - w // 2, cy - 1), 1)
+            # Twin side cannons (green barrels pointing down)
+            pygame.draw.rect(target, green_dark, (cx - w // 3, cy + h // 4, 1, 3))
+            pygame.draw.rect(target, green_dark, (cx + w // 3, cy + h // 4, 1, 3))
+            # Green glowing eye at top
+            pygame.draw.circle(target, green, (cx, cy - 1), 2)
+            pygame.draw.circle(target, (200, 255, 200), (cx, cy - 1), 1)
+            # Twin yellow engines at bottom corners
+            pygame.draw.rect(target, (255, 200, 80), (cx - w // 3 - 1, cy + h // 2, 2, 1))
+            pygame.draw.rect(target, (255, 200, 80), (cx + w // 3 - 1, cy + h // 2, 2, 1))
+        elif e.kind == EnemyKind.HEAVY:
+            # BLOQUE 58.4: HEAVY — Star Fox attack carrier. Armored square
+            # with 4 corner turrets, red glowing core, twin engines.
+            silver = (150, 160, 175)
+            silver_dark = (80, 90, 105)
+            red = (220, 60, 70)
+            red_dark = (130, 30, 35)
+            # Main body (armored square)
+            rect = pygame.Rect(cx - w // 2, cy - h // 2, w, h)
+            pygame.draw.rect(target, silver, rect)
+            # Inner darker panel for armor depth
+            inner_rect = rect.inflate(-max(2, w // 4), -max(2, h // 4))
+            pygame.draw.rect(target, silver_dark, inner_rect)
+            # Border highlight
+            pygame.draw.rect(target, (190, 200, 215), rect, 1)
+            # 4 corner turrets (red)
+            for dx, dy in [(-1, -1), (1, -1), (-1, 1), (1, 1)]:
+                tcx = cx + dx * (w // 2 - 2)
+                tcy = cy + dy * (h // 2 - 2)
+                pygame.draw.circle(target, silver_dark, (tcx, tcy), 2)
+                pygame.draw.circle(target, red, (tcx, tcy), 1)
+            # Central red glowing core (the "heart" of the carrier)
+            pygame.draw.circle(target, red_dark, (cx, cy), 3)
+            pygame.draw.circle(target, red, (cx, cy), 2)
+            pygame.draw.circle(target, (255, 200, 200), (cx, cy), 1)
+            # Central cannon barrel (red glowing)
+            pygame.draw.rect(target, red_dark, (cx - 1, cy, 2, h // 2 - 1))
+            pygame.draw.circle(target, red, (cx, cy + h // 2 - 1), 1)
+            # Sensor lights on top
+            pygame.draw.circle(target, (255, 80, 80), (cx - 3, cy - h // 2 + 1), 1)
+            pygame.draw.circle(target, (80, 220, 100), (cx + 3, cy - h // 2 + 1), 1)
+            # Twin yellow engines at bottom
+            pygame.draw.rect(target, (255, 200, 80), (cx - w // 4, cy + h // 2, 2, 1))
+            pygame.draw.rect(target, (255, 200, 80), (cx + w // 4 - 2, cy + h // 2, 2, 1))
+        elif e.kind == EnemyKind.KAMIKAZE:
+            # BLOQUE 58.4: KAMIKAZE — aggressive inverted dart. Silver +
+            # orange. Hot pulsing eye (intense, dangerous).
+            silver = (180, 130, 80)
+            silver_dark = (110, 70, 30)
+            orange = (255, 140, 50)
+            orange_bright = (255, 220, 130)
+            # Inverted triangle (pointed down, aggressive)
+            pygame.draw.polygon(target, silver, [
+                (cx - w // 2, cy - h // 2),
+                (cx + w // 2, cy - h // 2),
+                (cx, cy + h // 2),
+            ])
+            # Inner darker panel
+            pygame.draw.polygon(target, silver_dark, [
+                (cx - w // 3, cy - h // 2 + 1),
+                (cx + w // 3, cy - h // 2 + 1),
+                (cx, cy + h // 3),
+            ])
+            # Hot pulsing eye at the top
+            pulse = 200 + int(55 * math.sin(self._t * 8))
+            pygame.draw.circle(target, (pulse, 80, 30), (cx, cy - 1), 2)
+            pygame.draw.circle(target, orange_bright, (cx, cy - 1), 1)
+            # Hot orange exhaust at the bottom tip
+            pygame.draw.circle(target, orange, (cx, cy + h // 2 - 1), 2)
+            pygame.draw.circle(target, (255, 255, 200), (cx, cy + h // 2 - 1), 1)
+        elif e.kind == EnemyKind.SNIPER:
+            # BLOQUE 58.4: SNIPER — anchored blue laser. Silver + blue.
+            # Long horizontal body with a long laser cannon pointing down.
+            silver = (160, 170, 190)
+            silver_dark = (85, 95, 115)
+            blue = (100, 160, 255)
+            blue_bright = (180, 220, 255)
+            # Main body (long horizontal bar)
+            rect = pygame.Rect(cx - w // 2, cy - h // 2, w, h)
+            pygame.draw.rect(target, silver, rect)
+            # Inner darker panel
+            inner_rect = rect.inflate(-2, -2)
+            pygame.draw.rect(target, silver_dark, inner_rect)
+            # Border highlight
+            pygame.draw.rect(target, (195, 205, 220), rect, 1)
+            # Blue glowing eye (the laser)
+            pygame.draw.circle(target, blue, (cx, cy), 2)
+            pygame.draw.circle(target, blue_bright, (cx, cy), 1)
+            # Long blue laser cannon pointing down
+            pygame.draw.rect(target, blue, (cx - 1, cy + h // 2, 2, 4))
+            pygame.draw.circle(target, blue_bright, (cx, cy + h // 2 + 4), 1)
+            # Side panels
+            pygame.draw.rect(target, silver_dark, (cx - w // 3, cy - h // 2 + 1, 1, h - 2))
+            pygame.draw.rect(target, silver_dark, (cx + w // 3, cy - h // 2 + 1, 1, h - 2))
+        elif e.kind == EnemyKind.DRONE:
+            # BLOQUE 58.4: DRONE — small autonomous silver octagon with
+            # cyan center. Compact, minimal, scouts ahead.
+            silver = (170, 180, 195)
+            silver_dark = (90, 100, 115)
+            cyan = (80, 220, 240)
+            # Octagonal body
             import math as _m
-            # Outer hex
+            points = []
+            for i in range(8):
+                a = i * _m.pi / 4 + _m.pi / 8
+                points.append((cx + int(_m.cos(a) * w / 2), cy + int(_m.sin(a) * h / 2)))
+            pygame.draw.polygon(target, silver, points)
+            # Inner darker octagon
+            inner_pts = []
+            for i in range(8):
+                a = i * _m.pi / 4
+                inner_pts.append((cx + int(_m.cos(a) * w / 4), cy + int(_m.sin(a) * h / 4)))
+            pygame.draw.polygon(target, silver_dark, inner_pts)
+            # Cyan glowing center
+            pygame.draw.circle(target, cyan, (cx, cy), 1)
+            pygame.draw.circle(target, (200, 240, 255), (cx, cy), 1)
+        elif e.kind == EnemyKind.TURRET:
+            # BLOQUE 58.4: TURRET — pink rotating base. Silver hex base
+            # with a pink ring on top, 3-spoke cannons.
+            silver = (170, 180, 195)
+            silver_dark = (90, 100, 115)
+            pink = (255, 100, 180)
+            pink_bright = (255, 180, 220)
+            # Hexagonal base
+            import math as _m
             points = []
             for i in range(6):
                 a = i * _m.pi / 3 + _m.pi / 6
                 points.append((cx + int(_m.cos(a) * w / 2), cy + int(_m.sin(a) * h / 2)))
-            pygame.draw.polygon(target, color, points)
+            pygame.draw.polygon(target, silver, points)
             # Inner hex
-            inner_color = (max(0, color[0] - 60), max(0, color[1] - 60), max(0, color[2] - 60))
-            points2 = []
+            inner_pts = []
             for i in range(6):
                 a = i * _m.pi / 3
-                points2.append((cx + int(_m.cos(a) * w / 4), cy + int(_m.sin(a) * h / 4)))
-            pygame.draw.polygon(target, inner_color, points2)
-            # Twin side cannons (red barrels pointing down)
-            pygame.draw.rect(target, (220, 80, 80), (cx - w // 3, cy + h // 4, 2, 3))
-            pygame.draw.rect(target, (220, 80, 80), (cx + w // 3 - 2, cy + h // 4, 2, 3))
-            # Central red "eye" (active targeting)
-            pygame.draw.circle(target, (255, 60, 60), (cx, cy - 1), 1)
-            # Yellow sensor strip at the top
-            pygame.draw.line(target, (255, 220, 100), (cx - 2, cy - h // 2 + 1), (cx + 2, cy - h // 2 + 1), 1)
-        elif e.kind == EnemyKind.HEAVY:
-            # BLOQUE 30: Star Fox attack carrier — armored square with turrets
-            rect = pygame.Rect(cx - w // 2, cy - h // 2, w, h)
-            pygame.draw.rect(target, color, rect)
-            # Inner darker rectangle for depth
-            inner_color = (max(0, color[0] - 60), max(0, color[1] - 60), max(0, color[2] - 60))
-            inner_rect = rect.inflate(-max(2, w // 3), -max(2, h // 3))
-            pygame.draw.rect(target, inner_color, inner_rect)
-            # 4 corner turrets
-            corner_color = (60, 60, 80)
-            for dx, dy in [(-1, -1), (1, -1), (-1, 1), (1, 1)]:
-                tcx = cx + dx * (w // 2 - 2)
-                tcy = cy + dy * (h // 2 - 2)
-                pygame.draw.circle(target, corner_color, (tcx, tcy), 2)
-                pygame.draw.circle(target, (255, 80, 80), (tcx, tcy), 1)
-            # Central cannon barrel (red glowing)
-            pygame.draw.rect(target, (60, 30, 30), (cx - 1, cy, 2, h // 2 - 1))
-            pygame.draw.circle(target, (255, 80, 80), (cx, cy + h // 2 - 1), 1)
-            # Sensor lights on top
-            pygame.draw.circle(target, (255, 60, 60), (cx - 3, cy - h // 2 + 1), 1)
-            pygame.draw.circle(target, (60, 255, 100), (cx + 3, cy - h // 2 + 1), 1)
-        elif e.kind == EnemyKind.KAMIKAZE:
-            # Inverted triangle (aggressive, pointed down)
-            points = [(cx - w // 2, cy - h // 2), (cx + w // 2, cy - h // 2), (cx, cy + h // 2)]
-            pygame.draw.polygon(target, color, points)
-            # Pulsing red eye
-            pulse = 200 + int(55 * math.sin(self._t * 8))
-            pygame.draw.circle(target, (pulse, 50, 50), (cx, cy - 1), 2)
-        elif e.kind == EnemyKind.SNIPER:
-            # Long horizontal rectangle (sniper shape)
-            rect = pygame.Rect(cx - w // 2, cy - h // 2, w, h)
-            pygame.draw.rect(target, color, rect)
-            # Red laser aim line (vertical)
-            pygame.draw.line(target, (255, 60, 60), (cx, cy + h // 2), (cx, cy + h // 2 + 6), 1)
+                inner_pts.append((cx + int(_m.cos(a) * w / 3), cy + int(_m.sin(a) * h / 3)))
+            pygame.draw.polygon(target, silver_dark, inner_pts)
+            # Rotating pink ring (3 spokes)
+            angle = self._t * 3
+            for spoke in range(3):
+                a = angle + spoke * (2 * _m.pi / 3)
+                ex = cx + int(_m.cos(a) * w / 3)
+                ey = cy + int(_m.sin(a) * h / 3)
+                pygame.draw.line(target, pink, (cx, cy), (ex, ey), 1)
+                pygame.draw.circle(target, pink_bright, (ex, ey), 1)
+            # Pink glowing center
+            pygame.draw.circle(target, pink, (cx, cy), 2)
+            pygame.draw.circle(target, pink_bright, (cx, cy), 1)
         elif e.kind == EnemyKind.SUB_BOSS:
             # BLOQUE 58.3: SUB_BOSS redesigned as a V-SHAPED Star Wolf
             # fighter. The whole ship forms a clear V silhouette from the
