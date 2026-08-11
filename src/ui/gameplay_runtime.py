@@ -1215,14 +1215,22 @@ class GameplayRuntime:
     def _spawn_sub_boss(self) -> None:
         """BLOQUE 50: spawn the mid-wave sub-boss.
 
-        Spawned near the top-center of the screen, drops in with the
-        frenetic sine wobble from the SUB_BOSS config. The runtime
-        handles the bullet pattern (it has fire_cooldown_s=0.4 — 2.5
-        shots/s aimed at the player).
+        BLOQUE 58.6.3: initial entry point is also RANDOM (not center)
+        so the sub-boss feels less predictable. The wrap-around in
+        Enemy.update() will keep randomizing x on every re-entry.
+
+        Spawned near the top of the screen, drops in with straight-line
+        motion from the SUB_BOSS config. The runtime handles the bullet
+        pattern (fire_cooldown_s=0.4 — 2.5 shots/s aimed at the player).
         """
+        import random
         from src.entities.enemies.enemy import EnemyKind
         from src.core.settings import INTERNAL_W
-        e = self._enemies.spawn(EnemyKind.SUB_BOSS, INTERNAL_W / 2, -16.0)
+        # BLOQUE 58.6.3: random x within playfield (with margin) instead
+        # of always INTERNAL_W/2. Sub-boss width is 24, so margin = 16.
+        margin = 16
+        rand_x = float(random.randint(margin, INTERNAL_W - margin))
+        e = self._enemies.spawn(EnemyKind.SUB_BOSS, rand_x, -16.0)
         if e is not None:
             self._sub_boss_alive = True
             self._sub_boss_intro_done = True
@@ -1321,6 +1329,12 @@ class GameplayRuntime:
             if not e.active:
                 continue
             e.update(dt, self._player.x, self._player.y)
+            # BLOQUE 58.6.3: SUB_BOSS propulsion animation — emit P_FIRE
+            # + P_SMOKE particles from the back of the ship (the engines)
+            # so it looks like the sub-boss is thrusting DOWN. Particles
+            # are emitted at the engine positions and trail UP behind it.
+            if e.kind == EnemyKind.SUB_BOSS:
+                self._emit_sub_boss_propulsion(e, dt)
             # BLOQUE 47: SQUADRON path override
             if e.squadron_id >= 0:
                 # Initialize age on first frame (start behind the leader by time_offset)
@@ -2304,6 +2318,45 @@ class GameplayRuntime:
             self._particles.emit(P_DUST, dsx, dsy,
                                   vx=(random.random() - 0.5) * 10.0,
                                   vy=-15.0, life=0.5, radius=1.5)
+
+    def _emit_sub_boss_propulsion(self, e: "Enemy", dt: float) -> None:
+        """BLOQUE 58.6.3: SUB_BOSS propulsion animation.
+
+        Emits a continuous stream of P_FIRE (orange flames) and P_SMOKE
+        (gray exhaust) particles from the engines at the TOP of the
+        sub-boss. The particles trail UPWARD (opposite to the ship's
+        downward motion), giving a "rocket thruster descending" feel.
+
+        Spawn rate is throttled to ~30 particles/s to avoid pool pressure.
+        """
+        from src.entities.enemies.enemy import ENEMY_CONFIGS
+        from src.systems.particle_engine import P_FIRE, P_SMOKE
+        # Throttle: only emit every 2nd frame at 60 fps (so ~30 Hz)
+        if int(self._t * 60) % 2 != 0:
+            return
+        cfg = ENEMY_CONFIGS[e.kind]
+        # Engine positions (back of the ship, where the engines are drawn)
+        # The hitbox is 24x14, so engines are at cx +/- 2 from center top
+        eng_y = e.y - cfg.height / 2  # top of the body
+        # Two engine positions (left and right of center)
+        for sign in (-1, 1):
+            ex = e.x + sign * 2
+            ey = eng_y
+            # P_FIRE: small orange flame, fast upward, short life
+            self._particles.emit(
+                P_FIRE, ex, ey,
+                vx=(random.random() - 0.5) * 12.0,
+                vy=-30.0 + (random.random() - 0.5) * 10.0,
+                life=0.25, radius=1.5,
+            )
+            # P_SMOKE: gray puffy trail, slower upward, longer life
+            if random.random() < 0.6:
+                self._particles.emit(
+                    P_SMOKE, ex + (random.random() - 0.5) * 3.0, ey,
+                    vx=(random.random() - 0.5) * 8.0,
+                    vy=-20.0 + (random.random() - 0.5) * 6.0,
+                    life=0.5, radius=1.5,
+                )
 
     def _add_shockwave(self, x: float, y: float, max_radius: float = 60.0) -> None:
         """Add an expanding ring shockwave (bomb/charged-shot visual)."""
@@ -3545,15 +3598,16 @@ class GameplayRuntime:
             pygame.draw.circle(target, pink, (cx, cy), 2)
             pygame.draw.circle(target, pink_bright, (cx, cy), 1)
         elif e.kind == EnemyKind.SUB_BOSS:
-            # BLOQUE 58.6.2: SUB_BOSS — clean WIDE V silhouette.
-            # User feedback: "parece un ). cierra mas los extremos de las alas".
-            # The fangs form a WIDE V (apex at bottom), with the wings
-            # collapsing to a thin vertical spine in the center (NOT
-            # extending out to form ")"/"("). The result is a clear V
-            # from any angle.
-            # Also: HP x20 (20 -> 400), straight-line movement (no sine
-            # wobble), wrap-around (re-enters from the top after exiting
-            # the bottom).
+            # BLOQUE 58.6.3: SUB_BOSS — clean WIDE V silhouette, BIGGER (24x14).
+            # The visual scales with the hitbox (w, h) so the bigger 24x14
+            # hitbox naturally produces a 50% larger ship. The fangs still
+            # form a clear WIDE V (apex at bottom), with no ')' / '(' shape.
+            # User feedback: "nave del subjefe sea mas grande", "que el
+            # punto por el que entre al mapa sea random" (handled in
+            # _spawn_sub_boss and the wrap-around code in enemy.py), and
+            # "ponle una animacion de propulsion" (handled in
+            # _emit_sub_boss_propulsion below — particle trail behind the
+            # ship as it descends).
             wolf_base = (160, 170, 185)  # silver body
             wolf_dark = (80, 90, 105)
             wolf_red = (220, 50, 60)
@@ -3561,6 +3615,11 @@ class GameplayRuntime:
             pink_fang = (255, 100, 180)  # venom/maligno fang tip color
             pink_fang_bright = (255, 200, 230)
             wolf_engine = (255, 180, 60)
+            # BLOQUE 58.6.3: scale all visual offsets with the hitbox so
+            # the 24x14 hitbox renders a 50% bigger ship.
+            # Original offsets were designed for w=16, h=10.
+            sx = w / 16.0
+            sy = h / 10.0
             # Subtle vertical bob (2 Hz, ±1 px) for warp-thrust feel
             bob = int(round(math.sin(self._t * 2.0 * math.pi) * 1.0))
             cy_b = cy + bob
@@ -3576,34 +3635,32 @@ class GameplayRuntime:
             #   5. Sharp pointed nose at the BOTTOM (V apex)
             body_top_y = cy_b - h // 2
             body_bot_y = cy_b + h // 2
-            shoulder_y = body_top_y + 2
             # 1) 2 SHARP FANGS forming a WIDE V — apex at the BOTTOM
-            #    The fangs extend from the EDGES of the body (cx ± 7) to
-            #    a point at the bottom-center. This forms a clear V shape
-            #    that's almost as wide as the ship itself.
-            fang_tip_y = body_bot_y + 1   # V apex: just below the nose
-            fang_tip_x_l = cx             # fangs converge at center bottom
+            #    The fangs extend from the EDGES of the body to a point
+            #    at the bottom-center. Edges scale with the hitbox.
+            fang_tip_y = body_bot_y + max(1, int(round(sy)))
+            fang_tip_x_l = cx
             fang_tip_x_r = cx
             # Left fang (V leg) — from LEFT EDGE of body to center bottom
             pygame.draw.polygon(target, wolf_base, [
-                (cx - 3, body_top_y + 1),                # base inner top
-                (cx - 7, body_top_y),                    # base outer top (LEFT EDGE)
-                (fang_tip_x_l, fang_tip_y),              # sharp tip (V apex, center)
-                (cx - 1, body_bot_y - 1),                # base bottom (at nose level)
+                (cx - max(2, int(round(3 * sx))), body_top_y + max(1, int(round(sy)))),
+                (cx - max(5, int(round(7 * sx))), body_top_y),
+                (fang_tip_x_l, fang_tip_y),
+                (cx - 1, body_bot_y - 1),
             ])
-            # Right fang (V leg) — from RIGHT EDGE of body to center bottom
+            # Right fang (V leg)
             pygame.draw.polygon(target, wolf_base, [
-                (cx + 3, body_top_y + 1),
-                (cx + 7, body_top_y),                    # RIGHT EDGE
+                (cx + max(2, int(round(3 * sx))), body_top_y + max(1, int(round(sy)))),
+                (cx + max(5, int(round(7 * sx))), body_top_y),
                 (fang_tip_x_r, fang_tip_y),
                 (cx + 1, body_bot_y - 1),
             ])
             # Red Star Wolf accent stripe along fang leading edge (V outline)
             pygame.draw.line(target, wolf_red,
-                             (cx - 6, body_top_y),
+                             (cx - max(4, int(round(6 * sx))), body_top_y),
                              (fang_tip_x_l, fang_tip_y - 1), 1)
             pygame.draw.line(target, wolf_red,
-                             (cx + 6, body_top_y),
+                             (cx + max(4, int(round(6 * sx))), body_top_y),
                              (fang_tip_x_r, fang_tip_y - 1), 1)
             # Pink/magenta fang TIPS at the V apex
             pygame.draw.circle(target, pink_fang, (fang_tip_x_l, fang_tip_y), 1)
@@ -3613,9 +3670,8 @@ class GameplayRuntime:
             pygame.draw.circle(target, pink_fang_bright,
                                (fang_tip_x_r, fang_tip_y), 1)
             # 2) CENTER SPINE (collapsed wings) — vertical line in the
-            #    middle of the V, where the body and eye are. No more
-            #    ")" / "(" shape on the sides. Just a thin vertical accent.
-            spine_y_top = shoulder_y
+            #    middle of the V. No more ")" / "(" shape.
+            spine_y_top = body_top_y + max(1, int(round(2 * sy)))
             spine_y_bot = body_bot_y - 1
             pygame.draw.line(target, wolf_dark, (cx, spine_y_top), (cx, spine_y_bot), 1)
             # 3) ENGINES at the top (back of ship, pulsing)
@@ -3625,21 +3681,25 @@ class GameplayRuntime:
                 int(180 * engine_pulse),
                 int(60 * engine_pulse),
             )
-            pygame.draw.rect(target, eng_c, (cx - 1, eng_y, 1, 2))
-            pygame.draw.rect(target, eng_c, (cx, eng_y, 1, 2))
-            # 4) MAIN BODY — small central spine inside the V
-            #    Just a thin vertical diamond (no wide "wings" extending out)
+            # Wider engine strip (scales with hitbox)
+            eng_w = max(2, int(round(2 * sx)))
+            pygame.draw.rect(target, eng_c, (cx - eng_w, eng_y, eng_w, max(2, int(round(2 * sy)))))
+            pygame.draw.rect(target, eng_c, (cx + 1, eng_y, eng_w, max(2, int(round(2 * sy)))))
+            # 4) MAIN BODY — wider central spine inside the V (scales with hitbox)
             mid_y = cy_b - 1
+            body_w = max(1, int(round(1 * sx)))
             pygame.draw.polygon(target, wolf_base, [
                 (cx, body_bot_y),               # sharp nose DOWN (V apex)
-                (cx + 1, mid_y),                # right mid
-                (cx, body_top_y + 1),           # back of body
-                (cx - 1, mid_y),                # left mid
+                (cx + body_w, mid_y),
+                (cx, body_top_y + 1),
+                (cx - body_w, mid_y),
             ])
             # 5) MENACING CYAN EYE in the body center (3 layers, 3 Hz pulse)
-            eye_r1 = int(4 * eye_pulse)
-            eye_r2 = int(3 * eye_pulse)
-            eye_r3 = int(2 * eye_pulse)
+            #    Scales with hitbox so the bigger ship has a bigger eye.
+            eye_scale = max(1.0, (sx + sy) / 2.0)
+            eye_r1 = max(2, int(round(4 * eye_pulse * eye_scale)))
+            eye_r2 = max(1, int(round(3 * eye_pulse * eye_scale)))
+            eye_r3 = max(1, int(round(2 * eye_pulse * eye_scale)))
             pygame.draw.circle(target, (40, 80, 110), (cx, cy_b), eye_r1 + 1)  # dark outer
             pygame.draw.circle(target, cyan_eye, (cx, cy_b), eye_r1)  # main eye
             pygame.draw.circle(target, (200, 240, 255), (cx, cy_b), eye_r2)  # bright glow

@@ -16,6 +16,7 @@ and a `kind` string identifier (used by element-bonus lookup).
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
@@ -154,8 +155,12 @@ ENEMY_CONFIGS: dict[EnemyKind, _EnemyConfig] = {
     # (moves in straight line instead). wrap_around=True so the sub-boss
     # re-enters from the top after exiting the bottom (continuous entry/exit
     # pattern, no sine wobble, just a clean vertical line).
+    # BLOQUE 58.6.3: hitbox 50% bigger (16x10 -> 24x14) so it's easier
+    # to shoot, AND random entry point (re-enters at a random x within
+    # the playfield instead of always center-vertical). Propulsion
+    # animation is rendered separately in the gameplay_runtime draw.
     EnemyKind.SUB_BOSS: _EnemyConfig(
-        hp=400, speed=90.0, width=16, height=10, score=600,
+        hp=400, speed=90.0, width=24, height=14, score=600,
         color=(255, 200, 80),
         fire_cooldown_s=0.4, fire_damage=1, bullet_speed=280.0,
         telegraph_frames=6,
@@ -324,9 +329,15 @@ class Enemy:
         # BLOQUE 58.6.2: wrap_around for SUB_BOSS — when it exits the
         # bottom, wrap it back to the top of the screen so the player
         # gets a continuous "entra y sale del mapa" pattern.
+        # BLOQUE 58.6.3: random x on re-entry so the sub-boss doesn't
+        # always come down the same vertical line — feels more like a
+        # "real" enemy that picks a new lane each pass.
         if cfg.wrap_around and self.y > INTERNAL_H + 20:
-            # Reset to top-center, slight random x for variety
+            # Reset to top with RANDOM x (within the playfield, with a
+            # margin equal to half the sub-boss width so it stays in-bounds)
             self.y = -20.0
+            margin = max(cfg.width // 2 + 4, 16)
+            self.x = float(random.randint(margin, INTERNAL_W - margin))
             # Also reset fire cooldown so the re-entry feels threatening
             self.fire_cd = 0.5
         # Cull offscreen (other enemies)

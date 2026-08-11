@@ -39,11 +39,11 @@ font_sm = pygame.font.SysFont("consolas", 10)
 
 # Title
 title = font_lg.render(
-    "SUB_BOSS  -  CLEAN V SILHOUETTE alien hunter (BLOQUE 58.6.2)", True, (255, 255, 255),
+    "SUB_BOSS  -  MENACING V SILHOUETTE alien hunter (BLOQUE 58.6.3)", True, (255, 255, 255),
 )
 screen.blit(title, (12, 10))
 sub = font_md.render(
-    "Fangs (outer V) + wings (inner V) converge at apex  -  HP 400  -  straight line + wrap-around",
+    "Bigger 24x14 + random entry + propulsion animation  -  HP 400  -  straight line + wrap-around",
     True, (180, 200, 255),
 )
 screen.blit(sub, (12, 34))
