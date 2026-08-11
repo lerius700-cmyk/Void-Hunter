@@ -2281,6 +2281,12 @@ class GameplayRuntime:
     def update(self, dt: float) -> None:
         if dt <= 0.0:
             return
+        # BLOQUE 58.16 DEBUG: frame-time log to logs/frame_times.csv.
+        # Helps diagnose the "freeze on propeller" bug. If a frame
+        # takes > 100ms, log it. If the user reports a freeze, we
+        # can look at this log to see what was happening.
+        import time as _time
+        _t0 = _time.perf_counter()
         # BLOQUE 28: reset per-frame flags
         self._boss_killed_this_frame = False
         # BLOQUE 22: boss death stages advance even during hitstop so the
@@ -2370,6 +2376,24 @@ class GameplayRuntime:
         self._player.input_fire = False
         self._player.input_dash = False
         self._player.input_bomb = False
+        # BLOQUE 58.16 DEBUG: log slow frames. If a frame takes
+        # > 100ms, write a row to logs/frame_times.csv so we can
+        # see what the player was doing when the game froze.
+        _elapsed_ms = (_time.perf_counter() - _t0) * 1000.0
+        if _elapsed_ms > 100.0:
+            try:
+                import os as _os
+                _os.makedirs("logs", exist_ok=True)
+                with open("logs/frame_times.csv", "a", encoding="utf-8") as _f:
+                    _state = self._player.state.name if hasattr(self._player.state, "name") else str(self._player.state)
+                    _seg_count = len(self._tron_trail.segments) if hasattr(self, "_tron_trail") else 0
+                    _enemy_count = sum(1 for _e in self._enemies.pool if _e.active)
+                    _f.write(
+                        f"{_t0:.3f},{_elapsed_ms:.1f},state={_state},"
+                        f"trail_segs={_seg_count},enemies={_enemy_count}\n"
+                    )
+            except Exception:
+                pass  # never let the debug log crash the game
 
     # ------------------------------------------------------------------
     # Score popups, powerups, flash timers
