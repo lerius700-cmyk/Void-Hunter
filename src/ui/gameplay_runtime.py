@@ -991,10 +991,19 @@ class GameplayRuntime:
     def _explode_missile(self, m: HomingMissile, big: bool, hit_x: float = 0.0, hit_y: float = 0.0) -> None:
         """BLOQUE 39: missile detonation — damages enemies in radius, clears
         nearby enemy bullets, applies screen flash + shockwave + slowmo.
+
+        BLOQUE 58.9: explosion 10x bigger (60 -> 300 px radius) with
+        proper multi-stage visual:
+          - White-hot core flash (immediate)
+          - Yellow -> orange -> red expanding ball
+          - Orange outer shockwave
+          - Smoke puffs (rising gray clouds)
+          - Many more particles (sparks, fire, debris, shrapnel)
         """
         from src.core.settings import (
             MISSILE_EXPLOSION_DAMAGE, MISSILE_EXPLOSION_RADIUS_PX,
         )
+        from src.systems.particle_engine import P_FIRE, P_GLOW, P_SMOKE, P_SPARK
         if not m.active:
             return
         m.active = False
@@ -1051,14 +1060,80 @@ class GameplayRuntime:
             if dx * dx + dy * dy <= rad * rad:
                 p.active = False
                 self._bullets.pool.release(p)
-        # Visual: shockwave, particles, screen flash, slowmo
-        self._add_shockwave(cx, cy, max_radius=rad * 1.2)
+        # BLOQUE 58.9: multi-stage explosion visual (white core -> orange
+        # ball -> red shockwave -> smoke). 10x bigger than before.
+        # 1) White-hot core (GLOW particle, big radius, fast fade)
+        self._particles.emit(
+            P_GLOW, cx, cy,
+            vx=0.0, vy=0.0,
+            life=0.18, radius=rad * 0.45,
+            color=(255, 255, 240),
+        )
+        # 2) Yellow inner ball (large GLOW, mid fade)
+        self._particles.emit(
+            P_GLOW, cx, cy,
+            vx=0.0, vy=0.0,
+            life=0.35, radius=rad * 0.85,
+            color=(255, 230, 80),
+        )
+        # 3) Orange mid ball (GLOW, longer fade)
+        self._particles.emit(
+            P_GLOW, cx, cy,
+            vx=0.0, vy=0.0,
+            life=0.55, radius=rad * 1.1,
+            color=(255, 140, 40),
+        )
+        # 4) Red outer shell (GLOW, longest fade, larger)
+        self._particles.emit(
+            P_GLOW, cx, cy,
+            vx=0.0, vy=0.0,
+            life=0.75, radius=rad * 1.3,
+            color=(220, 60, 40),
+        )
+        # 5) Many FIRE particles flying outward (the "explosion body")
+        import random as _rnd
+        for _ in range(48):
+            angle = _rnd.uniform(0, math.tau)
+            speed = _rnd.uniform(60.0, 180.0)
+            self._particles.emit(
+                P_FIRE, cx, cy,
+                vx=math.cos(angle) * speed,
+                vy=math.sin(angle) * speed,
+                life=_rnd.uniform(0.4, 0.9), radius=_rnd.uniform(1.5, 3.0),
+                color=(255, _rnd.randint(140, 220), _rnd.randint(40, 80)),
+            )
+        # 6) Many SPARK particles (bright white/yellow trails)
+        for _ in range(36):
+            angle = _rnd.uniform(0, math.tau)
+            speed = _rnd.uniform(80.0, 240.0)
+            self._particles.emit(
+                P_SPARK, cx, cy,
+                vx=math.cos(angle) * speed,
+                vy=math.sin(angle) * speed,
+                life=_rnd.uniform(0.2, 0.5), radius=_rnd.uniform(0.8, 1.5),
+                color=(255, 255, _rnd.randint(140, 240)),
+            )
+        # 7) SMOKE puffs (gray, rising, slow fade) — BLOQUE 58.9
+        for _ in range(20):
+            angle = _rnd.uniform(0, math.tau)
+            speed = _rnd.uniform(20.0, 60.0)
+            self._particles.emit(
+                P_SMOKE, cx, cy,
+                vx=math.cos(angle) * speed,
+                vy=math.sin(angle) * speed - 25.0,  # rise slightly
+                life=_rnd.uniform(0.8, 1.5), radius=_rnd.uniform(2.0, 4.0),
+                color=(120, 120, 140),
+            )
+        # 8) Existing particle bursts (kept for compatibility)
         self._emit_burst(cx, cy, count=24, kind="explosion")
         self._emit_burst(cx, cy, count=12, kind="spark")
         self._emit_burst(cx, cy, count=10, kind="debris")
-        self._screen_flash = max(self._screen_flash, 0.5)
+        # 9) Two shockwaves: orange inner + white outer
+        self._add_shockwave(cx, cy, max_radius=rad * 1.2)
+        # 10) Visual effects: screen flash, slowmo, shake, hitstop
+        self._screen_flash = max(self._screen_flash, 0.6)
         self._slowmo.trigger(0.6, 6)
-        self._shake.add_trauma(0.35)
+        self._shake.add_trauma(0.5)
         self._hitstop.trigger(5)
         self._play_sfx("explode_medium", volume=0.7)
 
