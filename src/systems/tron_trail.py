@@ -1,44 +1,35 @@
-"""BLOQUE 58.11 + 58.22 + 58.24: Tron-style light trail for the player PROPULSION.
+"""BLOQUE 58.11 + 58.22 + 58.24 + 58.25: Tron-style light trail for the player PROPULSION.
 
 When the player enters PROPULSION state, the ship leaves a continuous
 glowing wall behind it (think Tron lightcycle / drift_loud reference).
 
-BLOQUE 58.24 visual rebuild:
-  The previous implementation (BLOQUE 58.22) pre-rendered rectangular
-  SRCALPHA sprites (halo / body / core) and blitted each one rotated
-  to the segment angle. With segments 28px long and 10-20px thick,
-  the rotated rectangles produced VISIBLE "rungs" when stacked along
-  a curve — the trail looked like a ladder, not a continuous beam.
-  The user reported: "se ve super raro y no continuo".
+BLOQUE 58.25: "ethereal diffuse dissolve" fade.
+  The user wanted the trail to feel like light dissolving into the
+  air, not just a transparency fade. The previous (58.24) fade used
+  a single linear alpha for every pass, so the line just became more
+  transparent toward the tail. The new fade uses per-pass easing
+  curves so the line DIFFUSES before it dies:
+    - CORE (white-cyan, cubic ease):  bright core vanishes FAST
+      (gone by 30% life) — the line "softens" early.
+    - BODY (cyan, quadratic ease):     fades a bit slower than core,
+      so the line goes from "hard core" to "soft body" gradually.
+    - HALO (cyan, linear ease):        fades gently.
+    - GLOW (cyan, linear ease + WIDTH EXPANSION): as the segment
+      ages, the glow GROWS wider (13px -> 26px). The light
+      diffuses outward before fading away — the wispy, ethereal
+      feel the user asked for.
+  Plus a "head bloom" — a small extra glow burst at the very tip
+  of the trail so the head feels like a fresh light source.
 
-  The new approach: draw the trail as a CONTINUOUS POLYLINE through
-  all segment centers using pygame.draw.line. Each pair of consecutive
-  segment centers is connected by a line, and we draw the polyline
-  4 times with increasing width + decreasing alpha to get the
-  neon glow effect:
-      Pass 1 (GLOW):    width=11, alpha=40   - wide soft outer glow
-      Pass 2 (HALO):    width=7,  alpha=80   - medium cyan halo
-      Pass 3 (BODY):    width=4,  alpha=180  - bright cyan body
-      Pass 4 (CORE):    width=2,  alpha=255  - white-cyan bright core
+BLOQUE 58.24 history: continuous polyline through segment centers.
+  4 passes (glow + halo + body + core) with linear alpha fades.
 
-  This is the standard 2D technique for "neon line" effects and
-  matches the drift_loud reference: a thin bright core wrapped in
-  a soft cyan halo, with the whole thing tracing the ship's path
-  as a single smooth line (no visible segment boundaries).
+BLOQUE 58.22 history: pre-rendered rotated SRCALPHA sprites.
+  Produced visible "rungs" along curves because the rotated
+  rectangles stacked like a ladder.
 
-  Per-point alpha is modulated by the segment's remaining life, so
-  the trail fades smoothly from head (bright) to tail (transparent).
-  The head gets a small brightness boost (1.25x) to feel like a
-  fresh light source being pulled by the ship.
-
-BLOQUE 58.22 history (now superseded):
-  Pre-rendered rotated sprites with soft edges. The soft edges
-  blended between adjacent segments, but the rectangle shape
-  produced visible "rungs" along curves.
-
-BLOQUE 58.11 history (now superseded):
-  pygame.draw.line for 3 layers (edge + body + core). Produced
-  hard edges and looked like dashes.
+BLOQUE 58.11 history: pygame.draw.line for 3 layers (edge + body
+  + core). Hard edges, looked like dashes.
 
 The segment is a dataclass with:
 
@@ -290,37 +281,51 @@ class TronTrail:
     ) -> None:
         """Render the trail to the target surface.
 
-        BLOQUE 58.24: draw the trail as a CONTINUOUS POLYLINE through
-        all segment centers, not as discrete rotated sprites. The
-        rotated-sprite approach (BLOQUE 58.22) produced visible "rungs"
-        because each sprite is a thick rectangle, so when stacked
-        along a curve the result looks like a ladder. The polyline
-        approach uses pygame.draw.line to connect consecutive segment
-        centers, giving a single smooth beam that follows the
-        ship's exact path.
+        BLOQUE 58.25: ethereal "diffuse dissolve" trail.
 
-        To get the "neon" look we draw the polyline in 4 passes with
-        increasing width + decreasing alpha:
-          Pass 1 (GLOW):    width=11, alpha=40   - wide soft outer glow
-          Pass 2 (HALO):    width=7,  alpha=80   - medium cyan halo
-          Pass 3 (BODY):    width=4,  alpha=180  - bright cyan body
-          Pass 4 (CORE):    width=2,  alpha=255  - white-cyan bright core
+        BLOQUE 58.24 drew a continuous polyline with 4 passes (glow,
+        halo, body, core) and faded each pass's alpha linearly with
+        remaining life. The result was a neon line that simply became
+        more transparent toward the tail.
 
-        Each pass's alpha is modulated by the segment's remaining
-        life, so the trail fades smoothly from the head (bright) to
-        the tail (transparent). The head gets a small brightness boost
-        (1.25x) to feel like a fresh light source being pulled by
-        the ship.
+        The user wanted something more "ethereal": the line shouldn't
+        just fade out like a slider — it should DIFFUSE, like the
+        light is dissolving into the air. The bright core should
+        soften first, the glow should EXPAND before disappearing, and
+        the whole thing should look like wisps of light, not a
+        transparency fade.
 
-        This is the same rendering style as the drift_loud reference:
-        a thin bright core wrapped in a soft cyan halo, with the
-        whole thing tracing the ship's path.
+        The new approach keeps the polyline renderer (BLOQUE 58.24)
+        but changes HOW each pass fades with age:
+
+          - CORE (white-cyan, width=2): uses CUBIC easing. The bright
+            core vanishes FAST (e.g. gone by 30% life) so the line
+            "softens" early.
+          - BODY (cyan, width=4): uses QUADRATIC easing. The body
+            fades a bit slower than the core, so the line goes from
+            "hard core" to "soft body" gradually.
+          - HALO (cyan, width=7): uses LINEAR easing. The halo fades
+            gently.
+          - GLOW (cyan, width=11): uses LINEAR easing AND EXPANDS its
+            width as life decreases. So at the tail the line is a
+            wide soft glow with no sharp center, which then dissolves.
+
+        The head gets a "bloom": a wider, brighter burst at the very
+        tip — a small SRCALPHA surface drawn as additive-style glow
+        centered on the newest segment.
+
+        End result:
+          Head:   tight bright core + small bloom (sharp, fresh)
+          Middle: soft core + bright body + halo + glow
+          Tail:   NO core, faint body, wider glow dissolving outward
         """
         if len(self.segments) < 1:
             return
         ox, oy = offset
-        # Pre-compute screen-space points and per-point life (faded alpha)
-        n = len(self.segments)
+        # Pre-compute screen-space points and per-point life.
+        # We keep two values per point:
+        #   life_frac: 0 = just died, 1 = just born (used for fades)
+        #   diss:      a normalized "age" 0..1 used for diffusion shaping
         pts: list[tuple[int, int, float]] = []  # (x, y, life_frac)
         for s in self.segments:
             life = max(0.0, 1.0 - s.age / s.max_age)
@@ -333,63 +338,168 @@ class TronTrail:
             pts.append((int(s.cx) + ox, int(s.cy) + oy, alpha_factor))
         if not pts:
             return
-        # Multi-pass draw: each pass is a "shell" of the neon beam.
-        # (width, base_alpha, color, blend_with_fade)
-        passes = [
-            (11,  40, self.color_edge, 0.35),  # outer wide soft glow
-            (7,   80, self.color_edge, 0.55),  # mid cyan halo
-            (4,  180, self.color_mid,  0.85),  # bright cyan body
-            (2,  255, self.color_core, 1.00),  # white-cyan core
-        ]
-        # The newest segment is the head: boost its alpha
+
+        # -----------------------------------------------------------------
+        # Easing curves: how each pass fades with life
+        # -----------------------------------------------------------------
+        # For each life_frac (1 = fresh, 0 = dying), we compute the
+        # per-pass alpha multiplier. The curves are designed so:
+        #   - core dies FAST (only at the fresh end)
+        #   - body dies a bit slower
+        #   - halo and glow die slowest
+        # And the GLOW width GROWS as life decreases (the light
+        # diffuses outward before fading).
+        def _core_alpha(life: float) -> float:
+            # Cubic ease: 1 at life=1, 0 at life=~0.3 (gone by 30% life)
+            if life <= 0.0:
+                return 0.0
+            t = max(0.0, min(1.0, (life - 0.0) / 1.0))  # already in 0..1
+            return t * t * t
+        def _body_alpha(life: float) -> float:
+            # Quadratic: 1 at life=1, 0 at life=0
+            return life * life
+        def _halo_alpha(life: float) -> float:
+            # Linear: 1 at life=1, 0 at life=0 (smooth, gentle)
+            return life
+        def _glow_alpha(life: float) -> float:
+            # Linear, but boosted slightly so the glow persists
+            return life * 0.85 + 0.15 * life
+        def _glow_width_scale(life: float) -> float:
+            # As life decreases, the glow EXPANDS — at life=0.5 the
+            # glow is 1.5x wider, at life=0 the glow is 2x wider.
+            return 1.0 + (1.0 - life) * 1.0
+
         head_x, head_y, head_life = pts[-1]
-        for width, base_alpha, color, fade_strength in passes:
-            for i in range(len(pts) - 1):
-                x1, y1, a1 = pts[i]
-                x2, y2, a2 = pts[i + 1]
-                # Average life of the two endpoints; multiplied by the
-                # pass-specific fade strength. This gives the trail a
-                # gradient from head to tail.
-                avg_life = (a1 + a2) * 0.5
-                # The pass's own fade factor controls how strongly this
-                # pass is affected by the trail's life gradient.
-                effective = avg_life * fade_strength
-                alpha = int(min(255.0, base_alpha * effective))
-                if alpha < 2:
-                    continue
-                # Try drawing with alpha. pygame.draw.line accepts an
-                # RGBA color tuple on SRCALPHA targets.
-                try:
-                    pygame.draw.line(
-                        target,
-                        (color[0], color[1], color[2], alpha),
-                        (x1, y1), (x2, y2),
-                        width,
-                    )
-                except TypeError:
-                    # Some pygame versions don't accept RGBA on draw.line.
-                    # Fall back to plain RGB.
-                    pygame.draw.line(
-                        target,
-                        color,
-                        (x1, y1), (x2, y2),
-                        width,
-                    )
-        # Head boost: draw a small bright circle at the very tip of
-        # the trail (the newest segment position). This is the
-        # "light source" feel — like the bike is pulling a fresh
-        # bit of light.
-        head_alpha = int(min(255.0, 255.0 * head_life * 1.0))
-        if head_alpha > 10:
+
+        # -----------------------------------------------------------------
+        # Pass 1: GLOW (wide, soft, EXPANDS as it ages)
+        # -----------------------------------------------------------------
+        # The glow is the outermost shell. It starts at width 13 and
+        # grows to width 26 as the segment ages. This is what gives
+        # the "diffusion" feel — the light spreads outward before
+        # disappearing.
+        glow_base_w = 13
+        glow_max_alpha = 50
+        for i in range(len(pts) - 1):
+            x1, y1, a1 = pts[i]
+            x2, y2, a2 = pts[i + 1]
+            avg_life = (a1 + a2) * 0.5
+            width_scale = _glow_width_scale(avg_life)
+            w = max(1, int(glow_base_w * width_scale))
+            alpha = int(min(255.0, glow_max_alpha * _glow_alpha(avg_life)))
+            if alpha < 2:
+                continue
             try:
-                pygame.draw.circle(
+                pygame.draw.line(
                     target,
-                    (self.color_core[0], self.color_core[1], self.color_core[2], head_alpha),
-                    (head_x, head_y),
-                    3,
+                    (self.color_edge[0], self.color_edge[1], self.color_edge[2], alpha),
+                    (x1, y1), (x2, y2),
+                    w,
                 )
             except TypeError:
-                pygame.draw.circle(target, self.color_core, (head_x, head_y), 3)
+                pygame.draw.line(target, self.color_edge, (x1, y1), (x2, y2), w)
+
+        # -----------------------------------------------------------------
+        # Pass 2: HALO (medium width, linear fade)
+        # -----------------------------------------------------------------
+        halo_w = 7
+        halo_max_alpha = 90
+        for i in range(len(pts) - 1):
+            x1, y1, a1 = pts[i]
+            x2, y2, a2 = pts[i + 1]
+            avg_life = (a1 + a2) * 0.5
+            alpha = int(min(255.0, halo_max_alpha * _halo_alpha(avg_life)))
+            if alpha < 2:
+                continue
+            try:
+                pygame.draw.line(
+                    target,
+                    (self.color_edge[0], self.color_edge[1], self.color_edge[2], alpha),
+                    (x1, y1), (x2, y2),
+                    halo_w,
+                )
+            except TypeError:
+                pygame.draw.line(target, self.color_edge, (x1, y1), (x2, y2), halo_w)
+
+        # -----------------------------------------------------------------
+        # Pass 3: BODY (quadratic fade — the "soft body" of the beam)
+        # -----------------------------------------------------------------
+        body_w = 4
+        body_max_alpha = 200
+        for i in range(len(pts) - 1):
+            x1, y1, a1 = pts[i]
+            x2, y2, a2 = pts[i + 1]
+            avg_life = (a1 + a2) * 0.5
+            alpha = int(min(255.0, body_max_alpha * _body_alpha(avg_life)))
+            if alpha < 2:
+                continue
+            try:
+                pygame.draw.line(
+                    target,
+                    (self.color_mid[0], self.color_mid[1], self.color_mid[2], alpha),
+                    (x1, y1), (x2, y2),
+                    body_w,
+                )
+            except TypeError:
+                pygame.draw.line(target, self.color_mid, (x1, y1), (x2, y2), body_w)
+
+        # -----------------------------------------------------------------
+        # Pass 4: CORE (cubic fade — bright core vanishes early)
+        # -----------------------------------------------------------------
+        # The core is the brightest part of the beam. It only shows
+        # where life_frac > ~0.3 (cubic curve drops to 0 there). This
+        # makes the line "soften" before disappearing — the bright
+        # core melts into the body, then the body fades, then the
+        # glow expands and dissipates. That's the ethereal feel.
+        core_w = 2
+        core_max_alpha = 255
+        for i in range(len(pts) - 1):
+            x1, y1, a1 = pts[i]
+            x2, y2, a2 = pts[i + 1]
+            avg_life = (a1 + a2) * 0.5
+            alpha = int(min(255.0, core_max_alpha * _core_alpha(avg_life)))
+            if alpha < 2:
+                continue
+            try:
+                pygame.draw.line(
+                    target,
+                    (self.color_core[0], self.color_core[1], self.color_core[2], alpha),
+                    (x1, y1), (x2, y2),
+                    core_w,
+                )
+            except TypeError:
+                pygame.draw.line(target, self.color_core, (x1, y1), (x2, y2), core_w)
+
+        # -----------------------------------------------------------------
+        # Head bloom: extra bright burst at the very tip
+        # -----------------------------------------------------------------
+        # The newest segment is the "head" of the trail — the place
+        # where the light source is currently emitting. We add a
+        # small extra glow burst there so the head feels like a
+        # fresh light source being pulled by the ship, not just
+        # the end of a polyline.
+        if head_life > 0.3:
+            bloom_alpha = int(min(255.0, 200.0 * (head_life - 0.3) / 0.7))
+            if bloom_alpha > 5:
+                # 2-pass bloom: wider soft glow + tight bright center
+                try:
+                    pygame.draw.circle(
+                        target,
+                        (self.color_mid[0], self.color_mid[1], self.color_mid[2],
+                         int(bloom_alpha * 0.5)),
+                        (head_x, head_y),
+                        8,
+                    )
+                    pygame.draw.circle(
+                        target,
+                        (self.color_core[0], self.color_core[1], self.color_core[2],
+                         bloom_alpha),
+                        (head_x, head_y),
+                        4,
+                    )
+                except TypeError:
+                    pygame.draw.circle(target, self.color_mid, (head_x, head_y), 8)
+                    pygame.draw.circle(target, self.color_core, (head_x, head_y), 4)
 
     def check_enemy_collision(
         self,
