@@ -1,11 +1,9 @@
-"""Capture: render the redesigned SUB_BOSS as a MENACING V SILHOUETTE alien hunter.
+"""Capture: render the redesigned SUB_BOSS as a CLEAN V SILHOUETTE alien hunter.
 
-BLOQUE 58.6.1: visual proof for the V-silhouette SUB_BOSS redesign.
-User feedback: "el diseño esta bien, pero cierra el arco, para que parezca
-mas una V en vez de un [U]". The fangs now angle DOWN-AND-INWARD so the
-two fang tips converge at a point at the BOTTOM-CENTER, forming a clean V
-(apex at bottom). The arc closes because the open U-shape becomes a
-closed V.
+BLOQUE 58.6.2: visual proof for the closed-V SUB_BOSS redesign.
+User feedback: "parece un ). cierra mas los extremos de las alas". The
+wings now ALSO converge at the V apex (instead of extending up-and-out
+and forming ")"/"(" shapes on the sides). The result is a clean V.
 
 Output: tools/playtest_out/polish_45_sub_boss_starwolf.png
 """
@@ -53,9 +51,9 @@ font_md = pygame.font.SysFont("consolas", 13)
 font_sm = pygame.font.SysFont("consolas", 10)
 
 # Title
-title = font_lg.render("SUB_BOSS  -  MENACING V SILHOUETTE (BLOQUE 58.6.1)", True, (255, 255, 255))
+title = font_lg.render("SUB_BOSS  -  CLEAN V SILHOUETTE (BLOQUE 58.6.2)", True, (255, 255, 255))
 screen.blit(title, (12, 10))
-sub = font_md.render("Fangs converge at V apex (cierra el arco) + pink venom tips + cyan eye", True, (180, 200, 255))
+sub = font_md.render("Fangs (outer V) + wings (inner V) converge at apex (no more ')')", True, (180, 200, 255))
 screen.blit(sub, (12, 34))
 
 # 3 frames: idle / bank right / bank left
@@ -68,7 +66,7 @@ import src.ui.gameplay_runtime as gpr
 # the whole game.
 
 def draw_sub_boss(target: pygame.Surface, cx: int, cy: int, w: int, h: int, t: float) -> None:
-    """BLOQUE 58.6.1: MENACING V SILHOUETTE — fangs converge at V apex, cyan eye, sharp nose DOWN."""
+    """BLOQUE 58.6.2: CLEAN WIDE V SILHOUETTE — fangs form a wide V (apex at bottom), no ')')."""
     wolf_base = (160, 170, 185)
     wolf_dark = (80, 90, 105)
     wolf_red = (220, 50, 60)
@@ -83,50 +81,39 @@ def draw_sub_boss(target: pygame.Surface, cx: int, cy: int, w: int, h: int, t: f
     body_top_y = cy_b - h // 2
     body_bot_y = cy_b + h // 2
     shoulder_y = body_top_y + 2
-    mid_wing_y = cy_b - 1
-    wing_tip_dx = w
-    wing_tip_y = shoulder_y - 1
-    # 1) 2 SHARP FANGS angling DOWN-AND-INWARD, CONVERGING at the V apex
+    # 1) 2 SHARP FANGS forming a WIDE V — apex at the BOTTOM
     fang_tip_y = body_bot_y + 1
-    fang_tip_x_l = cx - 1
-    fang_tip_x_r = cx + 1
+    fang_tip_x_l = cx
+    fang_tip_x_r = cx
     pygame.draw.polygon(target, wolf_base, [
-        (cx - 2, body_top_y + 1), (cx - 4, body_top_y),
-        (fang_tip_x_l, fang_tip_y), (cx - 2, body_bot_y - 1),
+        (cx - 3, body_top_y + 1), (cx - 7, body_top_y),
+        (fang_tip_x_l, fang_tip_y), (cx - 1, body_bot_y - 1),
     ])
     pygame.draw.polygon(target, wolf_base, [
-        (cx + 2, body_top_y + 1), (cx + 4, body_top_y),
-        (fang_tip_x_r, fang_tip_y), (cx + 2, body_bot_y - 1),
+        (cx + 3, body_top_y + 1), (cx + 7, body_top_y),
+        (fang_tip_x_r, fang_tip_y), (cx + 1, body_bot_y - 1),
     ])
-    pygame.draw.line(target, wolf_red, (cx - 3, body_top_y + 1), (fang_tip_x_l, fang_tip_y - 1), 1)
-    pygame.draw.line(target, wolf_red, (cx + 3, body_top_y + 1), (fang_tip_x_r, fang_tip_y - 1), 1)
+    pygame.draw.line(target, wolf_red, (cx - 6, body_top_y), (fang_tip_x_l, fang_tip_y - 1), 1)
+    pygame.draw.line(target, wolf_red, (cx + 6, body_top_y), (fang_tip_x_r, fang_tip_y - 1), 1)
     pygame.draw.circle(target, pink_fang, (fang_tip_x_l, fang_tip_y), 1)
     pygame.draw.circle(target, pink_fang, (fang_tip_x_r, fang_tip_y), 1)
     pygame.draw.circle(target, pink_fang_bright, (fang_tip_x_l, fang_tip_y), 1)
     pygame.draw.circle(target, pink_fang_bright, (fang_tip_x_r, fang_tip_y), 1)
-    # 2) WINGS behind the fangs
-    pygame.draw.polygon(target, wolf_base, [
-        (cx - 1, shoulder_y), (cx - 4, shoulder_y - 1),
-        (cx - wing_tip_dx, wing_tip_y), (cx - wing_tip_dx, wing_tip_y + 2),
-        (cx - 2, mid_wing_y),
-    ])
-    pygame.draw.polygon(target, wolf_base, [
-        (cx + 1, shoulder_y), (cx + 4, shoulder_y - 1),
-        (cx + wing_tip_dx, wing_tip_y), (cx + wing_tip_dx, wing_tip_y + 2),
-        (cx + 2, mid_wing_y),
-    ])
+    # 2) CENTER SPINE (collapsed wings) — vertical accent inside the V
+    spine_y_top = shoulder_y
+    spine_y_bot = body_bot_y - 1
+    pygame.draw.line(target, wolf_dark, (cx, spine_y_top), (cx, spine_y_bot), 1)
     # 3) ENGINES at top
     eng_y = body_top_y
     eng_c = (int(255 * engine_pulse), int(180 * engine_pulse), int(60 * engine_pulse))
     pygame.draw.rect(target, eng_c, (cx - 1, eng_y, 1, 2))
     pygame.draw.rect(target, eng_c, (cx, eng_y, 1, 2))
-    # 4) MAIN BODY — sharp nose at BOTTOM
+    # 4) MAIN BODY — small central spine inside the V
+    mid_y = cy_b - 1
     pygame.draw.polygon(target, wolf_base, [
-        (cx, body_bot_y), (cx + 3, mid_wing_y + 1),
-        (cx + 1, shoulder_y), (cx, body_top_y + 1),
-        (cx - 1, shoulder_y), (cx - 3, mid_wing_y + 1),
+        (cx, body_bot_y), (cx + 1, mid_y),
+        (cx, body_top_y + 1), (cx - 1, mid_y),
     ])
-    pygame.draw.line(target, wolf_dark, (cx, body_top_y + 1), (cx, body_bot_y - 1), 1)
     # 5) MENACING CYAN EYE
     eye_r1 = int(4 * eye_pulse)
     eye_r2 = int(3 * eye_pulse)
@@ -135,15 +122,6 @@ def draw_sub_boss(target: pygame.Surface, cx: int, cy: int, w: int, h: int, t: f
     pygame.draw.circle(target, cyan_eye, (cx, cy_b), eye_r1)
     pygame.draw.circle(target, (200, 240, 255), (cx, cy_b), eye_r2)
     pygame.draw.circle(target, (255, 255, 255), (cx, cy_b), eye_r3)
-    # 6) Wing leading-edge highlights + red accent
-    wing_hi = (195, 205, 220)
-    pygame.draw.line(target, wing_hi, (cx - 1, shoulder_y), (cx - wing_tip_dx, wing_tip_y), 1)
-    pygame.draw.line(target, wing_hi, (cx + 1, shoulder_y), (cx + wing_tip_dx, wing_tip_y), 1)
-    pygame.draw.line(target, wolf_red, (cx - 2, shoulder_y + 1), (cx - wing_tip_dx + 1, wing_tip_y + 1), 1)
-    pygame.draw.line(target, wolf_red, (cx + 2, shoulder_y + 1), (cx + wing_tip_dx - 1, wing_tip_y + 1), 1)
-    # 7) Wingtip running lights
-    pygame.draw.circle(target, (255, 80, 80), (cx - wing_tip_dx, wing_tip_y), 1)
-    pygame.draw.circle(target, (255, 80, 80), (cx + wing_tip_dx, wing_tip_y), 1)
     # 8) Subtle outer red halo
     halo = pygame.Surface((w + 16, h + 16), pygame.SRCALPHA)
     halo_alpha = 40 + int(20 * math.sin(t * 6))
@@ -168,15 +146,14 @@ for cx, cy, t, label in positions:
 legend = [
     "Wolf base: silver (160, 170, 185)  |  Star Wolf red accent: (220, 50, 60)",
     "Menacing cyan eye pulses at 3 Hz  |  Pink/magenta venom fang tips at V apex",
-    "Closed V silhouette: fangs converge at the bottom-center (apex)",
+    "Clean V: fangs (outer V) + wings (inner V) both converge at the bottom apex",
 ]
 for i, line in enumerate(legend):
     screen.blit(font_sm.render(line, True, (180, 180, 200)), (12, 380 + i * 14))
 
 # Footer
 foot = font_sm.render(
-    "BLOQUE 58.6.1: SUB_BOSS redesigned as MENACING V SILHOUETTE alien hunter  -  "
-    "visual only, gameplay unchanged (HP 20, speed 90, 2.5 shots/s, 3 Hz wobble)",
+    "BLOQUE 58.6.2: SUB_BOSS clean V silhouette + HP 400 + straight line + wrap-around  -  speed 90, 2.5 shots/s",
     True, (140, 140, 160),
 )
 screen.blit(foot, (12, H - 16))

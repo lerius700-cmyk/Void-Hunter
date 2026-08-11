@@ -68,6 +68,10 @@ class _EnemyConfig:
     sine_wobble: bool = False
     sine_amplitude: float = 0.0
     sine_freq_hz: float = 0.0
+    # BLOQUE 58.6.2: wrap_around — when the enemy exits the bottom of the
+    # screen, wrap it back to the top instead of marking it DEAD. Used by
+    # SUB_BOSS for the "entra y sale del mapa repetidas veces" pattern.
+    wrap_around: bool = False
     homing: bool = False
     homing_turn_rate: float = 0.0
     anchored: bool = False
@@ -146,13 +150,18 @@ ENEMY_CONFIGS: dict[EnemyKind, _EnemyConfig] = {
     # 0.4s = 2.5 shots/s), and a frenetic sine wobble (3 Hz, 22px amplitude)
     # so it's hard to track. Aim-shot at the player, so the player has to
     # dodge constantly. Visually a yellow/orange dart.
+    # BLOQUE 58.6.2: HP x20 (20 -> 400) per user request, sine wobble OFF
+    # (moves in straight line instead). wrap_around=True so the sub-boss
+    # re-enters from the top after exiting the bottom (continuous entry/exit
+    # pattern, no sine wobble, just a clean vertical line).
     EnemyKind.SUB_BOSS: _EnemyConfig(
-        hp=20, speed=90.0, width=16, height=10, score=600,
+        hp=400, speed=90.0, width=16, height=10, score=600,
         color=(255, 200, 80),
         fire_cooldown_s=0.4, fire_damage=1, bullet_speed=280.0,
         telegraph_frames=6,
         drop_powerup_pct=0.30, drop_bomb_pct=0.15, drop_1up_pct=0.05,
-        sine_wobble=True, sine_amplitude=22.0, sine_freq_hz=3.0,
+        sine_wobble=False, sine_amplitude=0.0, sine_freq_hz=0.0,
+        wrap_around=True,
     ),
 }
 
@@ -312,8 +321,16 @@ class Enemy:
                 self.fire_cd = cfg.fire_cooldown_s
                 self.on_fire = True
         # Anchored enemies don't move vertically (already at vy=0)
-        # Cull offscreen
-        if self.y > INTERNAL_H + 20 or self.x < -20 or self.x > INTERNAL_W + 20:
+        # BLOQUE 58.6.2: wrap_around for SUB_BOSS — when it exits the
+        # bottom, wrap it back to the top of the screen so the player
+        # gets a continuous "entra y sale del mapa" pattern.
+        if cfg.wrap_around and self.y > INTERNAL_H + 20:
+            # Reset to top-center, slight random x for variety
+            self.y = -20.0
+            # Also reset fire cooldown so the re-entry feels threatening
+            self.fire_cd = 0.5
+        # Cull offscreen (other enemies)
+        elif self.y > INTERNAL_H + 20 or self.x < -20 or self.x > INTERNAL_W + 20:
             self.state = EnemyState.DEAD
 
 
