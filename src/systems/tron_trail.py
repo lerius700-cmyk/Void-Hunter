@@ -1,24 +1,23 @@
-"""BLOQUE 58.11 + 58.22 + 58.24 + 58.25 + 58.27 + 58.28 + 58.29 + 58.30: Tron-style light trail for the player PROPULSION.
+"""BLOQUE 58.11 + 58.22 + 58.24 + 58.25 + 58.27 + 58.28 + 58.29 + 58.30 + 58.31: Tron-style light trail for the player PROPULSION.
 
 When the player enters PROPULSION state, the ship leaves a continuous
 glowing wall behind it (think Tron lightcycle / drift_loud reference).
 
-BLOQUE 58.30: blue-white neon tube.
-  The user wanted the trail to look like the yellow line in their
-  reference screenshot — a thin neon line where:
-    - The OUTER EDGES of the line are ROYAL BLUE
-    - The CENTER of the line is WHITE-HOT
-    - Smooth gradient from blue (edges) to white (center)
-  This is the classic "neon tube / plasma beam" look — like a glass
-  tube with white-hot plasma inside and a blue glass shell. The
-  per-layer colors are:
-    GLOW (outermost): royal blue (65, 105, 225)
-    HALO:             blue-white
-    BODY:             light cyan-white
-    CORE (innermost): pure white
+BLOQUE 58.31: trail thickness matches the LASER (1-2 px core, 2-3 px glow).
+  The user pointed out the trail was still thicker than the continuous
+  laser the ship fires. Looking at the laser: it's a 1 px white core
+  with a 2-3 px soft cyan glow. Very thin.
+  Fix: dropped the multi-streak (was ±2 px offsets) and reduced
+  every layer width:
+    CORE: 1 px (single-pixel bright white line)
+    BODY: 1 px (slightly more visible due to higher alpha)
+    HALO: 2 px (soft cyan-white)
+    GLOW: 3 px (royal blue, soft)
+  Total visible width: 3 px (matching the laser). The cross-section
+  gradient is preserved: royal blue (outer) -> white (center).
   Plus a "head bloom" of bright white at the very tip.
 
-BLOQUE 58.29 history: thin trail (matching engine fire thickness).
+BLOQUE 58.30: blue-white neon tube.
   BLOQUE 58.28 went too far in the opposite direction: it made the
   trail a THICK puff (core=4, body=8, halo=16, glow=24) thinking the
   user wanted a thick beam. The user actually wanted a THIN line
@@ -322,25 +321,17 @@ class TronTrail:
     ) -> None:
         """Render the trail to the target surface.
 
-        BLOQUE 58.30: blue + white neon-tube beam.
-
-        The user wants a thin line (BLOQUE 58.29) with a
-        CROSS-SECTION gradient:
-          - Outer edges of the line: ROYAL BLUE
-          - Center of the line: WHITE
-          - Smooth gradient blue -> white from outside in
-        Like a glass tube with white-hot plasma inside and a blue
-        glass shell. Each layer has a fixed color from the
-        gradient (no longitudinal shift anymore):
-          GLOW (outermost, widest,  dimmest): royal blue
-          HALO:                                blue-white
-          BODY:                                light cyan-white
-          CORE (innermost, thinnest, brightest): white
-
-        The fade with life is still steep (life^1.5..2.0) so the
-        tail dissolves quickly. Multi-streak is preserved but
-        tight (offsets +/- 1 and +/- 2 px) so the line stays
-        narrow.
+        BLOQUE 58.31: ultra-thin beam (matches the laser thickness).
+        The user wanted the trail to be AS THIN AS the laser
+        (1-2 px white core, 2-3 px soft glow). Dropped the
+        multi-streak entirely and reduced all widths:
+          CORE: 1 px
+          BODY: 1 px
+          HALO: 2 px
+          GLOW: 3 px
+        The cross-section gradient is preserved (royal blue
+        outside, white inside), but the line is now the same
+        thickness as the continuous laser.
         """
         if len(self.segments) < 1:
             return
@@ -357,145 +348,65 @@ class TronTrail:
         if not pts:
             return
 
-        # -----------------------------------------------------------------
-        # Multi-streak: 5 thin parallel lines with small perpendicular offsets
-        # -----------------------------------------------------------------
-        # BLOQUE 58.29: tight offsets to keep the line NARROW.
-        # BLOQUE 58.30: tighter (1 px) so the blue/white gradient
-        # reads clearly through the line.
-        streak_configs = [
-            (-2.0, 0.25, 1.0),  # far-left ghost (very faint, royal blue)
-            (-1.0, 0.5,  1.0),  # left ghost
-            ( 0.0, 1.0,  1.0),  # center bright streak (white)
-            (+1.0, 0.5,  1.0),  # right ghost
-            (+2.0, 0.25, 1.0),  # far-right ghost (very faint, royal blue)
-        ]
-
-        def _draw_pass(
-            width: int,
-            base_alpha: float,
-            life_curve_power: float,
-            color: tuple[int, int, int],
-            width_expand: float = 0.0,
+        def _draw_line(
+            x1: int, y1: int, x2: int, y2: int,
+            width: int, color: tuple[int, int, int],
+            alpha: int, life_curve_power: float, avg_life: float,
         ) -> None:
-            """Draw one "pass" (a layer of the neon beam) across all streaks.
+            """Draw one polyline segment with the given color/alpha.
 
-            Args:
-                width: base line width in px.
-                base_alpha: peak alpha at life=1.
-                life_curve_power: alpha is multiplied by life^power.
-                color: the RGB color for THIS layer (per the blue->white
-                       cross-section gradient).
-                width_expand: how much the width GROWS as life decreases.
+            The alpha is already computed; we just draw.
             """
-            for perp_off, alpha_mult, width_mult in streak_configs:
-                for i in range(len(pts) - 1):
-                    x1, y1, a1 = pts[i]
-                    x2, y2, a2 = pts[i + 1]
-                    avg_life = (a1 + a2) * 0.5
-                    life_width = 1.0 + (1.0 - avg_life) * width_expand
-                    actual_width = max(1, int(width * life_width * width_mult))
-                    life_factor = avg_life ** life_curve_power
-                    alpha = int(min(255.0, base_alpha * life_factor * alpha_mult))
-                    if alpha < 2:
-                        continue
-                    if perp_off != 0.0:
-                        dx = x2 - x1
-                        dy = y2 - y1
-                        seg_len = math.hypot(dx, dy)
-                        if seg_len > 0.01:
-                            perp_x = -dy / seg_len
-                            perp_y = dx / seg_len
-                            ox1 = int(perp_x * perp_off)
-                            oy1 = int(perp_y * perp_off)
-                            ox2 = ox1
-                            oy2 = oy1
-                        else:
-                            ox1 = oy1 = ox2 = oy2 = 0
-                    else:
-                        ox1 = oy1 = ox2 = oy2 = 0
-                    try:
-                        pygame.draw.line(
-                            target,
-                            (color[0], color[1], color[2], alpha),
-                            (x1 + ox1, y1 + oy1),
-                            (x2 + ox2, y2 + oy2),
-                            actual_width,
-                        )
-                    except TypeError:
-                        pygame.draw.line(
-                            target,
-                            color,
-                            (x1 + ox1, y1 + oy1),
-                            (x2 + ox2, y2 + oy2),
-                            actual_width,
-                        )
+            if alpha < 2:
+                return
+            try:
+                pygame.draw.line(
+                    target,
+                    (color[0], color[1], color[2], alpha),
+                    (x1, y1), (x2, y2),
+                    width,
+                )
+            except TypeError:
+                pygame.draw.line(target, color, (x1, y1), (x2, y2), width)
 
-        # BLOQUE 58.30: cross-section blue -> white gradient.
-        # GLOW is the OUTERMOST layer -> royal blue.
-        # CORE is the INNERMOST layer -> pure white.
-        # Each layer has a fixed color (no longitudinal shift).
-        _draw_pass(width=8, base_alpha=22, life_curve_power=1.5,
-                   color=self.color_edge, width_expand=1.2)   # royal blue glow
-        _draw_pass(width=5, base_alpha=45, life_curve_power=1.6,
-                   color=self.color_mid, width_expand=0.7)    # blue-white halo
-        _draw_pass(width=3, base_alpha=110, life_curve_power=1.7,
-                   color=(220, 240, 255), width_expand=0.3)    # light cyan-white body
-        _draw_pass(width=2, base_alpha=180, life_curve_power=2.0,
-                   color=self.color_core, width_expand=0.0)   # white core
+        # BLOQUE 58.31: 4 passes, NO multi-streak. The widths match
+        # the continuous laser (1-2 px core, 2-3 px glow).
+        for i in range(len(pts) - 1):
+            x1, y1, a1 = pts[i]
+            x2, y2, a2 = pts[i + 1]
+            avg_life = (a1 + a2) * 0.5
+            # Pass 1: GLOW (3 px, royal blue)
+            _draw_line(x1, y1, x2, y2, 3, self.color_edge,
+                       int(min(255.0, 30 * (avg_life ** 1.5))), 1.5, avg_life)
+            # Pass 2: HALO (2 px, blue-white)
+            _draw_line(x1, y1, x2, y2, 2, self.color_mid,
+                       int(min(255.0, 60 * (avg_life ** 1.6))), 1.6, avg_life)
+            # Pass 3: BODY (1 px, light cyan-white)
+            _draw_line(x1, y1, x2, y2, 1, (220, 240, 255),
+                       int(min(255.0, 150 * (avg_life ** 1.7))), 1.7, avg_life)
+            # Pass 4: CORE (1 px, pure white)
+            _draw_line(x1, y1, x2, y2, 1, self.color_core,
+                       int(min(255.0, 220 * (avg_life ** 2.0))), 2.0, avg_life)
 
         # -----------------------------------------------------------------
-        # Head bloom: tight white burst at the very tip
+        # Head bloom: tiny bright burst at the very tip
         # -----------------------------------------------------------------
-        # The head is the "newest" segment — where the engine is
-        # currently emitting. We add a small bright white bloom so
-        # the head feels like a fresh light source.
+        # The head is the newest segment. A 2 px white pixel and
+        # a 1 px white center, matching the laser's tip glow.
         head_x, head_y, head_life = pts[-1]
         if head_life > 0.4:
             bloom_alpha = int(min(255.0, 220.0 * (head_life - 0.4) / 0.6))
             if bloom_alpha > 5:
                 try:
-                    # Outer blue glow (4 px)
-                    pygame.draw.circle(
-                        target,
-                        (self.color_edge[0], self.color_edge[1], self.color_edge[2],
-                         int(bloom_alpha * 0.4)),
-                        (head_x, head_y),
-                        4,
-                    )
-                    # Bright white center (2 px)
+                    # White center (1 px) — matching the laser head
                     pygame.draw.circle(
                         target,
                         (255, 255, 255, bloom_alpha),
                         (head_x, head_y),
-                        2,
-                    )
-                except TypeError:
-                    pygame.draw.circle(target, self.color_edge, (head_x, head_y), 4)
-                    pygame.draw.circle(target, (255, 255, 255), (head_x, head_y), 2)
-
-        # -----------------------------------------------------------------
-        # Sparkle particles: tiny white stars along the trail
-        # -----------------------------------------------------------------
-        # BLOQUE 58.30: small white sparkles along the line (like
-        # the "stars" in the reference image). They fade with the
-        # segment life.
-        if len(pts) > 4:
-            step = max(1, len(pts) // 8)
-            for i in range(2, len(pts) - 1, step):
-                sx, sy, sl = pts[i]
-                if sl < 0.2:
-                    continue
-                spark_alpha = int(min(255.0, 180.0 * sl))
-                try:
-                    pygame.draw.circle(
-                        target,
-                        (255, 255, 255, spark_alpha),
-                        (sx, sy),
                         1,
                     )
                 except TypeError:
-                    pygame.draw.circle(target, (255, 255, 255), (sx, sy), 1)
+                    pygame.draw.circle(target, (255, 255, 255), (head_x, head_y), 1)
 
     def check_enemy_collision(
         self,
