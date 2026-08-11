@@ -1,9 +1,24 @@
-"""BLOQUE 58.11 + 58.22 + 58.24 + 58.25 + 58.27 + 58.28 + 58.29: Tron-style light trail for the player PROPULSION.
+"""BLOQUE 58.11 + 58.22 + 58.24 + 58.25 + 58.27 + 58.28 + 58.29 + 58.30: Tron-style light trail for the player PROPULSION.
 
 When the player enters PROPULSION state, the ship leaves a continuous
 glowing wall behind it (think Tron lightcycle / drift_loud reference).
 
-BLOQUE 58.29: thin trail — match the engine fire plume thickness.
+BLOQUE 58.30: blue-white neon tube.
+  The user wanted the trail to look like the yellow line in their
+  reference screenshot — a thin neon line where:
+    - The OUTER EDGES of the line are ROYAL BLUE
+    - The CENTER of the line is WHITE-HOT
+    - Smooth gradient from blue (edges) to white (center)
+  This is the classic "neon tube / plasma beam" look — like a glass
+  tube with white-hot plasma inside and a blue glass shell. The
+  per-layer colors are:
+    GLOW (outermost): royal blue (65, 105, 225)
+    HALO:             blue-white
+    BODY:             light cyan-white
+    CORE (innermost): pure white
+  Plus a "head bloom" of bright white at the very tip.
+
+BLOQUE 58.29 history: thin trail (matching engine fire thickness).
   BLOQUE 58.28 went too far in the opposite direction: it made the
   trail a THICK puff (core=4, body=8, halo=16, glow=24) thinking the
   user wanted a thick beam. The user actually wanted a THIN line
@@ -134,10 +149,14 @@ class TronTrail:
         max_age: float = 2.5,
         spawn_interval_s: float = 0.018,  # ~55 Hz — high density for smooth ribbon
     ) -> None:
-        # The cyan color palette (Tron Legacy neon)
-        self.color_core: tuple[int, int, int] = (210, 255, 255)
-        self.color_mid: tuple[int, int, int] = (0, 230, 255)
-        self.color_edge: tuple[int, int, int] = (0, 160, 220)
+        # BLOQUE 58.30: blue + white palette (was cyan-only).
+        # The trail is now a thin neon-tube-style beam:
+        #   - Outer edges: royal blue
+        #   - Center: white-hot
+        # The GLOW layer uses the royal blue, the CORE uses white.
+        self.color_core: tuple[int, int, int] = (255, 255, 255)  # white (innermost)
+        self.color_mid:  tuple[int, int, int] = (200, 230, 255)  # light cyan-white
+        self.color_edge: tuple[int, int, int] = (65, 105, 225)   # royal blue (outermost)
         # Segment parameters
         self.max_segments = max_segments
         self.segment_length = segment_length
@@ -303,35 +322,25 @@ class TronTrail:
     ) -> None:
         """Render the trail to the target surface.
 
-        BLOQUE 58.27: spectral multi-streak transparent trail.
+        BLOQUE 58.30: blue + white neon-tube beam.
 
-        Previous BLOQUE 58.25 produced a "diffuse dissolve" trail
-        with 4 passes (glow/halo/body/core). The user wanted:
-          1. MUCH MORE TRANSPARENT — the trail should be see-through,
-             not opaque. Even the head should be partially transparent.
-          2. The tail should be EVEN MORE transparent until it
-             disappears (steeper falloff at the tail).
-          3. SPECTRAL — like the reference images, the line should
-             have a color gradient (white-hot at the head, cooling
-             through cyan/blue/violet toward the tail).
-          4. MULTI-STREAK — instead of one solid line, draw several
-             slightly offset lines to create a "spectrum" / "ghost
-             trail" effect, like multiple parallel light streaks.
+        The user wants a thin line (BLOQUE 58.29) with a
+        CROSS-SECTION gradient:
+          - Outer edges of the line: ROYAL BLUE
+          - Center of the line: WHITE
+          - Smooth gradient blue -> white from outside in
+        Like a glass tube with white-hot plasma inside and a blue
+        glass shell. Each layer has a fixed color from the
+        gradient (no longitudinal shift anymore):
+          GLOW (outermost, widest,  dimmest): royal blue
+          HALO:                                blue-white
+          BODY:                                light cyan-white
+          CORE (innermost, thinnest, brightest): white
 
-        The new approach:
-          - Each pass has a BASE alpha that's much lower (50% of
-            before). The whole trail is now transparent.
-          - The color shifts based on life: white-cyan at the head,
-            cyan in the middle, blue at the tail. This is a
-            "cooling" effect — the hot light cools to a cool color
-            as it dissipates.
-          - The trail is drawn 3 times (multi-streak) with small
-            perpendicular offsets (-2, 0, +2 px). The center streak
-            is the brightest, the side streaks are dimmer. This
-            creates a "spectrum" feel.
-          - The fade curves are now much steeper at the tail: the
-            alpha is multiplied by life^1.7, so the tail fades
-            faster than the head.
+        The fade with life is still steep (life^1.5..2.0) so the
+        tail dissolves quickly. Multi-streak is preserved but
+        tight (offsets +/- 1 and +/- 2 px) so the line stays
+        narrow.
         """
         if len(self.segments) < 1:
             return
@@ -340,8 +349,6 @@ class TronTrail:
         pts: list[tuple[int, int, float]] = []
         for s in self.segments:
             life = max(0.0, 1.0 - s.age / s.max_age)
-            # Quick fade-in over the first 50ms so newly-spawned
-            # segments don't pop in
             fade_in = min(1.0, s.age / 0.05) if s.age < 0.05 else 1.0
             alpha_factor = life * fade_in
             if alpha_factor <= 0.001:
@@ -351,138 +358,54 @@ class TronTrail:
             return
 
         # -----------------------------------------------------------------
-        # Spectral color shift: hot FIRE at the head, cool at the tail
-        # -----------------------------------------------------------------
-        # BLOQUE 58.28: the head color now matches the ship's
-        # propulsion fire (red/orange/yellow), then transitions to
-        # white-cyan, then cyan, then blue, then violet as the line
-        # cools. This makes the trail feel like the engine fire is
-        # "leaving a mark" that cools as it ages.
-        def _spectral_color(life: float) -> tuple[int, int, int]:
-            """Interpolate color from FIRE (head) to violet (tail).
-
-            life=1.0 -> yellow-white (hottest, just emitted)
-            life=0.9 -> orange/yellow (fire zone)
-            life=0.7 -> red-orange (cooling)
-            life=0.5 -> white-cyan
-            life=0.3 -> bright cyan
-            life=0.1 -> blue
-            life=0.0 -> violet (cool, dissipating)
-            """
-            if life > 0.9:
-                # Hottest: yellow-white (just out of the engine)
-                t = (life - 0.9) / 0.1
-                r = int(255)
-                g = int(180 + 75 * t)
-                b = int(60 + 100 * t)
-            elif life > 0.7:
-                # Fire zone: orange/yellow
-                t = (life - 0.7) / 0.2
-                r = int(255)
-                g = int(120 + 60 * t)
-                b = int(40 + 20 * t)
-            elif life > 0.5:
-                # Red-orange (cooling)
-                t = (life - 0.5) / 0.2
-                r = int(200 + 55 * t)
-                g = int(100 + 100 * t)
-                b = int(100 + 100 * t)
-            elif life > 0.3:
-                # White-cyan transition
-                t = (life - 0.3) / 0.2
-                r = int(80 + 100 * t)
-                g = int(200 + 55 * t)
-                b = int(255)
-            elif life > 0.1:
-                # Bright cyan to blue
-                t = (life - 0.1) / 0.2
-                r = int(0)
-                g = int(160 + 80 * t)
-                b = int(255)
-            else:
-                # Cool violet (dying)
-                t = life / 0.1
-                r = int(60 * t)
-                g = int(40 * t)
-                b = int(160 + 60 * t)
-            return (r, g, b)
-
-        # -----------------------------------------------------------------
         # Multi-streak: 5 thin parallel lines with small perpendicular offsets
         # -----------------------------------------------------------------
-        # BLOQUE 58.29: tight offsets to keep the line NARROW like the
-        # engine fire plume (which is a thin column, not a wide puff).
-        # The streaks are at +/- 1 and +/- 2 px from the centerline.
-        # Each side streak has lower alpha to create a soft "spectrum"
-        # feel while keeping the total line width small.
-        #
-        # Per-streak config: (perp_offset, alpha_mult, width_mult)
+        # BLOQUE 58.29: tight offsets to keep the line NARROW.
+        # BLOQUE 58.30: tighter (1 px) so the blue/white gradient
+        # reads clearly through the line.
         streak_configs = [
-            (-2.0, 0.25, 1.0),  # far-left ghost (very faint)
+            (-2.0, 0.25, 1.0),  # far-left ghost (very faint, royal blue)
             (-1.0, 0.5,  1.0),  # left ghost
-            ( 0.0, 1.0,  1.0),  # center bright streak
+            ( 0.0, 1.0,  1.0),  # center bright streak (white)
             (+1.0, 0.5,  1.0),  # right ghost
-            (+2.0, 0.25, 1.0),  # far-right ghost (very faint)
+            (+2.0, 0.25, 1.0),  # far-right ghost (very faint, royal blue)
         ]
 
-        # -----------------------------------------------------------------
-        # Draw each pass (glow/halo/body/core) for each streak
-        # -----------------------------------------------------------------
-        # For each pair of consecutive pts, we:
-        #   1. Compute the segment direction (dx, dy) and the
-        #      perpendicular offset (-dy, dx) normalized.
-        #   2. For each streak, compute the offset endpoint.
-        #   3. Draw the line with the streak's offset and alpha mult.
-        #
-        # The 4 passes (glow/halo/body/core) are drawn inside the
-        # streak loop, so each streak has its own multi-pass beam.
         def _draw_pass(
             width: int,
             base_alpha: float,
             life_curve_power: float,
+            color: tuple[int, int, int],
             width_expand: float = 0.0,
         ) -> None:
-            """Draw one "pass" (a layer of the neon beam) across all
-            streaks.
+            """Draw one "pass" (a layer of the neon beam) across all streaks.
 
             Args:
                 width: base line width in px.
                 base_alpha: peak alpha at life=1.
                 life_curve_power: alpha is multiplied by life^power.
-                    1.0 = linear, 1.7 = steep falloff at the tail.
-                width_expand: how much the width GROWS as life
-                    decreases. 0 = constant width, 1.0 = 2x wider
-                    at the tail.
+                color: the RGB color for THIS layer (per the blue->white
+                       cross-section gradient).
+                width_expand: how much the width GROWS as life decreases.
             """
-            for streak_idx, (perp_off, alpha_mult, width_mult) in enumerate(streak_configs):
+            for perp_off, alpha_mult, width_mult in streak_configs:
                 for i in range(len(pts) - 1):
                     x1, y1, a1 = pts[i]
                     x2, y2, a2 = pts[i + 1]
-                    # Average life for this segment
                     avg_life = (a1 + a2) * 0.5
-                    # Per-segment color (spectral shift)
-                    color = _spectral_color(avg_life)
-                    # Width expands as life decreases (diffusion)
                     life_width = 1.0 + (1.0 - avg_life) * width_expand
                     actual_width = max(1, int(width * life_width * width_mult))
-                    # Per-streak alpha multiplier
-                    streak_alpha_mult = alpha_mult
-                    # Alpha with life curve and streak multiplier
                     life_factor = avg_life ** life_curve_power
-                    alpha = int(min(255.0, base_alpha * life_factor * streak_alpha_mult))
+                    alpha = int(min(255.0, base_alpha * life_factor * alpha_mult))
                     if alpha < 2:
                         continue
-                    # Compute perpendicular offset for this streak
                     if perp_off != 0.0:
-                        # Direction along the segment
                         dx = x2 - x1
                         dy = y2 - y1
                         seg_len = math.hypot(dx, dy)
                         if seg_len > 0.01:
-                            # Perpendicular unit vector (rotated 90°)
                             perp_x = -dy / seg_len
                             perp_y = dx / seg_len
-                            # Offset the segment endpoints perpendicular
                             ox1 = int(perp_x * perp_off)
                             oy1 = int(perp_y * perp_off)
                             ox2 = ox1
@@ -508,54 +431,39 @@ class TronTrail:
                             actual_width,
                         )
 
-        # Pass 1: GLOW (thin, very transparent, slight expand)
-        # BLOQUE 58.29: thin as the engine fire plume. Total visible
-        # width is ~8px (GLOW) + the perpendicular multi-streak.
-        _draw_pass(width=8, base_alpha=18, life_curve_power=1.5,
-                   width_expand=1.4)
-        # Pass 2: HALO (thin, transparent)
-        _draw_pass(width=5, base_alpha=32, life_curve_power=1.6,
-                   width_expand=0.8)
-        # Pass 3: BODY (the visible solid of the beam)
-        # BLOQUE 58.29: 3 px (was 8 in 58.28) — matches the fire's
-        # narrow column thickness.
-        _draw_pass(width=3, base_alpha=85, life_curve_power=1.7,
-                   width_expand=0.4)
-        # Pass 4: CORE (the bright center of the beam)
-        # BLOQUE 58.29: 2 px (was 4 in 58.28) — a tight bright line,
-        # like the engine fire's hottest center.
-        _draw_pass(width=2, base_alpha=150, life_curve_power=2.0,
-                   width_expand=0.0)
+        # BLOQUE 58.30: cross-section blue -> white gradient.
+        # GLOW is the OUTERMOST layer -> royal blue.
+        # CORE is the INNERMOST layer -> pure white.
+        # Each layer has a fixed color (no longitudinal shift).
+        _draw_pass(width=8, base_alpha=22, life_curve_power=1.5,
+                   color=self.color_edge, width_expand=1.2)   # royal blue glow
+        _draw_pass(width=5, base_alpha=45, life_curve_power=1.6,
+                   color=self.color_mid, width_expand=0.7)    # blue-white halo
+        _draw_pass(width=3, base_alpha=110, life_curve_power=1.7,
+                   color=(220, 240, 255), width_expand=0.3)    # light cyan-white body
+        _draw_pass(width=2, base_alpha=180, life_curve_power=2.0,
+                   color=self.color_core, width_expand=0.0)   # white core
 
         # -----------------------------------------------------------------
-        # Head bloom: tight bright burst at the very tip
+        # Head bloom: tight white burst at the very tip
         # -----------------------------------------------------------------
-        # BLOQUE 58.29: small tight head bloom (3 small circles) so
-        # the head doesn't look like a wide puff. It should feel
-        # like the engine fire's hottest point leading the line.
+        # The head is the "newest" segment — where the engine is
+        # currently emitting. We add a small bright white bloom so
+        # the head feels like a fresh light source.
         head_x, head_y, head_life = pts[-1]
         if head_life > 0.4:
             bloom_alpha = int(min(255.0, 220.0 * (head_life - 0.4) / 0.6))
             if bloom_alpha > 5:
-                # Fire color (yellow-orange) for the head bloom
-                fire_color = _spectral_color(0.95)  # yellow-white
                 try:
-                    # Soft outer glow (4 px — tight)
+                    # Outer blue glow (4 px)
                     pygame.draw.circle(
                         target,
-                        (fire_color[0], fire_color[1], fire_color[2],
+                        (self.color_edge[0], self.color_edge[1], self.color_edge[2],
                          int(bloom_alpha * 0.4)),
                         (head_x, head_y),
                         4,
                     )
-                    # Bright orange ring (3 px)
-                    pygame.draw.circle(
-                        target,
-                        (255, 180, 60, int(bloom_alpha * 0.7)),
-                        (head_x, head_y),
-                        3,
-                    )
-                    # White-cyan hot core (2 px)
+                    # Bright white center (2 px)
                     pygame.draw.circle(
                         target,
                         (255, 255, 255, bloom_alpha),
@@ -563,28 +471,22 @@ class TronTrail:
                         2,
                     )
                 except TypeError:
-                    pygame.draw.circle(target, fire_color, (head_x, head_y), 4)
-                    pygame.draw.circle(target, (255, 180, 60), (head_x, head_y), 3)
+                    pygame.draw.circle(target, self.color_edge, (head_x, head_y), 4)
                     pygame.draw.circle(target, (255, 255, 255), (head_x, head_y), 2)
 
         # -----------------------------------------------------------------
-        # Sparkle particles: tiny stars along the trail
+        # Sparkle particles: tiny white stars along the trail
         # -----------------------------------------------------------------
-        # Like the reference image, sprinkle small bright dots along
-        # the trail. We use the EXISTING segment positions so the
-        # sparkles track the trail exactly. We pick every Nth segment
-        # based on a deterministic hash (so the sparkles don't move
-        # around between frames). The alpha fades with the segment
-        # life, so sparkles disappear with the trail.
+        # BLOQUE 58.30: small white sparkles along the line (like
+        # the "stars" in the reference image). They fade with the
+        # segment life.
         if len(pts) > 4:
-            step = max(1, len(pts) // 8)  # ~8 sparkles along the trail
+            step = max(1, len(pts) // 8)
             for i in range(2, len(pts) - 1, step):
                 sx, sy, sl = pts[i]
                 if sl < 0.2:
                     continue
-                # Tiny dot, 1-2 px
                 spark_alpha = int(min(255.0, 180.0 * sl))
-                spark_color = _spectral_color(sl)
                 try:
                     pygame.draw.circle(
                         target,
@@ -592,17 +494,8 @@ class TronTrail:
                         (sx, sy),
                         1,
                     )
-                    # Outer soft glow
-                    pygame.draw.circle(
-                        target,
-                        (spark_color[0], spark_color[1], spark_color[2],
-                         int(spark_alpha * 0.5)),
-                        (sx, sy),
-                        2,
-                    )
                 except TypeError:
                     pygame.draw.circle(target, (255, 255, 255), (sx, sy), 1)
-                    pygame.draw.circle(target, spark_color, (sx, sy), 2)
 
     def check_enemy_collision(
         self,

@@ -3221,14 +3221,45 @@ class GameplayRuntime:
         # BLOQUE 58.12: ship redesign — more detail (wing-tip glow halos,
         # 3D shading on the body, darker canopy frame, intake blades,
         # panel lines). All within the 32x24 sprite footprint.
+        # BLOQUE 58.30: when in PROPULSION, the entire ship palette
+        # switches to BLUE + WHITE (matching the Tron trail) so the
+        # whole rig feels like a coherent lightcycle. The rest of
+        # the states keep their normal red/blue Arwing palette.
+        is_propulsion = (self._player.state == PlayerState.PROPULSION)
         surf = pygame.Surface((32, 24), pygame.SRCALPHA)
         # Center the 32x24 sprite around (16, 12)
         # Flicker iframes (every-other frame invisible during dash)
         if self._player.dash_iframes_left > 0 and (self._t * 30) % 2 < 1:
             pass  # still draw so the trail is visible
-        # Ship body color (changes with charge level)
-        body_color = (220, 240, 255)
-        wing_color = (180, 200, 230)
+        # Ship body color (changes with charge level OR propulsion)
+        if is_propulsion:
+            # BLOQUE 58.30: propulsion palette = blue + white.
+            # All accents shift to blue/white to match the Tron trail.
+            body_color = (240, 248, 255)        # near-white
+            wing_color = (160, 200, 240)        # light blue
+            cockpit_color = (140, 200, 255)     # cyan-white
+            stripe_color = (65, 105, 225)       # royal blue
+            left_laser_color = (140, 200, 255)  # blue
+            right_laser_color = (200, 230, 255) # light blue-white
+            left_glow_color = (100, 180, 255)
+            right_glow_color = (160, 220, 255)
+            wing_tip_red_color = (100, 180, 255)
+            wing_tip_green_color = (160, 220, 255)
+            intake_color = (40, 50, 70)
+            engine_glow_color = (200, 230, 255)  # white-blue engine glow
+        else:
+            body_color = (220, 240, 255)
+            wing_color = (180, 200, 230)
+            cockpit_color = (255, 100, 100)     # default to red, overridden for CHARGE below
+            stripe_color = (255, 80, 80)
+            left_laser_color = (200, 80, 80)
+            right_laser_color = (80, 200, 100)
+            left_glow_color = (255, 80, 80)
+            right_glow_color = (100, 255, 130)
+            wing_tip_red_color = None  # computed below with pulse
+            wing_tip_green_color = None
+            intake_color = (40, 50, 70)
+            engine_glow_color = (255, 140, 60)
         if self._player.state == PlayerState.CHARGE:
             level = self._player.get_charge_level()
             if level >= 3:
@@ -3291,18 +3322,23 @@ class GameplayRuntime:
         pygame.draw.line(surf, (110, 130, 160), (10, 11), (4, 20), 1)
         pygame.draw.line(surf, (110, 130, 160), (22, 11), (28, 20), 1)
         # ---- Cockpit (canopy) ----
-        cockpit_color = (255, 100, 100)
-        if self._player.state == PlayerState.CHARGE:
-            level = self._player.get_charge_level()
-            if level >= 3:
-                cockpit_color = (255, 200, 255)
-            elif level >= 2:
-                cockpit_color = (255, 150, 200)
-            elif level >= 1:
-                cockpit_color = (255, 120, 150)
+        if not is_propulsion:
+            # Non-propulsion: charge-driven cockpit color (red -> pink)
+            if self._player.state == PlayerState.CHARGE:
+                level = self._player.get_charge_level()
+                if level >= 3:
+                    cockpit_color = (255, 200, 255)
+                elif level >= 2:
+                    cockpit_color = (255, 150, 200)
+                elif level >= 1:
+                    cockpit_color = (255, 120, 150)
+            else:
+                cockpit_color = (255, 100, 100)
         # BLOQUE 58.12: canopy frame (darker outline) before the canopy
         # fill, so the canopy reads as a glass dome mounted on a frame.
-        pygame.draw.polygon(surf, (60, 40, 50), [
+        # BLOQUE 58.30: in propulsion, use a blue frame instead of red.
+        frame_color = (60, 40, 50) if not is_propulsion else (40, 60, 100)
+        pygame.draw.polygon(surf, frame_color, [
             (14, 5), (18, 5), (19, 8), (16, 11), (13, 8),
         ])
         # Hex canopy (Arwing-style bubble canopy)
@@ -3311,56 +3347,71 @@ class GameplayRuntime:
         ])
         # BLOQUE 58.12: double canopy highlight (two white shine dots
         # for a "glass dome" feel — one main + one smaller specular)
+        # BLOQUE 58.30: in propulsion, the highlight stays white.
         pygame.draw.circle(surf, (255, 255, 255), (15, 7), 1)
-        pygame.draw.circle(surf, (255, 220, 220), (17, 7), 0)
+        highlight_color = (255, 220, 220) if not is_propulsion else (220, 240, 255)
+        pygame.draw.circle(surf, highlight_color, (17, 7), 0)
         # ---- Wing-tip laser cannons (Star Fox detail) ----
-        # Left laser barrel (red, port side)
-        pygame.draw.rect(surf, (200, 80, 80), (1, 16, 3, 2))
-        pygame.draw.rect(surf, (255, 120, 100), (0, 17, 2, 1))  # hot tip
-        # Right laser barrel (green, starboard side)
-        pygame.draw.rect(surf, (80, 200, 100), (28, 16, 3, 2))
-        pygame.draw.rect(surf, (120, 255, 150), (30, 17, 2, 1))  # hot tip
+        # Left laser barrel (BLOQUE 58.30: red normally, blue in PROPULSION)
+        pygame.draw.rect(surf, left_laser_color, (1, 16, 3, 2))
+        left_tip_color = (255, 120, 100) if not is_propulsion else (180, 220, 255)
+        pygame.draw.rect(surf, left_tip_color, (0, 17, 2, 1))  # hot tip
+        # Right laser barrel (green normally, light blue-white in PROPULSION)
+        pygame.draw.rect(surf, right_laser_color, (28, 16, 3, 2))
+        right_tip_color = (120, 255, 150) if not is_propulsion else (220, 240, 255)
+        pygame.draw.rect(surf, right_tip_color, (30, 17, 2, 1))  # hot tip
         # ---- BLOQUE 58.12: wing-tip glow halos ----
-        # A soft neon halo around each wing-tip laser (separate surface
-        # with per-line alpha) so the cannons read as "powered" even
-        # when the player isn't shooting. Red on port, green on
-        # starboard — matches the barrel colors.
+        # A soft neon halo around each wing-tip laser. BLOQUE 58.30:
+        # in PROPULSION both halos shift to blue/white.
         glow = pygame.Surface((6, 6), pygame.SRCALPHA)
-        # Port (red) glow
-        pygame.draw.circle(glow, (255, 80, 80, 110), (1, 17), 3)
-        pygame.draw.circle(glow, (255, 150, 100, 70), (1, 17), 2)
+        port_glow_outer = (255, 80, 80, 110) if not is_propulsion else (100, 180, 255, 110)
+        port_glow_inner = (255, 150, 100, 70) if not is_propulsion else (160, 220, 255, 70)
+        pygame.draw.circle(glow, port_glow_outer, (1, 17), 3)
+        pygame.draw.circle(glow, port_glow_inner, (1, 17), 2)
         surf.blit(glow, (-2, 14))
-        # Starboard (green) glow
         glow2 = pygame.Surface((6, 6), pygame.SRCALPHA)
-        pygame.draw.circle(glow2, (100, 255, 130, 110), (4, 17), 3)
-        pygame.draw.circle(glow2, (160, 255, 180, 70), (4, 17), 2)
+        stbd_glow_outer = (100, 255, 130, 110) if not is_propulsion else (160, 220, 255, 110)
+        stbd_glow_inner = (160, 255, 180, 70) if not is_propulsion else (220, 240, 255, 70)
+        pygame.draw.circle(glow2, stbd_glow_outer, (4, 17), 3)
+        pygame.draw.circle(glow2, stbd_glow_inner, (4, 17), 2)
         surf.blit(glow2, (26, 14))
         # ---- Wing tip lights (pulsing) ----
+        # BLOQUE 58.30: in PROPULSION, both tips pulse blue/white.
         red_pulse = 0.5 + 0.5 * math.sin(self._t * 6.0)
         green_pulse = 0.5 + 0.5 * math.sin(self._t * 6.0 + math.pi)
-        red_color = (int(255 * (0.4 + 0.6 * red_pulse)),
-                     int(60 * (0.4 + 0.6 * red_pulse)),
-                     int(60 * (0.4 + 0.6 * red_pulse)))
-        green_color = (int(60 * (0.4 + 0.6 * green_pulse)),
-                       int(255 * (0.4 + 0.6 * green_pulse)),
-                       int(100 * (0.4 + 0.6 * green_pulse)))
+        if is_propulsion:
+            # Both tips pulse blue/white in propulsion (in sync)
+            blue_pulse = 0.5 + 0.5 * math.sin(self._t * 6.0)
+            red_color = (int(100 * (0.4 + 0.6 * blue_pulse)),
+                         int(180 * (0.4 + 0.6 * blue_pulse)),
+                         int(255 * (0.4 + 0.6 * blue_pulse)))
+            green_color = (int(160 * (0.4 + 0.6 * blue_pulse)),
+                           int(220 * (0.4 + 0.6 * blue_pulse)),
+                           int(255 * (0.4 + 0.6 * blue_pulse)))
+        else:
+            red_color = (int(255 * (0.4 + 0.6 * red_pulse)),
+                         int(60 * (0.4 + 0.6 * red_pulse)),
+                         int(60 * (0.4 + 0.6 * red_pulse)))
+            green_color = (int(60 * (0.4 + 0.6 * green_pulse)),
+                           int(255 * (0.4 + 0.6 * green_pulse)),
+                           int(100 * (0.4 + 0.6 * green_pulse)))
         pygame.draw.circle(surf, red_color, (1, 13), 1)
         pygame.draw.circle(surf, green_color, (31, 13), 1)
         # ---- Twin engine exhausts (between body and wings) ----
         # Left engine intake
-        pygame.draw.rect(surf, (40, 50, 70), (12, 16, 3, 2))
+        pygame.draw.rect(surf, intake_color, (12, 16, 3, 2))
         # Right engine intake
-        pygame.draw.rect(surf, (40, 50, 70), (17, 16, 3, 2))
+        pygame.draw.rect(surf, intake_color, (17, 16, 3, 2))
         # BLOQUE 58.12: intake blade — a small darker vertical stroke
         # inside each intake gives the "turbine" feel.
         pygame.draw.line(surf, (15, 20, 30), (13, 17), (13, 17), 1)
         pygame.draw.line(surf, (15, 20, 30), (18, 17), (18, 17), 1)
-        # Engine glow at the intakes (orange/red)
-        pygame.draw.rect(surf, (255, 140, 60), (12, 18, 3, 1))
-        pygame.draw.rect(surf, (255, 140, 60), (17, 18, 3, 1))
+        # Engine glow at the intakes (BLOQUE 58.30: blue-white in PROPULSION)
+        pygame.draw.rect(surf, engine_glow_color, (12, 18, 3, 1))
+        pygame.draw.rect(surf, engine_glow_color, (17, 18, 3, 1))
         # ---- Center stripe (Arwing signature) ----
-        # Red accent stripe down the center of the body
-        pygame.draw.line(surf, (255, 80, 80), (16, 6), (16, 16), 1)
+        # BLOQUE 58.30: red normally, royal blue in PROPULSION.
+        pygame.draw.line(surf, stripe_color, (16, 6), (16, 16), 1)
         # ---- BLOQUE 35: sprite scale 0.75 (player 32x24 -> 24x18) ----
         # Hitbox stays at 18x12 (difficulty unchanged). Only the visual is
         # reduced. This makes ships and projectiles feel smaller in the
