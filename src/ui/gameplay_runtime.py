@@ -1306,13 +1306,10 @@ class GameplayRuntime:
     def _spawn_sub_boss(self) -> None:
         """BLOQUE 50: spawn the mid-wave sub-boss.
 
-        BLOQUE 58.6.3: initial entry point is also RANDOM (not center)
-        so the sub-boss feels less predictable. The wrap-around in
-        Enemy.update() will keep randomizing x on every re-entry.
-
-        Spawned near the top of the screen, drops in with straight-line
-        motion from the SUB_BOSS config. The runtime handles the bullet
-        pattern (fire_cooldown_s=0.4 — 2.5 shots/s aimed at the player).
+        BLOQUE 58.6.3: initial entry point is RANDOM (not center).
+        BLOQUE 58.6.4: initial entry is always from the top (entry_count=0,
+        cycle=0 = "top entry, down, exit bottom"). The wrap-around in
+        Enemy.update() handles subsequent re-entries and L patterns.
         """
         import random
         from src.entities.enemies.enemy import EnemyKind
@@ -1325,6 +1322,13 @@ class GameplayRuntime:
         if e is not None:
             self._sub_boss_alive = True
             self._sub_boss_intro_done = True
+            # BLOQUE 58.6.4: initialize the movement pattern state. First
+            # entry is "top entry, down, exit bottom" (cycle 0). The
+            # wrap-around logic in enemy.py handles subsequent entries.
+            e.sb_entry_count = 0
+            e.sb_current_wall = "top"
+            e.sb_is_l = False
+            e.sb_turn_done = False
             # Mark with a flag so _on_enemy_killed knows to clear the
             # chain pending and award the sub-boss bonus score. We use
             # a simple attribute on the enemy.

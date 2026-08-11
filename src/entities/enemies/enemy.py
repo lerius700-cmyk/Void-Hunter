@@ -159,6 +159,15 @@ ENEMY_CONFIGS: dict[EnemyKind, _EnemyConfig] = {
     # to shoot, AND random entry point (re-enters at a random x within
     # the playfield instead of always center-vertical). Propulsion
     # animation is rendered separately in the gameplay_runtime draw.
+    # BLOQUE 58.6.4: 4-entry movement cycle. Each entry the sub-boss
+    # exits through a different wall and re-enters through it. Every
+    # 2 entries the cycle does an "L pattern" (vertical then horizontal
+    # to exit through a side wall) instead of a straight line:
+    #   0: top -> down -> bottom
+    #   1: top -> down -> L-right -> right (L pattern)
+    #   2: bottom -> up -> top
+    #   3: bottom -> up -> L-left -> left (L pattern)
+    # Re-entry happens through the wall it just exited.
     EnemyKind.SUB_BOSS: _EnemyConfig(
         hp=400, speed=90.0, width=24, height=14, score=600,
         color=(255, 200, 80),
@@ -227,6 +236,18 @@ class Enemy:
     squadron_age: float = 0.0         # seconds since this enemy "entered" the path
                                        # starts at -time_offset_s so followers appear
                                        # at the leader's past position
+    # BLOQUE 58.6.4: SUB_BOSS movement pattern state. Tracks which
+    # entry cycle we're on and whether the current path includes
+    # an "L pattern" (vertical-then-horizontal exit). Used by the
+    # wrap-around in update() and the L turn check.
+    sb_entry_count: int = 0        # how many times the sub-boss has entered
+    sb_current_wall: str = "top"  # which wall the current entry is from
+    sb_is_l: bool = False         # current path is an L pattern
+    sb_turn_done: bool = False    # L turn already executed
+    sb_turn_at_x: float = 0.0    # for vertical L: x to start the sideways leg
+    sb_turn_at_y: float = 0.0    # for vertical L: y to start the sideways leg
+    sb_post_turn_vx: float = 0.0 # velocity after the L turn (horizontal)
+    sb_post_turn_vy: float = 0.0 # velocity after the L turn (vertical=0)
 
     def on_spawn(self) -> None:
         self.damage_taken = 0
@@ -241,6 +262,9 @@ class Enemy:
         self.squadron_origin_x = 0.0
         self.squadron_time_offset = 0.0
         self.squadron_age = 0.0
+        # BLOQUE 58.6.4: sub-boss movement state is NOT reset here
+        # because it persists across wrap-arounds (entry_count,
+        # current_wall, etc. are needed for the next entry).
 
     def on_release(self) -> None:
         self.homing_target = None
@@ -306,6 +330,12 @@ class Enemy:
             else:
                 self.vx = 0.0
                 self.vy = cfg.speed
+        # BLOQUE 58.6.4: sub-boss L turn check BEFORE applying velocity.
+        # This way the turn point is checked in the same frame the
+        # sub-boss reaches it, so the L pattern is smooth.
+        if cfg.wrap_around and self.kind == EnemyKind.SUB_BOSS:
+            if self.sb_is_l and not self.sb_turn_done:
+                self._sub_boss_check_l_turn(cfg)
         # Apply velocity
         self.x += self.vx * dt
         self.y += self.vy * dt
@@ -330,19 +360,193 @@ class Enemy:
         # bottom, wrap it back to the top of the screen so the player
         # gets a continuous "entra y sale del mapa" pattern.
         # BLOQUE 58.6.3: random x on re-entry so the sub-boss doesn't
-        # always come down the same vertical line — feels more like a
-        # "real" enemy that picks a new lane each pass.
-        if cfg.wrap_around and self.y > INTERNAL_H + 20:
-            # Reset to top with RANDOM x (within the playfield, with a
-            # margin equal to half the sub-boss width so it stays in-bounds)
-            self.y = -20.0
-            margin = max(cfg.width // 2 + 4, 16)
-            self.x = float(random.randint(margin, INTERNAL_W - margin))
-            # Also reset fire cooldown so the re-entry feels threatening
-            self.fire_cd = 0.5
-        # Cull offscreen (other enemies)
+        # always come down the same vertical line.
+        # BLOQUE 58.6.4: 4-entry movement cycle. Each entry, the sub-boss
+        # exits through a wall and re-enters through that SAME wall
+        # (going the opposite direction). Every 2 entries (cycles 1 and 3)
+        # the path is an "L" — enter from a vertical wall, move vertically
+        # partway, then turn 90° and exit through a side wall. This makes
+        # the sub-boss more dynamic and less predictable than a straight
+        # vertical line.
+        if cfg.wrap_around and self.kind == EnemyKind.SUB_BOSS:
+            # BLOQUE 58.6.4: also check the L-pattern turn BEFORE the
+            # wrap-around check, so the turn happens before the sub-boss
+            # actually exits the screen.
+            if self.sb_is_l and not self.sb_turn_done:
+                self._sub_boss_check_l_turn(cfg)
+            # Now check if the sub-boss has exited any wall
+            self._sub_boss_handle_warp(cfg)
+        # Cull offscreen (other enemies, or sub-boss that can't wrap)
         elif self.y > INTERNAL_H + 20 or self.x < -20 or self.x > INTERNAL_W + 20:
             self.state = EnemyState.DEAD
+
+    def _sub_boss_check_l_turn(self, cfg: "_EnemyConfig") -> None:
+        """BLOQUE 58.6.4: when the sub-boss reaches its L turn point,
+        change velocity from vertical to horizontal (or vice versa).
+        After the turn, the sub-boss moves sideways until it exits
+        through a side wall, then re-enters from that wall.
+        """
+        # Vertical L (entered from top, going down): turn at sb_turn_at_y
+        if self.sb_current_wall == "top" and not self.sb_turn_done:
+            if self.y >= self.sb_turn_at_y:
+                self.vx = self.sb_post_turn_vx
+                self.vy = self.sb_post_turn_vy
+                self.sb_turn_done = True
+        # Vertical L (entered from bottom, going up): turn at sb_turn_at_y
+        elif self.sb_current_wall == "bottom" and not self.sb_turn_done:
+            if self.y <= self.sb_turn_at_y:
+                self.vx = self.sb_post_turn_vx
+                self.vy = self.sb_post_turn_vy
+                self.sb_turn_done = True
+
+    def _sub_boss_handle_warp(self, cfg: "_EnemyConfig") -> None:
+        """BLOQUE 58.6.4: detect which wall the sub-boss exited and
+        re-enter through that SAME wall (going the opposite direction).
+        Every 2 entries, the re-entry uses an "L" pattern (vertical
+        then horizontal exit, or horizontal then vertical exit). The
+        L direction alternates so the sub-boss doesn't always L to
+        the same side.
+
+        After the L pattern exits through a side wall, the "same wall
+        re-entry" rule applies again — the sub-boss comes back from
+        that side wall, going the opposite direction. So the wall
+        sequence over time is: top → bottom → right → left → top → ...
+        """
+        # Figure out which wall the sub-boss just exited through
+        exit_wall: str | None = None
+        if self.y > INTERNAL_H + 20:
+            exit_wall = "bottom"
+        elif self.y < -20:
+            exit_wall = "top"
+        elif self.x > INTERNAL_W + 20:
+            exit_wall = "right"
+        elif self.x < -20:
+            exit_wall = "left"
+        if exit_wall is None:
+            return
+        # Increment entry count for the next entry
+        self.sb_entry_count += 1
+        # Re-enter through the SAME wall (per user requirement)
+        # i.e. if it just exited through the bottom, next entry is also
+        # from the bottom (but now moving UP, since it just came from above)
+        margin = max(cfg.width // 2 + 4, 16)
+        speed = cfg.speed
+        # Determine if this entry should be an L pattern (every 2 entries)
+        is_l_entry = (self.sb_entry_count % 2) == 1
+        # The L turn direction alternates so the sub-boss doesn't
+        # always L to the same side. The L direction depends on the
+        # current wall + entry count parity.
+        #   - Vertical wall (top/bottom) → L to LEFT or RIGHT
+        #   - Horizontal wall (left/right) → L to UP or DOWN
+        l_dir = (self.sb_entry_count // 2) % 2  # 0 or 1
+        if exit_wall == "bottom":
+            # Was moving down, exited bottom. Next entry from bottom (up).
+            self.sb_current_wall = "bottom"
+            self.x = float(random.randint(margin, INTERNAL_W - margin))
+            self.y = INTERNAL_H + 20.0
+            self.vx = 0.0
+            self.vy = -speed
+            if is_l_entry:
+                # L pattern: enter from bottom, up, then turn (L or R)
+                # Enter from the half OPPOSITE the L turn direction so
+                # the L actually has room to work
+                if l_dir == 0:
+                    # L to the right
+                    self.x = float(random.randint(margin, INTERNAL_W // 2))
+                    self.sb_is_l = True
+                    self.sb_turn_at_y = INTERNAL_H * 0.6
+                    self.sb_post_turn_vx = speed
+                    self.sb_post_turn_vy = 0.0
+                else:
+                    # L to the left
+                    self.x = float(random.randint(INTERNAL_W // 2, INTERNAL_W - margin))
+                    self.sb_is_l = True
+                    self.sb_turn_at_y = INTERNAL_H * 0.6
+                    self.sb_post_turn_vx = -speed
+                    self.sb_post_turn_vy = 0.0
+            else:
+                self.sb_is_l = False
+            self.sb_turn_done = False
+        elif exit_wall == "top":
+            # Was moving up, exited top. Next entry from top (down).
+            self.sb_current_wall = "top"
+            self.x = float(random.randint(margin, INTERNAL_W - margin))
+            self.y = -20.0
+            self.vx = 0.0
+            self.vy = speed
+            if is_l_entry:
+                # L pattern: enter from top, down, then turn (L or R)
+                if l_dir == 0:
+                    # L to the right
+                    self.x = float(random.randint(margin, INTERNAL_W // 2))
+                    self.sb_is_l = True
+                    self.sb_turn_at_y = INTERNAL_H * 0.4
+                    self.sb_post_turn_vx = speed
+                    self.sb_post_turn_vy = 0.0
+                else:
+                    # L to the left
+                    self.x = float(random.randint(INTERNAL_W // 2, INTERNAL_W - margin))
+                    self.sb_is_l = True
+                    self.sb_turn_at_y = INTERNAL_H * 0.4
+                    self.sb_post_turn_vx = -speed
+                    self.sb_post_turn_vy = 0.0
+            else:
+                self.sb_is_l = False
+            self.sb_turn_done = False
+        elif exit_wall == "right":
+            # Was moving right, exited right. Next entry from right (left).
+            self.sb_current_wall = "right"
+            self.y = float(random.randint(margin, INTERNAL_H - margin))
+            self.x = INTERNAL_W + 20.0
+            self.vx = -speed
+            self.vy = 0.0
+            if is_l_entry:
+                # L pattern: enter from right, left, then turn (U or D)
+                if l_dir == 0:
+                    # L upward
+                    self.y = float(random.randint(margin, INTERNAL_H // 2))
+                    self.sb_is_l = True
+                    self.sb_turn_at_x = INTERNAL_W * 0.6
+                    self.sb_post_turn_vx = 0.0
+                    self.sb_post_turn_vy = -speed
+                else:
+                    # L downward
+                    self.y = float(random.randint(INTERNAL_H // 2, INTERNAL_H - margin))
+                    self.sb_is_l = True
+                    self.sb_turn_at_x = INTERNAL_W * 0.6
+                    self.sb_post_turn_vx = 0.0
+                    self.sb_post_turn_vy = speed
+            else:
+                self.sb_is_l = False
+            self.sb_turn_done = False
+        elif exit_wall == "left":
+            # Was moving left, exited left. Next entry from left (right).
+            self.sb_current_wall = "left"
+            self.y = float(random.randint(margin, INTERNAL_H - margin))
+            self.x = -20.0
+            self.vx = speed
+            self.vy = 0.0
+            if is_l_entry:
+                # L pattern: enter from left, right, then turn (U or D)
+                if l_dir == 0:
+                    # L upward
+                    self.y = float(random.randint(margin, INTERNAL_H // 2))
+                    self.sb_is_l = True
+                    self.sb_turn_at_x = INTERNAL_W * 0.4
+                    self.sb_post_turn_vx = 0.0
+                    self.sb_post_turn_vy = -speed
+                else:
+                    # L downward
+                    self.y = float(random.randint(INTERNAL_H // 2, INTERNAL_H - margin))
+                    self.sb_is_l = True
+                    self.sb_turn_at_x = INTERNAL_W * 0.4
+                    self.sb_post_turn_vx = 0.0
+                    self.sb_post_turn_vy = speed
+            else:
+                self.sb_is_l = False
+            self.sb_turn_done = False
+        # Reset fire cooldown so the re-entry feels threatening
+        self.fire_cd = 0.5
 
 
 def create_enemy(kind: EnemyKind, x: float, y: float) -> Enemy:
