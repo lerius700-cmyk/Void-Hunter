@@ -448,9 +448,17 @@ class Player:
             self._enter_shoot()
 
     def _update_shoot(self, dt: float) -> None:
-        """Brief state: recoil animation. Continues moving with reduced input."""
-        # Maintain movement capability while in SHOOT (it's a sub-state)
-        if self.input_left or self.input_right:
+        """BLOQUE 58.7: brief recoil anim + FULL 8-direction movement.
+
+        Previous behavior only checked LEFT/RIGHT and ignored UP/DOWN, so
+        the player felt "stuck" while firing. Now we check all 4 directions
+        and transition to MOVE if any of them is held. The CHARGE state
+        (laser) keeps its own movement restrictions per the user request:
+        "deja las limitaciones de movimiento que ya tiene cuando use el laser".
+        """
+        # Maintain 8-direction movement capability while in SHOOT
+        if (self.input_left or self.input_right
+                or self.input_up or self.input_down):
             self._enter_move()
             return
         # BLOQUE 38: keep firing while RMB held (continuous L1 stream)
