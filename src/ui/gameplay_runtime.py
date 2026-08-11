@@ -2304,6 +2304,28 @@ class GameplayRuntime:
         # even during hitstop / slowmo.
         self._game_time += dt
         prev_player_state = self._player.state
+
+        # BLOQUE 58.21 DEBUG: per-section timing. Each section measures
+        # itself; if any section takes > 50ms, it's logged with the
+        # section name + elapsed time. This lets us pinpoint the
+        # exact call that causes the 1.2 second freeze frames.
+        import time as _time
+        _section_t0 = _time.perf_counter()
+        def _section(name: str, t0: float) -> None:
+            _ms = (_time.perf_counter() - t0) * 1000.0
+            if _ms > 50.0:
+                try:
+                    import os as _os
+                    _os.makedirs("logs", exist_ok=True)
+                    with open("logs/frame_times.csv", "a", encoding="utf-8") as _f:
+                        _state = self._player.state.name if hasattr(self._player.state, "name") else str(self._player.state)
+                        _f.write(
+                            f"{t0:.3f},{_ms:.1f},SECTION={name},"
+                            f"state={_state}\n"
+                        )
+                except Exception:
+                    pass
+
         self._read_input()
         # BLOQUE 29: compute nose angle from mouse position
         self._update_nose_angle()
@@ -2313,20 +2335,46 @@ class GameplayRuntime:
             self._play_sfx("dash", volume=0.5)
             self._emit_burst(self._player.x, self._player.y, count=6, kind="smoke")
         self._handle_firing(effective_dt)
+        _section("firing", _section_t0)
+        _section_t0 = _time.perf_counter()
         self._bullets.update(effective_dt)
+        _section("bullets", _section_t0)
+        _section_t0 = _time.perf_counter()
         self._update_missiles(effective_dt)  # BLOQUE 39: homing missiles
+        _section("missiles", _section_t0)
+        _section_t0 = _time.perf_counter()
         self._update_enemies(effective_dt)
+        _section("enemies", _section_t0)
+        _section_t0 = _time.perf_counter()
         self._handle_collisions()
+        _section("collisions", _section_t0)
+        _section_t0 = _time.perf_counter()
         self._spawn_pending(effective_dt)
+        _section("spawn_pending", _section_t0)
+        _section_t0 = _time.perf_counter()
         self._update_wave_state(effective_dt)
+        _section("wave_state", _section_t0)
+        _section_t0 = _time.perf_counter()
         self._update_score_popups(effective_dt)
+        _section("score_popups", _section_t0)
+        _section_t0 = _time.perf_counter()
         self._update_powerups(effective_dt)
+        _section("powerups", _section_t0)
+        _section_t0 = _time.perf_counter()
         self._update_enemy_flash(effective_dt)
+        _section("enemy_flash", _section_t0)
+        _section_t0 = _time.perf_counter()
         self._update_shockwaves(effective_dt)
+        _section("shockwaves", _section_t0)
+        _section_t0 = _time.perf_counter()
         # BLOQUE 52: tick GOLIATH spear state machine + spear projectiles
         self._update_boss_spears(effective_dt)
+        _section("boss_spears", _section_t0)
+        _section_t0 = _time.perf_counter()
         # BLOQUE 53a: tick the shield laser timer + beam damage
         self._update_shield_laser(effective_dt)
+        _section("shield_laser", _section_t0)
+        _section_t0 = _time.perf_counter()
         if self._screen_flash > 0.0:
             self._screen_flash = max(0.0, self._screen_flash - effective_dt * 2.5)
         # BLOQUE 22: muzzle flash + charge release flash decay
@@ -2366,7 +2414,11 @@ class GameplayRuntime:
         self._tron_trail.update(effective_dt)
         self._update_tron_trail_collisions()
         self._check_player_death_explosion()
+        _section("particles_below", _section_t0)
+        _section_t0 = _time.perf_counter()
         self._particles.update(effective_dt)
+        _section("particles", _section_t0)
+        _section_t0 = _time.perf_counter()
         self._hitstop.update()
         self._shake.update(effective_dt)
         self._slowmo.update()
