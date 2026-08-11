@@ -25,13 +25,19 @@ pygame.display.set_mode((1, 1))
 # -----------------------------------------------------------------------
 # 1) Basic smoke tests
 # -----------------------------------------------------------------------
-def _make_state(hp=30, hp_max=30, score=0):
+def _make_state(hp=30, hp_max=30, score=0, rings=0, tech=None,
+                bombs=3, bombs_max=3, heat=0.0):
     from src.entities.player import Player
     from src.systems.weapon_system import WeaponSystem
     from src.systems.scoring_system import ScoringSystem
     p = Player()
     p.hp = hp
     p.hp_max = hp_max
+    p.gold_rings = rings
+    p.tech_upgrades = tech or []
+    p.bombs = bombs
+    p.bombs_max = bombs_max
+    p.dash_heat = heat
     w = WeaponSystem()
     s = ScoringSystem()
     s.score = score
@@ -105,12 +111,13 @@ def test_hud_no_element_overflows_right_edge():
 # 3) HUD is minimal — no extra methods
 # -----------------------------------------------------------------------
 def test_hud_has_no_section_methods():
-    """BLOQUE 58.16: removed all section helpers from the old HUD."""
+    """BLOQUE 58.16/58.19: removed all section helpers from the old HUD.
+    The new HUD has no section headers, no LOADOUT / TACTICAL / VITALS.
+    """
     from src.ui import hud as hud_mod
-    # These should not exist anymore
+    # Section header should not exist anymore
     assert not hasattr(hud_mod, "SECTION_HEADER_H")
-    assert not hasattr(hud_mod, "ROW_H")
-    # The draw method should only call HP + score
+    # The draw method should only call HP + overheat + rings + bombs + score
     import inspect
     src = inspect.getsource(hud_mod.HUD.draw)
     assert "section" not in src.lower(), (
@@ -120,18 +127,55 @@ def test_hud_has_no_section_methods():
     assert "LOADOUT" not in src
     assert "TACTICAL" not in src
     assert "WEAPON" not in src
-    assert "BOMBS" not in src
     assert "DASH" not in src
     assert "MULT" not in src
 
 
 def test_hud_has_minimal_api():
-    """BLOQUE 58.16: HUD has just the public methods we need."""
+    """BLOQUE 58.19: HUD has the 5 expected draw methods (HP,
+    overheat, rings, bombs, score).
+    """
     from src.ui.hud import HUD
     hud = HUD()
     # Public API
     assert hasattr(hud, "draw")
     assert hasattr(hud, "_ensure_fonts")
-    # Internal helpers (the only 2 private draw methods)
+    # Internal helpers
     assert hasattr(hud, "_draw_hp_bar")
+    assert hasattr(hud, "_draw_overheat_bar")
+    assert hasattr(hud, "_draw_gold_rings")
+    assert hasattr(hud, "_draw_bombs")
     assert hasattr(hud, "_draw_score")
+
+
+def test_hud_draws_with_overheat_state():
+    """BLOQUE 58.19: HUD draws the overheat bar in OK / WARM / HOT states."""
+    from src.ui.hud import HUD
+    from src.core.settings import INTERNAL_W, INTERNAL_H, PLAYER_DASH_HEAT_MAX
+    hud = HUD()
+    for heat_ratio in (0.0, 0.6, 1.0):
+        p, w, s = _make_state(heat=heat_ratio * PLAYER_DASH_HEAT_MAX)
+        target = pygame.Surface((INTERNAL_W, INTERNAL_H))
+        hud.draw(target, p, w, s, t=0.5)  # must not crash
+
+
+def test_hud_draws_with_gold_rings():
+    """BLOQUE 58.19: HUD draws the 3 ring slots correctly."""
+    from src.ui.hud import HUD
+    from src.core.settings import INTERNAL_W, INTERNAL_H
+    hud = HUD()
+    for rings in (0, 1, 2, 3):
+        p, w, s = _make_state(rings=rings)
+        target = pygame.Surface((INTERNAL_W, INTERNAL_H))
+        hud.draw(target, p, w, s, t=0.5)
+
+
+def test_hud_draws_with_bomb_count():
+    """BLOQUE 58.19: HUD draws the bomb counter for various bomb counts."""
+    from src.ui.hud import HUD
+    from src.core.settings import INTERNAL_W, INTERNAL_H
+    hud = HUD()
+    for bombs, max_bombs in [(0, 3), (1, 3), (3, 3), (0, 4), (4, 4)]:
+        p, w, s = _make_state(bombs=bombs, bombs_max=max_bombs)
+        target = pygame.Surface((INTERNAL_W, INTERNAL_H))
+        hud.draw(target, p, w, s, t=0.5)

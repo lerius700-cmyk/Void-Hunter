@@ -310,8 +310,14 @@ class TronTrail:
         segments per frame for each of 64 enemies when most enemies
         are nowhere near the trail.
 
+        BLOQUE 58.18 fix: the enemy size is read from hitbox() (which
+        uses ENEMY_CONFIGS[enemy.kind].width/.height * 0.7). The
+        previous code used enemy.w / enemy.h, which don't exist on
+        the Enemy dataclass — that AttributeError fired every frame
+        and caused the "screen freeze" the user reported.
+
         Args:
-            enemy:        an Enemy instance (must have x, y, w, h).
+            enemy:        an Enemy instance.
             current_time: game time (seconds). Used for hit cooldown bookkeeping.
             damage:       damage to apply on hit (typically 3x bullet damage).
 
@@ -324,13 +330,18 @@ class TronTrail:
         # Skip if still on cooldown
         if self.hit_cooldown.get(e_id, 0.0) > 0.0:
             return False
+        # Get the enemy's hitbox rect — this returns the actual width
+        # and height (with the 70% forgiveness scaling per GDD §5).
+        rect = enemy.hitbox()  # type: ignore[attr-defined]
+        enemy_w = rect.width
+        enemy_h = rect.height
         # BLOQUE 58.11 perf: early-exit if the enemy is way outside
         # the trail's bounding box. We add the enemy's half-extent
         # to the bbox so the enemy only needs to be NEAR the bbox
         # (not inside it) for the detailed segment check.
         if self.bbox_dirty:
             self._recompute_bbox()
-        enemy_half = max(enemy.w, enemy.h) * 0.5
+        enemy_half = max(enemy_w, enemy_h) * 0.5
         ex, ey = float(enemy.x), float(enemy.y)
         if (ex + enemy_half < self.bbox_min_x
                 or ex - enemy_half > self.bbox_max_x
@@ -350,7 +361,7 @@ class TronTrail:
             # Distance from enemy center to the line segment
             d = _point_to_segment_distance(ex, ey, x1, y1, x2, y2)
             # The trail thickness is added to the enemy half-extent
-            hit_dist = seg.thickness * 0.5 + max(enemy.w, enemy.h) * 0.4
+            hit_dist = seg.thickness * 0.5 + max(enemy_w, enemy_h) * 0.4
             if d <= hit_dist:
                 # HIT — apply damage
                 enemy.apply_damage(damage)  # type: ignore[attr-defined]

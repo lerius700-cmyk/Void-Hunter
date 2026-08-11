@@ -1,25 +1,19 @@
-"""HUD — BLOQUE 58.16 minimalist.
+"""HUD — BLOQUE 58.19 minimalist with 4 elements.
 
-User feedback: "quita todo los datos innecesarios del hud,
-dejo minimalista y simbolico."
+User feedback (BLOQUE 58.19): "agrega solo la barra de overheat,
+los 3 ranuras de los anillos para aumentar la vida y recuperar la
+misma, tambien agrega un contador de cuantas bombas tengo."
 
-Final design: only TWO elements on the screen.
+The HUD now has 5 elements total:
 
-  - Top-left: HP bar (color-coded: green > yellow > red).
-              Critical HP pulses red and shows a brief outer glow.
-              No text label, no section headers, no value numbers.
-              The visual fill IS the information.
-  - Top-right: Score. Just the number, right-aligned.
-              Big enough to read at a glance, no "SCORE" header.
+  - Top-left: HP bar (color-coded: green > yellow > red)
+  - Below HP: Overheat bar (dash heat) with state text (OK/WARM/HOT)
+  - Below overheat: 3 gold ring slots (collected/empty)
+  - Below rings: Bomb counter (3-4 bomb icons + value)
+  - Top-right: Score (large number, no header)
 
-Everything else is gone:
-  - No section headers (VITALS / LOADOUT / TACTICAL)
-  - No "BOMBS 3/3", "WEAPON L1 PLASMA 8/10", "MULT x4"
-  - No dash heat bar, no gold rings, no tech icons
-  - No "RINGS", "TECH", "DASH" labels
-
-The player can SEE what's happening in the game. The HUD is for
-passive ambient information, not a dashboard.
+Everything else is gone: no section headers, no weapon info,
+no multiplier, no tech icons, no "BOMBS 3/3" label.
 """
 from __future__ import annotations
 
@@ -34,18 +28,26 @@ from src.systems.scoring_system import ScoringSystem
 from src.systems.weapon_system import WeaponSystem
 
 
-# Layout — minimum viable HUD
+# Layout — BLOQUE 58.19
 HUD_MARGIN = 4
+ROW_H = 14
+ICON_SIZE = 8
+GOLD_RING_ICON_SIZE = 6
 HP_BAR_W = 100
 HP_BAR_H = 6
 HP_BAR_SEGMENTS = 10
+HEAT_BAR_W = 80
+HEAT_BAR_H = 5
 SCORE_FONT_SIZE = 18
+LABEL_FONT_SIZE = 10
 
 
 class HUD:
-    """BLOQUE 58.16: minimalist HUD. Just HP + score."""
+    """BLOQUE 58.19: minimalist HUD with HP, overheat, rings, bombs, score."""
 
     def __init__(self) -> None:
+        self.font_label: Optional[pygame.font.Font] = None
+        self.font_value: Optional[pygame.font.Font] = None
         self.font_score: Optional[pygame.font.Font] = None
         self.initialized: bool = False
 
@@ -55,8 +57,12 @@ class HUD:
         try:
             if not pygame.font.get_init():
                 pygame.font.init()
+            self.font_label = pygame.font.SysFont("consolas", LABEL_FONT_SIZE, bold=False)
+            self.font_value = pygame.font.SysFont("consolas", LABEL_FONT_SIZE, bold=True)
             self.font_score = pygame.font.SysFont("consolas", SCORE_FONT_SIZE, bold=True)
         except pygame.error:
+            self.font_label = None
+            self.font_value = None
             self.font_score = None
         self.initialized = True
 
@@ -69,17 +75,20 @@ class HUD:
         t: float = 0.0,
     ) -> None:
         self._ensure_fonts()
-        # Just the HP bar (top-left)
-        self._draw_hp_bar(target, player, t)
-        # Just the score (top-right)
+        # Stack: HP, overheat, rings, bombs (left column)
+        y = HUD_MARGIN
+        y = self._draw_hp_bar(target, player, y, t)
+        y = self._draw_overheat_bar(target, player, y, t)
+        y = self._draw_gold_rings(target, player, y, t)
+        y = self._draw_bombs(target, player, y, t)
+        # Right column: score
         self._draw_score(target, scoring)
 
-    def _draw_hp_bar(self, target: pygame.Surface, player: Player, t: float) -> None:
-        """Minimalist HP bar — color tells the state, no text."""
+    def _draw_hp_bar(self, target: pygame.Surface, player: Player, y: int, t: float) -> int:
+        """HP bar with color tier (green/yellow/red)."""
         x = HUD_MARGIN
-        y = HUD_MARGIN
         ratio = max(0.0, player.hp / max(1, player.hp_max))
-        # Color tier — green > yellow > red
+        # Color tier
         if ratio > 0.6:
             color = (80, 220, 100)
             outline = (180, 230, 200)
@@ -92,24 +101,163 @@ class HUD:
             g = int(40 * (1.0 - pulse))
             color = (r, g, 40)
             outline = (220, 200, 180)
+        # Bar vertically centered within the row
+        bar_y = y + (ROW_H - HP_BAR_H) // 2
         # Critical HP outer glow
         if ratio <= 0.3 and int(t * 8) % 2 == 0:
             glow = pygame.Surface((HP_BAR_W + 6, HP_BAR_H + 6), pygame.SRCALPHA)
             pygame.draw.rect(glow, (255, 60, 40, 100), (0, 0, HP_BAR_W + 6, HP_BAR_H + 6), 2)
-            target.blit(glow, (x - 3, y - 3))
+            target.blit(glow, (x - 3, bar_y - 3))
         # Frame
-        pygame.draw.rect(target, outline, (x - 1, y - 1, HP_BAR_W + 2, HP_BAR_H + 2), 1)
+        pygame.draw.rect(target, outline, (x - 1, bar_y - 1, HP_BAR_W + 2, HP_BAR_H + 2), 1)
         # Empty background
-        pygame.draw.rect(target, (30, 20, 30), (x, y, HP_BAR_W, HP_BAR_H))
+        pygame.draw.rect(target, (30, 20, 30), (x, bar_y, HP_BAR_W, HP_BAR_H))
         # Fill
         fill = int(HP_BAR_W * ratio)
         if fill > 0:
-            pygame.draw.rect(target, color, (x, y, fill, HP_BAR_H))
+            pygame.draw.rect(target, color, (x, bar_y, fill, HP_BAR_H))
         # Segment dividers
         seg_w = HP_BAR_W // HP_BAR_SEGMENTS
         for i in range(1, HP_BAR_SEGMENTS):
             sx = x + i * seg_w
-            pygame.draw.line(target, (10, 10, 15), (sx, y), (sx, y + HP_BAR_H), 1)
+            pygame.draw.line(target, (10, 10, 15), (sx, bar_y), (sx, bar_y + HP_BAR_H), 1)
+        # Value text (28/30) right of the bar
+        if self.font_value:
+            value = self.font_value.render(
+                f"{player.hp}/{player.hp_max}", True, (255, 240, 200)
+            )
+            value_y = y + (ROW_H - value.get_height()) // 2
+            target.blit(value, (x + HP_BAR_W + 6, value_y))
+        return y + ROW_H
+
+    def _draw_overheat_bar(self, target: pygame.Surface, player: Player,
+                            y: int, t: float) -> int:
+        """BLOQUE 58.19: overheat (dash heat) bar with state text."""
+        from src.core.settings import (
+            PLAYER_DASH_HEAT_MAX, PLAYER_DASH_HEAT_RESUME_THRESHOLD,
+        )
+        x = HUD_MARGIN
+        # Label + bar + state text on one row
+        if self.font_label:
+            label = self.font_label.render("HEAT", True, (180, 200, 220))
+            label_y = y + (ROW_H - label.get_height()) // 2
+            target.blit(label, (x, label_y))
+            label_w = label.get_width()
+        else:
+            label_w = 30
+        bar_x = x + label_w + 4
+        bar_y = y + (ROW_H - HEAT_BAR_H) // 2
+        ratio = max(0.0, min(1.0, player.dash_heat / PLAYER_DASH_HEAT_MAX))
+        # Color tier: cyan (cool) -> yellow (warm) -> red (overheat)
+        if ratio < 0.5:
+            color = (80, 220, 240)
+            outline = (140, 200, 220)
+        elif ratio < 0.85:
+            color = (255, 220, 80)
+            outline = (220, 200, 140)
+        else:
+            pulse = 0.5 + 0.5 * math.sin(t * 12.0)
+            r = int(220 + 35 * pulse)
+            g = int(50 * (1.0 - pulse))
+            color = (r, g, 50)
+            outline = (220, 100, 80)
+        # Frame + bg + fill
+        pygame.draw.rect(target, outline, (bar_x - 1, bar_y - 1, HEAT_BAR_W + 2, HEAT_BAR_H + 2), 1)
+        pygame.draw.rect(target, (30, 20, 30), (bar_x, bar_y, HEAT_BAR_W, HEAT_BAR_H))
+        fill = int(HEAT_BAR_W * ratio)
+        if fill > 0:
+            pygame.draw.rect(target, color, (bar_x, bar_y, fill, HEAT_BAR_H))
+        # Threshold marker (where dash becomes available again)
+        th_x = bar_x + int(HEAT_BAR_W * PLAYER_DASH_HEAT_RESUME_THRESHOLD
+                            / PLAYER_DASH_HEAT_MAX)
+        pygame.draw.line(target, (180, 180, 200),
+                          (th_x, bar_y - 1), (th_x, bar_y + HEAT_BAR_H + 1), 1)
+        # State text (OK / WARM / HOT)
+        if self.font_label:
+            if ratio >= 0.85:
+                state = "HOT"
+                state_color = (255, 100, 80)
+            elif ratio >= 0.5:
+                state = "WARM"
+                state_color = (255, 200, 100)
+            else:
+                state = "OK"
+                state_color = (140, 220, 200)
+            text = self.font_label.render(state, True, state_color)
+            text_y = y + (ROW_H - text.get_height()) // 2
+            target.blit(text, (bar_x + HEAT_BAR_W + 6, text_y))
+        return y + ROW_H
+
+    def _draw_gold_rings(self, target: pygame.Surface, player: Player,
+                          y: int, t: float) -> int:
+        """BLOQUE 58.19: 3 gold ring slots (collected/empty)."""
+        x = HUD_MARGIN
+        if self.font_label:
+            label = self.font_label.render("RINGS", True, (180, 200, 220))
+            label_y = y + (ROW_H - label.get_height()) // 2
+            target.blit(label, (x, label_y))
+            label_w = label.get_width()
+        else:
+            label_w = 30
+        slots_x = x + label_w + 6
+        slot_cy = y + ROW_H // 2
+        for i in range(3):
+            cx = slots_x + i * (GOLD_RING_ICON_SIZE + 4)
+            if i < player.gold_rings and not player.hp_doubled:
+                pygame.draw.circle(target, (255, 220, 80), (cx, slot_cy),
+                                   GOLD_RING_ICON_SIZE // 2, 1)
+                pygame.draw.circle(target, (255, 200, 60), (cx, slot_cy),
+                                   GOLD_RING_ICON_SIZE // 2 - 1, 1)
+            elif player.hp_doubled:
+                pygame.draw.circle(target, (255, 240, 160), (cx, slot_cy),
+                                   GOLD_RING_ICON_SIZE // 2, 1)
+                pygame.draw.line(target, (255, 255, 200),
+                                  (cx - 2, slot_cy), (cx - 1, slot_cy + 1), 1)
+                pygame.draw.line(target, (255, 255, 200),
+                                  (cx - 1, slot_cy + 1), (cx + 2, slot_cy - 1), 1)
+            else:
+                pygame.draw.circle(target, (80, 80, 100), (cx, slot_cy),
+                                   GOLD_RING_ICON_SIZE // 2, 1)
+        return y + ROW_H
+
+    def _draw_bombs(self, target: pygame.Surface, player: Player, y: int, t: float) -> int:
+        """BLOQUE 58.19: bomb counter (3-4 bomb icons + numeric value)."""
+        x = HUD_MARGIN
+        bombs = player.bombs
+        max_bombs = player.bombs_max
+        if self.font_label:
+            label = self.font_label.render("BOMBS", True, (180, 200, 220))
+            label_y = y + (ROW_H - label.get_height()) // 2
+            target.blit(label, (x, label_y))
+            label_w = label.get_width()
+        else:
+            label_w = 30
+        slots_x = x + label_w + 6
+        icon_cy = y + ROW_H // 2
+        for i in range(max_bombs):
+            bx = slots_x + i * (ICON_SIZE + 3)
+            is_ready = i < bombs
+            if is_ready:
+                pulse = 0.7 + 0.3 * math.sin(t * 4.0 + i * 0.6)
+                color = (int(255 * pulse), int(200 * pulse), int(80 * pulse))
+            else:
+                color = (60, 60, 80)
+            pygame.draw.circle(target, color, (bx + ICON_SIZE // 2, icon_cy), 3)
+            if is_ready:
+                cx_b, cy_b = bx + ICON_SIZE // 2, icon_cy
+                pygame.draw.line(target, (255, 240, 180),
+                                  (cx_b - 2, cy_b), (cx_b + 2, cy_b), 1)
+                pygame.draw.line(target, (255, 240, 180),
+                                  (cx_b, cy_b - 2), (cx_b, cy_b + 2), 1)
+        # Count value to the right
+        if self.font_value:
+            value = self.font_value.render(
+                f"{bombs}/{max_bombs}", True, (255, 220, 120)
+            )
+            value_x = slots_x + max_bombs * (ICON_SIZE + 3) + 4
+            value_y = y + (ROW_H - value.get_height()) // 2
+            target.blit(value, (value_x, value_y))
+        return y + ROW_H
 
     def _draw_score(self, target: pygame.Surface, scoring: ScoringSystem) -> None:
         """Score number, right-aligned, no header."""

@@ -125,10 +125,11 @@ class _FakeEnemy:
         self.damage_taken = 0
         self.state = type("S", (), {"name": "IDLE"})()
     def hitbox(self):
-        from src.core.settings import INTERNAL_W  # just to import
-        return pygame.Rect(int(self.x - self.w // 2),
-                            int(self.y - self.h // 2),
-                            self.w, self.h)
+        """Mimic the real Enemy.hitbox() — returns a Rect with the
+        70% forgiveness scale (per GDD §5)."""
+        w = int(self.w * 0.7)
+        h = int(self.h * 0.7)
+        return pygame.Rect(int(self.x - w // 2), int(self.y - h // 2), w, h)
     def apply_damage(self, amount):
         self.hp -= amount
         self.damage_taken += amount
@@ -214,6 +215,10 @@ def test_tron_trail_bbox_dirty_flag():
     # Trigger bbox recompute
     class _E:
         x = 100; y = 100; w = 12; h = 8
+        def hitbox(self):
+            w = int(self.w * 0.7)
+            h = int(self.h * 0.7)
+            return pygame.Rect(int(self.x - w // 2), int(self.y - h // 2), w, h)
         def apply_damage(self, d): pass
     t.check_enemy_collision(_E(), 0.0, 1)
     assert t.bbox_dirty is False
