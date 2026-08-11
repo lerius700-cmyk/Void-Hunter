@@ -1675,9 +1675,19 @@ class GameplayRuntime:
                     continue
                 if pr.colliderect(e.hitbox()):
                     killed = e.apply_damage(p.damage)
-                    # Bigger impact burst (8 sparks instead of 3)
-                    self._emit_burst(p.x, p.y, count=8, kind="spark")
-                    self._emit_burst(p.x, p.y, count=3, kind="shrapnel")
+                    # BLOQUE 58.10: exaggerated spark particles on bullet
+                    # hit. Was 8 sparks + 3 shrapnel, now a layered impact:
+                    #   - 14 SPARKS (bright white-hot hits)
+                    #   - 8 yellow sparks (warm impact)
+                    #   - 4 shrapnel (debris)
+                    #   - 2 small GLOW (quick white flash)
+                    #   - 2 small FIRE (orange embers)
+                    self._emit_burst(p.x, p.y, count=14, kind="spark")
+                    self._emit_burst(p.x, p.y, count=8, kind="spark",
+                                      color=(255, 220, 80))
+                    self._emit_burst(p.x, p.y, count=4, kind="shrapnel")
+                    self._emit_burst(p.x, p.y, count=2, kind="glow")
+                    self._emit_burst(p.x, p.y, count=2, kind="fire")
                     # Hit feedback: flash white for 0.08s
                     self._enemy_flash[id(e)] = 0.08
                     if killed:
@@ -1707,7 +1717,11 @@ class GameplayRuntime:
                     self._boss.hp -= p.damage
                     p.active = False
                     self._bullets.pool.release(p)
-                    self._emit_burst(p.x, p.y, count=2, kind="spark")
+                    # BLOQUE 58.10: exaggerated boss-hit sparks
+                    self._emit_burst(p.x, p.y, count=10, kind="spark")
+                    self._emit_burst(p.x, p.y, count=4, kind="spark",
+                                      color=(255, 220, 80))
+                    self._emit_burst(p.x, p.y, count=2, kind="glow")
                     # BLOQUE 51: hit feedback flash
                     self._boss_flash[id(self._boss)] = 0.08
                     # Check phase change
