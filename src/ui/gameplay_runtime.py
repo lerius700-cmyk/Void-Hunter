@@ -2388,9 +2388,14 @@ class GameplayRuntime:
                     _state = self._player.state.name if hasattr(self._player.state, "name") else str(self._player.state)
                     _seg_count = len(self._tron_trail.segments) if hasattr(self, "_tron_trail") else 0
                     _enemy_count = sum(1 for _e in self._enemies.pool if _e.active)
+                    _bullet_count = self._bullets.active_count if hasattr(self, "_bullets") else 0
+                    _particle_count = self._particles.active_count if hasattr(self, "_particles") else 0
+                    _wave = getattr(getattr(self, "_level1_chain", None), "kills", 0)
                     _f.write(
-                        f"{_t0:.3f},{_elapsed_ms:.1f},state={_state},"
-                        f"trail_segs={_seg_count},enemies={_enemy_count}\n"
+                        f"{_t0:.3f},{_elapsed_ms:.1f},"
+                        f"state={_state},trail_segs={_seg_count},"
+                        f"enemies={_enemy_count},bullets={_bullet_count},"
+                        f"particles={_particle_count},kills={_wave}\n"
                     )
             except Exception:
                 pass  # never let the debug log crash the game
@@ -2838,6 +2843,11 @@ class GameplayRuntime:
     # Drawing
     # ------------------------------------------------------------------
     def draw(self, target: pygame.Surface) -> None:
+        # BLOQUE 58.16 DEBUG: render timing. If render takes > 50ms,
+        # log to logs/frame_times.csv with a 'render' tag so we can
+        # distinguish update slowdowns from render slowdowns.
+        import time as _time
+        _render_t0 = _time.perf_counter()
         # Background
         self._bg.draw(target)
         # BLOQUE 25: ambient drift particles in background
@@ -2983,6 +2993,20 @@ class GameplayRuntime:
         # BLOQUE 24: speed lines when player moves fast (dashes / charge moves)
         if abs(self._player.vx) > 80.0 and self._player.state != PlayerState.DEAD:
             self._draw_speed_lines(target)
+        # BLOQUE 58.16 DEBUG: render timing log
+        _render_ms = (_time.perf_counter() - _render_t0) * 1000.0
+        if _render_ms > 50.0:
+            try:
+                import os as _os
+                _os.makedirs("logs", exist_ok=True)
+                with open("logs/frame_times.csv", "a", encoding="utf-8") as _f:
+                    _state = self._player.state.name if hasattr(self._player.state, "name") else str(self._player.state)
+                    _f.write(
+                        f"{_render_t0:.3f},{_render_ms:.1f},RENDER,"
+                        f"state={_state}\n"
+                    )
+            except Exception:
+                pass
 
     def _draw_wave_indicator(self, target: pygame.Surface) -> None:
         """Show ACT/WAVE label in the top-center between HUD sections."""
