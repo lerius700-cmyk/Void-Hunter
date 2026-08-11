@@ -1,14 +1,18 @@
-"""Capture: render the redesigned SUB_BOSS as a MENACING ALIEN HUNTER.
+"""Capture: render the redesigned SUB_BOSS as a MENACING V SILHOUETTE alien hunter.
 
-BLOQUE 58.6: visual proof for the new alien-hunter SUB_BOSS.
+BLOQUE 58.6.1: visual proof for the V-silhouette SUB_BOSS redesign.
+User feedback: "el diseño esta bien, pero cierra el arco, para que parezca
+mas una V en vez de un [U]". The fangs now angle DOWN-AND-INWARD so the
+two fang tips converge at a point at the BOTTOM-CENTER, forming a clean V
+(apex at bottom). The arc closes because the open U-shape becomes a
+closed V.
+
 The whole ship reads as a predator at a glance:
-  - 2 sharp fang/mandible extensions OUTWARD-AND-DOWNWARD
-    (the "maligno" jaws — inspired by Row 5 #3-4 of the new
-    higher-quality sprite sheet the user shared)
-  - Pink/magenta venomous fang tips (the menace color)
+  - 2 sharp fang/mandible extensions angling DOWN-AND-INWARD to a V apex
+  - Pink/magenta venomous fang tips at the V apex (the menace color)
   - Silver Star Wolf body with red accent stripes
   - Central menacing cyan eye (3 layers, 3 Hz pulse)
-  - Sharp pointed nose at the BOTTOM
+  - Sharp pointed nose at the BOTTOM (which is also the V apex)
   - Engines at the top (back of ship, pulsing 6 Hz)
   - Subtle outer red halo (aura of threat)
 
@@ -40,11 +44,11 @@ font_sm = pygame.font.SysFont("consolas", 10)
 
 # Title
 title = font_lg.render(
-    "SUB_BOSS  -  MENACING ALIEN HUNTER (BLOQUE 58.6)", True, (255, 255, 255),
+    "SUB_BOSS  -  MENACING V SILHOUETTE alien hunter (BLOQUE 58.6.1)", True, (255, 255, 255),
 )
 screen.blit(title, (12, 10))
 sub = font_md.render(
-    "Predator-jaw mandibles OUTWARD-DOWN + pink venom fang tips + cyan eye + sharp nose DOWN",
+    "Fangs converge at V apex (cierra el arco) + pink venom tips + cyan eye + sharp nose DOWN",
     True, (180, 200, 255),
 )
 screen.blit(sub, (12, 34))
@@ -56,7 +60,7 @@ print(f"SUB_BOSS size: {cfg.width}x{cfg.height}")
 def draw_sub_boss_hunter(
     target: pygame.Surface, cx: int, cy: int, w: int, h: int, t: float,
 ) -> None:
-    """BLOQUE 58.6: MENACING ALIEN HUNTER — fangs DOWN-OUT, cyan eye, sharp nose DOWN."""
+    """BLOQUE 58.6.1: MENACING V SILHOUETTE — fangs converge at V apex, cyan eye, sharp nose DOWN."""
     wolf_base = (160, 170, 185)
     wolf_dark = (80, 90, 105)
     wolf_red = (220, 50, 60)
@@ -77,37 +81,35 @@ def draw_sub_boss_hunter(
     mid_wing_y = cy_b - 1
     wing_tip_dx = w
     wing_tip_y = shoulder_y - 1
-    # 1) 2 SHARP FANGS / MANDIBLES extending OUTWARD-AND-DOWNWARD
-    fang_tip_dx = w + 3
-    fang_tip_y = cy_b + 1
-    # Left fang
+    # 1) 2 SHARP FANGS angling DOWN-AND-INWARD, CONVERGING at the V apex
+    #    The fang tips meet 1 px apart at (cx, body_bot_y + 1) — the V apex.
+    fang_tip_y = body_bot_y + 1
+    fang_tip_x_l = cx - 1
+    fang_tip_x_r = cx + 1
     pygame.draw.polygon(target, wolf_base, [
-        (cx - 2, body_top_y + 1),
-        (cx - 4, body_top_y),
-        (cx - fang_tip_dx, fang_tip_y),
-        (cx - fang_tip_dx + 1, fang_tip_y + 1),
-        (cx - 3, body_bot_y - 1),
+        (cx - 2, body_top_y + 1),                # base inner top
+        (cx - 4, body_top_y),                    # base outer top (widest)
+        (fang_tip_x_l, fang_tip_y),              # sharp tip (V apex, left)
+        (cx - 2, body_bot_y - 1),                # base bottom (at nose level)
     ])
-    # Right fang
     pygame.draw.polygon(target, wolf_base, [
         (cx + 2, body_top_y + 1),
         (cx + 4, body_top_y),
-        (cx + fang_tip_dx, fang_tip_y),
-        (cx + fang_tip_dx - 1, fang_tip_y + 1),
-        (cx + 3, body_bot_y - 1),
+        (fang_tip_x_r, fang_tip_y),
+        (cx + 2, body_bot_y - 1),
     ])
     # Red Star Wolf accent stripe along fang leading edge
     pygame.draw.line(target, wolf_red,
                      (cx - 3, body_top_y + 1),
-                     (cx - fang_tip_dx + 1, fang_tip_y), 1)
+                     (fang_tip_x_l, fang_tip_y - 1), 1)
     pygame.draw.line(target, wolf_red,
                      (cx + 3, body_top_y + 1),
-                     (cx + fang_tip_dx - 1, fang_tip_y), 1)
-    # Pink/magenta fang TIPS (the venom/maligno color)
-    pygame.draw.circle(target, pink_fang, (cx - fang_tip_dx, fang_tip_y), 1)
-    pygame.draw.circle(target, pink_fang, (cx + fang_tip_dx, fang_tip_y), 1)
-    pygame.draw.circle(target, pink_fang_bright, (cx - fang_tip_dx, fang_tip_y), 1)
-    pygame.draw.circle(target, pink_fang_bright, (cx + fang_tip_dx, fang_tip_y), 1)
+                     (fang_tip_x_r, fang_tip_y - 1), 1)
+    # Pink/magenta fang TIPS at the V apex (the venom color)
+    pygame.draw.circle(target, pink_fang, (fang_tip_x_l, fang_tip_y), 1)
+    pygame.draw.circle(target, pink_fang, (fang_tip_x_r, fang_tip_y), 1)
+    pygame.draw.circle(target, pink_fang_bright, (fang_tip_x_l, fang_tip_y), 1)
+    pygame.draw.circle(target, pink_fang_bright, (fang_tip_x_r, fang_tip_y), 1)
     # 2) WINGS behind the fangs (swept back)
     pygame.draw.polygon(target, wolf_base, [
         (cx - 1, shoulder_y),
@@ -186,15 +188,16 @@ for cx, cy, t, label in frames:
 
 # Socratic checklist (visible verification)
 checklist = [
-    "SOCRATIC CHECK:  afilado y maligno?",
-    "  [x] Sharp fangs extending OUTWARD-AND-DOWNWARD (predator jaws)",
-    "  [x] Pink/magenta venom fang tips (maligno color)",
+    "SOCRATIC CHECK:  afilado y maligno + cierra el arco (V)?",
+    "  [x] Sharp fangs angling DOWN-AND-INWARD, converging at V apex",
+    "  [x] Pink/magenta venom fang tips at the V apex (maligno color)",
     "  [x] Menacing cyan eye with 3 layers + 3 Hz pulse",
-    "  [x] Sharp pointed nose at the BOTTOM (direction of motion = DOWN)",
+    "  [x] Sharp pointed nose at the BOTTOM (also the V apex)",
     "  [x] Engines at the TOP (back of ship, pulsing 6 Hz)",
     "  [x] Silver Star Wolf body with red accent stripes",
     "  [x] Subtle outer red halo (aura of threat)",
     "  [x] Subtle vertical bob (2 Hz, +/-1 px) for warp-thrust feel",
+    "  [x] CLOSED V silhouette (arc closes at the V apex)",
 ]
 for i, line in enumerate(checklist):
     color = (255, 200, 100) if i == 0 else (180, 180, 200)
@@ -202,7 +205,7 @@ for i, line in enumerate(checklist):
 
 # Footer
 foot = font_sm.render(
-    "BLOQUE 58.6: SUB_BOSS redesigned as MENACING ALIEN HUNTER  -  "
+    "BLOQUE 58.6.1: SUB_BOSS redesigned as MENACING V SILHOUETTE alien hunter  -  "
     "visual only, gameplay unchanged (HP 20, speed 90, 2.5 shots/s, 3 Hz wobble)",
     True, (140, 140, 160),
 )

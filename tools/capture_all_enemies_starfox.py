@@ -45,7 +45,7 @@ font_sm = pygame.font.SysFont("consolas", 10)
 title = font_lg.render("ALL ENEMY SHIPS - nose DOWN (BLOQUE 58.6)", True, (255, 255, 255))
 screen.blit(title, (12, 8))
 sub = font_md.render(
-    "Enemies move DOWN, so nose points DOWN. SUB_BOSS = menacing alien hunter (fangs OUT-DOWN, cyan eye, sharp nose DOWN).",
+    "Enemies move DOWN, so nose points DOWN. SUB_BOSS = menacing V silhouette (fangs converge at V apex, cyan eye).",
     True, (180, 200, 255),
 )
 screen.blit(sub, (12, 30))
@@ -218,7 +218,7 @@ def draw_enemy(target, kind, cx, cy, w, h, t):
         pygame.draw.circle(target, pink, (cx, cy), 2)
         pygame.draw.circle(target, pink_bright, (cx, cy), 1)
     elif kind == EnemyKind.SUB_BOSS:
-        # BLOQUE 58.6: MENACING ALIEN HUNTER — fangs OUT-DOWN, cyan eye, sharp nose DOWN
+        # BLOQUE 58.6.1: MENACING V SILHOUETTE — fangs converge at V apex, cyan eye, sharp nose DOWN
         wolf_base = (160, 170, 185)
         wolf_dark = (80, 90, 105)
         wolf_red = (220, 50, 60)
@@ -231,25 +231,24 @@ def draw_enemy(target, kind, cx, cy, w, h, t):
         mid_wing_y = cy - 1
         wing_tip_dx = w
         wing_tip_y = shoulder_y - 1
-        fang_tip_dx = w + 3
-        fang_tip_y = cy + 1
-        # 1) 2 SHARP FANGS extending OUTWARD-AND-DOWNWARD
+        fang_tip_y = body_bot_y + 1
+        fang_tip_x_l = cx - 1
+        fang_tip_x_r = cx + 1
+        # 1) 2 SHARP FANGS angling DOWN-AND-INWARD, CONVERGING at V apex
         pygame.draw.polygon(target, wolf_base, [
             (cx - 2, body_top_y + 1), (cx - 4, body_top_y),
-            (cx - fang_tip_dx, fang_tip_y), (cx - fang_tip_dx + 1, fang_tip_y + 1),
-            (cx - 3, body_bot_y - 1),
+            (fang_tip_x_l, fang_tip_y), (cx - 2, body_bot_y - 1),
         ])
         pygame.draw.polygon(target, wolf_base, [
             (cx + 2, body_top_y + 1), (cx + 4, body_top_y),
-            (cx + fang_tip_dx, fang_tip_y), (cx + fang_tip_dx - 1, fang_tip_y + 1),
-            (cx + 3, body_bot_y - 1),
+            (fang_tip_x_r, fang_tip_y), (cx + 2, body_bot_y - 1),
         ])
-        pygame.draw.line(target, wolf_red, (cx - 3, body_top_y + 1), (cx - fang_tip_dx + 1, fang_tip_y), 1)
-        pygame.draw.line(target, wolf_red, (cx + 3, body_top_y + 1), (cx + fang_tip_dx - 1, fang_tip_y), 1)
-        pygame.draw.circle(target, pink_fang, (cx - fang_tip_dx, fang_tip_y), 1)
-        pygame.draw.circle(target, pink_fang, (cx + fang_tip_dx, fang_tip_y), 1)
-        pygame.draw.circle(target, pink_fang_bright, (cx - fang_tip_dx, fang_tip_y), 1)
-        pygame.draw.circle(target, pink_fang_bright, (cx + fang_tip_dx, fang_tip_y), 1)
+        pygame.draw.line(target, wolf_red, (cx - 3, body_top_y + 1), (fang_tip_x_l, fang_tip_y - 1), 1)
+        pygame.draw.line(target, wolf_red, (cx + 3, body_top_y + 1), (fang_tip_x_r, fang_tip_y - 1), 1)
+        pygame.draw.circle(target, pink_fang, (fang_tip_x_l, fang_tip_y), 1)
+        pygame.draw.circle(target, pink_fang, (fang_tip_x_r, fang_tip_y), 1)
+        pygame.draw.circle(target, pink_fang_bright, (fang_tip_x_l, fang_tip_y), 1)
+        pygame.draw.circle(target, pink_fang_bright, (fang_tip_x_r, fang_tip_y), 1)
         # 2) WINGS behind the fangs (swept back)
         pygame.draw.polygon(target, wolf_base, [
             (cx - 1, shoulder_y), (cx - 4, shoulder_y - 1),
@@ -325,7 +324,7 @@ for i, (kind, name, desc) in enumerate(ENEMIES):
 
 # Footer
 foot = font_sm.render(
-    "BLOQUE 58.6: all 8 enemy sprites nose-DOWN + SUB_BOSS menacing alien hunter  -  visual only, gameplay unchanged",
+    "BLOQUE 58.6.1: all 8 enemy sprites nose-DOWN + SUB_BOSS menacing V silhouette  -  visual only, gameplay unchanged",
     True, (140, 140, 160),
 )
 screen.blit(foot, (12, H - 18))

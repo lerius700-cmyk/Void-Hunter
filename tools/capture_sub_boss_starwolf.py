@@ -1,16 +1,11 @@
-"""Capture: render the redesigned SUB_BOSS as a MENACING ALIEN HUNTER.
+"""Capture: render the redesigned SUB_BOSS as a MENACING V SILHOUETTE alien hunter.
 
-BLOQUE 58.6: visual proof for the alien-hunter SUB_BOSS redesign.
-The whole ship reads as a predator at a glance:
-  - 2 sharp fang/mandible extensions OUTWARD-AND-DOWNWARD
-    (the "maligno" jaws — inspired by Row 5 #3-4 of the new
-    higher-quality sprite sheet the user shared)
-  - Pink/magenta venomous fang tips (the menace color)
-  - Silver Star Wolf body with red accent stripes
-  - Central menacing cyan eye (3 layers, 3 Hz pulse)
-  - Sharp pointed nose at the BOTTOM
-  - Engines at the top (back of ship, pulsing 6 Hz)
-  - Subtle outer red halo (aura of threat)
+BLOQUE 58.6.1: visual proof for the V-silhouette SUB_BOSS redesign.
+User feedback: "el diseño esta bien, pero cierra el arco, para que parezca
+mas una V en vez de un [U]". The fangs now angle DOWN-AND-INWARD so the
+two fang tips converge at a point at the BOTTOM-CENTER, forming a clean V
+(apex at bottom). The arc closes because the open U-shape becomes a
+closed V.
 
 Output: tools/playtest_out/polish_45_sub_boss_starwolf.png
 """
@@ -58,9 +53,9 @@ font_md = pygame.font.SysFont("consolas", 13)
 font_sm = pygame.font.SysFont("consolas", 10)
 
 # Title
-title = font_lg.render("SUB_BOSS  -  MENACING ALIEN HUNTER (BLOQUE 58.6)", True, (255, 255, 255))
+title = font_lg.render("SUB_BOSS  -  MENACING V SILHOUETTE (BLOQUE 58.6.1)", True, (255, 255, 255))
 screen.blit(title, (12, 10))
-sub = font_md.render("Predator-jaw fangs OUT-DOWN + pink venom tips + cyan eye + sharp nose DOWN", True, (180, 200, 255))
+sub = font_md.render("Fangs converge at V apex (cierra el arco) + pink venom tips + cyan eye", True, (180, 200, 255))
 screen.blit(sub, (12, 34))
 
 # 3 frames: idle / bank right / bank left
@@ -73,7 +68,7 @@ import src.ui.gameplay_runtime as gpr
 # the whole game.
 
 def draw_sub_boss(target: pygame.Surface, cx: int, cy: int, w: int, h: int, t: float) -> None:
-    """BLOQUE 58.6: MENACING ALIEN HUNTER — fangs OUT-DOWN, cyan eye, sharp nose DOWN."""
+    """BLOQUE 58.6.1: MENACING V SILHOUETTE — fangs converge at V apex, cyan eye, sharp nose DOWN."""
     wolf_base = (160, 170, 185)
     wolf_dark = (80, 90, 105)
     wolf_red = (220, 50, 60)
@@ -91,25 +86,24 @@ def draw_sub_boss(target: pygame.Surface, cx: int, cy: int, w: int, h: int, t: f
     mid_wing_y = cy_b - 1
     wing_tip_dx = w
     wing_tip_y = shoulder_y - 1
-    # 1) 2 SHARP FANGS extending OUTWARD-AND-DOWNWARD
-    fang_tip_dx = w + 3
-    fang_tip_y = cy_b + 1
+    # 1) 2 SHARP FANGS angling DOWN-AND-INWARD, CONVERGING at the V apex
+    fang_tip_y = body_bot_y + 1
+    fang_tip_x_l = cx - 1
+    fang_tip_x_r = cx + 1
     pygame.draw.polygon(target, wolf_base, [
         (cx - 2, body_top_y + 1), (cx - 4, body_top_y),
-        (cx - fang_tip_dx, fang_tip_y), (cx - fang_tip_dx + 1, fang_tip_y + 1),
-        (cx - 3, body_bot_y - 1),
+        (fang_tip_x_l, fang_tip_y), (cx - 2, body_bot_y - 1),
     ])
     pygame.draw.polygon(target, wolf_base, [
         (cx + 2, body_top_y + 1), (cx + 4, body_top_y),
-        (cx + fang_tip_dx, fang_tip_y), (cx + fang_tip_dx - 1, fang_tip_y + 1),
-        (cx + 3, body_bot_y - 1),
+        (fang_tip_x_r, fang_tip_y), (cx + 2, body_bot_y - 1),
     ])
-    pygame.draw.line(target, wolf_red, (cx - 3, body_top_y + 1), (cx - fang_tip_dx + 1, fang_tip_y), 1)
-    pygame.draw.line(target, wolf_red, (cx + 3, body_top_y + 1), (cx + fang_tip_dx - 1, fang_tip_y), 1)
-    pygame.draw.circle(target, pink_fang, (cx - fang_tip_dx, fang_tip_y), 1)
-    pygame.draw.circle(target, pink_fang, (cx + fang_tip_dx, fang_tip_y), 1)
-    pygame.draw.circle(target, pink_fang_bright, (cx - fang_tip_dx, fang_tip_y), 1)
-    pygame.draw.circle(target, pink_fang_bright, (cx + fang_tip_dx, fang_tip_y), 1)
+    pygame.draw.line(target, wolf_red, (cx - 3, body_top_y + 1), (fang_tip_x_l, fang_tip_y - 1), 1)
+    pygame.draw.line(target, wolf_red, (cx + 3, body_top_y + 1), (fang_tip_x_r, fang_tip_y - 1), 1)
+    pygame.draw.circle(target, pink_fang, (fang_tip_x_l, fang_tip_y), 1)
+    pygame.draw.circle(target, pink_fang, (fang_tip_x_r, fang_tip_y), 1)
+    pygame.draw.circle(target, pink_fang_bright, (fang_tip_x_l, fang_tip_y), 1)
+    pygame.draw.circle(target, pink_fang_bright, (fang_tip_x_r, fang_tip_y), 1)
     # 2) WINGS behind the fangs
     pygame.draw.polygon(target, wolf_base, [
         (cx - 1, shoulder_y), (cx - 4, shoulder_y - 1),
@@ -173,15 +167,15 @@ for cx, cy, t, label in positions:
 # Color legend
 legend = [
     "Wolf base: silver (160, 170, 185)  |  Star Wolf red accent: (220, 50, 60)",
-    "Menacing cyan eye pulses at 3 Hz  |  Pink/magenta venom fang tips",
-    "Predator-jaw fangs extend OUTWARD-DOWNWARD beyond hitbox (visual only)",
+    "Menacing cyan eye pulses at 3 Hz  |  Pink/magenta venom fang tips at V apex",
+    "Closed V silhouette: fangs converge at the bottom-center (apex)",
 ]
 for i, line in enumerate(legend):
     screen.blit(font_sm.render(line, True, (180, 180, 200)), (12, 380 + i * 14))
 
 # Footer
 foot = font_sm.render(
-    "BLOQUE 58.6: SUB_BOSS redesigned as MENACING ALIEN HUNTER  -  "
+    "BLOQUE 58.6.1: SUB_BOSS redesigned as MENACING V SILHOUETTE alien hunter  -  "
     "visual only, gameplay unchanged (HP 20, speed 90, 2.5 shots/s, 3 Hz wobble)",
     True, (140, 140, 160),
 )

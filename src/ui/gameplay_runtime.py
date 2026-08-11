@@ -3545,16 +3545,17 @@ class GameplayRuntime:
             pygame.draw.circle(target, pink, (cx, cy), 2)
             pygame.draw.circle(target, pink_bright, (cx, cy), 1)
         elif e.kind == EnemyKind.SUB_BOSS:
-            # BLOQUE 58.6: SUB_BOSS redesigned as a MENACING ALIEN HUNTER.
-            # Inspiration: Row 5 #3-4 of the new high-quality sprite sheet
-            # the user shared — the most "afilado y maligno" ship in the
-            # set. Silver body with 2 sharp fang/mandible extensions
-            # going OUTWARD-AND-DOWNWARD (predator jaws, NOT upward horns
-            # like the previous BLOQUE 58.6 draft), pink/magenta venomous
-            # fang tips, central menacing cyan eye, sharp pointed nose
-            # at the BOTTOM. Socratic check: the silhouette reads as
-            # "predator" / "alien hunter" at a glance.
-            wolf_base = (160, 170, 185)  # silver body (lighter than BLOQUE 58.5)
+            # BLOQUE 58.6.1: SUB_BOSS — V silhouette (cierra el arco).
+            # User feedback: "el diseño esta bien, pero cierra el arco, para
+            # que parezca mas una V en vez de un [U]". The fangs now angle
+            # DOWN-AND-INWARD so the two fang tips converge at a point at
+            # the BOTTOM-CENTER, forming a clean V (apex at bottom). The
+            # arc closes because the open U-shape becomes a closed V.
+            # Keeps all the menacing features from BLOQUE 58.6:
+            # pink/magenta venom fang tips, cyan eye, silver body, red
+            # accent stripes, sharp pointed nose at the BOTTOM (which is
+            # also the V apex, where the two fangs meet).
+            wolf_base = (160, 170, 185)  # silver body
             wolf_dark = (80, 90, 105)
             wolf_red = (220, 50, 60)
             cyan_eye = (80, 220, 240)
@@ -3569,54 +3570,53 @@ class GameplayRuntime:
             # Eye pulse: 3 Hz for menacing "scanning" feel
             eye_pulse = 0.85 + 0.15 * math.sin(self._t * 3.0)
             # Layout (top to bottom of the sprite):
-            #   1. 2 FANGS/MANDIBLES extending OUTWARD-AND-DOWNWARD
-            #      (the "predator jaws" — key maligno feature)
+            #   1. 2 FANGS angling OUTWARD-AND-DOWNWARD, CONVERGING at the
+            #      bottom-center (the "cierra el arco" feature — V apex)
             #   2. Wings on the sides, swept back (Star Wolf style)
             #   3. Engines at the top (back of ship, pulsing)
             #   4. Central body with menacing cyan eye
-            #   5. Sharp pointed nose at the BOTTOM
+            #   5. Sharp pointed nose at the BOTTOM (also the V apex)
             body_top_y = cy_b - h // 2
             body_bot_y = cy_b + h // 2
             shoulder_y = body_top_y + 2
             mid_wing_y = cy_b - 1
             wing_tip_dx = w
             wing_tip_y = shoulder_y - 1
-            # 1) 2 SHARP FANGS / MANDIBLES extending OUTWARD-AND-DOWNWARD
-            #    These are the "maligno" feature — like the open jaws
-            #    of a predator. The fang tips get a pink/magenta "venom"
-            #    color that pulses for menace.
-            fang_tip_dx = w + 3
-            fang_tip_y = cy_b + 1
-            # Left fang
+            # 1) 2 SHARP FANGS angling OUTWARD-AND-DOWNWARD, CONVERGING at
+            #    the bottom-center. The two fang tips meet 1 pixel apart at
+            #    (cx, body_bot_y + 1) — the V apex. This closes the open
+            #    U-shape of the previous design into a clean V.
+            fang_tip_y = body_bot_y + 1   # V apex: just below the nose
+            fang_tip_x_l = cx - 1         # left fang converges slightly left of center
+            fang_tip_x_r = cx + 1         # right fang converges slightly right of center
+            # Left fang: from upper-left, angling DOWN-AND-INWARD to the V apex
             pygame.draw.polygon(target, wolf_base, [
                 (cx - 2, body_top_y + 1),                # base inner top
-                (cx - 4, body_top_y),                    # base outer top
-                (cx - fang_tip_dx, fang_tip_y),          # sharp tip
-                (cx - fang_tip_dx + 1, fang_tip_y + 1),  # tip underside
-                (cx - 3, body_bot_y - 1),                # base bottom
+                (cx - 4, body_top_y),                    # base outer top (widest)
+                (fang_tip_x_l, fang_tip_y),              # sharp tip (V apex, left)
+                (cx - 2, body_bot_y - 1),                # base bottom (at nose level)
             ])
-            # Right fang
+            # Right fang: mirror, converging at the same V apex
             pygame.draw.polygon(target, wolf_base, [
                 (cx + 2, body_top_y + 1),
                 (cx + 4, body_top_y),
-                (cx + fang_tip_dx, fang_tip_y),
-                (cx + fang_tip_dx - 1, fang_tip_y + 1),
-                (cx + 3, body_bot_y - 1),
+                (fang_tip_x_r, fang_tip_y),
+                (cx + 2, body_bot_y - 1),
             ])
             # Red Star Wolf accent stripe along fang leading edge
             pygame.draw.line(target, wolf_red,
                              (cx - 3, body_top_y + 1),
-                             (cx - fang_tip_dx + 1, fang_tip_y), 1)
+                             (fang_tip_x_l, fang_tip_y - 1), 1)
             pygame.draw.line(target, wolf_red,
                              (cx + 3, body_top_y + 1),
-                             (cx + fang_tip_dx - 1, fang_tip_y), 1)
-            # Pink/magenta fang TIPS (the "venom" / "maligno" color)
-            pygame.draw.circle(target, pink_fang, (cx - fang_tip_dx, fang_tip_y), 1)
-            pygame.draw.circle(target, pink_fang, (cx + fang_tip_dx, fang_tip_y), 1)
+                             (fang_tip_x_r, fang_tip_y - 1), 1)
+            # Pink/magenta fang TIPS at the V apex (the "venom" / "maligno" color)
+            pygame.draw.circle(target, pink_fang, (fang_tip_x_l, fang_tip_y), 1)
+            pygame.draw.circle(target, pink_fang, (fang_tip_x_r, fang_tip_y), 1)
             pygame.draw.circle(target, pink_fang_bright,
-                               (cx - fang_tip_dx, fang_tip_y), 1)
+                               (fang_tip_x_l, fang_tip_y), 1)
             pygame.draw.circle(target, pink_fang_bright,
-                               (cx + fang_tip_dx, fang_tip_y), 1)
+                               (fang_tip_x_r, fang_tip_y), 1)
             # 2) WINGS behind the fangs (swept back, Star Wolf style)
             # Left wing
             pygame.draw.polygon(target, wolf_base, [
