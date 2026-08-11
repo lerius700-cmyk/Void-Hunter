@@ -3545,102 +3545,147 @@ class GameplayRuntime:
             pygame.draw.circle(target, pink, (cx, cy), 2)
             pygame.draw.circle(target, pink_bright, (cx, cy), 1)
         elif e.kind == EnemyKind.SUB_BOSS:
-            # BLOQUE 58.5: SUB_BOSS flipped 180° (nose DOWN, wings UP).
-            # Socratic fix: enemies move DOWN toward the player, so the
-            # ship's nose (front, direction of motion) must point DOWN,
-            # not up. Engines (back of ship) are at the TOP, wings sweep
-            # BACKWARD-AND-UP from the body. Plus added motion: subtle
-            # vertical bob (2 Hz, ±1 px) for "warp thrust" feel, and
-            # engine pulse (6 Hz) for HOT exhaust glow.
-            # Color palette (Star Wolf style): dark silver-blue + red.
-            wolf_base = (90, 100, 130)
-            wolf_dark = (50, 55, 75)
+            # BLOQUE 58.6: SUB_BOSS redesigned as a MENACING ALIEN HUNTER.
+            # Inspiration: Row 5 #3-4 of the new high-quality sprite sheet
+            # the user shared — the most "afilado y maligno" ship in the
+            # set. Silver body with 2 sharp fang/mandible extensions
+            # going OUTWARD-AND-DOWNWARD (predator jaws, NOT upward horns
+            # like the previous BLOQUE 58.6 draft), pink/magenta venomous
+            # fang tips, central menacing cyan eye, sharp pointed nose
+            # at the BOTTOM. Socratic check: the silhouette reads as
+            # "predator" / "alien hunter" at a glance.
+            wolf_base = (160, 170, 185)  # silver body (lighter than BLOQUE 58.5)
+            wolf_dark = (80, 90, 105)
             wolf_red = (220, 50, 60)
-            wolf_red_bright = (255, 100, 100)
+            cyan_eye = (80, 220, 240)
+            pink_fang = (255, 100, 180)  # venom/maligno fang tip color
+            pink_fang_bright = (255, 200, 230)
             wolf_engine = (255, 180, 60)
             # Subtle vertical bob (2 Hz, ±1 px) for warp-thrust feel
             bob = int(round(math.sin(self._t * 2.0 * math.pi) * 1.0))
             cy_b = cy + bob
-            # Engine pulse: brightness varies 0.7..1.0
+            # Engine pulse: brightness varies 0.7..1.0 (6 Hz)
             engine_pulse = 0.7 + 0.3 * (0.5 + 0.5 * math.sin(self._t * 6.0))
+            # Eye pulse: 3 Hz for menacing "scanning" feel
+            eye_pulse = 0.85 + 0.15 * math.sin(self._t * 3.0)
             # Layout (top to bottom of the sprite):
-            #   1. Engines (back, top)        - exhaust trails UP off screen
-            #   2. Wings (sweep back, sides)  - up and out
-            #   3. Body with cockpit (middle)
-            #   4. Nose (front, bottom)       - pointing down
-            # The body is a vertical dart, pointed at bottom.
+            #   1. 2 FANGS/MANDIBLES extending OUTWARD-AND-DOWNWARD
+            #      (the "predator jaws" — key maligno feature)
+            #   2. Wings on the sides, swept back (Star Wolf style)
+            #   3. Engines at the top (back of ship, pulsing)
+            #   4. Central body with menacing cyan eye
+            #   5. Sharp pointed nose at the BOTTOM
             body_top_y = cy_b - h // 2
             body_bot_y = cy_b + h // 2
-            # 1) Engines at the TOP (back of ship)
-            eng_y = body_top_y - 1
-            # Engine cores (yellow, pulsing)
+            shoulder_y = body_top_y + 2
+            mid_wing_y = cy_b - 1
+            wing_tip_dx = w
+            wing_tip_y = shoulder_y - 1
+            # 1) 2 SHARP FANGS / MANDIBLES extending OUTWARD-AND-DOWNWARD
+            #    These are the "maligno" feature — like the open jaws
+            #    of a predator. The fang tips get a pink/magenta "venom"
+            #    color that pulses for menace.
+            fang_tip_dx = w + 3
+            fang_tip_y = cy_b + 1
+            # Left fang
+            pygame.draw.polygon(target, wolf_base, [
+                (cx - 2, body_top_y + 1),                # base inner top
+                (cx - 4, body_top_y),                    # base outer top
+                (cx - fang_tip_dx, fang_tip_y),          # sharp tip
+                (cx - fang_tip_dx + 1, fang_tip_y + 1),  # tip underside
+                (cx - 3, body_bot_y - 1),                # base bottom
+            ])
+            # Right fang
+            pygame.draw.polygon(target, wolf_base, [
+                (cx + 2, body_top_y + 1),
+                (cx + 4, body_top_y),
+                (cx + fang_tip_dx, fang_tip_y),
+                (cx + fang_tip_dx - 1, fang_tip_y + 1),
+                (cx + 3, body_bot_y - 1),
+            ])
+            # Red Star Wolf accent stripe along fang leading edge
+            pygame.draw.line(target, wolf_red,
+                             (cx - 3, body_top_y + 1),
+                             (cx - fang_tip_dx + 1, fang_tip_y), 1)
+            pygame.draw.line(target, wolf_red,
+                             (cx + 3, body_top_y + 1),
+                             (cx + fang_tip_dx - 1, fang_tip_y), 1)
+            # Pink/magenta fang TIPS (the "venom" / "maligno" color)
+            pygame.draw.circle(target, pink_fang, (cx - fang_tip_dx, fang_tip_y), 1)
+            pygame.draw.circle(target, pink_fang, (cx + fang_tip_dx, fang_tip_y), 1)
+            pygame.draw.circle(target, pink_fang_bright,
+                               (cx - fang_tip_dx, fang_tip_y), 1)
+            pygame.draw.circle(target, pink_fang_bright,
+                               (cx + fang_tip_dx, fang_tip_y), 1)
+            # 2) WINGS behind the fangs (swept back, Star Wolf style)
+            # Left wing
+            pygame.draw.polygon(target, wolf_base, [
+                (cx - 1, shoulder_y),
+                (cx - 4, shoulder_y - 1),
+                (cx - wing_tip_dx, wing_tip_y),
+                (cx - wing_tip_dx, wing_tip_y + 2),
+                (cx - 2, mid_wing_y),
+            ])
+            # Right wing
+            pygame.draw.polygon(target, wolf_base, [
+                (cx + 1, shoulder_y),
+                (cx + 4, shoulder_y - 1),
+                (cx + wing_tip_dx, wing_tip_y),
+                (cx + wing_tip_dx, wing_tip_y + 2),
+                (cx + 2, mid_wing_y),
+            ])
+            # 3) ENGINES at the top (back of ship, pulsing)
+            eng_y = body_top_y
             eng_c = (
                 int(255 * engine_pulse),
                 int(180 * engine_pulse),
                 int(60 * engine_pulse),
             )
-            pygame.draw.rect(target, eng_c, (cx - 2, eng_y, 1, 2))
-            pygame.draw.rect(target, eng_c, (cx + 1, eng_y, 1, 2))
-            # 2) WINGS — swept back from body, going UP and OUT
-            #    The wing roots attach at the shoulder (just below the
-            #    engines), wing tips extend up-and-out.
-            #    The wings form an inverted V (^) opening upward, like the
-            #    Arwing seen from the front.
-            shoulder_y = body_top_y + 2
-            wing_tip_y = shoulder_y - h // 2  # up
-            wing_tip_dx = w + 1                # out
-            # 3) Draw the full body silhouette as one polygon:
-            #    nose (bottom) -> right side -> shoulder -> right wing tip
-            #    -> right engine -> back of body (top) -> left engine
-            #    -> left wing tip -> left shoulder -> left side -> nose
+            pygame.draw.rect(target, eng_c, (cx - 1, eng_y, 1, 2))
+            pygame.draw.rect(target, eng_c, (cx, eng_y, 1, 2))
+            # 4) MAIN BODY — angular dart with sharp nose at the BOTTOM
             pygame.draw.polygon(target, wolf_base, [
-                (cx, body_bot_y),                         # nose (front, DOWN)
-                (cx + 2, cy_b + h // 4),                  # right side mid
-                (cx + 2, shoulder_y),                     # right shoulder
-                (cx + wing_tip_dx, wing_tip_y),            # right wing tip
-                (cx + 1, eng_y),                          # right engine mount
-                (cx, body_top_y - 1),                      # back of body
-                (cx - 1, eng_y),                          # left engine mount
-                (cx - wing_tip_dx, wing_tip_y),            # left wing tip
-                (cx - 2, shoulder_y),                     # left shoulder
-                (cx - 2, cy_b + h // 4),                  # left side mid
+                (cx, body_bot_y),               # sharp nose DOWN
+                (cx + 3, mid_wing_y + 1),
+                (cx + 1, shoulder_y),
+                (cx, body_top_y + 1),
+                (cx - 1, shoulder_y),
+                (cx - 3, mid_wing_y + 1),
             ])
-            # 4) Wing leading-edge highlights (swept-back, going up-and-out)
-            wing_hi = (130, 140, 170)
+            # Body panel detail (darker stripe down the center)
+            pygame.draw.line(target, wolf_dark, (cx, body_top_y + 1), (cx, body_bot_y - 1), 1)
+            # 5) MENACING CYAN EYE in the body center (3 layers, 3 Hz pulse)
+            eye_r1 = int(4 * eye_pulse)
+            eye_r2 = int(3 * eye_pulse)
+            eye_r3 = int(2 * eye_pulse)
+            pygame.draw.circle(target, (40, 80, 110), (cx, cy_b), eye_r1 + 1)  # dark outer
+            pygame.draw.circle(target, cyan_eye, (cx, cy_b), eye_r1)  # main eye
+            pygame.draw.circle(target, (200, 240, 255), (cx, cy_b), eye_r2)  # bright glow
+            pygame.draw.circle(target, (255, 255, 255), (cx, cy_b), eye_r3)  # white-hot
+            # 6) Wing leading-edge highlights
+            wing_hi = (195, 205, 220)
             pygame.draw.line(target, wing_hi,
-                             (cx + 2, shoulder_y),
-                             (cx + wing_tip_dx, wing_tip_y), 1)
+                             (cx - 1, shoulder_y), (cx - wing_tip_dx, wing_tip_y), 1)
             pygame.draw.line(target, wing_hi,
-                             (cx - 2, shoulder_y),
-                             (cx - wing_tip_dx, wing_tip_y), 1)
-            # 5) Red Star Wolf accent stripes along the wing leading edges
+                             (cx + 1, shoulder_y), (cx + wing_tip_dx, wing_tip_y), 1)
+            # 7) Red Star Wolf accent stripes along wing leading edges
             pygame.draw.line(target, wolf_red,
-                             (cx + 1, shoulder_y - 1),
-                             (cx + wing_tip_dx - 1, wing_tip_y + 1), 1)
-            pygame.draw.line(target, wolf_red,
-                             (cx - 1, shoulder_y - 1),
+                             (cx - 2, shoulder_y + 1),
                              (cx - wing_tip_dx + 1, wing_tip_y + 1), 1)
-            # 6) Body panel detail (darker stripe down the center of the body)
-            pygame.draw.line(target, wolf_dark, (cx, body_top_y), (cx, body_bot_y - 1), 1)
-            # 7) Glowing red "wolf eye" cockpit at the body center
-            #    This is the visual focal point — the menacing red eye
-            #    that the player sees looking up at the ship.
-            pygame.draw.circle(target, wolf_red, (cx, cy_b), 3)
-            pygame.draw.circle(target, wolf_red_bright, (cx, cy_b), 2)
-            # White-hot center
-            pygame.draw.circle(target, (255, 240, 200), (cx, cy_b), 1)
-            # 8) Wing tip running lights (small red dots at the wing tips,
-            #    Star Wolf "wingtip lights" detail)
-            pygame.draw.circle(target, (255, 80, 80),
-                               (cx + wing_tip_dx, wing_tip_y), 1)
+            pygame.draw.line(target, wolf_red,
+                             (cx + 2, shoulder_y + 1),
+                             (cx + wing_tip_dx - 1, wing_tip_y + 1), 1)
+            # 8) Wingtip running lights (red dots at the wing tips)
             pygame.draw.circle(target, (255, 80, 80),
                                (cx - wing_tip_dx, wing_tip_y), 1)
-            # Subtle outer halo to mark it as a mini-boss
-            halo = pygame.Surface((w + 12, h + 12), pygame.SRCALPHA)
+            pygame.draw.circle(target, (255, 80, 80),
+                               (cx + wing_tip_dx, wing_tip_y), 1)
+            # 9) Subtle outer red halo to mark it as a mini-boss (the menace aura)
+            halo = pygame.Surface((w + 16, h + 16), pygame.SRCALPHA)
             halo_alpha = 40 + int(20 * math.sin(self._t * 6))
-            pygame.draw.ellipse(halo, (*color, halo_alpha),
-                                (0, 0, w + 12, h + 12), 1)
-            target.blit(halo, (cx - (w + 12) // 2, cy - (h + 12) // 2))
+            pygame.draw.ellipse(halo, (*wolf_red, halo_alpha),
+                                (0, 0, w + 16, h + 16), 1)
+            target.blit(halo, (cx - (w + 16) // 2, cy_b - (h + 16) // 2))
         else:
             # Default: rectangle with inner detail
             rect = pygame.Rect(cx - w // 2, cy - h // 2, w, h)
