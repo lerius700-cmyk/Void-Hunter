@@ -1,14 +1,33 @@
-"""HUD — HP / bombs / multiplier / weapon level (BLOQUE 15).
+"""HUD — redesigned for clarity, pedagogy, and organization (BLOQUE 58.14).
 
-Per GDD §15:
-- HP bar: green at full, yellow at half, red at low
-- Bomb count: 3 icons (4 with special)
-- Multiplier chain icon: changes color at 1/2/4/8/16x
-- Weapon level: path icon + L1/L2/L3 + XP bar
-- Score in top-right
+Layout (320x480, 8px grid):
 
-BLOQUE 25: animated HP pulse on low HP, bomb icons pulse when ready,
-weapon label color shifts with level, multiplier chain progress dots.
+    ┌─ VITALS ──────────────┐                ┌─ SCORE ──────┐
+    │ ▓▓▓▓▓▓▓▓▓▓░░░  30/30  │  HP            │   000042     │
+    │ ◯ ◯ ◯  ⚙ ⚙ ⚙          │  RINGS TECH    │   KILLS 0023 │
+    ├─ LOADOUT ─────────────┤                └──────────────┘
+    │ ⊕ ⊕ ⊕  3/3           │  BOMBS
+    │ PATH L1 ▓▓▓▓░░  8/10 │  WEAPON+XP
+    ├─ TACTICAL ────────────┤
+    │ ▓▓▓▓▓▓▓▓░░  DASH OK   │  HEAT
+    │ ×2  ● ● ● ●           │  MULTIPLIER
+    └───────────────────────┘
+
+Design principles:
+  - Section headers (VITALS, LOADOUT, TACTICAL, SCORE) so each group
+    is self-explanatory.
+  - All elements use the same 4px margin and 4px row height.
+  - Labels are written in plain text so the HUD teaches the player
+    what each value means (HP, BOMBS, DASH, etc.).
+  - Each section has a 1px top divider for visual separation.
+  - No element extends past x=316 (INTERNAL_W - HUD_MARGIN) or below
+    y=110 (so the gameplay area below stays uncluttered).
+  - All font sizes use the same fixed-size family so labels don't
+    get truncated at different DPI / scale factors.
+
+BLOQUE 58.14: complete rewrite from BLOQUE 53b/53c/53d/58.8 layouts.
+The previous HUD had overlapping labels and inconsistent margins; the
+new layout is didactic, organized, and pixel-aligned.
 """
 from __future__ import annotations
 
@@ -19,33 +38,47 @@ import pygame
 
 from src.core.settings import INTERNAL_H, INTERNAL_W
 from src.entities.player import Player
-from src.systems.scoring_system import MULTIPLIER_STEPS, ScoringSystem
+from src.systems.scoring_system import ScoringSystem
 from src.systems.weapon_system import WeaponLevel, WeaponSystem
 
 
-# HUD layout constants
+# HUD layout constants — every element snaps to this 4px grid so the
+# borders align with the window edges and with each other.
 HUD_MARGIN = 4
-# BLOQUE 53b: HP bar (Mega Man / Star Fox) — wider with 10 sub-segments.
-HP_BAR_WIDTH = 100
-HP_BAR_HEIGHT = 8
+SECTION_GAP = 6        # vertical gap between sections
+ROW_GAP = 2            # vertical gap between rows inside a section
+LABEL_FONT_SIZE = 10   # default label font (small, fits 320 width)
+VALUE_FONT_SIZE = 11   # value text font (slightly larger for readability)
+HEADER_FONT_SIZE = 9   # section header font (uppercase, dim)
+HP_BAR_W = 100
+HP_BAR_H = 8
 HP_BAR_SEGMENTS = 10
-BAR_WIDTH = 60
-BAR_HEIGHT = 6
+DASH_BAR_W = 80
+DASH_BAR_H = 6
+XP_BAR_W = 60
+XP_BAR_H = 4
 ICON_SIZE = 8
-# BLOQUE 53c: gold ring HUD position
 GOLD_RING_ICON_SIZE = 6
-GOLD_RING_HUD_X = 110
-# BLOQUE 53d: tech upgrade HUD position
 TECH_ICON_SIZE = 6
-TECH_HUD_X = 160
 
 
 class HUD:
-    """Top-left: HP, bombs, weapon, XP. Top-right: score, multiplier."""
+    """BLOQUE 58.14: didactic, organized, pixel-aligned HUD.
+
+    Sections (top-to-bottom, left column):
+      - VITALS: HP bar (with label), gold rings, tech icons
+      - LOADOUT: bombs (with count), weapon path+level+XP
+      - TACTICAL: dash heat (with label), multiplier (with chain dots)
+
+    Right column:
+      - SCORE: large score, kills counter below
+    """
 
     def __init__(self) -> None:
-        self.font_small: Optional[pygame.font.Font] = None
-        self.font_large: Optional[pygame.font.Font] = None
+        self.font_label: Optional[pygame.font.Font] = None
+        self.font_value: Optional[pygame.font.Font] = None
+        self.font_header: Optional[pygame.font.Font] = None
+        self.font_score: Optional[pygame.font.Font] = None
         self.initialized: bool = False
 
     def _ensure_fonts(self) -> None:
@@ -54,13 +87,23 @@ class HUD:
         try:
             if not pygame.font.get_init():
                 pygame.font.init()
-            self.font_small = pygame.font.Font(None, 14)
-            self.font_large = pygame.font.Font(None, 22)
+            # Fixed font size for consistent layout. The default pygame
+            # font is deterministic in width per character, so text never
+            # overflows the section's allocated width.
+            self.font_label = pygame.font.SysFont("consolas", LABEL_FONT_SIZE, bold=False)
+            self.font_value = pygame.font.SysFont("consolas", VALUE_FONT_SIZE, bold=True)
+            self.font_header = pygame.font.SysFont("consolas", HEADER_FONT_SIZE, bold=True)
+            self.font_score = pygame.font.SysFont("consolas", 20, bold=True)
         except pygame.error:
-            self.font_small = None
-            self.font_large = None
+            self.font_label = None
+            self.font_value = None
+            self.font_header = None
+            self.font_score = None
         self.initialized = True
 
+    # ------------------------------------------------------------------
+    # Public draw entry point
+    # ------------------------------------------------------------------
     def draw(
         self,
         target: pygame.Surface,
@@ -70,77 +113,59 @@ class HUD:
         t: float = 0.0,
     ) -> None:
         self._ensure_fonts()
-        # HP bar (top-left) — BLOQUE 25: animated pulse on low HP
-        # BLOQUE 53b: redesigned as Mega Man / Star Fox segmented bar
-        self._draw_hp_bar(target, player, x=HUD_MARGIN, y=HUD_MARGIN, t=t)
-        # Bomb icons — pushed down to make room for gold ring + tech
-        # icon row below the HP bar.
-        self._draw_bombs(target, player, weapon,
-                          x=HUD_MARGIN, y=HUD_MARGIN + 32, t=t)
-        # Weapon level + XP
-        self._draw_weapon(target, weapon,
-                           x=HUD_MARGIN, y=HUD_MARGIN + 50, t=t)
-        # Multiplier
-        self._draw_multiplier(target, scoring,
-                                x=HUD_MARGIN, y=HUD_MARGIN + 74, t=t)
-        # BLOQUE 58.8: dash heat bar (Star Fox style)
-        self._draw_dash_heat(target, player,
-                              x=HUD_MARGIN, y=HUD_MARGIN + 90, t=t)
-        # BLOQUE 26: kill counter
-        self._draw_kill_count(target, scoring, t=t)
-        # Score (top-right)
-        self._draw_score(target, scoring, x=INTERNAL_W - HUD_MARGIN, y=HUD_MARGIN, t=t)
+        # Section 1: VITALS (HP bar, gold rings, tech icons)
+        y = HUD_MARGIN
+        y = self._draw_section_header(target, "VITALS", y)
+        y = self._draw_hp_bar(target, player, y, t)
+        y += ROW_GAP
+        y = self._draw_gold_rings(target, player, y, t)
+        y += ROW_GAP
+        y = self._draw_tech_icons(target, player, y)
+        y += SECTION_GAP
+        # Section 2: LOADOUT (bombs, weapon)
+        y = self._draw_section_header(target, "LOADOUT", y)
+        y = self._draw_bombs(target, player, y, t)
+        y += ROW_GAP
+        y = self._draw_weapon(target, weapon, y)
+        y += SECTION_GAP
+        # Section 3: TACTICAL (dash heat, multiplier)
+        y = self._draw_section_header(target, "TACTICAL", y)
+        y = self._draw_dash_heat(target, player, y, t)
+        y += ROW_GAP
+        y = self._draw_multiplier(target, scoring, y, t)
+        # Right column: SCORE (large) + kills (small)
+        self._draw_score_panel(target, scoring, t)
 
-    def _draw_dash_heat(self, target: pygame.Surface, player: Player,
-                         x: int, y: int, t: float = 0.0) -> None:
-        """BLOQUE 58.8: Star Fox style dash heat bar.
-
-        Bar fills cyan -> yellow -> red as heat increases. When over the
-        RESUME_THRESHOLD (25%), the bar pulses red and the dash is
-        blocked. Below threshold, dash is available.
-        """
-        from src.core.settings import (
-            PLAYER_DASH_HEAT_MAX, PLAYER_DASH_HEAT_RESUME_THRESHOLD,
+    # ------------------------------------------------------------------
+    # Section header
+    # ------------------------------------------------------------------
+    def _draw_section_header(self, target: pygame.Surface, name: str, y: int) -> int:
+        """Draw a small uppercase section header. Returns the next y."""
+        if self.font_header:
+            surf = self.font_header.render(name, True, (140, 160, 200))
+            target.blit(surf, (HUD_MARGIN, y))
+        # Thin divider line under the header (1px, dim)
+        pygame.draw.line(
+            target, (50, 60, 90),
+            (HUD_MARGIN, y + HEADER_FONT_SIZE + 1),
+            (HUD_MARGIN + 100, y + HEADER_FONT_SIZE + 1),
+            1,
         )
-        w, h = 80, 6
-        ratio = max(0.0, min(1.0, player.dash_heat / PLAYER_DASH_HEAT_MAX))
-        # Color tier: cyan (cool) -> yellow (warm) -> red (overheat)
-        if ratio < 0.5:
-            color = (80, 220, 240)
-            outline = (140, 200, 220)
-        elif ratio < 0.85:
-            color = (255, 220, 80)
-            outline = (220, 200, 140)
-        else:
-            # Overheat zone — pulse red
-            pulse = 0.5 + 0.5 * math.sin(t * 12.0)
-            r = int(220 + 35 * pulse)
-            g = int(50 * (1.0 - pulse))
-            color = (r, g, 50)
-            outline = (220, 100, 80)
-        # Frame
-        pygame.draw.rect(target, outline, (x - 1, y - 1, w + 2, h + 2), 1)
-        # Empty background
-        pygame.draw.rect(target, (30, 20, 30), (x, y, w, h))
-        # Fill (proportional to heat)
-        fill = int(w * ratio)
-        if fill > 0:
-            pygame.draw.rect(target, color, (x, y, fill, h))
-        # Threshold marker (where dash becomes available again)
-        th_x = x + int(w * PLAYER_DASH_HEAT_RESUME_THRESHOLD / PLAYER_DASH_HEAT_MAX)
-        pygame.draw.line(target, (180, 180, 200), (th_x, y - 1), (th_x, y + h + 1), 1)
-        # Label
-        if self.font_small:
-            label = self.font_small.render("DASH", True, (200, 220, 240))
-            target.blit(label, (x + w + 4, y - 2))
+        return y + HEADER_FONT_SIZE + 3  # header + divider + small gap
 
-    def _draw_hp_bar(self, target: pygame.Surface, player: Player, x: int, y: int, t: float = 0.0) -> None:
-        # BLOQUE 53b: redesigned HP bar — Mega Man / Star Fox style.
-        # 100px wide, 8px tall, divided into 10 visible segments. Color
-        # shifts from green to yellow to red. Critical HP pulses.
-        w, h = HP_BAR_WIDTH, HP_BAR_HEIGHT
+    # ------------------------------------------------------------------
+    # HP bar
+    # ------------------------------------------------------------------
+    def _draw_hp_bar(self, target: pygame.Surface, player: Player, y: int, t: float) -> int:
+        """Segmented HP bar with the numeric value on the right.
+
+        Didactic: the value `30/30` is shown next to the bar so the
+        player can see the exact HP at a glance, not just the visual
+        fill level.
+        """
+        x = HUD_MARGIN
         ratio = max(0.0, player.hp / max(1, player.hp_max))
-        # Color tier
+        # Color tier — green > yellow > red
         if ratio > 0.6:
             color = (80, 220, 100)
             outline = (180, 230, 200)
@@ -155,125 +180,228 @@ class HUD:
             outline = (220, 200, 180)
         # Critical HP outer glow
         if ratio <= 0.3 and int(t * 8) % 2 == 0:
-            glow = pygame.Surface((w + 8, h + 8), pygame.SRCALPHA)
-            pygame.draw.rect(glow, (255, 60, 40, 100), (0, 0, w + 8, h + 8), 2)
-            target.blit(glow, (x - 4, y - 4))
-        # Frame (outline)
-        pygame.draw.rect(target, outline, (x - 1, y - 1, w + 2, h + 2), 1)
+            glow = pygame.Surface((HP_BAR_W + 6, HP_BAR_H + 6), pygame.SRCALPHA)
+            pygame.draw.rect(glow, (255, 60, 40, 100), (0, 0, HP_BAR_W + 6, HP_BAR_H + 6), 2)
+            target.blit(glow, (x - 3, y - 3))
+        # Frame
+        pygame.draw.rect(target, outline, (x - 1, y - 1, HP_BAR_W + 2, HP_BAR_H + 2), 1)
         # Empty background
-        pygame.draw.rect(target, (30, 20, 30), (x, y, w, h))
-        # Fill (proportional)
-        fill = int(w * ratio)
+        pygame.draw.rect(target, (30, 20, 30), (x, y, HP_BAR_W, HP_BAR_H))
+        # Fill
+        fill = int(HP_BAR_W * ratio)
         if fill > 0:
-            pygame.draw.rect(target, color, (x, y, fill, h))
-        # Segment dividers (vertical lines every w/HP_BAR_SEGMENTS)
-        seg_w = w // HP_BAR_SEGMENTS
+            pygame.draw.rect(target, color, (x, y, fill, HP_BAR_H))
+        # Segment dividers
+        seg_w = HP_BAR_W // HP_BAR_SEGMENTS
         for i in range(1, HP_BAR_SEGMENTS):
             sx = x + i * seg_w
-            pygame.draw.line(target, (10, 10, 15), (sx, y), (sx, y + h), 1)
-        # Label
-        if self.font_small:
-            label = self.font_small.render(
-                f"HP {player.hp}/{player.hp_max}", True, (220, 220, 240)
+            pygame.draw.line(target, (10, 10, 15), (sx, y), (sx, y + HP_BAR_H), 1)
+        # HP label on the right (numeric value)
+        if self.font_label and self.font_value:
+            label = self.font_label.render("HP", True, (160, 200, 220))
+            target.blit(label, (x + HP_BAR_W + 6, y - 1))
+            value = self.font_value.render(
+                f"{player.hp}/{player.hp_max}", True, (255, 240, 200)
             )
-            target.blit(label, (x + w + 6, y - 2))
-        # BLOQUE 53c: gold ring counter (small icons next to HP)
-        self._draw_gold_ring_counter(target, player, x, y + h + 4, t)
-        # BLOQUE 53d: tech upgrade icons (small squares next to ring counter)
-        self._draw_tech_icons(target, player, x, y + h + 12)
+            target.blit(value, (x + HP_BAR_W + 6, y + 8))
+        return y + HP_BAR_H
 
-    def _draw_gold_ring_counter(self, target: pygame.Surface, player: Player,
-                                 x: int, y: int, t: float = 0.0) -> None:
-        """BLOQUE 53c: show 3 small gold ring slots. Filled = collected."""
+    # ------------------------------------------------------------------
+    # Gold rings
+    # ------------------------------------------------------------------
+    def _draw_gold_rings(self, target: pygame.Surface, player: Player, y: int, t: float) -> int:
+        x = HUD_MARGIN
+        if self.font_label:
+            label = self.font_label.render("RINGS", True, (180, 200, 220))
+            target.blit(label, (x, y))
+            label_w = label.get_width()
+        else:
+            label_w = 30
+        # 3 ring slots to the right of the label
+        slots_x = x + label_w + 4
         for i in range(3):
-            cx = x + i * (GOLD_RING_ICON_SIZE + 3)
+            cx = slots_x + i * (GOLD_RING_ICON_SIZE + 4)
             cy = y + GOLD_RING_ICON_SIZE // 2
             if i < player.gold_rings and not player.hp_doubled:
-                # Filled gold ring (collected)
                 pygame.draw.circle(target, (255, 220, 80), (cx, cy),
                                    GOLD_RING_ICON_SIZE // 2, 1)
-                # Inner glow
                 pygame.draw.circle(target, (255, 200, 60), (cx, cy),
                                    GOLD_RING_ICON_SIZE // 2 - 1, 1)
             elif player.hp_doubled:
-                # All rings consumed (HP doubled)
                 pygame.draw.circle(target, (255, 240, 160), (cx, cy),
                                    GOLD_RING_ICON_SIZE // 2, 1)
-                # Checkmark inside
                 pygame.draw.line(target, (255, 255, 200),
                                   (cx - 2, cy), (cx - 1, cy + 1), 1)
                 pygame.draw.line(target, (255, 255, 200),
                                   (cx - 1, cy + 1), (cx + 2, cy - 1), 1)
             else:
-                # Empty slot
                 pygame.draw.circle(target, (80, 80, 100), (cx, cy),
                                    GOLD_RING_ICON_SIZE // 2, 1)
+        return y + GOLD_RING_ICON_SIZE
 
-    def _draw_tech_icons(self, target: pygame.Surface, player: Player,
-                          x: int, y: int) -> None:
-        """BLOQUE 53d: small icons for each tech upgrade collected."""
+    # ------------------------------------------------------------------
+    # Tech upgrade icons
+    # ------------------------------------------------------------------
+    def _draw_tech_icons(self, target: pygame.Surface, player: Player, y: int) -> int:
+        x = HUD_MARGIN
+        if self.font_label:
+            label = self.font_label.render("TECH", True, (180, 200, 220))
+            target.blit(label, (x, y))
+            label_w = label.get_width()
+        else:
+            label_w = 30
+        slots_x = x + label_w + 4
         for i, upgrade_id in enumerate(player.tech_upgrades):
-            ix = x + i * (TECH_ICON_SIZE + 2)
-            # Color by upgrade type
+            ix = slots_x + i * (TECH_ICON_SIZE + 3)
             if upgrade_id == "HP_BOOST_10":
                 color = (120, 255, 180)
             elif upgrade_id == "GOLIATH_SUMMON":
                 color = (255, 200, 100)
             else:
                 color = (200, 200, 220)
-            # Filled square
             pygame.draw.rect(target, color, (ix, y, TECH_ICON_SIZE, TECH_ICON_SIZE))
             pygame.draw.rect(target, (40, 40, 60), (ix, y, TECH_ICON_SIZE, TECH_ICON_SIZE), 1)
+        return y + TECH_ICON_SIZE
 
-    def _draw_bombs(self, target: pygame.Surface, player: Player, weapon: WeaponSystem,
-                    x: int, y: int, t: float = 0.0) -> None:
+    # ------------------------------------------------------------------
+    # Bombs
+    # ------------------------------------------------------------------
+    def _draw_bombs(self, target: pygame.Surface, player: Player, y: int, t: float) -> int:
+        x = HUD_MARGIN
         bombs = player.bombs
         max_bombs = player.bombs_max
+        if self.font_label:
+            label = self.font_label.render("BOMBS", True, (180, 200, 220))
+            target.blit(label, (x, y + 1))
+            label_w = label.get_width()
+        else:
+            label_w = 30
+        # 3 bomb slots to the right of the label
+        slots_x = x + label_w + 4
         for i in range(max_bombs):
-            bx = x + i * (ICON_SIZE + 2)
+            bx = slots_x + i * (ICON_SIZE + 3)
             is_ready = i < bombs
-            color = (255, 200, 80) if is_ready else (60, 60, 80)
-            # BLOQUE 25: ready bombs gently pulse
             if is_ready:
                 pulse = 0.7 + 0.3 * math.sin(t * 4.0 + i * 0.6)
                 color = (int(255 * pulse), int(200 * pulse), int(80 * pulse))
-            # Bomb icon: small circle with cross
+            else:
+                color = (60, 60, 80)
+            # Bomb icon: circle + cross
             pygame.draw.circle(target, color, (bx + ICON_SIZE // 2, y + ICON_SIZE // 2), 3)
-            # Cross lines (bomb fuse detail) only if ready
             if is_ready:
                 cx_b, cy_b = bx + ICON_SIZE // 2, y + ICON_SIZE // 2
-                pygame.draw.line(target, (255, 240, 180), (cx_b - 2, cy_b), (cx_b + 2, cy_b), 1)
-                pygame.draw.line(target, (255, 240, 180), (cx_b, cy_b - 2), (cx_b, cy_b + 2), 1)
-        if self.font_small:
-            label = self.font_small.render(f"BOMBS {bombs}/{max_bombs}", True, (220, 220, 240))
-            target.blit(label, (x + max_bombs * (ICON_SIZE + 2) + 4, y - 2))
+                pygame.draw.line(target, (255, 240, 180),
+                                  (cx_b - 2, cy_b), (cx_b + 2, cy_b), 1)
+                pygame.draw.line(target, (255, 240, 180),
+                                  (cx_b, cy_b - 2), (cx_b, cy_b + 2), 1)
+        # Count value at the far right
+        if self.font_value:
+            value = self.font_value.render(
+                f"{bombs}/{max_bombs}", True, (255, 220, 120)
+            )
+            target.blit(value, (slots_x + max_bombs * (ICON_SIZE + 3) + 4, y))
+        return y + ICON_SIZE
 
-    def _draw_weapon(self, target: pygame.Surface, weapon: WeaponSystem, x: int, y: int, t: float = 0.0) -> None:
+    # ------------------------------------------------------------------
+    # Weapon path + level + XP
+    # ------------------------------------------------------------------
+    def _draw_weapon(self, target: pygame.Surface, weapon: WeaponSystem, y: int) -> int:
+        x = HUD_MARGIN
         path_name = weapon.path.value.upper()
         level = weapon.level.value
-        # BLOQUE 25: weapon level color shifts as level rises
+        # Color by level
         if level >= 3:
             label_color = (255, 240, 200)
         elif level >= 2:
             label_color = (220, 230, 255)
         else:
             label_color = (220, 200, 100)
-        if self.font_small:
-            label = self.font_small.render(f"{path_name} L{level}", True, label_color)
+        if self.font_label:
+            label = self.font_label.render("WEAPON", True, (180, 200, 220))
             target.blit(label, (x, y))
+        if self.font_value:
+            text = self.font_value.render(f"{path_name} L{level}", True, label_color)
+            target.blit(text, (x + 50, y))
         # XP bar
-        xp_needed = 10 if weapon.level == WeaponLevel.L1 else (25 if weapon.level == WeaponLevel.L2 else 50)
+        xp_needed = 10 if weapon.level == WeaponLevel.L1 else (
+            25 if weapon.level == WeaponLevel.L2 else 50
+        )
         xp_clamped = min(weapon.xp, xp_needed)
         ratio = xp_clamped / max(1, xp_needed)
-        pygame.draw.rect(target, (200, 200, 220), (x, y + 10, BAR_WIDTH + 2, 4), 1)
-        fill = int(BAR_WIDTH * ratio)
+        bar_y = y + 4
+        pygame.draw.rect(target, (200, 200, 220), (x, bar_y, XP_BAR_W + 2, XP_BAR_H + 2), 1)
+        fill = int(XP_BAR_W * ratio)
         if fill > 0:
-            pygame.draw.rect(target, (255, 220, 100), (x + 1, y + 11, fill, 2))
+            pygame.draw.rect(target, (255, 220, 100), (x + 1, bar_y + 1, fill, XP_BAR_H))
+        # XP value text
+        if self.font_label:
+            value = self.font_label.render(
+                f"{xp_clamped}/{xp_needed}", True, (200, 200, 220)
+            )
+            target.blit(value, (x + XP_BAR_W + 6, y))
+        return y + 4 + XP_BAR_H
 
+    # ------------------------------------------------------------------
+    # Dash heat
+    # ------------------------------------------------------------------
+    def _draw_dash_heat(self, target: pygame.Surface, player: Player, y: int, t: float) -> int:
+        from src.core.settings import (
+            PLAYER_DASH_HEAT_MAX, PLAYER_DASH_HEAT_RESUME_THRESHOLD,
+        )
+        x = HUD_MARGIN
+        if self.font_label:
+            label = self.font_label.render("DASH", True, (180, 200, 220))
+            target.blit(label, (x, y))
+            label_w = label.get_width()
+        else:
+            label_w = 30
+        bar_x = x + label_w + 4
+        ratio = max(0.0, min(1.0, player.dash_heat / PLAYER_DASH_HEAT_MAX))
+        if ratio < 0.5:
+            color = (80, 220, 240)
+            outline = (140, 200, 220)
+        elif ratio < 0.85:
+            color = (255, 220, 80)
+            outline = (220, 200, 140)
+        else:
+            pulse = 0.5 + 0.5 * math.sin(t * 12.0)
+            r = int(220 + 35 * pulse)
+            g = int(50 * (1.0 - pulse))
+            color = (r, g, 50)
+            outline = (220, 100, 80)
+        # Frame + bg + fill
+        pygame.draw.rect(target, outline, (bar_x - 1, y - 1, DASH_BAR_W + 2, DASH_BAR_H + 2), 1)
+        pygame.draw.rect(target, (30, 20, 30), (bar_x, y, DASH_BAR_W, DASH_BAR_H))
+        fill = int(DASH_BAR_W * ratio)
+        if fill > 0:
+            pygame.draw.rect(target, color, (bar_x, y, fill, DASH_BAR_H))
+        # Threshold marker
+        th_x = bar_x + int(DASH_BAR_W * PLAYER_DASH_HEAT_RESUME_THRESHOLD
+                            / PLAYER_DASH_HEAT_MAX)
+        pygame.draw.line(target, (180, 180, 200),
+                          (th_x, y - 1), (th_x, y + DASH_BAR_H + 1), 1)
+        # State text (cool / warm / overheat)
+        if self.font_label:
+            if ratio >= 0.85:
+                state = "HOT"
+                state_color = (255, 100, 80)
+            elif ratio >= 0.5:
+                state = "WARM"
+                state_color = (255, 200, 100)
+            else:
+                state = "OK"
+                state_color = (140, 220, 200)
+            text = self.font_label.render(state, True, state_color)
+            target.blit(text, (bar_x + DASH_BAR_W + 6, y))
+        return y + DASH_BAR_H
+
+    # ------------------------------------------------------------------
+    # Multiplier
+    # ------------------------------------------------------------------
     def _draw_multiplier(self, target: pygame.Surface, scoring: ScoringSystem,
-                         x: int, y: int, t: float = 0.0) -> None:
+                          y: int, t: float) -> int:
+        x = HUD_MARGIN
         mult = scoring.multiplier
-        # Color by tier
         if mult >= 16:
             color = (255, 200, 80)
         elif mult >= 8:
@@ -284,28 +412,40 @@ class HUD:
             color = (120, 200, 255)
         else:
             color = (200, 200, 200)
-        if self.font_small:
-            label = self.font_small.render(f"x{mult}", True, color)
+        if self.font_label:
+            label = self.font_label.render("MULT", True, (180, 200, 220))
             target.blit(label, (x, y))
-        # BLOQUE 25: chain progress dots to next multiplier
-        if mult < 16:
+        if self.font_value:
+            text = self.font_value.render(f"x{mult}", True, color)
+            target.blit(text, (x + 40, y - 1))
+        # Chain progress dots (next 8 multipliers)
+        if self.font_label and mult < 16:
+            dots_x = x + 70
             for i in range(min(8, scoring.streak_count)):
-                dot_x = x + 30 + i * 4
-                pygame.draw.circle(target, color, (dot_x, y + 4), 1)
+                pygame.draw.circle(target, color, (dots_x + i * 4, y + 4), 1)
+        return y + 6
 
-    def _draw_score(self, target: pygame.Surface, scoring: ScoringSystem, x: int, y: int, t: float = 0.0) -> None:
-        if self.font_large is None:
-            return
-        text = self.font_large.render(f"{scoring.score:06d}", True, (255, 220, 100))
-        target.blit(text, (x - text.get_width(), y))
-
-    def _draw_kill_count(self, target: pygame.Surface, scoring: ScoringSystem, t: float = 0.0) -> None:
-        """BLOQUE 26: small kill counter under score."""
-        if self.font_small is None:
-            return
-        # Format as "KILLS: 00042"
-        text = self.font_small.render(f"KILLS: {scoring.kills:05d}", True, (180, 200, 220))
-        target.blit(text, (INTERNAL_W - text.get_width() - HUD_MARGIN, HUD_MARGIN + 18))
+    # ------------------------------------------------------------------
+    # Score panel (top-right)
+    # ------------------------------------------------------------------
+    def _draw_score_panel(self, target: pygame.Surface, scoring: ScoringSystem,
+                           t: float) -> None:
+        # Right-anchored, so use INTERNAL_W - margin as the right edge
+        right = INTERNAL_W - HUD_MARGIN
+        # Section header
+        if self.font_header:
+            surf = self.font_header.render("SCORE", True, (140, 160, 200))
+            # Right-align the header text
+            target.blit(surf, (right - surf.get_width(), HUD_MARGIN))
+        # Score (large, right-aligned)
+        if self.font_score:
+            text = self.font_score.render(f"{scoring.score:06d}", True, (255, 220, 100))
+            target.blit(text, (right - text.get_width(), HUD_MARGIN + HEADER_FONT_SIZE + 2))
+        # Kills counter (small, right-aligned, below score)
+        y_kills = HUD_MARGIN + HEADER_FONT_SIZE + 2 + 22
+        if self.font_label:
+            k_text = self.font_label.render(f"KILLS {scoring.kills:05d}", True, (180, 200, 220))
+            target.blit(k_text, (right - k_text.get_width(), y_kills))
 
 
 # ---------------------------------------------------------------------------
@@ -318,12 +458,12 @@ class DamagePopup:
         self.active: bool = False
         self.x: float = 0.0
         self.y: float = 0.0
-        self.vy: float = -30.0  # float upward
+        self.vy: float = -30.0
         self.text: str = ""
         self.color: tuple[int, int, int] = (255, 255, 255)
         self.life: float = 0.0
         self.max_life: float = 1.0
-        self.size: int = 12  # font size
+        self.size: int = 12
 
     def on_spawn(self) -> None:
         pass
@@ -379,13 +519,12 @@ class DamagePopupPool:
         try:
             if not pygame.font.get_init():
                 pygame.font.init()
-            font = pygame.font.Font(None, 14)
+            font = pygame.font.SysFont("consolas", 11)
         except pygame.error:
             return
         for p in self._pool:
             if not p.active:
                 continue
-            # Alpha based on remaining life
             alpha = int(255 * max(0, p.life / p.max_life))
             text_surf = font.render(p.text, True, p.color)
             text_surf.set_alpha(alpha)

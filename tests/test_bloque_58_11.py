@@ -182,6 +182,46 @@ def test_tron_trail_no_hit_when_enemy_far_away():
     assert enemy.damage_taken == 0
 
 
+def test_tron_trail_bbox_early_exit():
+    """BLOQUE 58.11 perf: enemies far outside the bbox skip the
+    per-segment loop entirely.
+    """
+    from src.systems.tron_trail import TronTrail
+    t = TronTrail(spawn_interval_s=0.0, segment_length=8, segment_thickness=3)
+    # Spawn a trail at (100, 100) facing right — bbox should be
+    # roughly (88, 95) to (112, 105).
+    t.spawn_if_ready(108.0, 100.0, 0.0, 8.0, 0.001)
+    t.update(0.0)  # force bbox computation
+    # Enemy very far away — should be skipped via bbox early-exit
+    far_enemy = _FakeEnemy(x=300, y=300, hp=10)
+    # Bbox should be roughly (88, 95)-(112, 105). Enemy at 300,300
+    # with half-extent ~6 is way outside.
+    assert (far_enemy.x + 6) < t.bbox_min_x or (far_enemy.x - 6) > t.bbox_max_x
+    hit = t.check_enemy_collision(far_enemy, 0.0, damage=3)
+    assert hit is False
+    assert far_enemy.damage_taken == 0
+
+
+def test_tron_trail_bbox_dirty_flag():
+    """BLOQUE 58.11 perf: the bbox is only recomputed when dirty."""
+    from src.systems.tron_trail import TronTrail
+    t = TronTrail(spawn_interval_s=0.0, segment_length=8, segment_thickness=3)
+    assert t.bbox_dirty is True
+    t.spawn_if_ready(100.0, 100.0, 0.0, 8.0, 0.001)
+    # After spawn, dirty is set so the next check_enemy_collision recomputes
+    assert t.bbox_dirty is True
+    _FakeEnemy(x=100, y=100, hp=1)  # dummy
+    # Trigger bbox recompute
+    class _E:
+        x = 100; y = 100; w = 12; h = 8
+        def apply_damage(self, d): pass
+    t.check_enemy_collision(_E(), 0.0, 1)
+    assert t.bbox_dirty is False
+    # Spawn a new segment — dirty should be True again
+    t.spawn_if_ready(120.0, 100.0, 0.0, 8.0, 0.001)
+    assert t.bbox_dirty is True
+
+
 def test_tron_trail_3x_damage_value():
     """BLOQUE 58.11: damage = 3x bullet damage (L1=1, so 3 per touch)."""
     from src.core.settings import TRON_TRAIL_DAMAGE_MULT

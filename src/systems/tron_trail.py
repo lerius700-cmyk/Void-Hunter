@@ -91,12 +91,26 @@ class TronTrail:
         # Enemies re-hit only after hit_cooldown_s has elapsed.
         self.hit_cooldown: dict[int, float] = {}
         self.hit_cooldown_s: float = 0.15  # ~7 Hz max hit rate per enemy
+        # BLOQUE 58.11 perf: bounding box of the trail. Recomputed
+        # when segments are added/removed. Used to early-exit the
+        # collision check for enemies far from the trail (avoids
+        # 64 * 240 = 15k distance calcs per frame when only a few
+        # enemies are near the trail).
+        self.bbox_min_x: float = 0.0
+        self.bbox_min_y: float = 0.0
+        self.bbox_max_x: float = 0.0
+        self.bbox_max_y: float = 0.0
+        self.bbox_dirty: bool = True
 
     def reset(self) -> None:
         """Clear the entire trail (e.g. on player death or state change)."""
         self.segments.clear()
         self._spawn_timer = 0.0
         self.hit_cooldown.clear()
+        # Reset bbox to "no trail" state
+        self.bbox_min_x = self.bbox_min_y = 0.0
+        self.bbox_max_x = self.bbox_max_y = 0.0
+        self.bbox_dirty = True
 
     def is_active(self) -> bool:
         """True if the trail currently has any visible segments."""
@@ -109,13 +123,17 @@ class TronTrail:
         # before the next frame renders).
         if len(self.segments) > self.max_segments:
             self.segments = self.segments[-self.max_segments:]
+            self.bbox_dirty = True
         if dt <= 0.0:
             return
         # Age segments
         for seg in self.segments:
             seg.age += dt
         # Remove dead segments (in-place, oldest first)
+        before_count = len(self.segments)
         self.segments = [s for s in self.segments if s.age < s.max_age]
+        if len(self.segments) != before_count:
+            self.bbox_dirty = True
         # Expire hit cooldowns
         expired = [k for k, t in self.hit_cooldown.items() if t <= 0.0]
         for k in expired:
@@ -123,6 +141,48 @@ class TronTrail:
         # Decrement remaining cooldowns
         for k in list(self.hit_cooldown.keys()):
             self.hit_cooldown[k] -= dt
+
+    def _recompute_bbox(self) -> None:
+        """Recompute the trail's bounding box from active segments.
+
+        BLOQUE 58.11 perf: this is O(n) over segments but called at
+        most once per frame (when bbox_dirty is set). The bbox is
+        used by check_enemy_collision to skip enemies far from the
+        trail, which is the difference between 64 * 240 = 15k
+        distance calcs/frame and 64 * 5 = 320 calcs/frame in
+        typical play (most enemies are off-screen or far from
+        the trail).
+        """
+        if not self.segments:
+            self.bbox_min_x = self.bbox_min_y = 0.0
+            self.bbox_max_x = self.bbox_max_y = 0.0
+            self.bbox_dirty = False
+            return
+        min_x = min_y = float("inf")
+        max_x = max_y = float("-inf")
+        half_len = self.segment_length * 0.5
+        for seg in self.segments:
+            cos_a = math.cos(seg.angle)
+            sin_a = math.sin(seg.angle)
+            dx = cos_a * half_len
+            dy = sin_a * half_len
+            # The two endpoints of the segment
+            x1 = seg.cx - dx
+            y1 = seg.cy - dy
+            x2 = seg.cx + dx
+            y2 = seg.cy + dy
+            if x1 < min_x: min_x = x1
+            if y1 < min_y: min_y = y1
+            if x2 > max_x: max_x = x2
+            if y2 > max_y: max_y = y2
+        # Add a margin equal to the segment thickness so the bbox
+        # covers the visual area + collision radius.
+        margin = self.segment_thickness
+        self.bbox_min_x = min_x - margin
+        self.bbox_min_y = min_y - margin
+        self.bbox_max_x = max_x + margin
+        self.bbox_max_y = max_y + margin
+        self.bbox_dirty = False
 
     def spawn_if_ready(
         self,
@@ -167,6 +227,7 @@ class TronTrail:
             max_age=self.max_age,
         )
         self.segments.append(seg)
+        self.bbox_dirty = True  # new segment — bbox needs updating
         return True
 
     def draw(
@@ -244,8 +305,13 @@ class TronTrail:
         The enemy takes damage at most once per hit_cooldown_s window
         so it can't be melted in a single frame.
 
+        BLOQUE 58.11 perf: uses a bounding box to early-exit enemies
+        that are far from the trail. This avoids iterating 240
+        segments per frame for each of 64 enemies when most enemies
+        are nowhere near the trail.
+
         Args:
-            enemy:        an Enemy instance (must have x, y, w, h, hitbox()).
+            enemy:        an Enemy instance (must have x, y, w, h).
             current_time: game time (seconds). Used for hit cooldown bookkeeping.
             damage:       damage to apply on hit (typically 3x bullet damage).
 
@@ -258,11 +324,20 @@ class TronTrail:
         # Skip if still on cooldown
         if self.hit_cooldown.get(e_id, 0.0) > 0.0:
             return False
-        # Enemy hitbox
-        rect = enemy.hitbox()  # type: ignore[attr-defined]
-        # Check each segment. Segment is a line from (x1,y1) to (x2,y2)
-        # with thickness. We approximate the hit test as: distance from
-        # the enemy center to the line is less than (thickness/2 + enemy_radius).
+        # BLOQUE 58.11 perf: early-exit if the enemy is way outside
+        # the trail's bounding box. We add the enemy's half-extent
+        # to the bbox so the enemy only needs to be NEAR the bbox
+        # (not inside it) for the detailed segment check.
+        if self.bbox_dirty:
+            self._recompute_bbox()
+        enemy_half = max(enemy.w, enemy.h) * 0.5
+        ex, ey = float(enemy.x), float(enemy.y)
+        if (ex + enemy_half < self.bbox_min_x
+                or ex - enemy_half > self.bbox_max_x
+                or ey + enemy_half < self.bbox_min_y
+                or ey - enemy_half > self.bbox_max_y):
+            return False
+        # Detailed check: iterate segments and find the closest one
         for seg in self.segments:
             cos_a = math.cos(seg.angle)
             sin_a = math.sin(seg.angle)
@@ -273,9 +348,7 @@ class TronTrail:
             x2 = seg.cx + dx
             y2 = seg.cy + dy
             # Distance from enemy center to the line segment
-            d = _point_to_segment_distance(
-                float(enemy.x), float(enemy.y), x1, y1, x2, y2
-            )
+            d = _point_to_segment_distance(ex, ey, x1, y1, x2, y2)
             # The trail thickness is added to the enemy half-extent
             hit_dist = seg.thickness * 0.5 + max(enemy.w, enemy.h) * 0.4
             if d <= hit_dist:
