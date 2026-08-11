@@ -48,8 +48,8 @@ rt = gp.runtime if hasattr(gp, "runtime") else gp
 print(f"[playtest] runtime type: {type(rt).__name__}")
 
 # Capture times (seconds)
-CAPTURE_TIMES = [2.0, 6.0, 12.0, 18.0]
-CAPTURE_LABELS = ["t=2s_early_wave", "t=6s_mid_wave", "t=12s_late_wave", "t=18s_pre_sub_boss"]
+CAPTURE_TIMES = [2.0, 6.0, 12.0, 22.0, 28.0]
+CAPTURE_LABELS = ["t=2s_early_wave", "t=6s_mid_wave", "t=12s_late_wave", "t=22s_sub_boss", "t=28s_final_boss"]
 
 # Advance time and capture
 start_wall = time.perf_counter()
@@ -59,9 +59,9 @@ frame_count = 0
 last_capture_idx = -1
 captures = []
 
-print(f"[playtest] running for ~20s, capturing at {CAPTURE_TIMES}")
+print(f"[playtest] running for ~35s, capturing at {CAPTURE_TIMES}")
 
-while sim_time < 20.0:
+while sim_time < 35.0:
     # Update the game
     game.scenes.update(dt)
     sim_time += dt
