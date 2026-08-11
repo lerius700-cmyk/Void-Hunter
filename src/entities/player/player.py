@@ -28,6 +28,10 @@ from src.core.settings import (
     PLAYER_BOMBS,
     PLAYER_BOMBS_MAX,
     PLAYER_DASH_DURATION_S,
+    PLAYER_DASH_HEAT_DECAY_PER_S,
+    PLAYER_DASH_HEAT_MAX,
+    PLAYER_DASH_HEAT_PER_S,
+    PLAYER_DASH_HEAT_RESUME_THRESHOLD,
     PLAYER_DASH_IFRAMES,
     PLAYER_DASH_SPEED,
     PLAYER_DEATH_DURATION_S,
@@ -95,6 +99,14 @@ class Player:
     dash_dir_x: float = 0.0
     dash_dir_y: float = -1.0  # default upward
     dash_iframes_left: int = 0
+    # BLOQUE 58.8: dash overheat (Star Fox style). Heat builds while
+    # dashing (PLAYER_DASH_HEAT_PER_S), decays when not dashing
+    # (PLAYER_DASH_HEAT_DECAY_PER_S). When heat >= MAX, dash auto-cancels
+    # and can't be triggered again until heat drops below RESUME_THRESHOLD.
+    dash_heat: float = 0.0
+    # BLOQUE 58.8: dash_held — True while shift is held down. Allows
+    # prolonged dash: hold shift = continuous dash (heat-permitting).
+    dash_held: bool = False
     # Hit
     invuln_frames: int = 0
     # Lifecycle
@@ -271,6 +283,20 @@ class Player:
             self.invuln_frames = max(0, self.invuln_frames - 1)
         if self.dash_iframes_left > 0:
             self.dash_iframes_left = max(0, self.dash_iframes_left - 1)
+        # BLOQUE 58.8: dash overheat — heat builds while dashing, decays
+        # when not. Caps at MAX (overheat triggers auto-cancel) and
+        # bottoms out at 0. While in DASH, also exit if heat hits MAX.
+        if self.state == PlayerState.DASH:
+            self.dash_heat = min(PLAYER_DASH_HEAT_MAX,
+                                 self.dash_heat + PLAYER_DASH_HEAT_PER_S * dt)
+            # Overheat: auto-cancel the dash
+            if self.dash_heat >= PLAYER_DASH_HEAT_MAX:
+                self._enter_idle()
+        else:
+            # Cool down when not dashing
+            if self.dash_heat > 0.0:
+                self.dash_heat = max(0.0,
+                                     self.dash_heat - PLAYER_DASH_HEAT_DECAY_PER_S * dt)
         # Fire cooldown
         if self.fire_cd > 0.0:
             self.fire_cd = max(0.0, self.fire_cd - dt)
@@ -343,8 +369,12 @@ class Player:
     # State updates
     # -----------------------------------------------------------------------
     def _update_idle(self, dt: float) -> None:
-        # Dash takes priority over move (dash from idle)
-        if self.input_dash:
+        # BLOQUE 58.8: dash takes priority over move. Triggered by either
+        # one-shot input_dash (KEYDOWN) or sustained dash_held (shift held).
+        if self.input_dash and self._can_dash():
+            self._enter_dash()
+            return
+        if self.dash_held and self._can_dash() and self.dash_iframes_left == 0:
             self._enter_dash()
             return
         # BLOQUE 38: RMB rapid fire (independent of LMB charge)
@@ -380,8 +410,11 @@ class Player:
         self._clamp_position()
 
     def _update_move(self, dt: float) -> None:
-        # Dash takes priority
-        if self.input_dash:
+        # BLOQUE 58.8: dash takes priority
+        if self.input_dash and self._can_dash():
+            self._enter_dash()
+            return
+        if self.dash_held and self._can_dash() and self.dash_iframes_left == 0:
             self._enter_dash()
             return
         # Bomb
@@ -472,7 +505,10 @@ class Player:
             self._enter_idle()
             return
         # Can dash out of shoot
-        if self.input_dash:
+        if self.input_dash and self._can_dash():
+            self._enter_dash()
+            return
+        if self.dash_held and self._can_dash() and self.dash_iframes_left == 0:
             self._enter_dash()
             return
 
@@ -505,7 +541,10 @@ class Player:
         self.x += self.vx * dt
         self._clamp_position()
         # Can dash
-        if self.input_dash:
+        if self.input_dash and self._can_dash():
+            self._enter_dash()
+            return
+        if self.dash_held and self._can_dash() and self.dash_iframes_left == 0:
             self._enter_dash()
             return
 
@@ -518,7 +557,17 @@ class Player:
         self.afterimage.append((self.x, self.y, 0.0))
         if len(self.afterimage) > 8:
             self.afterimage.pop(0)
-        if self.state_timer >= PLAYER_DASH_DURATION_S:
+        # BLOQUE 58.8: dash ends when:
+        #   1. The fixed duration expires (existing behavior), OR
+        #   2. The player released shift (dash_held=False) and the
+        #      minimum dash duration has elapsed, OR
+        #   3. Heat hit MAX (overheat) — handled in the main update().
+        # Minimum dash duration prevents tap-to-dash from ending instantly.
+        min_dash_s = 0.08
+        duration_done = self.state_timer >= PLAYER_DASH_DURATION_S
+        released_too_soon = (not self.dash_held
+                            and self.state_timer >= min_dash_s)
+        if duration_done or released_too_soon:
             self._enter_idle()
 
     def _update_hit(self, dt: float) -> None:
@@ -577,9 +626,16 @@ class Player:
         self.charge_time = CHARGE_L1_S  # already exceeded L1 by check
         self._charge_fired = False
 
+    def _can_dash(self) -> bool:
+        """BLOQUE 58.8: dash is available if heat is below the resume
+        threshold (so the player has to wait for cooldown before
+        dashing again after an overheat)."""
+        return self.dash_heat < PLAYER_DASH_HEAT_RESUME_THRESHOLD
+
     def _enter_dash(self) -> None:
         """Enter DASH state with 8-way direction based on input.
 
+        BLOQUE 58.8: gated by _can_dash() (heat below resume threshold).
         Direction priority:
           1. Active directional input (WASD or arrows when K is pressed)
           2. Last horizontal velocity (continues motion)
@@ -595,6 +651,11 @@ class Player:
           K + D + W        -> UP-RIGHT
           K + D + S        -> DOWN-RIGHT
         """
+        # BLOQUE 58.8: overheat gate — can't start a new dash if heat
+        # is still too high (must cool down below RESUME_THRESHOLD).
+        if not self._can_dash():
+            self.input_dash = False
+            return
         self.state = PlayerState.DASH
         self.state_timer = 0.0
         self.dash_iframes_left = PLAYER_DASH_IFRAMES

@@ -83,10 +83,56 @@ class HUD:
         # Multiplier
         self._draw_multiplier(target, scoring,
                                 x=HUD_MARGIN, y=HUD_MARGIN + 74, t=t)
+        # BLOQUE 58.8: dash heat bar (Star Fox style)
+        self._draw_dash_heat(target, player,
+                              x=HUD_MARGIN, y=HUD_MARGIN + 90, t=t)
         # BLOQUE 26: kill counter
         self._draw_kill_count(target, scoring, t=t)
         # Score (top-right)
         self._draw_score(target, scoring, x=INTERNAL_W - HUD_MARGIN, y=HUD_MARGIN, t=t)
+
+    def _draw_dash_heat(self, target: pygame.Surface, player: Player,
+                         x: int, y: int, t: float = 0.0) -> None:
+        """BLOQUE 58.8: Star Fox style dash heat bar.
+
+        Bar fills cyan -> yellow -> red as heat increases. When over the
+        RESUME_THRESHOLD (25%), the bar pulses red and the dash is
+        blocked. Below threshold, dash is available.
+        """
+        from src.core.settings import (
+            PLAYER_DASH_HEAT_MAX, PLAYER_DASH_HEAT_RESUME_THRESHOLD,
+        )
+        w, h = 80, 6
+        ratio = max(0.0, min(1.0, player.dash_heat / PLAYER_DASH_HEAT_MAX))
+        # Color tier: cyan (cool) -> yellow (warm) -> red (overheat)
+        if ratio < 0.5:
+            color = (80, 220, 240)
+            outline = (140, 200, 220)
+        elif ratio < 0.85:
+            color = (255, 220, 80)
+            outline = (220, 200, 140)
+        else:
+            # Overheat zone — pulse red
+            pulse = 0.5 + 0.5 * math.sin(t * 12.0)
+            r = int(220 + 35 * pulse)
+            g = int(50 * (1.0 - pulse))
+            color = (r, g, 50)
+            outline = (220, 100, 80)
+        # Frame
+        pygame.draw.rect(target, outline, (x - 1, y - 1, w + 2, h + 2), 1)
+        # Empty background
+        pygame.draw.rect(target, (30, 20, 30), (x, y, w, h))
+        # Fill (proportional to heat)
+        fill = int(w * ratio)
+        if fill > 0:
+            pygame.draw.rect(target, color, (x, y, fill, h))
+        # Threshold marker (where dash becomes available again)
+        th_x = x + int(w * PLAYER_DASH_HEAT_RESUME_THRESHOLD / PLAYER_DASH_HEAT_MAX)
+        pygame.draw.line(target, (180, 180, 200), (th_x, y - 1), (th_x, y + h + 1), 1)
+        # Label
+        if self.font_small:
+            label = self.font_small.render("DASH", True, (200, 220, 240))
+            target.blit(label, (x + w + 4, y - 2))
 
     def _draw_hp_bar(self, target: pygame.Surface, player: Player, x: int, y: int, t: float = 0.0) -> None:
         # BLOQUE 53b: redesigned HP bar — Mega Man / Star Fox style.

@@ -69,6 +69,13 @@ PLAYER_FIRE_COOLDOWN_S: float = 0.10      # 12 shots/s at L1
 PLAYER_DASH_SPEED: float = 480.0          # px/s (3.7x walk)
 PLAYER_DASH_DURATION_S: float = 0.18
 PLAYER_DASH_IFRAMES: int = 22             # at base level
+# BLOQUE 58.8: dash overheat (Star Fox style). Heat builds while
+# dashing, decays when not. When heat >= MAX, dash auto-cancels and
+# can't be triggered again until heat drops below COOLDOWN threshold.
+PLAYER_DASH_HEAT_MAX: float = 100.0
+PLAYER_DASH_HEAT_PER_S: float = 280.0     # ~0.36s of continuous dashing to overheat
+PLAYER_DASH_HEAT_DECAY_PER_S: float = 55.0  # ~1.8s to cool from max to 0
+PLAYER_DASH_HEAT_RESUME_THRESHOLD: float = 25.0  # must drop below 25% to dash again
 PLAYER_INVULN_FRAMES: int = 60            # post-hit
 PLAYER_DEATH_DURATION_S: float = 1.20
 PLAYER_RESPAWN_INVULN_S: float = 1.0

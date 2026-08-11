@@ -473,23 +473,33 @@ class GameplayRuntime:
         # These are independent — you can RMB-spam while LMB charges.
         self._player.input_fire = self._mouse_held
         self._player.input_rapid_fire = self._mouse_r_held
-        for event in pygame.event.get(pygame.KEYDOWN):
-            if event.key == pygame.K_LSHIFT:
-                # BLOQUE 33: Shift left = dash (one-shot, consumed)
-                self._player.input_dash = True
-            elif event.key == pygame.K_l:
-                # BLOQUE 39: L still triggers bomb (back-compat), but B
-                # is the new primary key. Both routed to the same path.
-                self._player.input_bomb = True
-            elif event.key == pygame.K_b:
-                # BLOQUE 39: B is the new bomb key (homing missile).
-                self._player.input_bomb = True
-            elif event.key == pygame.K_j:
-                # Legacy: J also fires (for testing)
-                self._player.input_fire = True
-            elif event.key == pygame.K_ESCAPE:
-                from src.core.scene_manager import GameState
-                self._transition_to(GameState.PAUSE)
+        # BLOQUE 58.8: detect shift held (for prolonged dash). Process
+        # all events in a single pass so we don't miss KEYUP.
+        for event in pygame.event.get():
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_LSHIFT:
+                    # BLOQUE 33: Shift left = dash (one-shot, consumed)
+                    # BLOQUE 58.8: also mark dash_held so a held shift
+                    # can continue the dash (heat permitting).
+                    self._player.input_dash = True
+                    self._player.dash_held = True
+                elif event.key == pygame.K_l:
+                    # BLOQUE 39: L still triggers bomb (back-compat), but B
+                    # is the new primary key. Both routed to the same path.
+                    self._player.input_bomb = True
+                elif event.key == pygame.K_b:
+                    # BLOQUE 39: B is the new bomb key (homing missile).
+                    self._player.input_bomb = True
+                elif event.key == pygame.K_j:
+                    # Legacy: J also fires (for testing)
+                    self._player.input_fire = True
+                elif event.key == pygame.K_ESCAPE:
+                    from src.core.scene_manager import GameState
+                    self._transition_to(GameState.PAUSE)
+            elif event.type == pygame.KEYUP:
+                if event.key == pygame.K_LSHIFT:
+                    # BLOQUE 58.8: releasing shift ends the prolonged dash
+                    self._player.dash_held = False
 
     def _update_nose_angle(self) -> None:
         """BLOQUE 32: compute ship's nose angle from mouse position — 360°.
