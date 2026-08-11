@@ -55,12 +55,15 @@ class Game:
         # integer-coordinate drift at 4x and keeps all game logic in one
         # coordinate system.
         # BLOQUE 31: honor VOID_HUNTER_SCALE env var (set by --scale CLI flag)
+        # BLOQUE 58.35: accept scales 1..6 (was 1..3) for 4K monitors.
+        # BLOQUE 34: internal resolution is 320x480 (was 240x360).
         import os as _os
         _scale_env = _os.environ.get("VOID_HUNTER_SCALE", "")
-        if _scale_env.isdigit() and int(_scale_env) in (1, 2, 3):
+        if _scale_env.isdigit() and int(_scale_env) in (1, 2, 3, 4, 5, 6):
             _scale = int(_scale_env)
-            _ww = 240 * _scale
-            _wh = 360 * _scale
+            from src.core.settings import INTERNAL_W, INTERNAL_H
+            _ww = INTERNAL_W * _scale
+            _wh = INTERNAL_H * _scale
         else:
             _scale = 4
             _ww = WINDOW_W

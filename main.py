@@ -13,14 +13,15 @@ import time
 
 
 def _detect_screen_scale() -> int:
-    """BLOQUE 54: pick a window scale that fits the current monitor.
+    """BLOQUE 54 + 58.35: pick a window scale that fills the monitor height.
 
     Uses the Windows GDI to read primary monitor resolution without spinning
     up pygame (works inside the frozen .exe before any pygame init).
-    Returns 1, 2, 3, or 4. Falls back to 2 if detection fails.
+    Returns 1..6 (cap raised from 4 to support 4K monitors). Falls back to 3
+    if detection fails.
     """
     if sys.platform != "win32":
-        return 2  # safe default for non-Windows hosts
+        return 3  # safe default for non-Windows hosts
     try:
         import ctypes
         user32 = ctypes.windll.user32
@@ -33,13 +34,14 @@ def _detect_screen_scale() -> int:
         finally:
             user32.ReleaseDC(0, hdc)
         # Game internal is 320x480 (BLOQUE 34). Pick the largest scale that
-        # fits the screen with a 40 px safety margin on each axis.
-        scale_h = max(1, (h - 80) // 480)
-        scale_w = max(1, (w - 80) // 320)
-        scale = min(scale_h, scale_w, 4)
-        return int(max(1, scale))
+        # fits the height (no margin — the user wants the window to reach
+        # the top and bottom of the monitor). Width overflow is fine; the
+        # window is portrait, ultrawide monitors have plenty of horizontal
+        # space.
+        scale_h = max(1, h // 480)
+        return int(min(scale_h, 6))  # cap at 6 for 4K
     except Exception:
-        return 2
+        return 3
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -84,8 +86,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="BLOQUE 28: easy mode — 9 lives, 4 bombs, 2x score multiplier.",
     )
     parser.add_argument(
-        "--scale", type=int, default=4, choices=(1, 2, 3, 4),
-        help="Window scale multiplier (default 4 = 960x1440; use 2 for 480x720 on small screens).",
+        "--scale", type=int, default=4, choices=(1, 2, 3, 4, 5, 6),
+        help="Window scale multiplier. Default 4 = auto-detect (fills monitor "
+             "height). Use --scale 2 for 640x960, 3 for 960x1440, etc.",
     )
     parser.add_argument(
         "--roguelike", type=int, nargs="?", const=0, default=None, metavar="SEED",
