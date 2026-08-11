@@ -28,7 +28,7 @@ from src.utils.palette import PALETTE
 
 
 # ---------------------------------------------------------------------------
-# Particle kinds — 18 in total (12 seed + 6 net new)
+# Particle kinds — 19 in total (12 seed + 6 net new + 1 wake)
 # ---------------------------------------------------------------------------
 P_SPARK = 0         # 1x1 dot, fast, no gravity         (seed)
 P_SMOKE = 1         # 4x4 → 8x8 puff, expands, rises    (seed)
@@ -49,8 +49,13 @@ P_ELECTRIC_ARC = 14 # upgraded zigzag, 8x4 jitter (ion pierce, chain)
 P_SQUARE = 15       # 4x4 hard edge (UI accent, score popup)
 P_LINE = 16         # 1xN line (beam trail, laser residual)
 P_LIGHT_FLASH = 17  # 6x6 quick, 2 frames (damage feedback variant)
+# BLOQUE 58.8.3: bright orange "wake" with built-in delay. Used by
+# player PROPULSION to leave a 1-second-delayed afterglow that
+# "follows" the player. Particle is invisible (and unaffected by
+# physics) during its delay_s, then becomes visible and fades.
+P_WAKE = 18         # delayed orange afterglow (player propulsion)
 
-P_KIND_COUNT = 18
+P_KIND_COUNT = 19
 
 # Per-kind defaults
 @dataclass(frozen=True)
@@ -85,6 +90,14 @@ KIND_CONFIG: dict[int, _KindConfig] = {
     P_SQUARE:       _KindConfig((255, 255, 255), 4, 0.50, 0.0, 1.0, True,  0.0, False),
     P_LINE:         _KindConfig((255, 255, 255), 1, 0.30, 0.0, 1.0, True,  0.0, False),
     P_LIGHT_FLASH:  _KindConfig((255, 255, 255), 6, 0.07, 0.0, 1.0, True,  0.0, False),
+    # BLOQUE 58.8.3: P_WAKE — bright orange afterglow with built-in
+    # delay. The engine sets Particle.delay_s on emit, and the particle
+    # is invisible (and frozen) until delay_s reaches 0. Once the delay
+    # expires, the particle becomes visible and starts fading over its
+    # normal life. This lets the player PROPULSION emit one wake per
+    # frame, but the trail only "appears" 1 second later — creating the
+    # delayed-afterglow effect the user asked for.
+    P_WAKE:         _KindConfig((255, 160, 60),  10, 0.80, 0.0, 1.0, True,  0.0, False),
 }
 
 
@@ -118,16 +131,24 @@ class Particle:
     # Rotation in degrees (for debris tumble + general 360° effects)
     angle: float = 0.0
     angular_vel: float = 0.0
+    # BLOQUE 58.8.3: delay before the particle becomes visible. While
+    # delay_s > 0, the particle is INVISIBLE and FROZEN (no physics,
+    # no fade, no rendering). When delay_s reaches 0, the particle
+    # becomes visible and runs its normal life/fade cycle. Used by
+    # P_WAKE for the 1-second-delayed player propulsion afterglow.
+    delay_s: float = 0.0
     # Cached computed alpha (filled by engine.update)
     _alpha: int = 255
 
     def on_spawn(self) -> None:
         # reset transient state on acquisition
         self._alpha = 255
+        self.delay_s = 0.0
 
     def on_release(self) -> None:
         # free refs that could leak memory
         self.color = (255, 255, 255)
+        self.delay_s = 0.0
 
 
 class _TintCache:
@@ -246,8 +267,14 @@ class ParticleEngine:
         radius: float | None = None,
         angle: float = 0.0,
         angular_vel: float = 0.0,
+        delay_s: float = 0.0,
     ) -> Particle | None:
-        """Spawn a particle. Returns None if pool is exhausted."""
+        """Spawn a particle. Returns None if pool is exhausted.
+
+        BLOQUE 58.8.3: `delay_s` makes the particle invisible/frozen
+        for that many seconds before it becomes active. Used by P_WAKE
+        for the 1-second-delayed player propulsion afterglow.
+        """
         if kind not in KIND_CONFIG:
             return None
         p = self._pool.acquire()
@@ -270,7 +297,11 @@ class ParticleEngine:
         p.use_sprite = cfg.use_sprite
         p.angle = angle
         p.angular_vel = angular_vel
-        p._alpha = 255
+        p.delay_s = delay_s
+        # While the particle is in its delay window, alpha is 0 so it
+        # is not rendered. The engine tick handles decrementing delay_s
+        # and setting alpha to 255 when delay_s reaches 0.
+        p._alpha = 0 if delay_s > 0.0 else 255
         return p
 
     def update(self, dt: float) -> None:
@@ -283,6 +314,25 @@ class ParticleEngine:
         for p in self._pool:
             if not p.active:
                 continue
+            # BLOQUE 58.8.3: delay window — while delay_s > 0 the
+            # particle is INVISIBLE and FROZEN. We still tick the delay
+            # down (so the particle eventually becomes visible) and
+            # skip ALL physics + life-decay so it doesn't move or fade.
+            if p.delay_s > 0.0:
+                p.delay_s -= dt
+                if p.delay_s > 0.0:
+                    continue  # still in delay window — skip everything
+                # Delay just expired this frame. Remaining dt is applied
+                # to the normal life cycle below.
+                p._alpha = 255
+                overflow = -p.delay_s  # positive: how much dt spilled over
+                p.delay_s = 0.0
+                if overflow > 0.0:
+                    p.life -= overflow
+                    if p.life <= 0.0:
+                        self._pool.release(p)
+                        continue
+                # No continue — fall through to physics for this frame.
             # Life decay
             p.life -= dt
             if p.life <= 0.0:

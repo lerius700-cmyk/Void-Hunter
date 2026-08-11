@@ -405,7 +405,7 @@ def test_dash_8way_diagonal_down_right():
 # BLOQUE 33: Shift = dash, K freed, Boost removed
 # -----------------------------------------------------------------------
 def test_dash_triggers_on_shift_left_down():
-    """BLOQUE 58.8.1/58.8.2: shift = DASH (click, < 0.6s) OR PROPULSION (hold).
+    """BLOQUE 58.8.1/58.8.2/58.8.3: shift = DASH (click, < 0.28s) OR PROPULSION (hold).
 
     On KEYDOWN shift: dash_held is set to True, but input_dash is NOT
     set (it would be a "hold" not a "click"). input_dash is only set
@@ -466,14 +466,15 @@ def test_dash_triggers_on_shift_click():
 
 
 def test_dash_triggers_on_tap_within_threshold():
-    """BLOQUE 58.8.2: 0.6s window. A 0.3s tap must trigger DASH (not
+    """BLOQUE 58.8.2/58.8.3: 0.28s window. A 0.2s tap must trigger DASH (not
     PROPULSION). Regression test for the user complaint that a normal
     tap on shift was being misread as a hold and triggering PROPULSION.
     """
     import pygame
     from src.core.settings import PLAYER_CLICK_VS_HOLD_THRESHOLD_S
-    assert PLAYER_CLICK_VS_HOLD_THRESHOLD_S >= 0.4, (
-        "BLOQUE 58.8.2: threshold must be wide enough for human reaction time"
+    assert 0.2 <= PLAYER_CLICK_VS_HOLD_THRESHOLD_S <= 0.4, (
+        "BLOQUE 58.8.3: threshold must be wide enough for human reaction time "
+        "but short enough to feel responsive (0.2-0.4s sweet spot)"
     )
     original_get = pygame.event.get
     call_count = {"n": 0}

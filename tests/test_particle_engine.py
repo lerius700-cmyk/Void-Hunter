@@ -59,13 +59,15 @@ def display() -> pygame.Surface:
 # ---------------------------------------------------------------------------
 # 1. Constants & invariants
 # ---------------------------------------------------------------------------
-def test_particle_kind_count_is_18() -> None:
-    """GDD §8 reconciliation: exactly 18 kinds."""
-    assert P_KIND_COUNT == 18
+def test_particle_kind_count_is_19() -> None:
+    """BLOQUE 58.8.3: 19 kinds (was 18) — added P_WAKE for the
+    1-second-delayed player propulsion afterglow.
+    """
+    assert P_KIND_COUNT == 19
 
 
 def test_all_kinds_have_config() -> None:
-    """Every kind 0..17 has a KIND_CONFIG entry."""
+    """Every kind 0..18 has a KIND_CONFIG entry."""
     for k in range(P_KIND_COUNT):
         assert k in KIND_CONFIG, f"kind {k} missing from KIND_CONFIG"
 
@@ -340,11 +342,11 @@ def test_draw_with_no_active_particles_is_noop(engine: ParticleEngine, display: 
 
 
 # ---------------------------------------------------------------------------
-# 11. Per-kind smoke: each of the 18 kinds emits + updates + draws without error
+# 11. Per-kind smoke: each of the 19 kinds emits + updates + draws without error
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("kind", list(range(P_KIND_COUNT)))
 def test_all_kinds_emit_update_draw(kind: int, engine: ParticleEngine, display: pygame.Surface) -> None:
-    """All 18 kinds go through the full pipeline without exception."""
+    """All 19 kinds go through the full pipeline without exception."""
     p = engine.emit(kind, 120.0, 180.0)
     assert p is not None, f"kind {kind} failed to emit"
     engine.update(1 / 60)

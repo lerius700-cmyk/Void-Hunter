@@ -479,7 +479,7 @@ class GameplayRuntime:
         # These are independent — you can RMB-spam while LMB charges.
         self._player.input_fire = self._mouse_held
         self._player.input_rapid_fire = self._mouse_r_held
-        # BLOQUE 58.8.1/58.8.2: shift = DASH (click, < 0.6s) or PROPULSION (hold).
+        # BLOQUE 58.8.1/58.8.2/58.8.3: shift = DASH (click, < 0.28s) or PROPULSION (hold).
         # Process all events in a single pass so we don't miss KEYUP.
         for event in pygame.event.get():
             if event.type == pygame.KEYDOWN:
@@ -2515,44 +2515,84 @@ class GameplayRuntime:
         in PROPULSION state (shift held, x2 speed). The trail is a
         dense stream of bright white/yellow sparks + a few cyan/blue
         core glows to give it the "rocket thruster" look.
+
+        BLOQUE 58.8.3: also emits a delayed orange WAKE particle every
+        PLAYER_PROPULSION_WAKE_INTERVAL_S seconds. The wake stays
+        invisible for PLAYER_PROPULSION_WAKE_DELAY_S (default 1.0s),
+        then becomes a bright orange glow at the player's POSITION 1
+        SECOND AGO. Since new wake particles are emitted every frame
+        at the player's CURRENT position, the visible trail lags the
+        ship by ~1 second — a delayed afterglow that "follows" the
+        player.
         """
-        from src.systems.particle_engine import P_GLOW, P_SPARK
-        from src.core.settings import PLAYER_PROPULSION_TRAIL_INTERVAL_S
-        # Throttle: respect the per-frame interval (~40 Hz)
+        from src.systems.particle_engine import P_GLOW, P_SPARK, P_WAKE
+        from src.core.settings import (
+            PLAYER_PROPULSION_TRAIL_INTERVAL_S,
+            PLAYER_PROPULSION_WAKE_DELAY_S,
+            PLAYER_PROPULSION_WAKE_INTERVAL_S,
+            PLAYER_PROPULSION_WAKE_LIFE_S,
+        )
+        # Throttle: respect the per-frame interval (~40 Hz) for the
+        # main propulsion trail (yellow sparks + cyan glows).
         if self._player.propulsion_trail_timer < PLAYER_PROPULSION_TRAIL_INTERVAL_S:
-            return
-        self._player.propulsion_trail_timer = 0.0
-        px, py = self._player.x, self._player.y
-        # Engine positions (back of the ship, where the engines are drawn)
-        for sign in (-1, 1):
-            ex = px + sign * 2
-            ey = py + 4  # slightly behind the ship
-            # Bright yellow/white spark (the "thrust glow")
-            self._particles.emit(
-                P_SPARK, ex, ey,
-                vx=(random.random() - 0.5) * 8.0,
-                vy=20.0 + (random.random() - 0.5) * 6.0,  # trailing BEHIND
-                life=0.22, radius=1.2,
-                color=(255, 240, 180),
-            )
-            # Cyan/white core (the "hot thruster")
-            if random.random() < 0.5:
-                self._particles.emit(
-                    P_GLOW, ex, ey,
-                    vx=(random.random() - 0.5) * 4.0,
-                    vy=15.0 + (random.random() - 0.5) * 4.0,
-                    life=0.18, radius=2.5,
-                    color=(180, 230, 255),
-                )
-            # Occasional orange ember
-            if random.random() < 0.3:
+            # Even if the main trail is throttled, still allow the wake
+            # to be emitted (it has its own timer).
+            pass
+        else:
+            self._player.propulsion_trail_timer = 0.0
+            px, py = self._player.x, self._player.y
+            # Engine positions (back of the ship, where the engines are drawn)
+            for sign in (-1, 1):
+                ex = px + sign * 2
+                ey = py + 4  # slightly behind the ship
+                # Bright yellow/white spark (the "thrust glow")
                 self._particles.emit(
                     P_SPARK, ex, ey,
-                    vx=(random.random() - 0.5) * 6.0,
-                    vy=22.0 + (random.random() - 0.5) * 4.0,
-                    life=0.18, radius=1.0,
-                    color=(255, 180, 80),
+                    vx=(random.random() - 0.5) * 8.0,
+                    vy=20.0 + (random.random() - 0.5) * 6.0,  # trailing BEHIND
+                    life=0.22, radius=1.2,
+                    color=(255, 240, 180),
                 )
+                # Cyan/white core (the "hot thruster")
+                if random.random() < 0.5:
+                    self._particles.emit(
+                        P_GLOW, ex, ey,
+                        vx=(random.random() - 0.5) * 4.0,
+                        vy=15.0 + (random.random() - 0.5) * 4.0,
+                        life=0.18, radius=2.5,
+                        color=(180, 230, 255),
+                    )
+                # Occasional orange ember
+                if random.random() < 0.3:
+                    self._particles.emit(
+                        P_SPARK, ex, ey,
+                        vx=(random.random() - 0.5) * 6.0,
+                        vy=22.0 + (random.random() - 0.5) * 4.0,
+                        life=0.18, radius=1.0,
+                        color=(255, 180, 80),
+                    )
+        # BLOQUE 58.8.3: spawn the delayed orange wake at the player's
+        # CURRENT position. Throttled to ~25 Hz so the trail isn't
+        # too dense. The wake will be invisible for 1 second, then
+        # appear at the position where it was spawned (which is where
+        # the player was 1 second ago) and fade out over its life.
+        if self._player.propulsion_wake_timer < PLAYER_PROPULSION_WAKE_INTERVAL_S:
+            return
+        self._player.propulsion_wake_timer = 0.0
+        # Spawn at the ship's center with a small offset for variety.
+        # No velocity — wake particles are stationary (the trail
+        # "follows" the ship only because new wakes are continuously
+        # added at the player's NEW positions).
+        self._particles.emit(
+            P_WAKE,
+            self._player.x + (random.random() - 0.5) * 4.0,
+            self._player.y + (random.random() - 0.5) * 4.0,
+            vx=0.0, vy=0.0,
+            life=PLAYER_PROPULSION_WAKE_LIFE_S,
+            radius=10.0,
+            color=(255, 160, 60),  # bright orange — distinct from yellow trail
+            delay_s=PLAYER_PROPULSION_WAKE_DELAY_S,
+        )
 
     def _add_shockwave(self, x: float, y: float, max_radius: float = 60.0) -> None:
         """Add an expanding ring shockwave (bomb/charged-shot visual)."""

@@ -89,9 +89,22 @@ PLAYER_PROPULSION_HEAT_PER_S: float = 30.0
 # BLOQUE 58.8.2: widened from 0.15s to 0.6s — 0.15s was too tight for
 # human reaction time, so a normal tap on shift was being misread as a
 # hold and triggered PROPULSION instead of the one-shot DASH.
-PLAYER_CLICK_VS_HOLD_THRESHOLD_S: float = 0.6
+# BLOQUE 58.8.3: tightened from 0.6s to 0.28s — 0.6s introduced too much
+# delay between the player committing to propulsion and the actual start.
+# 0.28s is the sweet spot: still wide enough for human reaction time,
+# short enough to feel responsive.
+PLAYER_CLICK_VS_HOLD_THRESHOLD_S: float = 0.28
 # Trail particle spawn rate during PROPULSION (one particle per N seconds)
 PLAYER_PROPULSION_TRAIL_INTERVAL_S: float = 0.025  # ~40 Hz
+# BLOQUE 58.8.3: delayed wake/destello spawned during PROPULSION. Each
+# wake particle waits `delay_s` seconds before becoming visible, then
+# fades over `life_s` seconds. Together they form a 1-second-delayed
+# bright orange afterglow that "follows" the player (the wake particles
+# are stationary, but new ones are continuously emitted at the player's
+# CURRENT position, so the trail visually lags the ship by 1s).
+PLAYER_PROPULSION_WAKE_DELAY_S: float = 1.0
+PLAYER_PROPULSION_WAKE_LIFE_S: float = 0.8
+PLAYER_PROPULSION_WAKE_INTERVAL_S: float = 0.04  # ~25 Hz (sparser than main trail)
 PLAYER_INVULN_FRAMES: int = 60            # post-hit
 PLAYER_DEATH_DURATION_S: float = 1.20
 PLAYER_RESPAWN_INVULN_S: float = 1.0

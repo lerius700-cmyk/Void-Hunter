@@ -112,13 +112,20 @@ class Player:
     # BLOQUE 58.8: dash_held — True while shift is held down. Allows
     # prolonged dash: hold shift = continuous dash (heat-permitting).
     dash_held: bool = False
-    # BLOQUE 58.8.1/58.8.2: time shift has been held down. Used to distinguish
-    # a quick click (DASH, < 0.6s) from a sustained hold (PROPULSION).
+    # BLOQUE 58.8.1/58.8.2/58.8.3: time shift has been held down. Used to
+    # distinguish a quick click (DASH, < 0.28s) from a sustained hold
+    # (PROPULSION).
     # BLOQUE 58.8.2: threshold widened from 0.15s -> 0.6s so a normal tap
     # reliably triggers DASH instead of being misread as a hold.
+    # BLOQUE 58.8.3: tightened from 0.6s -> 0.28s — 0.6s introduced too
+    # much delay before propulsion started; 0.28s is the sweet spot.
     dash_held_time: float = 0.0
     # BLOQUE 58.8.1: trail spawn timer (PROPULSION light trail).
     propulsion_trail_timer: float = 0.0
+    # BLOQUE 58.8.3: wake spawn timer (delayed orange afterglow).
+    # Separate from propulsion_trail_timer because the wake is throttled
+    # to a different rate (~25 Hz vs ~40 Hz for the main trail).
+    propulsion_wake_timer: float = 0.0
     # Hit
     invuln_frames: int = 0
     # Lifecycle
@@ -629,6 +636,9 @@ class Player:
         # gameplay_runtime (which has access to the particle engine).
         # We just expose the timer so the runtime knows when to spawn.
         self.propulsion_trail_timer += dt
+        # BLOQUE 58.8.3: wake spawn timer (separate throttle for the
+        # delayed orange afterglow).
+        self.propulsion_wake_timer += dt
         # Can fire during propulsion (brief SHOOT state, then back here)
         if self.input_fire and self.fire_cd <= 0.0:
             self.wants_to_shoot = True
