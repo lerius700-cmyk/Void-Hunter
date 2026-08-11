@@ -405,7 +405,7 @@ def test_dash_8way_diagonal_down_right():
 # BLOQUE 33: Shift = dash, K freed, Boost removed
 # -----------------------------------------------------------------------
 def test_dash_triggers_on_shift_left_down():
-    """BLOQUE 58.8.1: shift = DASH (click, < 0.15s) OR PROPULSION (hold).
+    """BLOQUE 58.8.1/58.8.2: shift = DASH (click, < 0.6s) OR PROPULSION (hold).
 
     On KEYDOWN shift: dash_held is set to True, but input_dash is NOT
     set (it would be a "hold" not a "click"). input_dash is only set
@@ -461,6 +461,74 @@ def test_dash_triggers_on_shift_click():
         rt._read_input()
         assert rt._player.input_dash is True
         assert rt._player.dash_held is False
+    finally:
+        pygame.event.get = original_get
+
+
+def test_dash_triggers_on_tap_within_threshold():
+    """BLOQUE 58.8.2: 0.6s window. A 0.3s tap must trigger DASH (not
+    PROPULSION). Regression test for the user complaint that a normal
+    tap on shift was being misread as a hold and triggering PROPULSION.
+    """
+    import pygame
+    from src.core.settings import PLAYER_CLICK_VS_HOLD_THRESHOLD_S
+    assert PLAYER_CLICK_VS_HOLD_THRESHOLD_S >= 0.4, (
+        "BLOQUE 58.8.2: threshold must be wide enough for human reaction time"
+    )
+    original_get = pygame.event.get
+    call_count = {"n": 0}
+
+    def fake_get(event_type=None):
+        if event_type is None or event_type in (pygame.KEYDOWN, pygame.KEYUP):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return [pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_LSHIFT})]
+            return [pygame.event.Event(pygame.KEYUP, {"key": pygame.K_LSHIFT})]
+        return []
+    pygame.event.get = fake_get
+    try:
+        rt = _make_runtime()
+        # Simulate a 0.3s tap (well within the 0.6s threshold)
+        rt._player.dash_held_time = 0.3
+        rt._read_input()  # KEYDOWN
+        # Hold the dash for 0.3s of game time
+        for _ in range(int(0.3 * 120)):
+            rt.update(1.0 / 120)
+        rt._read_input()  # KEYUP — should trigger DASH since 0.3 < 0.6
+        assert rt._player.input_dash is True, (
+            f"A {0.3}s tap must trigger DASH (input_dash=True), "
+            f"but got input_dash={rt._player.input_dash}"
+        )
+        assert rt._player.dash_held is False
+    finally:
+        pygame.event.get = original_get
+
+
+def test_hold_past_threshold_triggers_propulsion():
+    """BLOQUE 58.8.2: holding shift for >= 0.6s should trigger PROPULSION,
+    NOT DASH.
+    """
+    import pygame
+    from src.core.settings import PLAYER_CLICK_VS_HOLD_THRESHOLD_S
+    from src.entities.player.player import PlayerState
+    original_get = pygame.event.get
+
+    def fake_get(event_type=None):
+        if event_type is None or event_type in (pygame.KEYDOWN, pygame.KEYUP):
+            return [pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_LSHIFT})]
+        return []
+    pygame.event.get = fake_get
+    try:
+        rt = _make_runtime()
+        rt._read_input()
+        # Hold past threshold (0.6s + small buffer) — many update ticks
+        for _ in range(int((PLAYER_CLICK_VS_HOLD_THRESHOLD_S + 0.2) * 120)):
+            rt.update(1.0 / 120)
+        # Should be in PROPULSION state, NOT DASH
+        assert rt._player.state == PlayerState.PROPULSION, (
+            f"Holding shift for >= {PLAYER_CLICK_VS_HOLD_THRESHOLD_S}s must "
+            f"enter PROPULSION, but state={rt._player.state}"
+        )
     finally:
         pygame.event.get = original_get
 

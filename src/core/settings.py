@@ -86,7 +86,10 @@ PLAYER_PROPULSION_SPEED_MULT: float = 2.0  # x2 speed during propulsion
 PLAYER_PROPULSION_HEAT_PER_S: float = 30.0
 # Click vs hold threshold: shift pressed for less than this = DASH
 # (one-shot), shift held for >= this = PROPULSION (continuous).
-PLAYER_CLICK_VS_HOLD_THRESHOLD_S: float = 0.15
+# BLOQUE 58.8.2: widened from 0.15s to 0.6s — 0.15s was too tight for
+# human reaction time, so a normal tap on shift was being misread as a
+# hold and triggered PROPULSION instead of the one-shot DASH.
+PLAYER_CLICK_VS_HOLD_THRESHOLD_S: float = 0.6
 # Trail particle spawn rate during PROPULSION (one particle per N seconds)
 PLAYER_PROPULSION_TRAIL_INTERVAL_S: float = 0.025  # ~40 Hz
 PLAYER_INVULN_FRAMES: int = 60            # post-hit

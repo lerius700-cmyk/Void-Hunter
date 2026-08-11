@@ -473,7 +473,7 @@ class GameplayRuntime:
         # These are independent — you can RMB-spam while LMB charges.
         self._player.input_fire = self._mouse_held
         self._player.input_rapid_fire = self._mouse_r_held
-        # BLOQUE 58.8.1: shift = DASH (click, < 0.15s) or PROPULSION (hold).
+        # BLOQUE 58.8.1/58.8.2: shift = DASH (click, < 0.6s) or PROPULSION (hold).
         # Process all events in a single pass so we don't miss KEYUP.
         for event in pygame.event.get():
             if event.type == pygame.KEYDOWN:

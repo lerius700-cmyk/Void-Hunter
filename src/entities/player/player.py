@@ -112,8 +112,10 @@ class Player:
     # BLOQUE 58.8: dash_held — True while shift is held down. Allows
     # prolonged dash: hold shift = continuous dash (heat-permitting).
     dash_held: bool = False
-    # BLOQUE 58.8.1: time shift has been held down. Used to distinguish
-    # a quick click (DASH, < 0.15s) from a sustained hold (PROPULSION).
+    # BLOQUE 58.8.1/58.8.2: time shift has been held down. Used to distinguish
+    # a quick click (DASH, < 0.6s) from a sustained hold (PROPULSION).
+    # BLOQUE 58.8.2: threshold widened from 0.15s -> 0.6s so a normal tap
+    # reliably triggers DASH instead of being misread as a hold.
     dash_held_time: float = 0.0
     # BLOQUE 58.8.1: trail spawn timer (PROPULSION light trail).
     propulsion_trail_timer: float = 0.0
