@@ -13,34 +13,45 @@ import time
 
 
 def _detect_screen_scale() -> float:
-    """BLOQUE 54 + 58.35 + 58.36f: pick a window scale that fills the monitor height.
+    """BLOQUE 54 + 58.35 + 58.36g: pick a window scale that fills the
+    monitor WORK AREA height (excludes the Windows taskbar).
 
-    Uses the Windows GDI to read primary monitor resolution without spinning
-    up pygame (works inside the frozen .exe before any pygame init).
-    Returns a float in [1.0, 6.0] (was int 1..6 in BLOQUE 58.35; now
-    fractional so 1080-tall monitors get exactly 2.25x and reach the edges
-    with no black bars). Falls back to 3.0 if detection fails.
+    Uses the Windows API to read primary monitor work area (not full
+    screen height) so the game window reaches top + bottom of the USABLE
+    area without overlapping the taskbar. Returns a float in [1.0, 6.0]
+    (was int 1..6 in BLOQUE 58.35; now fractional so 1032-tall work
+    areas get 1032/480 = 2.15x and reach the edges with no black bars).
+    Falls back to 3.0 if detection fails.
     """
     if sys.platform != "win32":
         return 3.0  # safe default for non-Windows hosts
     try:
         import ctypes
+        from ctypes import wintypes
         user32 = ctypes.windll.user32
-        gdi32 = ctypes.windll.gdi32
         user32.SetProcessDPIAware()
-        hdc = user32.GetDC(0)
-        try:
-            w = int(gdi32.GetDeviceCaps(hdc, 8))    # HORZRES
-            h = int(gdi32.GetDeviceCaps(hdc, 10))   # VERTRES
-        finally:
-            user32.ReleaseDC(0, hdc)
+        # Get work area (excludes taskbar + docked toolbars).
+        # SPI_GETWORKAREA = 0x0030
+        rect = wintypes.RECT()
+        ok = user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0)
+        if ok and rect.bottom > rect.top:
+            work_h = rect.bottom - rect.top
+            work_w = rect.right - rect.left
+        else:
+            # Fallback: use full monitor
+            gdi32 = ctypes.windll.gdi32
+            hdc = user32.GetDC(0)
+            try:
+                work_w = int(gdi32.GetDeviceCaps(hdc, 8))   # HORZRES
+                work_h = int(gdi32.GetDeviceCaps(hdc, 10))  # VERTRES
+            finally:
+                user32.ReleaseDC(0, hdc)
         # Game internal is 320x480 (BLOQUE 34). Pick the EXACT float scale
-        # that fills the height (so the window reaches top + bottom of the
-        # monitor with no black bar). For 1080 tall: 1080/480 = 2.25x.
-        # Width overflow is fine; the window is portrait, ultrawide monitors
-        # (32:9) have plenty of horizontal space, and the side panels
-        # (BLOQUE 58.36f) fill them with a parallax starfield.
-        scale_h = max(1.0, h / 480.0)
+        # that fills the work-area height. For 1032-tall work area
+        # (1080 monitor minus 48 taskbar): 1032/480 = 2.15x. The window
+        # then lands EXACTLY between the top of the monitor and the top
+        # of the taskbar.
+        scale_h = max(1.0, work_h / 480.0)
         return float(min(scale_h, 6.0))  # cap at 6 for 4K
     except Exception:
         return 3.0
@@ -240,35 +251,43 @@ FPS_TARGET = 120  # used by _cmd_play
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    import os
 
     # BLOQUE 54: friendly defaults when running as a frozen .exe (PyInstaller).
     # Developers using `python main.py ...` still get full CLI control.
     _frozen_launch = getattr(sys, "frozen", False) and argv is None
     if _frozen_launch:
-        import os
         if not args.easy:
             args.easy = True
             os.environ["VOID_HUNTER_EASY"] = "1"
-        if args.scale == 4.0:  # default → auto-detect screen
-            auto_scale = _detect_screen_scale()
-            if auto_scale != args.scale:
-                args.scale = auto_scale
-                os.environ["VOID_HUNTER_SCALE"] = str(auto_scale)
         print("VOID HUNTER: launched as packaged .exe")
         print(f"  easy mode  = ON (9 lives, 4 bombs)")
-        print(f"  scale      = {args.scale} (auto-detected)")
 
-    if args.easy and not _frozen_launch:
+    if args.easy:
         # BLOQUE 28: set env var so Player.reset() reads it
-        import os
         os.environ["VOID_HUNTER_EASY"] = "1"
-        print("VOID HUNTER: --easy mode enabled (9 lives, 4 bombs)")
+        if not _frozen_launch:
+            print("VOID HUNTER: --easy mode enabled (9 lives, 4 bombs)")
 
-    if args.scale != 4.0 and not _frozen_launch:
-        # BLOQUE 31: override window scale (1x=320x480, 2x=640x960, 2.25=720x1080, 3x=960x1440)
-        import os
+    # BLOQUE 58.36g-taskbar: auto-detect window scale based on the
+    # monitor's work area (excludes taskbar). Runs for ALL launch modes
+    # when --scale is not explicitly passed. Previously the auto-detect
+    # only ran for frozen .exe, so `python main.py --easy` without
+    # --scale would use the default 4.0 scale and the window would be
+    # much bigger than the monitor.
+    _scale_was_explicit = "--scale" in sys.argv
+    if not _scale_was_explicit:
+        auto_scale = _detect_screen_scale()
+        if auto_scale != args.scale:
+            args.scale = auto_scale
         os.environ["VOID_HUNTER_SCALE"] = str(args.scale)
-        _iw, _ih = 320, 480  # internal game resolution
+        print(f"VOID HUNTER: auto-detected scale = {args.scale}")
+    elif not _frozen_launch:
+        # User passed --scale explicitly; honor it. Note: game.py will
+        # still cap the actual window size at the work area so it never
+        # overlaps the taskbar.
+        os.environ["VOID_HUNTER_SCALE"] = str(args.scale)
+        _iw, _ih = 320, 480
         _ww, _wh = int(_iw * args.scale), int(_ih * args.scale)
         print(f"VOID HUNTER: --scale {args.scale} (window = {_ww}x{_wh})")
 

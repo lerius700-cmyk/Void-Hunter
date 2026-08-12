@@ -40,6 +40,35 @@ class Game:
     accumulator runs at 120 FPS, render at native window refresh.
     """
 
+    @staticmethod
+    def _detect_work_area() -> tuple[int, int, int, int]:
+        """BLOQUE 58.36g-taskbar: return (x, y, w, h) of the primary
+        monitor's WORK AREA (screen area minus the taskbar and any
+        docked toolbars). Uses SPI_GETWORKAREA on Windows; falls back
+        to a hard-coded reasonable default on other platforms.
+
+        For an LG 4480x1080 ultrawide with a 48px bottom taskbar, this
+        returns (0, 0, 4480, 1032). Without this, the window would be
+        sized to the full 1080px height and the bottom edge would slip
+        behind the taskbar.
+        """
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                from ctypes import wintypes
+                user32 = ctypes.windll.user32
+                rect = wintypes.RECT()
+                ok = user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0)
+                if ok and rect.right > rect.left and rect.bottom > rect.top:
+                    return (rect.left, rect.top,
+                            rect.right - rect.left, rect.bottom - rect.top)
+            except Exception:
+                pass
+        # Fallback: hard-coded reasonable default. We avoid creating a
+        # pygame display here because that would change the SDL video
+        # driver state mid-init.
+        return (0, 0, 1920, 1080)
+
     def __init__(self, easy: bool = False) -> None:
         if not pygame.get_init():
             pygame.init()
@@ -48,20 +77,20 @@ class Game:
             pygame.mouse.set_visible(True)
         except pygame.error:
             pass
-        # Display surface: vertical rectangular window that fills the
-        # monitor height exactly. The window is centered on the monitor
-        # horizontally; the game aspect (320:480 = 2:3) means the window
-        # is portrait. The mouse coordinates match the game coordinates
-        # 1:1 (no offset), so the reticle works correctly.
-        # BLOQUE 31: honor VOID_HUNTER_SCALE env var (set by --scale CLI flag)
-        # BLOQUE 58.35: accept scales 1..6 for 4K monitors.
-        # BLOQUE 58.36g: accept FLOAT scale (e.g. 2.25) so the window
-        # fills the monitor height exactly (no black bar top/bottom).
-        # BLOQUE 34: internal resolution is 320x480 (was 240x360).
+        # BLOQUE 58.36g-taskbar: detect the Windows WORK AREA (screen area
+        # excluding the taskbar). For an LG 4480x1080 ultrawide with the
+        # taskbar at the bottom, the work area is typically 4480x1032.
+        # We size the window to fit the work-area height exactly and
+        # center it horizontally on the work area, so:
+        #   - top + bottom edges reach the LG monitor's USABLE edges
+        #   - the window never overlaps the taskbar
+        #   - mouse coords map to game coords 1:1 (reticle works)
+        _work_x, _work_y, _work_w, _work_h = self._detect_work_area()
+        # Get requested scale from env var (BLOQUE 31: --scale CLI flag).
+        # BLOQUE 58.35: int 1..6; BLOQUE 58.36g: float 1.0..6.0.
         import os as _os
         from src.core.settings import INTERNAL_W as _IW, INTERNAL_H as _IH
         _scale_env = _os.environ.get("VOID_HUNTER_SCALE", "")
-        # Parse float (was int 1..6 in BLOQUE 58.35; now float 1.0..6.0)
         _scale: float = 4.0
         try:
             _v = float(_scale_env)
@@ -69,40 +98,55 @@ class Game:
                 _scale = _v
         except (ValueError, TypeError):
             pass
+        # Cap scale at what fits the work area (with 2% safety margin so
+        # the window border doesn't clip). For LG 1032-tall work area:
+        # max scale = 1032/480 = 2.15; default --scale 3 (4.0) gets capped.
+        _fit_h = (_work_h * 0.98) / _IH
+        _fit_w = (_work_w * 0.98) / _IW
+        _scale = max(1.0, min(_scale, _fit_h, _fit_w))
         self._scale: float = _scale
-        # Window: vertical rectangle (portrait), filled to monitor height
-        # with the float scale. e.g. 1080 tall monitor -> 720x1080.
-        _ww: int = max(_IW, int(_IW * _scale))
-        _wh: int = max(_IH, int(_IH * _scale))
+        # Window: vertical rectangle (portrait), exact fit to work area.
+        _ww: int = int(_IW * _scale)
+        _wh: int = int(_IH * _scale)
+        # Center within the work area (NOT the full monitor — using work
+        # area means the window is centered between the left/right edges
+        # of the usable screen, not the full ultrawide).
+        _ox = _work_x + (_work_w - _ww) // 2
+        _oy = _work_y  # top of work area (above taskbar)
+        # Create the window at the exact requested size. We do NOT pass
+        # pygame.SCALED here because that flag tells SDL to scale the
+        # window to fit the desktop, which would change the actual window
+        # size from what we requested and break the mouse-to-game coord
+        # mapping (the reticle would land at the wrong position).
         try:
             self.screen: pygame.Surface = pygame.display.set_mode(
                 (_ww, _wh),
-                pygame.SCALED | pygame.RESIZABLE,
+                pygame.RESIZABLE,
             )
         except pygame.error:
             self.screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
             _ww, _wh = WINDOW_W, WINDOW_H
-        # BLOQUE 31: center the window on screen so it doesn't open off-screen
-        try:
-            _info = pygame.display.get_desktop_sizes() if hasattr(pygame.display, "get_desktop_sizes") else None
-            if _info:
-                _sw, _sh = _info[0]
-                _ox = max(0, (_sw - _ww) // 2)
-                _oy = max(0, (_sh - _wh) // 2)
-                _os.environ["SDL_VIDEO_WINDOW_POS"] = f"{_ox},{_oy}"
-                # Re-apply position by re-setting the window mode
-                try:
-                    self.screen = pygame.display.set_mode(
-                        (_ww, _wh),
-                        pygame.SCALED | pygame.RESIZABLE,
+        # Move + size the OS window to the work-area-centered position.
+        # SDL_VIDEO_WINDOW_POS is unreliable when set after init (the env
+        # var only takes effect for the NEXT window creation), so we use
+        # the Win32 SetWindowPos API directly via pygame's WM info.
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                _hwnd = pygame.display.get_wm_info().get("window")
+                if _hwnd:
+                    _SWP_NOZORDER = 0x0004
+                    _SWP_SHOWWINDOW = 0x0040
+                    ctypes.windll.user32.SetWindowPos(
+                        int(_hwnd), 0, int(_ox), int(_oy),
+                        int(_ww), int(_wh),
+                        _SWP_NOZORDER | _SWP_SHOWWINDOW,
                     )
-                except pygame.error:
-                    pass
-        except Exception:
-            pass
+            except Exception:
+                pass
         # Internal rendering surface: 320x480 (INTERNAL_W x INTERNAL_H).
-        # This is what every scene draws to. The display surface gets
-        # the internal surface scaled to fill it (uniformly).
+        # Every scene draws to this; the display surface gets the internal
+        # surface scaled to fill it (uniformly).
         self.internal: pygame.Surface = pygame.Surface((_IW, _IH))
         pygame.display.set_caption(WINDOW_TITLE)
         self.clock: pygame.time.Clock = pygame.time.Clock()
