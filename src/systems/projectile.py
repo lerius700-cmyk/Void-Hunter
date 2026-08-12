@@ -271,7 +271,16 @@ class ProjectilePool:
     def _make_bullet_sprite(
         self, kind: int, w: int, h: int, scale: float, color: tuple[int, int, int]
     ) -> pygame.Surface:
-        """Create a bullet sprite with optional glow halo (charged)."""
+        """BLOQUE 58.38: create a bullet sprite with kind-specific shape.
+
+        Each kind has a distinctive silhouette so the player can read what's
+        coming at them at a glance:
+          - BULLET_PLAYER         : gold diamond (pointed top + bottom)
+          - BULLET_PLAYER_CHARGED : bigger blue-white diamond with glow halo
+          - BULLET_PLAYER_BEAM    : vertical cyan plasma beam (cross-shape)
+          - BULLET_ENEMY          : small red orb with halo
+          - BULLET_BOSS           : 4-point purple star with halo
+        """
         # Compute scaled size (round up so glow halo doesn't truncate)
         sw = max(1, int(math.ceil(w * scale)))
         sh = max(1, int(h * scale))
@@ -282,37 +291,150 @@ class ProjectilePool:
             halo = 7
         elif kind == BULLET_PLAYER_CHARGED:
             halo = 6
+        elif kind == BULLET_BOSS:
+            halo = 4
         else:
             halo = 0
         canvas_w = sw + halo * 2
         canvas_h = sh + halo * 2
         surf = pygame.Surface((canvas_w, canvas_h), pygame.SRCALPHA)
-        # Halo (soft alpha falloff)
+        cx, cy = canvas_w // 2, canvas_h // 2
+        # ------------------------------------------------------------------
+        # Halo (soft alpha falloff) — same logic for all kinds
+        # ------------------------------------------------------------------
         if halo > 0:
             for r in range(halo, 0, -1):
-                # BLOQUE 36: beam halo alpha softened (60→42) and uses plasma cyan tint
                 a = int(42 * (r / halo)) if kind == BULLET_PLAYER_BEAM else int(40 * (r / halo))
                 pygame.draw.circle(
                     surf,
                     (color[0], color[1], color[2], a),
-                    (canvas_w // 2, canvas_h // 2),
+                    (cx, cy),
                     max(sw, sh) // 2 + r,
                 )
-        # Core
-        rect = pygame.Rect(0, 0, sw, sh)
-        rect.center = (canvas_w // 2, canvas_h // 2)
-        pygame.draw.rect(surf, color, rect)
-        # Bright core highlight
-        if kind in (BULLET_PLAYER, BULLET_PLAYER_CHARGED, BULLET_PLAYER_BEAM):
-            highlight = pygame.Rect(0, 0, max(1, sw // 2), max(1, sh // 3))
-            highlight.center = rect.center
-            # BLOQUE 36: beam core highlight now cyan-white, not pure white
-            hl_color = (220, 245, 255) if kind == BULLET_PLAYER_BEAM else (255, 255, 255)
-            pygame.draw.rect(surf, hl_color, highlight)
-        # BLOQUE 36: beam inner ring — softer alpha and cyan-white (was 200 / pure white)
-        if kind == BULLET_PLAYER_BEAM:
+        # ------------------------------------------------------------------
+        # Body: kind-specific shape
+        # ------------------------------------------------------------------
+        if kind == BULLET_PLAYER:
+            # Gold diamond (pointed top + bottom, wider middle)
+            half_w = max(1, sw // 2)
+            half_h = max(1, sh // 2)
+            diamond = [
+                (cx, cy - half_h),         # top point
+                (cx + half_w, cy),         # right point
+                (cx, cy + half_h),         # bottom point
+                (cx - half_w, cy),         # left point
+            ]
+            pygame.draw.polygon(surf, color, diamond)
+            # White core highlight (smaller diamond)
+            hl_half_w = max(1, half_w // 2)
+            hl_half_h = max(1, half_h // 2)
+            highlight = [
+                (cx, cy - hl_half_h),
+                (cx + hl_half_w, cy),
+                (cx, cy + hl_half_h),
+                (cx - hl_half_w, cy),
+            ]
+            pygame.draw.polygon(surf, (255, 255, 255), highlight)
+        elif kind == BULLET_PLAYER_CHARGED:
+            # Bigger blue-white diamond (sharp + piercing)
+            half_w = max(2, sw // 2)
+            half_h = max(2, sh // 2)
+            diamond = [
+                (cx, cy - half_h),
+                (cx + half_w, cy),
+                (cx, cy + half_h),
+                (cx - half_w, cy),
+            ]
+            # Darker outer ring (the "armor" of the charged shot)
+            outer = [
+                (cx, cy - half_h - 1),
+                (cx + half_w + 1, cy),
+                (cx, cy + half_h + 1),
+                (cx - half_w - 1, cy),
+            ]
+            pygame.draw.polygon(surf, (180, 210, 255), outer)
+            pygame.draw.polygon(surf, color, diamond)
+            # Bright white core
+            hl_half_w = max(1, half_w // 2)
+            hl_half_h = max(1, half_h // 2)
+            core = [
+                (cx, cy - hl_half_h),
+                (cx + hl_half_w, cy),
+                (cx, cy + hl_half_h),
+                (cx - hl_half_w, cy),
+            ]
+            pygame.draw.polygon(surf, (255, 255, 255), core)
+        elif kind == BULLET_PLAYER_BEAM:
+            # Vertical plasma beam: cross-shape (tall + thin) with cyan glow
+            beam_w = max(2, sw // 3)
+            beam_h = sh
+            # Outer cyan shell (wider)
+            shell_w = beam_w + 2
             pygame.draw.rect(
-                surf, (210, 240, 255, 150),
-                (canvas_w // 2 - sw // 4, canvas_h // 2 - sh // 4, sw // 2, sh // 2),
+                surf, (90, 180, 255),
+                (cx - shell_w // 2, cy - beam_h // 2, shell_w, beam_h),
             )
+            # Inner beam
+            pygame.draw.rect(
+                surf, color,
+                (cx - beam_w // 2, cy - beam_h // 2, beam_w, beam_h),
+            )
+            # White-hot center
+            core_w = max(1, beam_w // 2)
+            pygame.draw.rect(
+                surf, (255, 255, 255),
+                (cx - core_w // 2, cy - beam_h // 2, core_w, beam_h),
+            )
+            # Horizontal cross-guard (gives it a "+" silhouette)
+            guard_w = max(4, sw)
+            guard_h = max(1, beam_h // 4)
+            pygame.draw.rect(
+                surf, (140, 220, 255),
+                (cx - guard_w // 2, cy - guard_h // 2, guard_w, guard_h),
+            )
+        elif kind == BULLET_ENEMY:
+            # Small red orb (downward-pointing teardrop)
+            orb_r = max(1, min(sw, sh) // 2)
+            pygame.draw.circle(surf, color, (cx, cy), orb_r)
+            # Darker red core (the "hot center")
+            core_r = max(1, orb_r - 1)
+            pygame.draw.circle(surf, (180, 30, 30), (cx, cy), core_r)
+            # Bright pink-white center dot
+            pygame.draw.circle(surf, (255, 200, 200), (cx, cy), max(1, orb_r // 2))
+        elif kind == BULLET_BOSS:
+            # 4-point purple star (sharp + menacing)
+            star_outer = max(sw, sh) // 2
+            star_inner = max(1, star_outer // 2)
+            star = [
+                (cx, cy - star_outer),                              # top
+                (cx + star_inner, cy - star_inner),                 # top-right
+                (cx + star_outer, cy),                              # right
+                (cx + star_inner, cy + star_inner),                 # bottom-right
+                (cx, cy + star_outer),                              # bottom
+                (cx - star_inner, cy + star_inner),                 # bottom-left
+                (cx - star_outer, cy),                              # left
+                (cx - star_inner, cy - star_inner),                 # top-left
+            ]
+            pygame.draw.polygon(surf, (100, 50, 160), star)  # dark outer
+            # Inner bright purple
+            inner_outer = max(1, star_outer - 1)
+            inner_inner = max(1, star_inner - 1)
+            star2 = [
+                (cx, cy - inner_outer),
+                (cx + inner_inner, cy - inner_inner),
+                (cx + inner_outer, cy),
+                (cx + inner_inner, cy + inner_inner),
+                (cx, cy + inner_outer),
+                (cx - inner_inner, cy + inner_inner),
+                (cx - inner_outer, cy),
+                (cx - inner_inner, cy - inner_inner),
+            ]
+            pygame.draw.polygon(surf, color, star2)
+            # White hot center
+            pygame.draw.circle(surf, (255, 255, 255), (cx, cy), 1)
+        else:
+            # Fallback (shouldn't happen): just a rect
+            rect = pygame.Rect(0, 0, sw, sh)
+            rect.center = (cx, cy)
+            pygame.draw.rect(surf, color, rect)
         return surf
