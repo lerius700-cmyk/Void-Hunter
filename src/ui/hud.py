@@ -221,7 +221,12 @@ class HUD:
         return y + ROW_H
 
     def _draw_bombs(self, target: pygame.Surface, player: Player, y: int, t: float) -> int:
-        """BLOQUE 58.19: bomb counter (3-4 bomb icons + numeric value)."""
+        """BLOQUE 58.19 + 58.39: bomb counter (3-4 bomb icons + numeric value).
+
+        BLOQUE 58.39: bombs are now drawn as actual bomb silhouettes
+        (round body + neck + cap + lit fuse), not just circles. Makes the
+        HUD read more like a real shmup inventory.
+        """
         x = HUD_MARGIN
         bombs = player.bombs
         max_bombs = player.bombs_max
@@ -237,18 +242,7 @@ class HUD:
         for i in range(max_bombs):
             bx = slots_x + i * (ICON_SIZE + 3)
             is_ready = i < bombs
-            if is_ready:
-                pulse = 0.7 + 0.3 * math.sin(t * 4.0 + i * 0.6)
-                color = (int(255 * pulse), int(200 * pulse), int(80 * pulse))
-            else:
-                color = (60, 60, 80)
-            pygame.draw.circle(target, color, (bx + ICON_SIZE // 2, icon_cy), 3)
-            if is_ready:
-                cx_b, cy_b = bx + ICON_SIZE // 2, icon_cy
-                pygame.draw.line(target, (255, 240, 180),
-                                  (cx_b - 2, cy_b), (cx_b + 2, cy_b), 1)
-                pygame.draw.line(target, (255, 240, 180),
-                                  (cx_b, cy_b - 2), (cx_b, cy_b + 2), 1)
+            self._draw_bomb_icon(target, bx, icon_cy, ready=is_ready, t=t, idx=i)
         # Count value to the right
         if self.font_value:
             value = self.font_value.render(
@@ -258,6 +252,57 @@ class HUD:
             value_y = y + (ROW_H - value.get_height()) // 2
             target.blit(value, (value_x, value_y))
         return y + ROW_H
+
+    def _draw_bomb_icon(self, target: pygame.Surface, x: int, y: int,
+                        ready: bool, t: float, idx: int) -> None:
+        """BLOQUE 58.39: draw a single bomb silhouette (round body + neck + fuse).
+
+        Ready bombs pulse warm yellow with a glowing fuse. Spent bombs are
+        a dim grey silhouette (no fuse spark).
+        """
+        if ready:
+            pulse = 0.7 + 0.3 * math.sin(t * 4.0 + idx * 0.6)
+            body_col = (int(255 * pulse), int(200 * pulse), int(80 * pulse))
+            cap_col = (140, 110, 60)
+            fuse_col = (255, 200, 100)
+            spark_col = (255, 255, 200)
+        else:
+            body_col = (50, 50, 60)
+            cap_col = (35, 35, 40)
+            fuse_col = (40, 40, 50)
+            spark_col = (40, 40, 50)
+        # Bomb body (sphere, 5px diameter)
+        body_cx = x + 3
+        body_cy = y + 1
+        # Bottom shadow
+        pygame.draw.circle(target, (max(0, body_col[0] - 60), max(0, body_col[1] - 60),
+                                     max(0, body_col[2] - 60)),
+                           (body_cx, body_cy + 1), 3)
+        # Main body
+        pygame.draw.circle(target, body_col, (body_cx, body_cy), 3)
+        # Highlight (top-left of sphere, gives 3D feel)
+        if ready:
+            pygame.draw.circle(target, (255, 255, 220), (body_cx - 1, body_cy - 1), 1)
+        # Neck (small rectangle on top)
+        pygame.draw.rect(target, cap_col, (body_cx - 1, body_cy - 4, 2, 2))
+        # Cap (top of neck)
+        pygame.draw.rect(target, cap_col, (body_cx - 2, body_cy - 5, 4, 1))
+        # Fuse (curves up-right from cap)
+        fuse_x = body_cx + 2
+        fuse_y = body_cy - 5
+        pygame.draw.line(target, fuse_col, (fuse_x, fuse_y),
+                         (fuse_x + 2, fuse_y - 2), 1)
+        # Fuse spark (only when ready, animated)
+        if ready:
+            spark_phase = (t * 8.0 + idx * 1.3) % 1.0
+            spark_x = int(fuse_x + 2 + math.cos(spark_phase * 6.28) * 1)
+            spark_y = int(fuse_y - 2 + math.sin(spark_phase * 6.28) * 1)
+            # Tiny spark glow
+            halo = pygame.Surface((6, 6), pygame.SRCALPHA)
+            halo_a = int(180 * (1.0 - spark_phase * 0.4))
+            pygame.draw.circle(halo, (*spark_col, halo_a), (3, 3), 2)
+            target.blit(halo, (spark_x - 3, spark_y - 3))
+            pygame.draw.circle(target, (255, 255, 255), (spark_x, spark_y), 1)
 
     def _draw_score(self, target: pygame.Surface, scoring: ScoringSystem) -> None:
         """Score number, right-aligned, no header."""
