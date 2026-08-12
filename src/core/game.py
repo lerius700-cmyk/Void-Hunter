@@ -48,15 +48,14 @@ class Game:
             pygame.mouse.set_visible(True)
         except pygame.error:
             pass
-        # Display surface: full monitor size (BLOQUE 58.36f).
-        # All game scenes draw to a 320x480 INTERNAL surface, which we then
-        # blit scaled to the GAME AREA in the center of the monitor. The
-        # side panels (left + right of the game area) are filled with a
-        # parallax starfield. This makes the game reach all 4 edges of any
-        # monitor (portrait game on landscape monitor) without black bars.
+        # Display surface: vertical rectangular window that fills the
+        # monitor height exactly. The window is centered on the monitor
+        # horizontally; the game aspect (320:480 = 2:3) means the window
+        # is portrait. The mouse coordinates match the game coordinates
+        # 1:1 (no offset), so the reticle works correctly.
         # BLOQUE 31: honor VOID_HUNTER_SCALE env var (set by --scale CLI flag)
         # BLOQUE 58.35: accept scales 1..6 for 4K monitors.
-        # BLOQUE 58.36f: accept FLOAT scale (e.g. 2.25) so the game area
+        # BLOQUE 58.36g: accept FLOAT scale (e.g. 2.25) so the window
         # fills the monitor height exactly (no black bar top/bottom).
         # BLOQUE 34: internal resolution is 320x480 (was 240x360).
         import os as _os
@@ -71,57 +70,39 @@ class Game:
         except (ValueError, TypeError):
             pass
         self._scale: float = _scale
-        # Detect monitor size (BLOQUE 58.36f: full-monitor window)
-        try:
-            _di = pygame.display.Info()
-            _monitor_w, _monitor_h = int(_di.current_w), int(_di.current_h)
-        except Exception:
-            _monitor_w, _monitor_h = WINDOW_W, WINDOW_H
-        # Window = full monitor (or fallback WINDOW_WxH)
-        self._window_w: int = _monitor_w
-        self._window_h: int = _monitor_h
-        # Game area: filled-height, centered horizontally
-        self._game_w: int = max(_IW, int(_IW * _scale))
-        self._game_h: int = max(_IH, int(_IH * _scale))
-        self._game_x: int = (self._window_w - self._game_w) // 2
-        self._game_y: int = 0
+        # Window: vertical rectangle (portrait), filled to monitor height
+        # with the float scale. e.g. 1080 tall monitor -> 720x1080.
+        _ww: int = max(_IW, int(_IW * _scale))
+        _wh: int = max(_IH, int(_IH * _scale))
         try:
             self.screen: pygame.Surface = pygame.display.set_mode(
-                (self._window_w, self._window_h),
-                pygame.RESIZABLE,
+                (_ww, _wh),
+                pygame.SCALED | pygame.RESIZABLE,
             )
         except pygame.error:
             self.screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
-            self._window_w, self._window_h = WINDOW_W, WINDOW_H
-            self._game_x = 0
+            _ww, _wh = WINDOW_W, WINDOW_H
         # BLOQUE 31: center the window on screen so it doesn't open off-screen
         try:
             _info = pygame.display.get_desktop_sizes() if hasattr(pygame.display, "get_desktop_sizes") else None
             if _info:
                 _sw, _sh = _info[0]
-                _ox = max(0, (_sw - self._window_w) // 2)
-                _oy = max(0, (_sh - self._window_h) // 2)
+                _ox = max(0, (_sw - _ww) // 2)
+                _oy = max(0, (_sh - _wh) // 2)
                 _os.environ["SDL_VIDEO_WINDOW_POS"] = f"{_ox},{_oy}"
                 # Re-apply position by re-setting the window mode
                 try:
                     self.screen = pygame.display.set_mode(
-                        (self._window_w, self._window_h),
-                        pygame.RESIZABLE,
+                        (_ww, _wh),
+                        pygame.SCALED | pygame.RESIZABLE,
                     )
                 except pygame.error:
                     pass
         except Exception:
             pass
-        # BLOQUE 58.36f: build the side-panel starfield. Fills the side
-        # panels (left + right of the game area) with stars + slow downward
-        # drift. This makes the side panels look like an extension of the
-        # game's space background instead of black voids.
-        self._side_panel: pygame.Surface = self._build_side_panel(
-            self._window_w, self._window_h, self._game_w, self._game_x,
-        )
-        self._side_drift: float = 0.0
         # Internal rendering surface: 320x480 (INTERNAL_W x INTERNAL_H).
-        # This is what every scene draws to.
+        # This is what every scene draws to. The display surface gets
+        # the internal surface scaled to fill it (uniformly).
         self.internal: pygame.Surface = pygame.Surface((_IW, _IH))
         pygame.display.set_caption(WINDOW_TITLE)
         self.clock: pygame.time.Clock = pygame.time.Clock()
@@ -137,103 +118,16 @@ class Game:
         self._running: bool = True
         self._accumulator: float = 0.0
 
-    def _build_side_panel(
-        self, window_w: int, window_h: int, game_w: int, game_x: int,
-    ) -> pygame.Surface:
-        """BLOQUE 58.36f: build a starfield surface for the side panels.
-
-        The surface is window_w x window_h. The center game_w columns are
-        left BLACK (the game area is drawn on top each frame). The left
-        and right side panels are filled with 3 layers of stars:
-          - Layer 1: tiny dim stars, ~1200 total, slow drift
-          - Layer 2: brighter 1px stars, ~240 total, medium drift
-          - Layer 3: 8 large + (5-pixel) feature stars
-        All layers drift DOWN (matching the game's vertical scroll), so
-        the side panels feel like an extension of the game space.
-        Stars are placed deterministically (seeded random).
-        """
-        import random
-        surf = pygame.Surface((window_w, window_h), pygame.SRCALPHA)
-        surf.fill((0, 0, 0, 255))  # pure black background
-        # Game area columns are left black; only the side panels get stars
-        left_w = game_x
-        right_x = game_x + game_w
-        right_w = window_w - right_x
-        if left_w <= 0 and right_w <= 0:
-            return surf  # no side panels (game fills the whole window)
-        # Seed: deterministic starfield
-        rng = random.Random(0xDEADBEEF)
-        # ---- Layer 1: tiny dim background stars ----
-        layer1_color = (90, 100, 130, 180)  # dim blue-white
-        n_layer1 = 1200
-        for _ in range(n_layer1):
-            if rng.random() < 0.5 and left_w > 0:
-                x = rng.randint(0, left_w - 1)
-            elif right_w > 0:
-                x = rng.randint(right_x, window_w - 1)
-            else:
-                continue
-            y = rng.randint(0, window_h - 1)
-            surf.set_at((x, y), layer1_color)
-        # ---- Layer 2: brighter 1px stars (color variety) ----
-        layer2_colors = [
-            (200, 220, 255, 230),
-            (255, 240, 200, 220),
-            (255, 200, 200, 200),
-            (180, 230, 255, 240),
-        ]
-        n_layer2 = 240
-        for _ in range(n_layer2):
-            if rng.random() < 0.5 and left_w > 0:
-                x = rng.randint(0, left_w - 1)
-            elif right_w > 0:
-                x = rng.randint(right_x, window_w - 1)
-            else:
-                continue
-            y = rng.randint(0, window_h - 1)
-            color = rng.choice(layer2_colors)
-            surf.set_at((x, y), color)
-            if rng.random() < 0.5:
-                halo = (color[0] // 3, color[1] // 3, color[2] // 3, 80)
-                surf.set_at((x, y), halo)
-        # ---- Layer 3: large + (5-pixel) feature stars ----
-        for _ in range(8):
-            if rng.random() < 0.5 and left_w > 0:
-                x = rng.randint(2, left_w - 3)
-            elif right_w > 0:
-                x = rng.randint(right_x + 2, window_w - 3)
-            else:
-                continue
-            y = rng.randint(2, window_h - 3)
-            color = (255, 255, 255, 240)
-            surf.set_at((x, y), color)
-            dim = (color[0] // 2, color[1] // 2, color[2] // 2, 150)
-            surf.set_at((x - 1, y), dim)
-            surf.set_at((x + 1, y), dim)
-            surf.set_at((x, y - 1), dim)
-            surf.set_at((x, y + 1), dim)
-        return surf
-
     def _present(self) -> None:
-        """BLOQUE 58.36f: scale + blit the game to the center of the screen
-        and draw the side panel starfield on the left/right.
-        """
-        # Clear the display first
+        """Scale the internal 320x480 surface to the display and present."""
+        # Clear the display first (in case of window resize artifacts)
         self.screen.fill((0, 0, 0))
-        # Drift the side panel starfield (parallax, downward)
-        self._side_drift = (self._side_drift + 0.5) % self._window_h
-        drift_y = int(self._side_drift)
-        # Blit the side panel starfield, scrolled by drift amount
-        self.screen.blit(self._side_panel, (0, drift_y))
-        if drift_y > 0:
-            # Wrap the top portion that scrolled off
-            self.screen.blit(self._side_panel, (0, drift_y - self._window_h))
-        # Scale the internal game surface to the game area (centered)
+        # Scale internal to display
         scaled = pygame.transform.scale(
             self.internal,
-            (self._game_w, self._game_h),
+            (self.screen.get_width(), self.screen.get_height()),
         )
-        self.screen.blit(scaled, (self._game_x, self._game_y))
+        self.screen.blit(scaled, (0, 0))
         pygame.display.flip()
 
     def _register_scenes(self) -> None:
