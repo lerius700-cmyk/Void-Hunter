@@ -3214,251 +3214,173 @@ class GameplayRuntime:
                                 int(p.y) - text.get_height() // 2 + oy))
 
     def _draw_player(self, target: pygame.Surface, ox: int, oy: int) -> None:
-        """Render the player ship (BLOQUE 58.36 — redesign).
+        """BLOQUE 58.36e: player ship redesign (Star Fox 64 Arwing, 8-bit).
 
-        Design language (cohesive across player + sub-boss + boss + enemies):
-          - 5-step metallic shading (dark→light) for 3D volume
-          - Light source: top-left primary, top-right secondary
-          - Outline: 1px dark, sub-pixel for anti-aliased curves
-          - Cockpit = hex bubble canopy with frame + 2 specular highlights
-          - Engines = intake + 3-layer bloom (dark→bright→halo)
-          - Wing-tip lasers = 2-color barrel + tip + 2-layer halo
-          - Wing tip lights = pulsing anti-phase (red/green) for IDLE
-          - Ventral fin + dorsal antenna = "real ship" silhouette cues
-          - PROPULSION: full blue+white palette swap (BLOQUE 58.30)
-          - CHARGE: progressive lightening (L1→L3 white-out)
+        Design language (matches the redesigned enemies + sub-boss):
+          - Clean white delta-wing silhouette (32x24 footprint)
+          - 4-step silver shading (highlight, main, mid, dark)
+          - Cyan canopy (1-px bright dot + alpha halo)
+          - 2 small blue wing-tip dots (Arwing signature)
+          - Twin yellow engines at the back (with halo)
+          - 1 thin center stripe (Arwing signature)
+          - Wing leading-edge highlight (lit from top-left)
+          - State-based palette:
+              IDLE: red+green Arwing tip lights
+              PROPULSION: blue+white (matches Tron trail)
+              CHARGE L1..L3: progressive white-out
         """
         # Engine flame behind the ship — length scales with |vx|
         self._draw_engine_flame(target, ox, oy)
         is_propulsion = (self._player.state == PlayerState.PROPULSION)
-        surf = pygame.Surface((32, 24), pygame.SRCALPHA)
-        if self._player.dash_iframes_left > 0 and (self._t * 30) % 2 < 1:
-            pass  # still draw so the trail is visible
-        # ---- BLOQUE 58.36: master palette per state ----
+        # ---- Master palette (silver + per-state accent) ----
+        # Body: 4-step silver (matches enemies)
+        body_hi   = (250, 252, 255)  # white highlight
+        body_main = (210, 220, 235)  # main silver
+        body_mid  = (140, 155, 180)  # mid silver
+        body_dark = (60,  75,  95)   # deep shadow / outline
+        # State-specific colors
         if is_propulsion:
-            # Blue+white: matches Tron trail (BLOQUE 58.30)
-            c_body_hi     = (255, 255, 255)  # pure white
-            c_body_main   = (220, 240, 255)  # near-white
-            c_body_lo     = (160, 200, 240)  # light blue
-            c_body_dark   = (90,  130, 200)  # mid blue
-            c_outline     = (35,  60,  120)  # dark blue outline
-            c_wing_hi     = (200, 230, 255)
-            c_wing_main   = (140, 200, 240)
-            c_wing_lo     = (90,  150, 210)
-            c_canopy_glass= (140, 200, 255)  # cyan-white
-            c_canopy_dark = (60,  120, 200)
-            c_canopy_hi   = (220, 245, 255)
-            c_canopy_frame= (35,  60,  110)
-            c_stripe      = (65,  105, 225)  # royal blue
-            c_laser       = (200, 230, 255)
-            c_laser_tip   = (255, 255, 255)
-            c_intake_dark = (20,  30,  50)
-            c_intake_glow = (255, 255, 255)  # white-hot
-            c_intake_halo = (180, 220, 255)
-            c_tip_light   = (180, 220, 255)
-            c_panel       = (60,  100, 160)
+            stripe      = (65,  105, 225)  # royal blue
+            canopy_dark = (40,  80,  140)
+            canopy_glass= (140, 200, 255)
+            canopy_h    = (220, 245, 255)
+            tip_color   = (180, 220, 255)  # light blue-white
         else:
-            # IDLE / CHARGE: red+silver Arwing palette
-            c_body_hi     = (250, 252, 255)  # white highlight
-            c_body_main   = (220, 235, 250)  # silver-blue
-            c_body_lo     = (160, 185, 215)  # mid silver
-            c_body_dark   = (80,  105, 140)  # shadow
-            c_outline     = (30,  40,  65)   # dark outline
-            c_wing_hi     = (200, 220, 240)
-            c_wing_main   = (170, 195, 225)
-            c_wing_lo     = (110, 135, 170)
-            c_canopy_glass= (255, 100, 100)  # red default
-            c_canopy_dark = (160, 40,  50)
-            c_canopy_hi   = (255, 230, 230)
-            c_canopy_frame= (50,  25,  35)
-            c_stripe      = (220, 50,  50)   # crimson stripe
-            c_laser       = (200, 60,  60)   # red port laser
-            c_laser_tip   = (255, 150, 100)  # hot tip
-            c_intake_dark = (15,  20,  30)
-            c_intake_glow = (255, 200, 80)   # warm glow
-            c_intake_halo = (255, 140, 60)
-            c_tip_light   = (255, 80,  80)
-            c_panel       = (50,  70,  100)
-        # Charge level overrides (progressive lightening)
+            # IDLE / CHARGE: red stripe, red canopy (classic Arwing)
+            stripe      = (220, 50,  50)
+            canopy_dark = (130, 20,  30)
+            canopy_glass= (255, 100, 100)
+            canopy_h    = (255, 220, 220)
+            tip_color   = (220, 50,  50)
+        # CHARGE level overrides (progressive lightening)
         if self._player.state == PlayerState.CHARGE:
             level = self._player.get_charge_level()
             if level >= 3:
-                c_body_hi     = (255, 255, 255)
-                c_body_main   = (255, 255, 255)
-                c_body_lo     = (240, 240, 255)
-                c_canopy_glass= (255, 220, 255)
-                c_canopy_dark = (200, 100, 200)
-                c_stripe      = (255, 100, 200)
-                c_laser       = (255, 200, 255)
-                c_laser_tip   = (255, 255, 255)
+                body_hi   = (255, 255, 255)
+                body_main = (255, 255, 255)
+                body_mid  = (240, 240, 255)
+                stripe    = (255, 100, 200)
+                canopy_glass = (255, 220, 255)
             elif level >= 2:
-                c_body_main   = (240, 240, 255)
-                c_body_lo     = (180, 200, 230)
-                c_canopy_glass= (255, 150, 200)
-                c_stripe      = (255, 80, 120)
+                body_main = (240, 240, 255)
+                body_mid  = (180, 200, 230)
+                canopy_glass = (255, 150, 200)
+                stripe    = (255, 80, 120)
             elif level >= 1:
-                c_body_main   = (200, 225, 250)
-                c_body_lo     = (150, 180, 215)
-                c_canopy_glass= (255, 120, 150)
-        # ---- Wings (drawn FIRST so body sits on top) ----
-        # Left wing — long swept curve from fuselage to far-left wingtip.
-        # 4-shade gradient: shadow underneath, main, top highlight, panel line.
-        pygame.draw.polygon(surf, c_wing_lo, [
-            (13, 7),    # root upper
-            (10, 10),   # inner shoulder
-            (0, 18),    # wingtip (far left)
-            (0, 20),    # wingtip bottom
-            (3, 20),    # back of tip
-            (12, 15),   # trailing edge root
+                body_main = (220, 235, 250)
+                body_mid  = (150, 180, 215)
+                canopy_glass = (255, 120, 150)
+        # ---- Build the sprite on a 32x24 surface ----
+        # Player faces UP (nose at top, engines at bottom)
+        surf = pygame.Surface((32, 24), pygame.SRCALPHA)
+        if self._player.dash_iframes_left > 0 and (self._t * 30) % 2 < 1:
+            pass  # still draw so the trail is visible
+        cx = 16  # sprite center
+        # ---- 1) Wing outline (dark base) ----
+        # Delta wing: wing tips at the BACK (bottom), nose at the FRONT (top)
+        pygame.draw.polygon(surf, body_dark, [
+            (cx, 0),         # nose tip (top)
+            (cx + 1, 5),     # right shoulder
+            (cx + 2, 8),     # right body
+            (cx + 1, 12),    # right wing root
+            (cx + 16, 21),   # right wing tip
+            (cx + 14, 22),
+            (cx + 10, 16),
+            (cx + 2, 17),    # right back
+            (cx + 1, 19),    # right engine
+            (cx, 22),        # back center
+            (cx - 1, 19),    # left engine
+            (cx - 2, 17),    # left back
+            (cx - 10, 16),
+            (cx - 14, 22),
+            (cx - 16, 21),   # left wing tip
+            (cx - 1, 12),    # left wing root
+            (cx - 2, 8),     # left body
+            (cx - 1, 5),     # left shoulder
         ])
-        # Wing main fill
-        pygame.draw.polygon(surf, c_wing_main, [
-            (13, 7), (10, 10), (1, 17), (3, 18), (12, 14),
+        # ---- 2) Main body (1-px inset) ----
+        pygame.draw.polygon(surf, body_main, [
+            (cx, 1),
+            (cx + 1, 5),
+            (cx + 1, 8),
+            (cx + 1, 12),
+            (cx + 14, 20),
+            (cx + 9, 16),
+            (cx + 1, 17),
+            (cx + 1, 18),
+            (cx, 21),
+            (cx - 1, 18),
+            (cx - 1, 17),
+            (cx - 9, 16),
+            (cx - 14, 20),
+            (cx - 1, 12),
+            (cx - 1, 8),
+            (cx - 1, 5),
         ])
-        # Wing top highlight
-        pygame.draw.polygon(surf, c_wing_hi, [
-            (13, 7), (10, 10), (2, 16), (4, 16), (12, 11),
+        # ---- 3) Top highlight (lit from top-left) ----
+        pygame.draw.polygon(surf, body_hi, [
+            (cx, 1), (cx - 1, 5), (cx, 6), (cx + 1, 5),
         ])
-        # Right wing (mirror)
-        pygame.draw.polygon(surf, c_wing_lo, [
-            (19, 7), (22, 10), (32, 18), (32, 20), (29, 20), (20, 15),
-        ])
-        pygame.draw.polygon(surf, c_wing_main, [
-            (19, 7), (22, 10), (31, 17), (29, 18), (20, 14),
-        ])
-        pygame.draw.polygon(surf, c_wing_hi, [
-            (19, 7), (22, 10), (30, 16), (28, 16), (20, 11),
-        ])
-        # Wing leading edge highlight (1px line for that "metal ridge")
-        pygame.draw.line(surf, (250, 252, 255), (13, 7), (2, 16), 1)
-        pygame.draw.line(surf, (250, 252, 255), (19, 7), (30, 16), 1)
-        # Panel lines (construction lines) on the wings
-        pygame.draw.line(surf, c_panel, (8, 11), (5, 19), 1)
-        pygame.draw.line(surf, c_panel, (24, 11), (27, 19), 1)
-        # Wing-tip laser barrels (Star Fox signature)
-        # Left barrel: 4px wide × 3px tall, with hot tip
-        pygame.draw.rect(surf, c_laser, (0, 16, 4, 3))
-        pygame.draw.rect(surf, c_laser_tip, (0, 17, 1, 1))  # hot inner tip
-        # Right barrel
-        pygame.draw.rect(surf, c_laser, (28, 16, 4, 3))
-        pygame.draw.rect(surf, c_laser_tip, (31, 17, 1, 1))
-        # Barrel vents (1px detail line on top of each barrel)
-        pygame.draw.line(surf, c_panel, (1, 16), (3, 16), 1)
-        pygame.draw.line(surf, c_panel, (29, 16), (31, 16), 1)
-        # ---- Body (fuselage) — drawn over wings ----
-        # Drop shadow underneath the body (subtle)
-        pygame.draw.polygon(surf, c_body_dark, [
-            (16, 1),    # nose tip (slightly inset for outline)
-            (12, 8),
-            (10, 19),
-            (16, 22),   # tail center
-            (22, 19),
-            (20, 8),
-        ])
-        # Main body
-        pygame.draw.polygon(surf, c_body_main, [
-            (16, 0),    # nose tip
-            (13, 8),
-            (11, 18),
-            (16, 20),
-            (21, 18),
-            (19, 8),
-        ])
-        # Top highlight (lit from top-left)
-        pygame.draw.polygon(surf, c_body_hi, [
-            (16, 0), (14, 7), (18, 7),
-        ])
-        # Belly underside (slightly darker = underneath curve)
-        pygame.draw.polygon(surf, c_body_lo, [
-            (12, 14), (20, 14), (16, 19),
-        ])
-        # Side panel lines (1px diagonal strokes for "real ship")
-        pygame.draw.line(surf, c_panel, (13, 8), (11, 18), 1)
-        pygame.draw.line(surf, c_panel, (19, 8), (21, 18), 1)
-        # Dorsal antenna (small fin on top — Star Fox cue)
-        pygame.draw.line(surf, c_outline, (16, 0), (16, -1), 1)
-        pygame.draw.circle(surf, c_tip_light, (16, -1), 1)
-        # ---- Canopy (cockpit) ----
-        # Frame: 1px outline of dark color first
-        pygame.draw.polygon(surf, c_canopy_frame, [
-            (14, 5), (18, 5), (19, 8), (16, 11), (13, 8),
-        ])
-        # Glass dome: 2-tone (dark underneath, main on top)
-        pygame.draw.polygon(surf, c_canopy_dark, [
-            (15, 6), (17, 6), (18, 8), (16, 10), (14, 8),
-        ])
-        pygame.draw.polygon(surf, c_canopy_glass, [
-            (15, 6), (17, 6), (17, 7), (16, 9), (15, 7),
-        ])
-        # Specular highlights (2 white dots — glass dome)
-        pygame.draw.circle(surf, c_canopy_hi, (15, 7), 1)
-        pygame.draw.circle(surf, (255, 255, 255), (16, 6), 0)
-        # Reflection arc (a 1px line at the top of the canopy)
-        pygame.draw.line(surf, c_canopy_hi, (15, 6), (17, 6), 1)
-        # ---- Engine intakes (between body and wings) ----
-        # Left intake: dark void + glowing core + 1px halo
-        pygame.draw.rect(surf, c_intake_dark, (12, 16, 3, 3))
-        pygame.draw.rect(surf, c_intake_glow, (12, 17, 3, 1))   # core
-        pygame.draw.rect(surf, c_intake_halo, (12, 18, 3, 1))   # halo
-        # Turbine blade (1px diagonal for "spinning" feel)
-        pygame.draw.line(surf, c_intake_dark, (13, 17), (14, 18), 1)
-        # Right intake (mirror)
-        pygame.draw.rect(surf, c_intake_dark, (17, 16, 3, 3))
-        pygame.draw.rect(surf, c_intake_glow, (17, 17, 3, 1))
-        pygame.draw.rect(surf, c_intake_halo, (17, 18, 3, 1))
-        pygame.draw.line(surf, c_intake_dark, (18, 17), (19, 18), 1)
-        # ---- Ventral fin (between the two intakes, small) ----
-        pygame.draw.polygon(surf, c_body_lo, [(15, 18), (17, 18), (16, 21)])
-        # ---- Center stripe (Arwing signature, lit from top) ----
-        pygame.draw.line(surf, c_stripe, (16, 7), (16, 17), 1)
-        # Stripe highlight (1px lighter inner stroke)
-        stripe_hi = tuple(min(255, c + 50) for c in c_stripe)
-        pygame.draw.line(surf, stripe_hi, (16, 7), (16, 9), 1)
-        # ---- Wing-tip glow halos (2-layer alpha — soft) ----
-        glow_surf = pygame.Surface((8, 8), pygame.SRCALPHA)
-        port_outer = (*c_tip_light, 100)
-        port_inner = (255, 255, 255, 70)
-        pygame.draw.circle(glow_surf, port_outer, (2, 17), 4)
-        pygame.draw.circle(glow_surf, port_inner, (2, 17), 2)
-        surf.blit(glow_surf, (-2, 13))
-        glow_surf2 = pygame.Surface((8, 8), pygame.SRCALPHA)
-        stbd_outer = (255, 255, 255, 100) if is_propulsion else (*c_tip_light, 100)
-        stbd_inner = (255, 255, 255, 70)
-        pygame.draw.circle(glow_surf2, stbd_outer, (5, 17), 4)
-        pygame.draw.circle(glow_surf2, stbd_inner, (5, 17), 2)
-        surf.blit(glow_surf2, (24, 13))
-        # ---- Wing tip lights (pulsing — anti-phase red/green in IDLE,
-        #      synchronized blue/white in PROPULSION) ----
-        red_pulse   = 0.5 + 0.5 * math.sin(self._t * 6.0)
-        green_pulse = 0.5 + 0.5 * math.sin(self._t * 6.0 + math.pi)
+        pygame.draw.line(surf, body_hi, (cx - 1, 8), (cx - 1, 5), 1)
+        # ---- 4) Wing leading-edge highlight (top of wings) ----
+        pygame.draw.line(surf, body_hi,
+                         (cx + 1, 12), (cx + 12, 19), 1)
+        pygame.draw.line(surf, body_hi,
+                         (cx - 1, 12), (cx - 12, 19), 1)
+        # ---- 5) Wing panel line (subtle construction detail) ----
+        pygame.draw.line(surf, body_dark,
+                         (cx + 1, 12), (cx + 1, 17), 1)
+        pygame.draw.line(surf, body_dark,
+                         (cx - 1, 12), (cx - 1, 17), 1)
+        # ---- 6) Center stripe (Arwing signature) ----
+        pygame.draw.line(surf, stripe, (cx, 6), (cx, 16), 1)
+        # ---- 7) Cockpit canopy (1-px bright dot + halo) ----
+        # Halo: 8x8 alpha surface, centered on (cx, 9)
+        canopy_halo = pygame.Surface((8, 8), pygame.SRCALPHA)
+        pygame.draw.circle(canopy_halo, (*canopy_glass, 80),
+                           (4, 4), 4)
+        surf.blit(canopy_halo, (cx - 4, 5))
+        # Inner dark socket
+        pygame.draw.circle(surf, canopy_dark, (cx, 9), 1)
+        # Bright glass
+        pygame.draw.circle(surf, canopy_glass, (cx, 9), 1)
+        # Specular highlight (top-left)
+        pygame.draw.circle(surf, canopy_h, (cx, 8), 0)
+        # ---- 8) Wing-tip dots (small bright accents at the wing tips) ----
+        # Halo around each tip
+        tip_halo_l = pygame.Surface((6, 6), pygame.SRCALPHA)
+        pygame.draw.circle(tip_halo_l, (*tip_color, 90), (3, 3), 3)
+        surf.blit(tip_halo_l, (cx - 14 - 1, 19))
+        tip_halo_r = pygame.Surface((6, 6), pygame.SRCALPHA)
+        pygame.draw.circle(tip_halo_r, (*tip_color, 90), (3, 3), 3)
+        surf.blit(tip_halo_r, (cx + 12, 19))
+        # Tip dot
+        pygame.draw.circle(surf, tip_color, (cx - 12, 21), 1)
+        pygame.draw.circle(surf, tip_color, (cx + 12, 21), 1)
+        # ---- 9) Twin engines at the BACK (bottom) ----
+        # Engine dark housing
+        eng_w = 3
+        eng_h = 2
+        eng_y = 21
+        pygame.draw.rect(surf, body_dark,
+                         (cx - eng_w - 1, eng_y, eng_w, eng_h))
+        pygame.draw.rect(surf, body_dark,
+                         (cx + 1, eng_y, eng_w, eng_h))
+        # Engine bright core (yellow with pulse)
+        pulse_e = 200 + int(40 * math.sin(self._t * 12))
         if is_propulsion:
-            blue_pulse = 0.5 + 0.5 * math.sin(self._t * 6.0)
-            red_color = (int(100 * (0.4 + 0.6 * blue_pulse)),
-                         int(180 * (0.4 + 0.6 * blue_pulse)),
-                         int(255 * (0.4 + 0.6 * blue_pulse)))
-            green_color = (int(160 * (0.4 + 0.6 * blue_pulse)),
-                           int(220 * (0.4 + 0.6 * blue_pulse)),
-                           int(255 * (0.4 + 0.6 * blue_pulse)))
+            ec = (255, 240, 200)  # white-yellow
         else:
-            red_color = (int(255 * (0.4 + 0.6 * red_pulse)),
-                         int(60  * (0.4 + 0.6 * red_pulse)),
-                         int(60  * (0.4 + 0.6 * red_pulse)))
-            green_color = (int(60  * (0.4 + 0.6 * green_pulse)),
-                           int(255 * (0.4 + 0.6 * green_pulse)),
-                           int(100 * (0.4 + 0.6 * green_pulse)))
-        pygame.draw.circle(surf, red_color,   (2, 13), 1)
-        pygame.draw.circle(surf, green_color, (29, 13), 1)
-        # Tip-light halos
-        tip_halo = pygame.Surface((4, 4), pygame.SRCALPHA)
-        pygame.draw.circle(tip_halo, (*red_color, 90),   (2, 2), 2)
-        surf.blit(tip_halo, (0, 11))
-        tip_halo2 = pygame.Surface((4, 4), pygame.SRCALPHA)
-        pygame.draw.circle(tip_halo2, (*green_color, 90), (2, 2), 2)
-        surf.blit(tip_halo2, (27, 11))
+            ec = (255, 200, 80)   # warm yellow
+        pygame.draw.rect(surf, ec,
+                         (cx - eng_w - 1, eng_y, eng_w, 1))
+        pygame.draw.rect(surf, ec,
+                         (cx + 1, eng_y, eng_w, 1))
+        # ---- 10) Engine halos (1-px outer glow at the very back) ----
+        eng_halo = pygame.Surface((20, 4), pygame.SRCALPHA)
+        pygame.draw.ellipse(eng_halo, (*ec, 100), (0, 0, 20, 4))
+        surf.blit(eng_halo, (cx - 10, eng_y - 1))
         # ---- BLOQUE 35: sprite scale 0.75 (player 32x24 -> 24x18) ----
-        # Hitbox stays at 18x12 (difficulty unchanged). Only the visual is
-        # reduced. This makes ships and projectiles feel smaller in the
-        # bigger playfield (BLOQUE 34: 320x480) without changing game balance.
         from src.core.settings import PLAYER_SPRITE_SCALE
         if PLAYER_SPRITE_SCALE != 1.0:
             scaled_w = max(1, int(surf.get_width() * PLAYER_SPRITE_SCALE))
@@ -3480,23 +3402,22 @@ class GameplayRuntime:
         # BLOQUE 49: charge aura + energy absorption particles
         if self._player.state == PlayerState.CHARGE:
             self._draw_charge_aura(target, ox, oy)
-            # Estimate dt from frame time so absorption rate stays consistent
-            # (called from draw so we don't have dt here)
             est_dt = 1.0 / 60.0
             self._emit_energy_absorption(est_dt)
         # Afterimage trail — bigger ghost matching the new 32x24 sprite
         for tx, ty, age in self._player.afterimage:
             alpha = max(0, int(255 * (1 - age / self._player.AFTERIMAGE_LIFE)))
             ghost = pygame.Surface((32, 24), pygame.SRCALPHA)
-            # Simple silhouette of the new ship
+            # Simple Arwing silhouette
             pygame.draw.polygon(ghost, (220, 240, 255, alpha), [
-                (16, 0), (13, 8), (11, 18), (16, 20), (21, 18), (19, 8),
+                (cx, 1), (cx + 1, 8), (cx + 1, 17),
+                (cx, 21), (cx - 1, 17), (cx - 1, 8),
             ])
             pygame.draw.polygon(ghost, (180, 200, 230, alpha), [
-                (13, 8), (10, 11), (0, 17), (4, 20), (11, 14),
+                (cx + 1, 12), (cx + 14, 20), (cx + 9, 16), (cx + 1, 17),
             ])
             pygame.draw.polygon(ghost, (180, 200, 230, alpha), [
-                (19, 8), (22, 11), (32, 17), (28, 20), (21, 14),
+                (cx - 1, 12), (cx - 14, 20), (cx - 9, 16), (cx - 1, 17),
             ])
             target.blit(ghost, (int(tx - 16 + ox), int(ty - 12 + oy)))
         # Charge indicator: a ring around the player that fills as charge builds
@@ -3504,10 +3425,8 @@ class GameplayRuntime:
         if self._player.state == PlayerState.CHARGE and charge_level > 0:
             self._draw_charge_indicator(target, charge_level, ox, oy)
         elif self._player.input_fire and self._player.charge_time > 0.1:
-            # Building up — show dim ring
             progress = min(1.0, self._player.charge_time / 0.5)
             self._draw_charge_ring(target, progress, (180, 180, 200), ox, oy)
-
     def _draw_reticle(self, target: pygame.Surface, ox: int, oy: int) -> None:
         """BLOQUE 47: aim reticle — visual feedback for mouse position.
 
