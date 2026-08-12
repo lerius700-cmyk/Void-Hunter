@@ -333,20 +333,38 @@ def render_boss(category_dir: Path) -> list[tuple[str, pygame.Surface]]:
         rt._draw_goliath, size=(80, 80),
     )))
 
-    # Simple boss (used by HYDRA/PHANTOM/NEMESIS)
-    b2 = Boss.__new__(Boss)
-    b2.id = BossId.HYDRA
-    b2.x = 0.0
-    b2.y = 0.0
-    b2.phase = 1
-    cfg2 = BOSS_CONFIGS[b2.id]
-    b2.hp = float(cfg2.max_hp)  # type: ignore[assignment]
-    b2.max_hp = float(cfg2.max_hp)  # type: ignore[assignment]
-    rt._boss = b2
-    rt._boss_flash = {}
-    out.append(("boss_simple_hydra", _draw_into_bbox(
-        rt._draw_boss_simple, size=(80, 80),
-    )))
+    # BLOQUE 58.37: simple bosses redesigned as Star Fox 64 ships.
+    # Render all 3 (HYDRA / PHANTOM / NEMESIS) so atlas_boss.png shows them.
+    for boss_id, label in [
+        (BossId.HYDRA, "boss_hydra"),
+        (BossId.PHANTOM, "boss_phantom"),
+        (BossId.NEMESIS, "boss_nemesis"),
+    ]:
+        b2 = Boss.__new__(Boss)
+        b2.id = boss_id
+        b2.x = 0.0
+        b2.y = 0.0
+        b2.phase = 1
+        cfg2 = BOSS_CONFIGS[b2.id]
+        b2.hp = float(cfg2.max_hp)  # type: ignore[assignment]
+        b2.max_hp = float(cfg2.max_hp)  # type: ignore[assignment]
+        rt._boss = b2
+        rt._boss_flash = {}
+        out.append((f"{label}_phase1", _draw_into_bbox(
+            rt._draw_boss_simple, size=(96, 96),
+        )))
+        # Phase 2 variant (more weapons, cracks glow, etc.)
+        b2.phase = 2
+        b2.hp = float(int(cfg2.max_hp * 0.5))  # type: ignore[assignment]
+        out.append((f"{label}_phase2", _draw_into_bbox(
+            rt._draw_boss_simple, size=(96, 96),
+        )))
+        # Phase 3/4 variant (only NEMESIS has 4 phases; others fall back to 2)
+        b2.phase = min(4, len(cfg2.phase_thresholds) + 1)
+        b2.hp = float(int(cfg2.max_hp * 0.25))  # type: ignore[assignment]
+        out.append((f"{label}_phase_max", _draw_into_bbox(
+            rt._draw_boss_simple, size=(96, 96),
+        )))
 
     # HP bar variant (goliath damaged)
     b.phase = 2

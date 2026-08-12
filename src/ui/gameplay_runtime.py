@@ -4487,39 +4487,31 @@ class GameplayRuntime:
         ])
 
     def _draw_boss_simple(self, target: pygame.Surface, ox: int, oy: int) -> None:
-        """Default boss visual — simple rectangle with eye. Used by HYDRA/PHANTOM/NEMESIS."""
+        """BLOQUE 58.37: dispatch to per-boss Star Fox 64 visual.
+        - HYDRA   (Act 2)  : 3-headed weapon platform with eye-stalks
+        - PHANTOM (Act 3a) : stealth ship with cloaking shimmer
+        - NEMESIS (Act 3b) : capital-ship final boss with weapon pods
+        The previous "rect + eye" fallback is preserved as a safety net.
+        """
         if self._boss is None:
             return
-        cfg = BOSS_CONFIGS[self._boss.id]
-        w, h = cfg.width, cfg.height
-        rect = pygame.Rect(
-            int(self._boss.x - w / 2 + ox),
-            int(self._boss.y - h / 2 + oy),
-            w, h,
-        )
-        # Glow under boss
-        glow = pygame.Surface((w + 16, h + 16), pygame.SRCALPHA)
-        pygame.draw.rect(glow, (*cfg.color, 60), (0, 0, w + 16, h + 16), border_radius=4)
-        target.blit(glow, (rect.x - 8, rect.y - 8))
-        pygame.draw.rect(target, cfg.color, rect)
-        # Boss "eye" detail
-        eye_w = max(4, w // 3)
-        eye_h = max(2, h // 4)
-        eye_rect = pygame.Rect(
-            rect.x + (w - eye_w) // 2,
-            rect.y + (h - eye_h) // 2,
-            eye_w, eye_h,
-        )
-        pygame.draw.rect(target, (255, 255, 255), eye_rect)
-        # Phase border color
-        border_color = (255, 220, 80) if self._boss.phase >= 2 else (180, 180, 220)
-        pygame.draw.rect(target, border_color, rect, 1)
-        # HP bar
-        if self._boss.hp < self._boss.max_hp:
-            bar_w = w + 4
-            ratio = self._boss.hp / self._boss.max_hp
-            pygame.draw.rect(target, (60, 60, 80), (rect.x - 2, rect.y - 6, bar_w, 3))
-            pygame.draw.rect(target, (220, 80, 80), (rect.x - 1, rect.y - 5, int(bar_w * ratio), 2))
+        if self._boss.id == BossId.HYDRA:
+            self._draw_hydra(target, ox, oy)
+        elif self._boss.id == BossId.PHANTOM:
+            self._draw_phantom(target, ox, oy)
+        elif self._boss.id == BossId.NEMESIS:
+            self._draw_nemesis(target, ox, oy)
+        else:
+            # Safety net: same simple rect as before.
+            cfg = BOSS_CONFIGS[self._boss.id]
+            w, h = cfg.width, cfg.height
+            rect = pygame.Rect(
+                int(self._boss.x - w / 2 + ox),
+                int(self._boss.y - h / 2 + oy),
+                w, h,
+            )
+            pygame.draw.rect(target, cfg.color, rect)
+            pygame.draw.rect(target, (255, 255, 255), rect, 1)
 
     def _draw_goliath(self, target: pygame.Surface, ox: int, oy: int) -> None:
         """BLOQUE 51: GOLIATH — biblical giant warrior visual.
@@ -4914,3 +4906,605 @@ class GameplayRuntime:
         ratio = self._boss.hp / self._boss.max_hp
         hp_color = (220, 60, 40) if ratio < 0.34 else (220, 140, 50)
         pygame.draw.rect(target, hp_color, (bar_x, bar_y, int(bar_w * ratio), bar_h))
+
+    # ------------------------------------------------------------------
+    # BLOQUE 58.37: HYDRA — 3-headed weapon platform (Act 2 boss)
+    # ------------------------------------------------------------------
+    def _draw_hydra(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        """HYDRA: a violet weapon platform with 3 glowing eye-stalks on top.
+
+        Visual ~64x50. Hitbox stays 36x20. Three eyes + twin side cannons +
+        purple thruster flame. Phase 2 reveals a 4th central eye and an extra
+        turret. Phase 3 fully reddens the eyes.
+        """
+        if self._boss is None:
+            return
+        cfg = BOSS_CONFIGS[self._boss.id]
+        bob = math.sin(self._t * 1.2) * 1.5
+        flash_t = self._boss_flash.get(id(self._boss), 0.0)
+        flashing = flash_t > 0.0
+        cx = int(self._boss.x + ox)
+        cy = int(self._boss.y + oy)
+        # Visual box (larger than hitbox for imposing silhouette)
+        vw, vh = 64, 50
+        vx = cx - vw // 2
+        vy = cy - vh // 2 + int(bob)
+        # Color palette
+        if flashing:
+            purple_main = (240, 230, 250)
+            purple_hi = (255, 255, 255)
+            purple_sh = (200, 180, 220)
+        else:
+            purple_main = (170, 90, 220)
+            purple_hi = (210, 140, 250)
+            purple_sh = (90, 40, 130)
+        eye_purple = (255, 100, 220) if not flashing else (255, 255, 255)
+        phase2 = self._boss.phase >= 2
+        phase3 = self._boss.phase >= 3
+        # ------------------------------------------------------------------
+        # Layer 1: purple aura
+        # ------------------------------------------------------------------
+        aura_pulse = 0.5 + 0.5 * math.sin(self._t * 2.0)
+        aura_size = 84
+        aura = pygame.Surface((aura_size, aura_size), pygame.SRCALPHA)
+        aura_alpha = int(30 + 25 * aura_pulse)
+        pygame.draw.ellipse(
+            aura, (170, 90, 220, aura_alpha),
+            (0, 0, aura_size, aura_size), 1,
+        )
+        target.blit(aura, (cx - aura_size // 2, cy - aura_size // 2 + int(bob)))
+        # ------------------------------------------------------------------
+        # Layer 2: thruster flame at the bottom (purple)
+        # ------------------------------------------------------------------
+        for i, off in enumerate([-18, 0, 18]):
+            flame_h = 6 + int(2 * math.sin(self._t * 12.0 + i))
+            flame_surf = pygame.Surface((6, flame_h + 4), pygame.SRCALPHA)
+            for j in range(flame_h):
+                t = j / max(1, flame_h)
+                col = (
+                    int(200 + 55 * (1 - t)),
+                    int(80 + 80 * (1 - t)),
+                    int(220),
+                    int(220 * (1 - t * 0.6)),
+                )
+                pygame.draw.rect(flame_surf, col, (1, j, 4, 1))
+            target.blit(flame_surf, (cx + off - 3, vy + vh - 2))
+        # ------------------------------------------------------------------
+        # Layer 3: weapon platform body (hex-shaped)
+        # ------------------------------------------------------------------
+        body_w = 56
+        body_h = 20
+        body_x = cx - body_w // 2
+        body_y = vy + vh - body_h - 6
+        body_poly = [
+            (body_x + 6, body_y),
+            (body_x + body_w - 6, body_y),
+            (body_x + body_w, body_y + 4),
+            (body_x + body_w, body_y + body_h - 4),
+            (body_x + body_w - 6, body_y + body_h),
+            (body_x + 6, body_y + body_h),
+            (body_x, body_y + body_h - 4),
+            (body_x, body_y + 4),
+        ]
+        pygame.draw.polygon(target, purple_sh, body_poly)
+        pygame.draw.polygon(target, purple_main, [
+            (body_x + 6, body_y + 1),
+            (body_x + body_w - 6, body_y + 1),
+            (body_x + body_w - 1, body_y + 4),
+            (body_x + body_w - 1, body_y + body_h - 4),
+            (body_x + body_w - 6, body_y + body_h - 1),
+            (body_x + 6, body_y + body_h - 1),
+            (body_x + 1, body_y + body_h - 4),
+            (body_x + 1, body_y + 4),
+        ])
+        pygame.draw.line(target, purple_hi, (body_x + 8, body_y + 2), (body_x + body_w - 8, body_y + 2), 1)
+        # Central "core" gem (a darker diamond)
+        core_x, core_y = cx, body_y + body_h // 2
+        pygame.draw.polygon(target, (50, 20, 80), [
+            (core_x, core_y - 3), (core_x + 3, core_y),
+            (core_x, core_y + 3), (core_x - 3, core_y),
+        ])
+        pygame.draw.polygon(target, purple_hi, [
+            (core_x, core_y - 3), (core_x + 3, core_y),
+            (core_x, core_y + 3), (core_x - 3, core_y),
+        ], 1)
+        # Panel rivets along the hull
+        for i in range(5):
+            rx = body_x + 6 + i * 11
+            pygame.draw.circle(target, purple_sh, (rx, body_y + body_h - 3), 1)
+        # ------------------------------------------------------------------
+        # Layer 4: side cannons (left + right)
+        # ------------------------------------------------------------------
+        for side in (-1, 1):
+            can_x = cx + side * (body_w // 2 + 4)
+            can_y = body_y + 4
+            # Cannon base (purple)
+            pygame.draw.rect(target, purple_sh, (can_x - 2, can_y, 4, 6))
+            pygame.draw.rect(target, purple_main, (can_x - 2, can_y, 4, 5))
+            # Cannon barrel (gray)
+            barrel_x = can_x + side * 4
+            pygame.draw.rect(target, (60, 60, 70), (barrel_x, can_y + 1, side * 8, 3))
+            pygame.draw.rect(target, (110, 110, 120), (barrel_x, can_y + 1, side * 8, 1))
+            # Muzzle tip glow
+            if phase2:
+                tip_glow = pygame.Surface((6, 4), pygame.SRCALPHA)
+                pygame.draw.rect(tip_glow, (255, 80, 200, 180), (0, 0, 6, 4))
+                target.blit(tip_glow, (barrel_x + side * 7 - 3, can_y))
+        # ------------------------------------------------------------------
+        # Layer 5: 3 eye-stalks on top (signature "hydra" element)
+        # ------------------------------------------------------------------
+        stalk_xs = [cx - 18, cx, cx + 18]
+        for i, sx in enumerate(stalk_xs):
+            # Stalk height varies — side stalks shorter, center tallest
+            sh = 10 - abs(i - 1) * 3  # 10, 4, 10
+            # Stalk stem
+            pygame.draw.line(target, purple_sh, (sx, body_y), (sx, body_y - sh), 1)
+            pygame.draw.line(target, purple_main, (sx - 1, body_y), (sx - 1, body_y - sh), 1)
+            # Eye bulb at top
+            eye_y = body_y - sh - 1
+            eye_r = 3
+            # Eye glow halo
+            halo = pygame.Surface((10, 10), pygame.SRCALPHA)
+            pulse = 0.5 + 0.5 * math.sin(self._t * 3.0 + i * 0.7)
+            halo_alpha = int(80 + 60 * pulse)
+            pygame.draw.circle(halo, (*eye_purple, halo_alpha), (5, 5), 4)
+            target.blit(halo, (sx - 5, eye_y - 5))
+            # Eye outer (purple)
+            pygame.draw.circle(target, purple_sh, (sx, eye_y), eye_r)
+            # Eye inner (bright pink)
+            pygame.draw.circle(target, eye_purple, (sx, eye_y), eye_r - 1)
+            # Eye core (white)
+            pygame.draw.circle(target, (255, 255, 255), (sx, eye_y), 1)
+        # ------------------------------------------------------------------
+        # Layer 6: 4th central eye (phase 2+)
+        # ------------------------------------------------------------------
+        if phase2:
+            # Opens between the 3 stalks
+            ex, ey = cx, body_y - 2
+            # Glow halo
+            halo = pygame.Surface((12, 12), pygame.SRCALPHA)
+            pulse = 0.5 + 0.5 * math.sin(self._t * 4.0)
+            pygame.draw.circle(halo, (255, 60, 200, int(120 + 80 * pulse)), (6, 6), 5)
+            target.blit(halo, (ex - 6, ey - 6))
+            # Eye ball
+            pygame.draw.circle(target, (50, 10, 50), (ex, ey), 2)
+            pygame.draw.circle(target, (255, 80, 200), (ex, ey), 2)
+            pygame.draw.circle(target, (255, 255, 255), (ex, ey), 1)
+        # ------------------------------------------------------------------
+        # Layer 7: HP bar (always visible, violet frame)
+        # ------------------------------------------------------------------
+        bar_w = vw + 4
+        bar_h = 3
+        bar_x = cx - bar_w // 2
+        bar_y = vy - 6
+        pygame.draw.rect(target, (30, 15, 50), (bar_x - 1, bar_y - 1, bar_w + 2, bar_h + 2))
+        pygame.draw.rect(target, (40, 20, 60), (bar_x, bar_y, bar_w, bar_h))
+        ratio = self._boss.hp / self._boss.max_hp
+        bar_col = (200, 80, 220) if not phase3 else (240, 60, 80)
+        pygame.draw.rect(target, bar_col, (bar_x, bar_y, int(bar_w * ratio), bar_h))
+
+    # ------------------------------------------------------------------
+    # BLOQUE 58.37: PHANTOM — stealth ship with cloaking (Act 3a boss)
+    # ------------------------------------------------------------------
+    def _draw_phantom(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        """PHANTOM: a deep-violet stealth fighter with cloaking shimmer.
+
+        Visual ~70x55. Sleek delta-wing body, twin cyan eye sensors, central
+        "phase" core that pulses. The cloaking shimmer is rendered as wavy
+        blue/pink scan lines on the outline. Phase 2 flickers the cloak
+        revealing a red core underneath.
+        """
+        if self._boss is None:
+            return
+        cfg = BOSS_CONFIGS[self._boss.id]
+        bob = math.sin(self._t * 0.9) * 1.2
+        flash_t = self._boss_flash.get(id(self._boss), 0.0)
+        flashing = flash_t > 0.0
+        cx = int(self._boss.x + ox)
+        cy = int(self._boss.y + oy)
+        vw, vh = 70, 55
+        vx = cx - vw // 2
+        vy = cy - vh // 2 + int(bob)
+        # Color palette
+        if flashing:
+            dark_main = (220, 210, 240)
+            dark_hi = (255, 255, 255)
+            dark_sh = (180, 170, 220)
+        else:
+            dark_main = (90, 60, 160)
+            dark_hi = (140, 110, 220)
+            dark_sh = (40, 25, 90)
+        cyan_eye = (120, 220, 255) if not flashing else (255, 255, 255)
+        phase2 = self._boss.phase >= 2
+        # ------------------------------------------------------------------
+        # Layer 1: cloaking shimmer (outer wavy halo)
+        # ------------------------------------------------------------------
+        shimmer_pulse = 0.5 + 0.5 * math.sin(self._t * 3.5)
+        shimmer_size = 84
+        shimmer = pygame.Surface((shimmer_size, shimmer_size), pygame.SRCALPHA)
+        # 3 concentric rings with different alpha
+        for ring_i, ring_alpha in enumerate([25, 35, 18]):
+            ring_r = shimmer_size // 2 - ring_i * 4
+            pygame.draw.ellipse(
+                shimmer, (140, 110, 220, ring_alpha + int(15 * shimmer_pulse)),
+                (shimmer_size // 2 - ring_r, shimmer_size // 2 - ring_r,
+                 ring_r * 2, ring_r * 2), 1,
+            )
+        target.blit(shimmer, (cx - shimmer_size // 2, cy - shimmer_size // 2 + int(bob)))
+        # ------------------------------------------------------------------
+        # Layer 2: delta-wing body (sleek, pointed)
+        # ------------------------------------------------------------------
+        body_w = 60
+        body_h = 32
+        body_x = cx - body_w // 2
+        body_y = vy + vh - body_h - 8
+        # Delta wing silhouette (pointed nose at top, wide at bottom)
+        body_poly = [
+            (cx, body_y - 4),  # nose
+            (body_x + body_w - 6, body_y + 6),  # right shoulder
+            (body_x + body_w, body_y + body_h - 2),  # right wingtip
+            (body_x + body_w - 4, body_y + body_h),  # right wingtip back
+            (body_x + 4, body_y + body_h),  # left wingtip back
+            (body_x, body_y + body_h - 2),  # left wingtip
+            (body_x + 6, body_y + 6),  # left shoulder
+        ]
+        pygame.draw.polygon(target, dark_sh, body_poly)
+        # Inner body (smaller, lighter)
+        inner_poly = [
+            (cx, body_y - 2),
+            (body_x + body_w - 10, body_y + 8),
+            (body_x + body_w - 4, body_y + body_h - 6),
+            (body_x + 6, body_y + body_h - 6),
+            (body_x + 4, body_y + body_h - 2),
+            (body_x + 10, body_y + 8),
+        ]
+        pygame.draw.polygon(target, dark_main, [
+            (cx, body_y - 1),
+            (body_x + body_w - 10, body_y + 9),
+            (body_x + body_w - 5, body_y + body_h - 6),
+            (body_x + 5, body_y + body_h - 6),
+            (body_x + 4, body_y + body_h - 3),
+            (body_x + 10, body_y + 9),
+        ])
+        # Top spine highlight
+        pygame.draw.line(target, dark_hi, (cx, body_y + 2), (cx, body_y + body_h - 6), 1)
+        # ------------------------------------------------------------------
+        # Layer 3: cloaking scan-lines (wavy outline effect)
+        # ------------------------------------------------------------------
+        for i in range(4):
+            sy = body_y + 6 + i * 6
+            wave = math.sin(self._t * 6.0 + i * 0.8) * 1.5
+            # Scan line: pink/blue alternation
+            col = (180, 100, 220) if i % 2 == 0 else (100, 180, 240)
+            pygame.draw.line(
+                target, col,
+                (body_x + 4 + int(wave), sy),
+                (body_x + body_w - 4 + int(wave), sy), 1,
+            )
+        # ------------------------------------------------------------------
+        # Layer 4: twin cyan eye sensors (wing-tip mounted)
+        # ------------------------------------------------------------------
+        for side in (-1, 1):
+            ex = cx + side * (body_w // 2 - 6)
+            ey = body_y + 10
+            # Eye glow halo
+            halo = pygame.Surface((8, 8), pygame.SRCALPHA)
+            pulse = 0.5 + 0.5 * math.sin(self._t * 4.0 + side)
+            pygame.draw.circle(halo, (*cyan_eye, int(100 + 80 * pulse)), (4, 4), 3)
+            target.blit(halo, (ex - 4, ey - 4))
+            # Eye body
+            pygame.draw.circle(target, dark_sh, (ex, ey), 2)
+            pygame.draw.circle(target, cyan_eye, (ex, ey), 2)
+            pygame.draw.circle(target, (255, 255, 255), (ex, ey), 1)
+        # ------------------------------------------------------------------
+        # Layer 5: central "phase" core (pulsing gem)
+        # ------------------------------------------------------------------
+        core_pulse = 0.5 + 0.5 * math.sin(self._t * 5.0)
+        core_x, core_y = cx, body_y + body_h // 2 + 2
+        core_size = 5
+        # Outer glow
+        core_glow = pygame.Surface((16, 16), pygame.SRCALPHA)
+        core_col = (180, 60, 80) if phase2 else (140, 110, 220)
+        pygame.draw.circle(core_glow, (*core_col, int(80 + 60 * core_pulse)), (8, 8), 6)
+        target.blit(core_glow, (core_x - 8, core_y - 8))
+        # Core diamond
+        pygame.draw.polygon(target, dark_sh, [
+            (core_x, core_y - core_size),
+            (core_x + core_size, core_y),
+            (core_x, core_y + core_size),
+            (core_x - core_size, core_y),
+        ])
+        pygame.draw.polygon(target, core_col, [
+            (core_x, core_y - core_size + 1),
+            (core_x + core_size - 1, core_y),
+            (core_x, core_y + core_size - 1),
+            (core_x - core_size + 1, core_y),
+        ])
+        pygame.draw.circle(target, (255, 240, 200), (core_x, core_y), 1)
+        # ------------------------------------------------------------------
+        # Layer 6: engine flame (small, at the back)
+        # ------------------------------------------------------------------
+        for off in (-12, 12):
+            fl_h = 5 + int(2 * math.sin(self._t * 14.0 + off))
+            fl = pygame.Surface((4, fl_h + 2), pygame.SRCALPHA)
+            for j in range(fl_h):
+                t = j / max(1, fl_h)
+                rgba = (
+                    int(180 * (1 - t)),
+                    int(140 * (1 - t)),
+                    int(220 * (1 - t)),
+                    int(220 * (1 - t * 0.5)),
+                )
+                pygame.draw.rect(fl, rgba, (1, j, 2, 1))
+            target.blit(fl, (cx + off - 2, vy + vh - 6))
+        # ------------------------------------------------------------------
+        # Layer 7: cloak-flicker overlay (phase 2: cloak breaks)
+        # ------------------------------------------------------------------
+        if phase2:
+            # Random horizontal slices that show the red inner
+            for i in range(3):
+                flicker_y = body_y + 4 + i * 8
+                if (int(self._t * 10) + i) % 3 == 0:
+                    flick = pygame.Surface((body_w - 8, 2), pygame.SRCALPHA)
+                    flick.fill((255, 40, 60, 180))
+                    target.blit(flick, (body_x + 4, flicker_y))
+        # ------------------------------------------------------------------
+        # Layer 8: HP bar (cyan frame)
+        # ------------------------------------------------------------------
+        bar_w = vw + 4
+        bar_h = 3
+        bar_x = cx - bar_w // 2
+        bar_y = vy - 6
+        pygame.draw.rect(target, (15, 25, 50), (bar_x - 1, bar_y - 1, bar_w + 2, bar_h + 2))
+        pygame.draw.rect(target, (25, 35, 60), (bar_x, bar_y, bar_w, bar_h))
+        ratio = self._boss.hp / self._boss.max_hp
+        bar_col = (100, 180, 220) if not phase2 else (220, 60, 80)
+        pygame.draw.rect(target, bar_col, (bar_x, bar_y, int(bar_w * ratio), bar_h))
+
+    # ------------------------------------------------------------------
+    # BLOQUE 58.37: NEMESIS — capital-ship final boss (Act 3b)
+    # ------------------------------------------------------------------
+    def _draw_nemesis(self, target: pygame.Surface, ox: int, oy: int) -> None:
+        """NEMESIS: massive orange-and-black capital ship, the final boss.
+
+        Visual ~80x65. Big angular hull, 4 weapon pods (left/right side
+        cannons + 2 wing-tip launchers), central command bridge with red
+        eye, twin yellow engines, 6 hull panels with rivets. Phase 2/3/4
+        reveal more weapons, glowing red cracks, and a fully-red core.
+        """
+        if self._boss is None:
+            return
+        cfg = BOSS_CONFIGS[self._boss.id]
+        bob = math.sin(self._t * 0.8) * 1.8
+        flash_t = self._boss_flash.get(id(self._boss), 0.0)
+        flashing = flash_t > 0.0
+        cx = int(self._boss.x + ox)
+        cy = int(self._boss.y + oy)
+        vw, vh = 80, 65
+        vx = cx - vw // 2
+        vy = cy - vh // 2 + int(bob)
+        # Color palette
+        if flashing:
+            orange_main = (255, 240, 200)
+            orange_hi = (255, 255, 255)
+            orange_sh = (200, 180, 160)
+            black = (90, 80, 70)
+        else:
+            orange_main = (220, 140, 50)
+            orange_hi = (255, 190, 100)
+            orange_sh = (140, 80, 20)
+            black = (30, 20, 10)
+        red_eye = (255, 60, 60) if not flashing else (255, 255, 255)
+        phase2 = self._boss.phase >= 2
+        phase3 = self._boss.phase >= 3
+        phase4 = self._boss.phase >= 4
+        # ------------------------------------------------------------------
+        # Layer 1: massive orange aura
+        # ------------------------------------------------------------------
+        aura_pulse = 0.5 + 0.5 * math.sin(self._t * 1.8)
+        aura_size = 100
+        aura = pygame.Surface((aura_size, aura_size), pygame.SRCALPHA)
+        aura_col = (255, 80, 40) if phase4 else (255, 140, 50)
+        aura_alpha = int(35 + 30 * aura_pulse)
+        pygame.draw.ellipse(
+            aura, (*aura_col, aura_alpha),
+            (0, 0, aura_size, aura_size), 1,
+        )
+        target.blit(aura, (cx - aura_size // 2, cy - aura_size // 2 + int(bob)))
+        # ------------------------------------------------------------------
+        # Layer 2: wing-tip missile launchers (extending the silhouette)
+        # ------------------------------------------------------------------
+        for side in (-1, 1):
+            wx = cx + side * (vw // 2)
+            wy = vy + 16
+            # Wing platform
+            wing_poly = [
+                (wx, wy + 2),
+                (wx + side * 12, wy + 6),
+                (wx + side * 14, wy + 16),
+                (wx, wy + 20),
+            ]
+            pygame.draw.polygon(target, orange_sh, wing_poly)
+            pygame.draw.polygon(target, orange_main, [
+                (wx, wy + 3),
+                (wx + side * 11, wy + 7),
+                (wx + side * 13, wy + 15),
+                (wx, wy + 19),
+            ])
+            # 3 missile tubes on the wing
+            for tube_i in range(3):
+                ty = wy + 4 + tube_i * 5
+                tx = wx + side * (5 + tube_i * 2)
+                pygame.draw.rect(target, (50, 50, 60), (tx, ty, side * 5, 2))
+                pygame.draw.rect(target, (90, 90, 100), (tx, ty, side * 5, 1))
+            # Wing red light (running light)
+            light_pulse = 0.5 + 0.5 * math.sin(self._t * 2.5)
+            pygame.draw.circle(target, (255, 40, 40), (wx + side * 2, wy + 10), 1)
+        # ------------------------------------------------------------------
+        # Layer 3: main hull (massive angular body)
+        # ------------------------------------------------------------------
+        hull_w = 64
+        hull_h = 50
+        hull_x = cx - hull_w // 2
+        hull_y = vy + 8
+        # Hull silhouette
+        hull_poly = [
+            (hull_x, hull_y + 4),  # top-left
+            (hull_x + 8, hull_y),  # top-left shoulder
+            (hull_x + hull_w - 8, hull_y),  # top-right shoulder
+            (hull_x + hull_w, hull_y + 4),  # top-right
+            (hull_x + hull_w, hull_y + hull_h - 6),  # bottom-right
+            (hull_x + hull_w - 4, hull_y + hull_h),  # bottom-right corner
+            (hull_x + 4, hull_y + hull_h),  # bottom-left corner
+            (hull_x, hull_y + hull_h - 6),  # bottom-left
+        ]
+        pygame.draw.polygon(target, black, hull_poly)
+        pygame.draw.polygon(target, orange_sh, [
+            (hull_x, hull_y + 5),
+            (hull_x + 8, hull_y + 1),
+            (hull_x + hull_w - 8, hull_y + 1),
+            (hull_x + hull_w, hull_y + 5),
+            (hull_x + hull_w, hull_y + hull_h - 6),
+            (hull_x + hull_w - 4, hull_y + hull_h - 1),
+            (hull_x + 4, hull_y + hull_h - 1),
+            (hull_x, hull_y + hull_h - 6),
+        ])
+        pygame.draw.polygon(target, orange_main, [
+            (hull_x + 1, hull_y + 6),
+            (hull_x + 8, hull_y + 2),
+            (hull_x + hull_w - 8, hull_y + 2),
+            (hull_x + hull_w - 1, hull_y + 6),
+            (hull_x + hull_w - 1, hull_y + hull_h - 7),
+            (hull_x + hull_w - 5, hull_y + hull_h - 2),
+            (hull_x + 5, hull_y + hull_h - 2),
+            (hull_x + 1, hull_y + hull_h - 7),
+        ])
+        # Top edge highlight
+        pygame.draw.line(target, orange_hi, (hull_x + 10, hull_y + 3), (hull_x + hull_w - 10, hull_y + 3), 1)
+        # ------------------------------------------------------------------
+        # Layer 4: hull panel lines (6 vertical segments)
+        # ------------------------------------------------------------------
+        for i in range(1, 6):
+            px = hull_x + i * (hull_w // 6)
+            pygame.draw.line(target, orange_sh, (px, hull_y + 6), (px, hull_y + hull_h - 8), 1)
+        # Rivets at panel intersections
+        for i in range(7):
+            rx = hull_x + i * (hull_w // 6) - (hull_w // 12 if i == 6 else 0)
+            for ry in (hull_y + 8, hull_y + hull_h - 12):
+                if hull_x + 4 < rx < hull_x + hull_w - 4:
+                    pygame.draw.circle(target, black, (rx, ry), 1)
+        # ------------------------------------------------------------------
+        # Layer 5: side cannons (heavy, mounted on the hull sides)
+        # ------------------------------------------------------------------
+        for side in (-1, 1):
+            can_x = cx + side * (hull_w // 2 + 2)
+            can_y = hull_y + 14
+            # Cannon base
+            pygame.draw.rect(target, orange_sh, (can_x - 3, can_y, 6, 10))
+            pygame.draw.rect(target, orange_main, (can_x - 3, can_y, 6, 9))
+            pygame.draw.rect(target, orange_hi, (can_x - 3, can_y, 6, 1))
+            # Twin barrels
+            for b_i in range(2):
+                bb_y = can_y + 2 + b_i * 4
+                pygame.draw.rect(target, (50, 50, 60), (can_x + side * 3, bb_y, side * 12, 2))
+                pygame.draw.rect(target, (110, 110, 120), (can_x + side * 3, bb_y, side * 12, 1))
+                # Muzzle glow
+                if phase2:
+                    mg = pygame.Surface((4, 4), pygame.SRCALPHA)
+                    pygame.draw.rect(mg, (255, 100, 60, 200), (0, 0, 4, 4))
+                    target.blit(mg, (can_x + side * 14 - 2, bb_y - 1))
+        # ------------------------------------------------------------------
+        # Layer 6: command bridge (central tower with red eye)
+        # ------------------------------------------------------------------
+        bridge_w = 20
+        bridge_h = 16
+        bridge_x = cx - bridge_w // 2
+        bridge_y = hull_y - bridge_h + 2
+        # Bridge structure
+        pygame.draw.rect(target, black, (bridge_x, bridge_y, bridge_w, bridge_h))
+        pygame.draw.rect(target, orange_sh, (bridge_x, bridge_y, bridge_w, bridge_h - 1))
+        pygame.draw.rect(target, orange_main, (bridge_x + 1, bridge_y + 1, bridge_w - 2, bridge_h - 2))
+        # Bridge windows (3 small)
+        for i in range(3):
+            wx = bridge_x + 3 + i * 6
+            pygame.draw.rect(target, (20, 15, 10), (wx, bridge_y + 2, 3, 3))
+        # Red command eye (the big signature)
+        eye_pulse = 0.5 + 0.5 * math.sin(self._t * 3.0)
+        eye_color = red_eye if not phase4 else (255, 200, 100)
+        eye_halo = pygame.Surface((20, 20), pygame.SRCALPHA)
+        eye_alpha = int(100 + 100 * eye_pulse)
+        pygame.draw.circle(eye_halo, (*eye_color, eye_alpha), (10, 10), 8)
+        target.blit(eye_halo, (cx - 10, bridge_y - 6))
+        # Eye outer (dark)
+        pygame.draw.circle(target, black, (cx, bridge_y + 2), 5)
+        # Eye main
+        pygame.draw.circle(target, eye_color, (cx, bridge_y + 2), 4)
+        # Eye pupil (white)
+        pygame.draw.circle(target, (255, 255, 255), (cx, bridge_y + 2), 2)
+        # Eye highlight (top)
+        pygame.draw.circle(target, (255, 255, 255), (cx - 1, bridge_y + 1), 1)
+        # ------------------------------------------------------------------
+        # Layer 7: twin yellow engines at the bottom
+        # ------------------------------------------------------------------
+        for off in (-14, 14):
+            eng_x = cx + off - 4
+            eng_y = hull_y + hull_h - 6
+            # Engine housing
+            pygame.draw.rect(target, (60, 50, 40), (eng_x, eng_y, 8, 6))
+            pygame.draw.rect(target, (90, 75, 50), (eng_x, eng_y, 8, 5))
+            # Yellow flame
+            fl_h = 10 + int(3 * math.sin(self._t * 16.0 + off))
+            fl = pygame.Surface((6, fl_h + 2), pygame.SRCALPHA)
+            for j in range(fl_h):
+                t = j / max(1, fl_h)
+                col = (
+                    int(255),
+                    int(200 + 55 * (1 - t)),
+                    int(80 * (1 - t)),
+                    int(240 * (1 - t * 0.4)),
+                )
+                pygame.draw.rect(fl, col, (1, j, 4, 1))
+            target.blit(fl, (eng_x + 1, eng_y + 6))
+            # Hot core (white)
+            core_glow = pygame.Surface((4, 4), pygame.SRCALPHA)
+            pygame.draw.circle(core_glow, (255, 255, 255, 240), (2, 2), 2)
+            target.blit(core_glow, (eng_x + 2, eng_y + 6))
+        # ------------------------------------------------------------------
+        # Layer 8: phase 2+ cracks on the hull (glowing red)
+        # ------------------------------------------------------------------
+        if phase2 and not flashing:
+            crack_color = (255, 50, 30)
+            for (sx, sy, ex, ey) in [
+                (hull_x + 10, hull_y + 12, hull_x + 16, hull_y + 22),
+                (hull_x + hull_w - 14, hull_y + 10, hull_x + hull_w - 8, hull_y + 20),
+                (hull_x + 20, hull_y + hull_h - 18, hull_x + 26, hull_y + hull_h - 10),
+                (hull_x + hull_w - 22, hull_y + hull_h - 16, hull_x + hull_w - 16, hull_y + hull_h - 8),
+            ]:
+                pygame.draw.line(target, crack_color, (sx, sy), (ex, ey), 1)
+        # ------------------------------------------------------------------
+        # Layer 9: phase 4 desperation — all weapons glow + extra cannons
+        # ------------------------------------------------------------------
+        if phase4 and not flashing:
+            # Add 2 more under-mounted cannons at the bottom
+            for side in (-1, 1):
+                uc_x = cx + side * 18
+                uc_y = hull_y + hull_h - 12
+                pygame.draw.rect(target, orange_sh, (uc_x - 2, uc_y, 4, 6))
+                pygame.draw.rect(target, orange_main, (uc_x - 2, uc_y, 4, 5))
+                pygame.draw.rect(target, (50, 50, 60), (uc_x + side * 2, uc_y + 1, side * 6, 3))
+                # Glowing red muzzle
+                mg = pygame.Surface((4, 4), pygame.SRCALPHA)
+                pygame.draw.rect(mg, (255, 60, 30, 220), (0, 0, 4, 4))
+                target.blit(mg, (uc_x + side * 8 - 2, uc_y))
+        # ------------------------------------------------------------------
+        # Layer 10: HP bar (orange frame, always visible)
+        # ------------------------------------------------------------------
+        bar_w = vw + 4
+        bar_h = 3
+        bar_x = cx - bar_w // 2
+        bar_y = vy - 6
+        pygame.draw.rect(target, (40, 20, 10), (bar_x - 1, bar_y - 1, bar_w + 2, bar_h + 2))
+        pygame.draw.rect(target, (60, 30, 10), (bar_x, bar_y, bar_w, bar_h))
+        ratio = self._boss.hp / self._boss.max_hp
+        bar_col = (255, 200, 80) if not phase4 else (255, 80, 60)
+        pygame.draw.rect(target, bar_col, (bar_x, bar_y, int(bar_w * ratio), bar_h))
