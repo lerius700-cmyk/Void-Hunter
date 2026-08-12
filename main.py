@@ -12,16 +12,17 @@ import sys
 import time
 
 
-def _detect_screen_scale() -> int:
-    """BLOQUE 54 + 58.35: pick a window scale that fills the monitor height.
+def _detect_screen_scale() -> float:
+    """BLOQUE 54 + 58.35 + 58.36f: pick a window scale that fills the monitor height.
 
     Uses the Windows GDI to read primary monitor resolution without spinning
     up pygame (works inside the frozen .exe before any pygame init).
-    Returns 1..6 (cap raised from 4 to support 4K monitors). Falls back to 3
-    if detection fails.
+    Returns a float in [1.0, 6.0] (was int 1..6 in BLOQUE 58.35; now
+    fractional so 1080-tall monitors get exactly 2.25x and reach the edges
+    with no black bars). Falls back to 3.0 if detection fails.
     """
     if sys.platform != "win32":
-        return 3  # safe default for non-Windows hosts
+        return 3.0  # safe default for non-Windows hosts
     try:
         import ctypes
         user32 = ctypes.windll.user32
@@ -33,15 +34,16 @@ def _detect_screen_scale() -> int:
             h = int(gdi32.GetDeviceCaps(hdc, 10))   # VERTRES
         finally:
             user32.ReleaseDC(0, hdc)
-        # Game internal is 320x480 (BLOQUE 34). Pick the largest scale that
-        # fits the height (no margin — the user wants the window to reach
-        # the top and bottom of the monitor). Width overflow is fine; the
-        # window is portrait, ultrawide monitors have plenty of horizontal
-        # space.
-        scale_h = max(1, h // 480)
-        return int(min(scale_h, 6))  # cap at 6 for 4K
+        # Game internal is 320x480 (BLOQUE 34). Pick the EXACT float scale
+        # that fills the height (so the window reaches top + bottom of the
+        # monitor with no black bar). For 1080 tall: 1080/480 = 2.25x.
+        # Width overflow is fine; the window is portrait, ultrawide monitors
+        # (32:9) have plenty of horizontal space, and the side panels
+        # (BLOQUE 58.36f) fill them with a parallax starfield.
+        scale_h = max(1.0, h / 480.0)
+        return float(min(scale_h, 6.0))  # cap at 6 for 4K
     except Exception:
-        return 3
+        return 3.0
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -86,9 +88,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="BLOQUE 28: easy mode — 9 lives, 4 bombs, 2x score multiplier.",
     )
     parser.add_argument(
-        "--scale", type=int, default=4, choices=(1, 2, 3, 4, 5, 6),
+        "--scale", type=float, default=4.0,
         help="Window scale multiplier. Default 4 = auto-detect (fills monitor "
-             "height). Use --scale 2 for 640x960, 3 for 960x1440, etc.",
+             "height exactly with float scale). Use --scale 2 for 640x960, "
+             "--scale 2.25 for 720x1080, --scale 3 for 960x1440, etc.",
     )
     parser.add_argument(
         "--roguelike", type=int, nargs="?", const=0, default=None, metavar="SEED",
@@ -246,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.easy:
             args.easy = True
             os.environ["VOID_HUNTER_EASY"] = "1"
-        if args.scale == 4:  # default → auto-detect screen
+        if args.scale == 4.0:  # default → auto-detect screen
             auto_scale = _detect_screen_scale()
             if auto_scale != args.scale:
                 args.scale = auto_scale
@@ -261,11 +264,13 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["VOID_HUNTER_EASY"] = "1"
         print("VOID HUNTER: --easy mode enabled (9 lives, 4 bombs)")
 
-    if args.scale != 4 and not _frozen_launch:
-        # BLOQUE 31: override window scale (1x=240x360, 2x=480x720, 3x=720x1080)
+    if args.scale != 4.0 and not _frozen_launch:
+        # BLOQUE 31: override window scale (1x=320x480, 2x=640x960, 2.25=720x1080, 3x=960x1440)
         import os
         os.environ["VOID_HUNTER_SCALE"] = str(args.scale)
-        print(f"VOID HUNTER: --scale {args.scale} (window = {240*args.scale}x{360*args.scale})")
+        _iw, _ih = 320, 480  # internal game resolution
+        _ww, _wh = int(_iw * args.scale), int(_ih * args.scale)
+        print(f"VOID HUNTER: --scale {args.scale} (window = {_ww}x{_wh})")
 
     if args.roguelike is not None:
         # BLOQUE 58: full roguelike mode. The seed is optional: if user
