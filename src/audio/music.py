@@ -38,17 +38,20 @@ def _find_assets_dir() -> Optional[Path]:
     """Return the directory containing the .wav files, or None.
 
     Tries (in order):
-      1. `<exe_dir>/Assets/` (PyInstaller onefile/onedir bundle)
-      2. `<exe_dir>/../Assets/` (running from dist/void-hunter/)
-      3. `<_MEIPASS>/Assets/` (PyInstaller temp dir for onefile)
-      4. `<project_root>/Assets/` (running from source)
+      1. `<exe_dir>/Assets/` (user-placed copy next to .exe)
+      2. `<exe_dir>/_internal/Assets/` (PyInstaller onedir bundle)
+      3. `<_MEIPASS>/Assets/` (PyInstaller onefile temp dir)
+      4. `<_MEIPASS>/_internal/Assets/` (PyInstaller onedir temp dir)
+      5. `<project_root>/Assets/` (running from source)
     """
     candidates: list[Path] = []
-    # 1. PyInstaller sets sys._MEIPASS for the onefile temp dir
+    # 1/2. PyInstaller sets sys._MEIPASS for the temp/onedir dir
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass:
-        candidates.append(Path(meipass) / "Assets")
-    # 2/3. The directory containing the running script / frozen exe
+        meipass_p = Path(meipass)
+        candidates.append(meipass_p / "Assets")
+        candidates.append(meipass_p / "_internal" / "Assets")
+    # 3. The directory containing the running script / frozen exe
     if getattr(sys, "frozen", False):
         # PyInstaller: sys.executable is the .exe
         exe_dir = Path(sys.executable).parent
@@ -56,6 +59,7 @@ def _find_assets_dir() -> Optional[Path]:
         # Source: main.py is in the project root
         exe_dir = Path(__file__).resolve().parent.parent.parent
     candidates.append(exe_dir / "Assets")
+    candidates.append(exe_dir / "_internal" / "Assets")
     candidates.append(exe_dir.parent / "Assets")
     for c in candidates:
         if c.is_dir():

@@ -262,11 +262,15 @@ class TitleScene(Scene):
                               INTERNAL_H - credits.get_height() - 2))
 
     def _draw_demo_ships(self, target: pygame.Surface) -> None:
-        """BLOQUE 58.45: draw demo ships with PROCEDURAL spaceship sprites.
+        """BLOQUE 58.47: draw demo ships with PROCEDURAL spaceship sprites,
+        scaled up so they look like proper spaceships (not tiny dots).
 
-        The previous version tried to load from the atlas (which fails
-        in the .exe because the atlas isn't bundled). Now we draw the
-        ships inline with proper Star Fox 64-style silhouettes:
+        The previous version drew ships at native 14x8 px, which were
+        barely visible. Now we render to a small scratch surface and
+        transform-scale by TITLE_SHIP_SCALE so the player sees clearly
+        recognizable Arwing-style ships fighting on the title screen.
+
+        Ship kinds (all procedural, no atlas needed):
           - Player: cyan/white Arwing (delta wing + body + engines)
           - SCOUT: small cyan dart
           - CRUISER: green delta wing with side guns
@@ -275,21 +279,37 @@ class TitleScene(Scene):
           - DRONE: small cyan round
           - SNIPER: blue elongated with long cannon
           - TURRET: pink round with rotating guns
-        No atlas dependency — works in source AND .exe.
         """
+        # BLOQUE 58.47: scale factor for title screen ships. The base
+        # procedural drawings are ~14x8 px; SCALE=2.5 makes them ~35x20,
+        # big enough to be clearly recognizable spaceships.
+        scale = getattr(self, "_title_ship_scale", 2.5)
+        # Scratch surface big enough to hold a scaled ship. We center the
+        # ship at the scratch's center so the blit lines up with cx,cy.
+        scratch_size = 64
+        scratch = pygame.Surface((scratch_size, scratch_size), pygame.SRCALPHA)
         for ship in self._demo_ships:
             cx, cy = int(ship.x), int(ship.y)
+            scratch.fill((0, 0, 0, 0))
+            # Draw at the center of the scratch surface
+            mid = scratch_size // 2
             if ship.kind == "player":
-                self._draw_player_ship(target, cx, cy, ship)
+                self._draw_player_ship(scratch, mid, mid, ship)
             else:
-                # Pick drawing fn by enemy kind
                 kind = ship.enemy_kind
                 key = kind.value if hasattr(kind, "value") else str(kind)
                 drawer = _ENEMY_DRAWERS.get(key)
                 if drawer is not None:
-                    drawer(self, target, cx, cy, ship)
+                    drawer(self, scratch, mid, mid, ship)
                 else:
-                    self._draw_enemy_fallback(target, cx, cy, ship)
+                    self._draw_enemy_fallback(scratch, mid, mid, ship)
+            # Scale up and blit at the ship's world position
+            scaled = pygame.transform.scale(
+                scratch, (scratch_size * scale, scratch_size * scale),
+            )
+            blit_x = int(cx - (scratch_size * scale) / 2)
+            blit_y = int(cy - (scratch_size * scale) / 2)
+            target.blit(scaled, (blit_x, blit_y))
 
     # ----- BLOQUE 58.45: procedural ship sprites for the title demo -----
     def _draw_player_ship(self, target: pygame.Surface,
@@ -967,10 +987,12 @@ class BossFightScene(Scene):
         self._rt.on_exit()
 
     def update(self, dt: float) -> None:
-        # ESC to pause; otherwise full runtime
-        for event in pygame.event.get(pygame.KEYDOWN):
-            if event.key == pygame.K_ESCAPE:
-                self._transition_to(GameState.PAUSE)
+        # BLOQUE 58.47: do NOT drain events here. The runtime handles ESC
+        # and ALL other inputs (LSHIFT, B, etc.) via its own event loop.
+        # Previously this scene called `pygame.event.get(KEYDOWN)` to handle
+        # ESC, which CONSUMED the entire event queue before the runtime saw
+        # it — so B (missile) and LSHIFT (propulsion) silently failed in
+        # the boss. Symptom: "solo dash funciona, ni misiles ni propulsor".
         self._rt.update(dt)
 
     def draw(self, target: pygame.Surface) -> None:

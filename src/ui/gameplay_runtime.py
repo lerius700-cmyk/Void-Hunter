@@ -227,6 +227,15 @@ class GameplayRuntime:
         self._pending_wave_spawns: list[tuple[float, EnemyKind, float, float, bool, float]] = []
         self._is_wave_active: bool = True
         self._transition_pending: Optional[str] = None  # "boss_intro" or "act_cleared"
+        # BLOQUE 58.47: ship scale multipliers (1.05 = +5%). Applied at
+        # draw time via scratch surface so the hitboxes / game logic
+        # don't change, only the visual size.
+        self._ship_scale_player: float = 1.05
+        self._ship_scale_enemy: float = 1.05
+        # Reusable scratch surface for the scaled player (avoids per-frame
+        # allocation). 64x64 fits the 32x24 Arwing at 1.05x with margin.
+        self._player_scratch = pygame.Surface((64, 64), pygame.SRCALPHA)
+        self._enemy_scratch = pygame.Surface((48, 48), pygame.SRCALPHA)
         # BLOQUE 48: chained wave system (level 1 mode redesign)
         self._level1_chain: Optional[WaveChain] = None
         self._level1_boss_trigger: Optional[BossTrigger] = None
@@ -3000,7 +3009,8 @@ class GameplayRuntime:
         # Enemies
         for e in self._enemies.pool:
             if e.active:
-                self._draw_enemy(target, e, shx, shy)
+                # BLOQUE 58.47: scale up enemy ships by 1.05x.
+                self._draw_enemy_scaled(target, e, shx, shy)
         # Boss
         if self._is_boss and self._boss is not None and self._boss.active:
             self._draw_boss(target, shx, shy)
@@ -3039,7 +3049,10 @@ class GameplayRuntime:
             self._tron_trail.draw(target, (shx, shy))
         # Player (only if not in DEAD state and not i-frames invisible)
         if not self._player.is_dead:
-            self._draw_player(target, shx, shy)
+            # BLOQUE 58.47: render the player to a scratch surface, scale
+            # by PLAYER_SHIP_SCALE, then blit. The procedural player ship
+            # has a 32x24 footprint; SCALE=1.05 makes it 33.6x25.2.
+            self._draw_player_scaled(target, shx, shy)
         # BLOQUE 37: continuous L3 laser (drawn on top of player so it appears
         # to emerge from the muzzle).
         self._draw_continuous_laser(target, shx, shy)
@@ -3958,6 +3971,53 @@ class GameplayRuntime:
                 accent=accent, accent_dark=accent_dark, accent_h=accent_h,
                 weapon="none", special="std", engine_color=(255, 200, 80),
             )
+
+    # ------------------------------------------------------------------
+    # BLOQUE 58.47: ship scale wrappers (player +5%, enemies +5%)
+    # ------------------------------------------------------------------
+    def _draw_player_scaled(self, target: pygame.Surface, shx: int, shy: int) -> None:
+        """Render the player ship to a scratch surface, scale up by
+        _ship_scale_player, then blit at the player's screen position.
+        Hitboxes and game logic are unchanged — only the visual size."""
+        scratch = self._player_scratch
+        scratch.fill((0, 0, 0, 0))
+        # Draw the player at the scratch's center. The player uses world
+        # coords with shx/shy offsets, so we offset such that the player
+        # lands at scratch_w/2, scratch_h/2.
+        sw, sh = scratch.get_size()
+        offset_x = sw // 2 - int(self._player.x)
+        offset_y = sh // 2 - int(self._player.y)
+        # Suppress the engine flame inside the scratch (it's drawn
+        # directly to target, would look wrong if scaled). We re-draw
+        # the flame at the end on top of the scaled ship.
+        self._draw_player(scratch, offset_x, offset_y)
+        # Scale up and blit at the player's screen position
+        scale = self._ship_scale_player
+        new_w = int(sw * scale)
+        new_h = int(sh * scale)
+        scaled = pygame.transform.scale(scratch, (new_w, new_h))
+        blit_x = int(self._player.x + shx) - new_w // 2
+        blit_y = int(self._player.y + shy) - new_h // 2
+        target.blit(scaled, (blit_x, blit_y))
+        # Re-draw engine flame (not scaled) so it stays sharp
+        self._draw_engine_flame(target, shx, shy)
+
+    def _draw_enemy_scaled(self, target: pygame.Surface, e: "Enemy",
+                           shx: int, shy: int) -> None:
+        """Same idea as _draw_player_scaled but for enemies."""
+        scratch = self._enemy_scratch
+        scratch.fill((0, 0, 0, 0))
+        sw, sh = scratch.get_size()
+        offset_x = sw // 2 - int(e.x)
+        offset_y = sh // 2 - int(e.y)
+        self._draw_enemy(scratch, e, offset_x, offset_y)
+        scale = self._ship_scale_enemy
+        new_w = int(sw * scale)
+        new_h = int(sh * scale)
+        scaled = pygame.transform.scale(scratch, (new_w, new_h))
+        blit_x = int(e.x + shx) - new_w // 2
+        blit_y = int(e.y + shy) - new_h // 2
+        target.blit(scaled, (blit_x, blit_y))
 
     def _draw_arwing(
         self, target: pygame.Surface, cx: int, cy: int, w: int, h: int,
