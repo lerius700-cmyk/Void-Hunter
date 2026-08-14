@@ -103,6 +103,33 @@ def test_boss_spear_serpentine_motion_advances_wave_t() -> None:
     assert s.wave_t > 0.0
 
 
+def test_boss_spear_straight_line_motion_bloque_58_59() -> None:
+    """BLOQUE 58.59: serpentine wave removed. The spear must travel in a
+    pure straight line along (base_vx, base_vy) — no perpendicular wobble.
+
+    With base_vy=1, base_vx=0, speed=100, dt=0.1: x must stay at 100.0
+    (no horizontal wobble from sin wave) and y must increase by 10 (100*0.1).
+    """
+    from src.entities.boss_spear import BossSpear
+    s = BossSpear(
+        active=True, kind="main", x=100, y=0,
+        base_vx=0.0, base_vy=1.0, perp_vx=1.0, perp_vy=0.0,
+        speed=100.0, wave_amp=40.0, wave_freq_hz=5.0,  # big wave (would
+                                                         # cause 40px wobble)
+        wave_amp_growth=100.0, life=10.0, max_life=10.0,  # grows fast
+    )
+    initial_x = s.x
+    initial_y = s.y
+    # Run for 0.5s — if the wave was still active, x would oscillate up to
+    # ~40-50 px from initial. With the wave disabled, x must stay at 100.
+    for _ in range(5):
+        s.update(0.1)
+    assert s.x == initial_x, f"x wobbled to {s.x} (expected {initial_x})"
+    assert s.y == initial_y + 100.0 * 0.5, (
+        f"y expected {initial_y + 50.0}, got {s.y}"
+    )
+
+
 def test_boss_spear_lifetime_expires() -> None:
     from src.entities.boss_spear import BossSpear
     s = BossSpear(

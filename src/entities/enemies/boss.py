@@ -175,17 +175,18 @@ class Boss:
         if dt <= 0.0:
             return
         cfg = BOSS_CONFIGS[self.id]
-        # BLOQUE 56: if a bezier path is set and not yet complete, follow
-        # the path. Once complete, fall back to the default sine oscillation
-        # so existing boss behavior (e.g. GOLIATH) is preserved.
+        # BLOQUE 56 + 58.59: if a bezier path is set and not yet complete,
+        # follow the path. Once complete (or if no path is set), the boss
+        # settles at its anchor and stays there — NO more sine oscillation.
+        # Curved motion for bosses is handled by the new BezierPath system,
+        # not by ad-hoc sin() in the boss update loop.
         if self.bezier_path is not None and not self.bezier_path.is_complete:
             bx, by = self.bezier_path.update(dt, speed=cfg.speed)
             self.x = bx
             self.y = by
-        elif cfg.speed > 0.0:
-            # Sine oscillation around anchor (default behavior).
-            self.move_t += dt
-            self.x = cfg.anchor_x + math.sin(self.move_t * 0.5) * 80.0
+        else:
+            # Stay at anchor (straight line by definition).
+            self.x = cfg.anchor_x
         # Fire cooldown
         if self.fire_cd > 0.0:
             self.fire_cd -= dt

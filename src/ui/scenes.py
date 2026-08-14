@@ -756,8 +756,7 @@ class GameplayScene(Scene):
         # BLOQUE 58.45: switch to the gameplay soundtrack (loop).
         from src.audio import music
         music.play_gameplay_music(force=True)
-        # BLOQUE 58.53: voice announcement ("Gameplay")
-        music.play_voice_gameplay()
+        # BLOQUE 58.59: voice clip removed per user request (was "Gameplay")
 
     def on_exit(self) -> None:
         # BLOQUE 58.46: push the player's accumulated score to the game
@@ -1094,7 +1093,7 @@ class BossFightScene(Scene):
         from src.audio import music
         if music.get_current_track() != "gameplay":
             music.play_gameplay_music(force=True)
-        music.play_voice_jefe()
+        # BLOQUE 58.59: voice clip removed per user request (was "Jefe")
 
     def on_exit(self) -> None:
         # BLOQUE 58.46: push the boss score back to the session so the
@@ -1141,9 +1140,9 @@ class ActClearedScene(Scene):
             self._set_session_score(
                 self._get_session_score() + self.ACT_CLEAR_BONUS,
             )
-        # BLOQUE 58.53: voice announcement ("Acto completado")
+        # BLOQUE 58.59: voice clip removed per user request (was "Acto completado")
         from src.audio import music
-        music.play_voice_act_cleared()
+        # (no voice call; gameplay music keeps playing through the cleared screen)
 
     def update(self, dt: float) -> None:
         self._t += dt

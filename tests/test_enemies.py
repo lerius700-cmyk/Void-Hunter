@@ -45,13 +45,18 @@ def test_archetype_strings_match_kinds() -> None:
 # 2. Per-archetype invariants from GDD §4
 # ---------------------------------------------------------------------------
 def test_scout_low_hp() -> None:
-    """Scout HP=1, fast."""
+    """Scout HP=1, fast. BLOQUE 58.59: no more sine wobble (straight line)."""
     cfg = ENEMY_CONFIGS[EnemyKind.SCOUT]
     assert cfg.hp == 1
     assert cfg.speed == 110.0
     assert cfg.width == 12 and cfg.height == 8
     assert cfg.score == 50
-    assert cfg.sine_wobble is True
+    # BLOQUE 58.59: all ships move in straight line by default. Curved
+    # motion is now handled by BezierPath / FlightFormation, not by
+    # per-enemy sine wobble.
+    assert cfg.sine_wobble is False
+    assert cfg.sine_amplitude == 0.0
+    assert cfg.sine_freq_hz == 0.0
 
 
 def test_cruiser_medium_twin_cannon() -> None:

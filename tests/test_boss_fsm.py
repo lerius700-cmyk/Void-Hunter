@@ -232,26 +232,31 @@ def test_nemesis_p4_hitbox_shrinks_to_50_percent() -> None:
 # ---------------------------------------------------------------------------
 # 7. Movement
 # ---------------------------------------------------------------------------
-def test_goliath_sine_oscillates() -> None:
-    """Bosses with speed > 0 oscillate around anchor."""
+def test_goliath_anchored_when_no_bezier_path() -> None:
+    """BLOQUE 58.59: bosses no longer sine-oscillate. With no bezier path
+    set, the boss sits at its anchor (straight-line position). Curved
+    motion is now opt-in via BezierPath, not the default."""
     b = Boss()
     b.id = BossId.GOLIATH
     b.max_hp = 800
     b.x = 120.0
-    b.move_t = 0.0
-    b.update(0.1)
-    assert b.x != 120.0  # moved
-    # Should be near anchor_x with sine offset
-    assert abs(b.x - 120.0) < 100.0
+    b.bezier_path = None  # explicit
+    b.update(1.0)
+    cfg = BOSS_CONFIGS[BossId.GOLIATH]
+    assert b.x == cfg.anchor_x  # snapped to anchor, no oscillation
 
 
-def test_nemesis_no_movement() -> None:
+def test_nemesis_snap_to_anchor() -> None:
+    """BLOQUE 58.59: every boss snaps to its anchor on update when no path
+    is set. NEMESIS has speed=0 in the old code, so the test was trivial;
+    now every boss has the same behavior (anchor = straight line)."""
     b = Boss()
     b.id = BossId.NEMESIS
     b.max_hp = 5000
     b.x = 120.0
     b.update(1.0)
-    assert b.x == 120.0  # anchored
+    cfg = BOSS_CONFIGS[BossId.NEMESIS]
+    assert b.x == cfg.anchor_x  # snapped to anchor
 
 
 # ---------------------------------------------------------------------------

@@ -90,7 +90,7 @@ ENEMY_CONFIGS: dict[EnemyKind, _EnemyConfig] = {
         fire_cooldown_s=1.5, fire_damage=1, bullet_speed=240.0,
         telegraph_frames=8,
         drop_powerup_pct=0.08, drop_bomb_pct=0.02, drop_1up_pct=0.0,
-        sine_wobble=True, sine_amplitude=12.0, sine_freq_hz=1.5,
+        sine_wobble=False, sine_amplitude=0.0, sine_freq_hz=0.0,
     ),
     EnemyKind.CRUISER: _EnemyConfig(
         hp=4, speed=60.0, width=14, height=10, score=150,
@@ -297,14 +297,18 @@ class Enemy:
         return False
 
     def update(self, dt: float, player_x: float, player_y: float) -> None:
-        """Advance movement, sine wobble, homing, fire cooldown, cull offscreen.
+        """Advance movement, optional sine wobble, homing, fire cooldown, cull offscreen.
 
         Fires are reported via self.on_fire=True (caller spawns bullets).
+        BLOQUE 58.59: Scout ships no longer sine-wobble (all ships move in
+        a straight line by default). Curved motion is now handled by the
+        BezierPath / FlightFormation system, not by per-enemy oscillation.
         """
         if not self.active or dt <= 0.0 or self.state == EnemyState.DEAD:
             return
         cfg = ENEMY_CONFIGS[self.kind]
-        # Sine wobble (Scout)
+        # Sine wobble (legacy — disabled by BLOQUE 58.59; kept for compat
+        # but no enemy config sets it to True anymore).
         if cfg.sine_wobble:
             self.sine_t += dt
             self.x = self.sine_origin_x + math.sin(self.sine_t * cfg.sine_freq_hz * 2.0 * math.pi) * cfg.sine_amplitude

@@ -90,19 +90,20 @@ class BossSpear:
         return False
 
     def update(self, dt: float) -> None:
-        """Advance serpentine motion + life + flash decay."""
+        """Advance straight-line motion + life + flash decay.
+
+        BLOQUE 58.59: serpentine wave removed. The spear now travels in a
+        straight line along its base direction. Curved motion (if desired)
+        is handled by the new BezierPath / FlightFormation system, not by
+        per-projectile oscillation.
+        """
         if not self.active or dt <= 0.0:
             return
-        # Advance wave time
+        # Advance wave time (kept as a counter but unused for position now)
         self.wave_t += dt
-        # Amplitude grows over time (so the spear becomes wilder)
-        amp = self.wave_amp + self.wave_amp_growth * self.wave_t
-        amp = min(amp, 60.0)  # cap so it doesn't go crazy
-        # Wave offset (perpendicular to base direction)
-        wave_offset = math.sin(self.wave_t * self.wave_freq_hz * 2.0 * math.pi) * amp
-        # Position = base + wave perpendicular
-        self.x += (self.base_vx * self.speed + self.perp_vx * wave_offset) * dt
-        self.y += (self.base_vy * self.speed + self.perp_vy * wave_offset) * dt
+        # Position = base direction * speed * dt (pure straight line)
+        self.x += self.base_vx * self.speed * dt
+        self.y += self.base_vy * self.speed * dt
         # Life
         self.life -= dt
         if self.life <= 0.0:
