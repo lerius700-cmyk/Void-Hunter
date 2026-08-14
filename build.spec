@@ -27,7 +27,15 @@ a = Analysis(
     [str(PROJECT_ROOT / "main.py")],
     pathex=[str(PROJECT_ROOT)],
     binaries=[],
-    datas=[],
+    # BLOQUE 58.45: bundle the Assets/ folder so the background image
+    # and the 2 WAV music files end up next to the .exe at runtime.
+    # `src.audio.music._find_assets_dir` and `src.ui.tiling_image.
+    # _find_assets_dir` both probe `<sys._MEIPASS>/Assets/` first (which
+    # is where PyInstaller drops these data files in onedir mode), so
+    # the game finds them automatically with no code changes.
+    datas=[
+        (str(PROJECT_ROOT / "Assets"), "Assets"),
+    ],
     hiddenimports=[
         # pygame submodules that PyInstaller's static analysis can miss.
         "pygame",

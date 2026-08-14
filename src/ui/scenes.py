@@ -26,6 +26,14 @@ if TYPE_CHECKING:
     from src.systems.parallax import ParallaxBackground
 
 
+# BLOQUE 58.45: title-screen enemy sprite dispatcher.
+# Maps each EnemyKind value to the title scene's procedural ship
+# drawing function. Used by TitleScene._draw_demo_ships when atlas
+# sprites aren't bundled (i.e. when running from the .exe).
+_ENEMY_DRAWERS: dict[str, Any] = {}  # populated below once the
+# TitleScene class is defined; the values are bound methods.
+
+
 def _center_blit(
     target: pygame.Surface,
     text_surface: pygame.Surface,
@@ -103,6 +111,9 @@ class TitleScene(Scene):
         # Spawn initial ships
         for _ in range(3):
             self._spawn_demo_ship()
+        # BLOQUE 58.45: play the title-screen track on loop.
+        from src.audio import music
+        music.play_title_music()
 
     def _spawn_demo_ship(self) -> None:
         """Spawn an enemy or player demo ship on the left or right side."""
@@ -251,67 +262,239 @@ class TitleScene(Scene):
                               INTERNAL_H - credits.get_height() - 2))
 
     def _draw_demo_ships(self, target: pygame.Surface) -> None:
-        """Render the demo ships using the real gameplay drawing routines
-        so the title screen uses the exact same sprites as the game.
+        """BLOQUE 58.45: draw demo ships with PROCEDURAL spaceship sprites.
+
+        The previous version tried to load from the atlas (which fails
+        in the .exe because the atlas isn't bundled). Now we draw the
+        ships inline with proper Star Fox 64-style silhouettes:
+          - Player: cyan/white Arwing (delta wing + body + engines)
+          - SCOUT: small cyan dart
+          - CRUISER: green delta wing with side guns
+          - HEAVY: red armored delta wing
+          - KAMIKAZE: orange delta with bright flame
+          - DRONE: small cyan round
+          - SNIPER: blue elongated with long cannon
+          - TURRET: pink round with rotating guns
+        No atlas dependency — works in source AND .exe.
         """
-        # Build a fake GameplayRuntime-like context for the drawing fns
-        from src.ui.gameplay_runtime import GameplayRuntime
-        from src.entities.enemies.enemy import Enemy, EnemyKind
-        # We don't have a full runtime here; draw the sprites directly using
-        # the sprite_forge's drawing functions via a minimal mock. Simpler:
-        # use the atlas sprites via the existing per-enemy drawing helpers.
         for ship in self._demo_ships:
             cx, cy = int(ship.x), int(ship.y)
             if ship.kind == "player":
-                # Use the new _draw_player from gameplay (cheapest path: blit
-                # the player_idle sprite from the atlas)
-                sprite = self._try_get_player_sprite()
-                if sprite is not None:
-                    target.blit(sprite, (cx - sprite.get_width() // 2,
-                                          cy - sprite.get_height() // 2))
-                else:
-                    # Fallback: simple triangle
-                    pygame.draw.polygon(target, (220, 230, 255), [
-                        (cx, cy - 6), (cx - 4, cy + 4), (cx + 4, cy + 4),
-                    ])
+                self._draw_player_ship(target, cx, cy, ship)
             else:
-                sprite = self._try_get_enemy_sprite(ship.enemy_kind)
-                if sprite is not None:
-                    target.blit(sprite, (cx - sprite.get_width() // 2,
-                                          cy - sprite.get_height() // 2))
+                # Pick drawing fn by enemy kind
+                kind = ship.enemy_kind
+                key = kind.value if hasattr(kind, "value") else str(kind)
+                drawer = _ENEMY_DRAWERS.get(key)
+                if drawer is not None:
+                    drawer(self, target, cx, cy, ship)
                 else:
-                    # Fallback: red diamond
-                    pygame.draw.polygon(target, (255, 100, 100), [
-                        (cx, cy - 4), (cx + 4, cy), (cx, cy + 4), (cx - 4, cy),
-                    ])
+                    self._draw_enemy_fallback(target, cx, cy, ship)
 
-    def _try_get_player_sprite(self) -> Optional[pygame.Surface]:
-        """Load the player_idle sprite from the atlas (cached)."""
-        if not hasattr(self, "_player_sprite_cache"):
-            self._player_sprite_cache: Optional[pygame.Surface] = None
-            try:
-                atlas_path = Path("tools/playtest_out/forge/player/player_idle.png")
-                if atlas_path.exists():
-                    self._player_sprite_cache = pygame.image.load(str(atlas_path)).convert_alpha()
-            except Exception:
-                pass
-        return self._player_sprite_cache
+    # ----- BLOQUE 58.45: procedural ship sprites for the title demo -----
+    def _draw_player_ship(self, target: pygame.Surface,
+                           cx: int, cy: int, ship: "_TitleDemoShip") -> None:
+        """Player Arwing sprite: cyan/white delta wing with 2 engines.
+        Oriented by the ship's horizontal velocity direction (left/right).
+        """
+        facing_right = ship.vx >= 0
+        # Body color
+        body_main = (210, 230, 250)
+        body_dark = (60, 80, 110)
+        canopy = (140, 200, 255)
+        engine = (255, 220, 140)
+        # Body
+        pygame.draw.polygon(target, body_dark, [
+            (cx, cy - 4),                       # nose
+            (cx + (5 if facing_right else -5), cy - 1),  # shoulder
+            (cx + (5 if facing_right else -5), cy + 1),
+            (cx, cy + 4),                       # tail
+            (cx + (-5 if facing_right else 5), cy + 1),
+            (cx + (-5 if facing_right else 5), cy - 1),
+        ])
+        # Wings (delta silhouette)
+        wing_y_top = cy - 2
+        wing_y_bot = cy + 2
+        wing_x_out = 7 if facing_right else -7
+        pygame.draw.polygon(target, body_main, [
+            (cx, wing_y_top),
+            (cx + wing_x_out, wing_y_top + 1),
+            (cx + wing_x_out, wing_y_bot - 1),
+            (cx, wing_y_bot),
+        ])
+        # Canopy
+        pygame.draw.circle(target, canopy, (cx, cy - 1), 1)
+        # Engines
+        eng_x_back = -3 if facing_right else 3
+        pygame.draw.circle(target, engine, (cx + eng_x_back, cy + 3), 1)
+        pygame.draw.circle(target, (255, 100, 50), (cx + eng_x_back, cy + 3), 0)
 
-    def _try_get_enemy_sprite(self, kind: Any) -> Optional[pygame.Surface]:
-        """Load the enemy sprite from the atlas (cached)."""
-        if not hasattr(self, "_enemy_sprite_cache"):
-            self._enemy_sprite_cache: dict[str, Optional[pygame.Surface]] = {}
-        key = kind.value if hasattr(kind, "value") else str(kind)
-        if key not in self._enemy_sprite_cache:
-            try:
-                atlas_path = Path(f"tools/playtest_out/forge/enemies/enemy_{key}.png")
-                if atlas_path.exists():
-                    self._enemy_sprite_cache[key] = pygame.image.load(str(atlas_path)).convert_alpha()
-                else:
-                    self._enemy_sprite_cache[key] = None
-            except Exception:
-                self._enemy_sprite_cache[key] = None
-        return self._enemy_sprite_cache.get(key)
+    def _draw_enemy_fallback(self, target: pygame.Surface,
+                              cx: int, cy: int, ship: "_TitleDemoShip") -> None:
+        """Used when an enemy kind has no specific drawer."""
+        pygame.draw.polygon(target, (200, 100, 100), [
+            (cx, cy - 3), (cx + 3, cy), (cx, cy + 3), (cx - 3, cy),
+        ])
+
+    def _draw_enemy_scout(self, target: pygame.Surface, cx: int, cy: int,
+                          ship: "_TitleDemoShip") -> None:
+        """SCOUT: small cyan dart, pointed nose."""
+        facing_right = ship.vx >= 0
+        col = (80, 220, 240)
+        dark = (30, 90, 110)
+        # Dart body
+        pygame.draw.polygon(target, dark, [
+            (cx, cy - 4),
+            (cx + (4 if facing_right else -4), cy),
+            (cx, cy + 4),
+            (cx + (-2 if facing_right else 2), cy),
+        ])
+        pygame.draw.polygon(target, col, [
+            (cx, cy - 3),
+            (cx + (3 if facing_right else -3), cy),
+            (cx, cy + 3),
+            (cx + (-1 if facing_right else 1), cy),
+        ])
+        # Eye
+        pygame.draw.circle(target, (255, 255, 200), (cx, cy), 0)
+
+    def _draw_enemy_cruiser(self, target: pygame.Surface, cx: int, cy: int,
+                            ship: "_TitleDemoShip") -> None:
+        """CRUISER: green delta wing with side guns."""
+        facing_right = ship.vx >= 0
+        col = (100, 220, 100)
+        dark = (40, 90, 40)
+        # Body
+        pygame.draw.polygon(target, dark, [
+            (cx, cy - 5),
+            (cx + (5 if facing_right else -5), cy - 2),
+            (cx + (5 if facing_right else -5), cy + 2),
+            (cx, cy + 5),
+            (cx + (-5 if facing_right else 5), cy + 2),
+            (cx + (-5 if facing_right else 5), cy - 2),
+        ])
+        # Wings
+        pygame.draw.polygon(target, col, [
+            (cx, cy - 3),
+            (cx + (6 if facing_right else -6), cy - 1),
+            (cx + (6 if facing_right else -6), cy + 1),
+            (cx, cy + 3),
+        ])
+        # Side guns
+        for side in (-1, 1):
+            gx = cx + (6 if facing_right else -6)
+            pygame.draw.rect(target, (60, 60, 70),
+                              (gx, cy - 2, 3 if facing_right else -3, 4))
+        # Eye
+        pygame.draw.circle(target, (255, 240, 100), (cx, cy), 1)
+
+    def _draw_enemy_heavy(self, target: pygame.Surface, cx: int, cy: int,
+                          ship: "_TitleDemoShip") -> None:
+        """HEAVY: red armored delta wing."""
+        facing_right = ship.vx >= 0
+        col = (220, 60, 70)
+        dark = (120, 20, 30)
+        # Body
+        pygame.draw.polygon(target, dark, [
+            (cx, cy - 5),
+            (cx + (4 if facing_right else -4), cy - 3),
+            (cx + (4 if facing_right else -4), cy + 3),
+            (cx, cy + 5),
+            (cx + (-4 if facing_right else 4), cy + 3),
+            (cx + (-4 if facing_right else 4), cy - 3),
+        ])
+        # Wings (wider, armored)
+        pygame.draw.polygon(target, col, [
+            (cx, cy - 4),
+            (cx + (7 if facing_right else -7), cy - 2),
+            (cx + (7 if facing_right else -7), cy + 2),
+            (cx, cy + 4),
+        ])
+        # Heavy outline
+        pygame.draw.rect(target, (80, 10, 10), (cx - 1, cy - 1, 2, 2))
+        # Eye
+        pygame.draw.circle(target, (255, 200, 80), (cx, cy), 1)
+
+    def _draw_enemy_kamikaze(self, target: pygame.Surface, cx: int, cy: int,
+                             ship: "_TitleDemoShip") -> None:
+        """KAMIKAZE: orange delta with bright flame trail."""
+        facing_right = ship.vx >= 0
+        col = (255, 140, 50)
+        dark = (160, 70, 20)
+        # Body
+        pygame.draw.polygon(target, dark, [
+            (cx, cy - 4),
+            (cx + (5 if facing_right else -5), cy - 2),
+            (cx + (5 if facing_right else -5), cy + 2),
+            (cx, cy + 4),
+        ])
+        # Bright orange
+        pygame.draw.polygon(target, col, [
+            (cx, cy - 3),
+            (cx + (4 if facing_right else -4), cy - 1),
+            (cx + (4 if facing_right else -4), cy + 1),
+            (cx, cy + 3),
+        ])
+        # Flame trail behind
+        flame_x = -4 if facing_right else 4
+        for i in range(3):
+            pygame.draw.circle(target, (255, 200, 50),
+                              (cx + flame_x - (flame_x // 2) * i, cy), 2 - i)
+
+    def _draw_enemy_drone(self, target: pygame.Surface, cx: int, cy: int,
+                          ship: "_TitleDemoShip") -> None:
+        """DRONE: small cyan round."""
+        # Body
+        pygame.draw.circle(target, (30, 60, 90), (cx, cy), 4)
+        pygame.draw.circle(target, (80, 200, 255), (cx, cy), 3)
+        # Eye
+        pygame.draw.circle(target, (255, 255, 200), (cx, cy), 1)
+        # Ring outline
+        pygame.draw.circle(target, (140, 230, 255), (cx, cy), 4, 1)
+
+    def _draw_enemy_sniper(self, target: pygame.Surface, cx: int, cy: int,
+                           ship: "_TitleDemoShip") -> None:
+        """SNIPER: blue elongated with long cannon."""
+        facing_right = ship.vx >= 0
+        col = (100, 160, 255)
+        dark = (30, 60, 130)
+        # Elongated body
+        pygame.draw.polygon(target, dark, [
+            (cx, cy - 2),
+            (cx + (6 if facing_right else -6), cy - 1),
+            (cx + (6 if facing_right else -6), cy + 1),
+            (cx, cy + 2),
+            (cx + (-4 if facing_right else 4), cy + 1),
+            (cx + (-4 if facing_right else 4), cy - 1),
+        ])
+        # Body
+        pygame.draw.polygon(target, col, [
+            (cx, cy - 1),
+            (cx + (5 if facing_right else -5), cy),
+            (cx + (-3 if facing_right else 3), cy),
+        ])
+        # Long cannon (extends from nose)
+        cnx = cx + (7 if facing_right else -7)
+        pygame.draw.line(target, (60, 60, 80),
+                          (cnx, cy), (cx + (12 if facing_right else -12), cy), 1)
+        # Eye
+        pygame.draw.circle(target, (255, 100, 100), (cx, cy), 1)
+
+    def _draw_enemy_turret(self, target: pygame.Surface, cx: int, cy: int,
+                           ship: "_TitleDemoShip") -> None:
+        """TURRET: pink round with rotating guns."""
+        # Round body
+        pygame.draw.circle(target, (80, 30, 70), (cx, cy), 4)
+        pygame.draw.circle(target, (255, 100, 180), (cx, cy), 3)
+        # Eye
+        pygame.draw.circle(target, (255, 255, 200), (cx, cy), 1)
+        # 4 small gun barrels around
+        import math
+        for i in range(4):
+            ang = i * (math.pi / 2) + (ship.x * 0.1)  # slow rotation
+            gx = cx + int(math.cos(ang) * 5)
+            gy = cy + int(math.sin(ang) * 5)
+            pygame.draw.circle(target, (40, 40, 50), (gx, gy), 1)
 
     def _draw_demo_bullets(self, target: pygame.Surface) -> None:
         for b in self._demo_bullets:
@@ -374,6 +557,20 @@ class _TitleDemoExplosion:
     color: tuple[int, int, int] = (255, 200, 100)
 
 
+# BLOQUE 58.45: bind the procedural enemy drawers after the class is
+# defined. The map is used by TitleScene._draw_demo_ships to dispatch
+# to the right per-enemy-kind drawing function.
+_ENEMY_DRAWERS.update({
+    "scout":    TitleScene._draw_enemy_scout,
+    "cruiser":  TitleScene._draw_enemy_cruiser,
+    "heavy":    TitleScene._draw_enemy_heavy,
+    "kamikaze": TitleScene._draw_enemy_kamikaze,
+    "drone":    TitleScene._draw_enemy_drone,
+    "sniper":   TitleScene._draw_enemy_sniper,
+    "turret":   TitleScene._draw_enemy_turret,
+})
+
+
 class ActIntroScene(Scene):
     """ACT_INTRO — 'ACT N' title + boss portrait placeholder."""
 
@@ -422,6 +619,9 @@ class GameplayScene(Scene):
 
     def on_enter(self) -> None:
         self._rt.on_enter()
+        # BLOQUE 58.45: switch to the gameplay soundtrack (loop).
+        from src.audio import music
+        music.play_gameplay_music()
 
     def on_exit(self) -> None:
         self._rt.on_exit()
@@ -739,6 +939,10 @@ class BossFightScene(Scene):
 
     def on_enter(self) -> None:
         self._rt.on_enter()
+        # BLOQUE 58.45: gameplay music keeps playing through boss fights.
+        from src.audio import music
+        if music.get_current_track() != "gameplay":
+            music.play_gameplay_music()
 
     def on_exit(self) -> None:
         self._rt.on_exit()
@@ -899,6 +1103,15 @@ class PauseScene(Scene):
 
     def on_enter(self) -> None:
         self._t = 0.0
+        # BLOQUE 58.45: pause = switch back to the title-screen track
+        # (so the gameplay music isn't playing while the player is paused).
+        from src.audio import music
+        music.play_title_music()
+
+    def on_exit(self) -> None:
+        # BLOQUE 58.45: leaving pause = switch back to the gameplay track.
+        from src.audio import music
+        music.play_gameplay_music()
 
     def update(self, dt: float) -> None:
         self._t += dt

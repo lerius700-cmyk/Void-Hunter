@@ -166,6 +166,13 @@ class GameplayRuntime:
 
         # Core
         self._player = Player()
+        # BLOQUE 58.45: scroll the user's background image as a tiled
+        # "tape". The ParallaxBackground (5-layer starfield) is kept as
+        # a fallback when the Assets/ image isn't bundled.
+        from src.ui.tiling_image import TilingImage
+        self._tiling_bg: Optional["TilingImage"] = TilingImage(
+            width=INTERNAL_W, height=INTERNAL_H, scroll_speed_px_per_s=12.0,
+        )
         self._bg = ParallaxBackground(rng_seed=42 if not is_boss else 77)
 
         # Combat systems
@@ -2433,6 +2440,9 @@ class GameplayRuntime:
         self._tron_trail.update(effective_dt)
         self._update_tron_trail_collisions()
         self._check_player_death_explosion()
+        # BLOQUE 58.45: advance the tiling background scroll.
+        if self._tiling_bg is not None:
+            self._tiling_bg.update(effective_dt)
         _section("particles_below", _section_t0)
         _section_t0 = _time.perf_counter()
         self._particles.update(effective_dt)
@@ -2926,7 +2936,12 @@ class GameplayRuntime:
         import time as _time
         _render_t0 = _time.perf_counter()
         # Background
-        self._bg.draw(target)
+        # BLOQUE 58.45: prefer the user's tiled image (if loaded);
+        # otherwise fall back to the parallax starfield.
+        if self._tiling_bg is not None and self._tiling_bg.is_ready:
+            self._tiling_bg.draw(target)
+        else:
+            self._bg.draw(target)
         # BLOQUE 25: ambient drift particles in background
         self._draw_ambient_dust(target)
         # Shake offset
