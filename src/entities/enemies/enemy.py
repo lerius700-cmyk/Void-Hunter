@@ -248,6 +248,14 @@ class Enemy:
     sb_turn_at_y: float = 0.0    # for vertical L: y to start the sideways leg
     sb_post_turn_vx: float = 0.0 # velocity after the L turn (horizontal)
     sb_post_turn_vy: float = 0.0 # velocity after the L turn (vertical=0)
+    # BLOQUE 58.6x: optional PathFollower (Bezier + Waypoint). If set,
+    # update() uses it to drive position + velocity (and the vx/vy straight-
+    # line code below is bypassed). If None, the enemy falls through to the
+    # original straight-line + L-turn motion. Forward-declared; the actual
+    # type lives in src.movement.follower to keep the dependency one-way.
+    path_follower: object | None = None  # PathFollower | None (forward-ref)
+    path_slot_dx: float = 0.0           # formation slot offset (added to path pos)
+    path_slot_dy: float = 0.0
 
     def on_spawn(self) -> None:
         self.damage_taken = 0
@@ -262,12 +270,46 @@ class Enemy:
         self.squadron_origin_x = 0.0
         self.squadron_time_offset = 0.0
         self.squadron_age = 0.0
+        # BLOQUE 58.6x: reset path follower
+        self.path_follower = None
+        self.path_slot_dx = 0.0
+        self.path_slot_dy = 0.0
         # BLOQUE 58.6.4: sub-boss movement state is NOT reset here
         # because it persists across wrap-arounds (entry_count,
         # current_wall, etc. are needed for the next entry).
 
     def on_release(self) -> None:
         self.homing_target = None
+
+    def _step_path_follower(self, dt: float) -> None:
+        """BLOQUE 58.6x: advance the attached PathFollower and copy the
+        resulting position + velocity onto this enemy. The follower's
+        internal t is updated; if the path completes, vx/vy is set to 0
+        and the enemy stays at the end position (caller can decide to
+        cull or recycle).
+        """
+        # Local import to avoid a circular dep at module load time.
+        from src.movement.follower import PathFollower
+
+        follower: PathFollower = self.path_follower  # type: ignore[assignment]
+        pos, vel = follower.update(dt)
+        self.x = pos.x + self.path_slot_dx
+        self.y = pos.y + self.path_slot_dy
+        self.vx = vel.x
+        self.vy = vel.y
+
+    def attach_path(
+        self,
+        follower: "PathFollower",
+        slot_dx: float = 0.0,
+        slot_dy: float = 0.0,
+    ) -> None:
+        """Attach a PathFollower + formation slot offset. From this point
+        on, update() drives position from the follower instead of vx/vy.
+        """
+        self.path_follower = follower
+        self.path_slot_dx = slot_dx
+        self.path_slot_dy = slot_dy
 
     def hitbox(self) -> pygame.Rect:
         """70% forgiving hitbox per GDD §5. SUB_BOSS gets a tighter 55%
@@ -307,6 +349,31 @@ class Enemy:
         if not self.active or dt <= 0.0 or self.state == EnemyState.DEAD:
             return
         cfg = ENEMY_CONFIGS[self.kind]
+        # BLOQUE 58.6x: if a PathFollower is attached, drive position +
+        # velocity from it. The straight-line / L-turn code below is
+        # bypassed for this enemy. The follower is responsible for the
+        # path's end-of-life (it sets is_complete when t >= 1.0; we let
+        # the wave manager decide whether to cull the enemy).
+        if self.path_follower is not None:
+            self._step_path_follower(dt)
+            # Spawn timer / fire cooldown still tick even with a path
+            if cfg.spawns_mini_on_timer or cfg.spawns_carrier_children:
+                self.spawn_timer += dt
+                if self.spawn_timer >= 3.0:
+                    self.spawn_timer = 0.0
+                    if cfg.spawns_carrier_children:
+                        self.pending_spawn_count = max(self.pending_spawn_count, 2)
+                    else:
+                        self.pending_spawn_count = max(
+                            self.pending_spawn_count, cfg.mini_spawn_count
+                        )
+            if cfg.fire_cooldown_s > 0.0:
+                if self.fire_cd > 0.0:
+                    self.fire_cd -= dt
+                if self.fire_cd <= 0.0:
+                    self.fire_cd = cfg.fire_cooldown_s
+                    self.on_fire = True
+            return
         # Sine wobble (legacy — disabled by BLOQUE 58.59; kept for compat
         # but no enemy config sets it to True anymore).
         if cfg.sine_wobble:
