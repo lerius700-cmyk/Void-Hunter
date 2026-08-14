@@ -174,7 +174,19 @@ class TitleScene(Scene):
             self._spawn_demo_ship()
         # BLOQUE 58.45: play the title-screen track on loop.
         from src.audio import music
-        music.play_title_music()
+        # BLOQUE 58.57: diagnostic to confirm on_enter is reached
+        try:
+            with open("logs/_audio_status.log", "a", encoding="utf-8") as _f:
+                _f.write("TitleScene.on_enter() reached\n")
+                _f.write(f"  calling music.play_title_music()\n")
+        except Exception:
+            pass
+        ok = music.play_title_music()
+        try:
+            with open("logs/_audio_status.log", "a", encoding="utf-8") as _f:
+                _f.write(f"  play_title_music() returned: {ok}\n")
+        except Exception:
+            pass
         # BLOQUE 58.53: voice announcement ("Pantalla principal")
         music.play_voice_pantalla_principal()
 

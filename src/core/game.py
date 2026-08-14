@@ -165,6 +165,43 @@ class Game:
         self._register_scenes()
         self._running: bool = True
         self._accumulator: float = 0.0
+        # BLOQUE 58.57: trigger the initial scene's on_enter from __init__.
+        # main.py's _cmd_play uses an inline loop that does NOT call
+        # Game.run(), so on_enter must run here. Without this, the title
+        # scene's on_enter side effects (most importantly: START MUSIC) never
+        # fire and the user gets a silent title screen. Symptom was reported
+        # 5+ times; root cause was that Game.run()'s on_enter trigger was
+        # bypassed by main.py's inline loop.
+        self._trigger_initial_on_enter()
+
+    def _trigger_initial_on_enter(self) -> None:
+        """Call on_enter on whichever scene SceneManager starts in.
+
+        SceneManager.__init__ sets current_state but never calls on_enter —
+        that only happens on transitions. We need it to run once at game
+        start so the title scene starts its music, spawns ships, etc.
+        Idempotent and safe to call multiple times (each scene's on_enter
+        is expected to be re-entrant on first call only).
+        """
+        try:
+            with open("logs/_audio_status.log", "a", encoding="utf-8") as _f:
+                _f.write(
+                    f"_trigger_initial_on_enter: "
+                    f"current_state={self.scenes.current_state}, "
+                    f"overlay_stack={self.scenes.overlay_stack}\n"
+                )
+        except Exception:
+            pass
+        if (self.scenes.current_state in self.scenes.scenes
+                and not self.scenes.overlay_stack):
+            scene = self.scenes.scenes[self.scenes.current_state]
+            if scene is not None:
+                try:
+                    with open("logs/_audio_status.log", "a", encoding="utf-8") as _f:
+                        _f.write(f"  calling on_enter on {type(scene).__name__}\n")
+                except Exception:
+                    pass
+                scene.on_enter()
 
     # ------------------------------------------------------------------
     # BLOQUE 58.46: session score carry-over
@@ -250,10 +287,20 @@ class Game:
         # update()) but on_enter's side effects (init parallax, spawn
         # ships, START MUSIC) never run. Symptom: no music, ships appear
         # only via the update() fallback, and the title feels broken.
+        try:
+            with open("logs/_audio_status.log", "a", encoding="utf-8") as _f:
+                _f.write(f"Game.run() entered, current_state={self.scenes.current_state}\n")
+        except Exception:
+            pass
         if (self.scenes.current_state in self.scenes.scenes
                 and not self.scenes.overlay_stack):
             scene = self.scenes.scenes[self.scenes.current_state]
             if scene is not None:
+                try:
+                    with open("logs/_audio_status.log", "a", encoding="utf-8") as _f:
+                        _f.write(f"  calling on_enter on {type(scene).__name__}\n")
+                except Exception:
+                    pass
                 scene.on_enter()
         try:
             while self._running:

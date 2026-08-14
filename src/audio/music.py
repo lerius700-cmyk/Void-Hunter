@@ -101,10 +101,35 @@ def _diag_log(msg: str) -> None:
 def play_title_music(loops: int = -1) -> bool:
     """Play the title-screen track on loop. Returns True on success."""
     global _current_track
+    # BLOQUE 58.57: verbose diagnostic to logs/_audio_status.log so the
+    # user can see EXACTLY which audio driver pygame picked + whether
+    # the mixer is producing output. This is the file the user can
+    # open after running the .exe to verify audio is working.
+    try:
+        import os as _os
+        _os.makedirs("logs", exist_ok=True)
+        with open("logs/_audio_status.log", "a", encoding="utf-8") as _f:
+            _f.write(
+                f"play_title_music() at {os.environ.get('SDL_AUDIODRIVER', '?')}\n"
+            )
+            _f.write(f"  mixer init: {pygame.mixer.get_init()}\n")
+            _f.write(f"  music volume setting: {_music_volume}\n")
+    except Exception:
+        pass
     if not _ensure_mixer():
+        try:
+            with open("logs/_audio_status.log", "a", encoding="utf-8") as _f:
+                _f.write("  _ensure_mixer() FAILED\n")
+        except Exception:
+            pass
         return False
     path = _find_track(TITLE_TRACK)
     if path is None:
+        try:
+            with open("logs/_audio_status.log", "a", encoding="utf-8") as _f:
+                _f.write(f"  path is None: '{TITLE_TRACK}' not found\n")
+        except Exception:
+            pass
         print(f"[music] WARN: '{TITLE_TRACK}' not found in Assets/")
         return False
     try:
@@ -113,8 +138,18 @@ def play_title_music(loops: int = -1) -> bool:
         pygame.mixer.music.set_volume(_music_volume)
         pygame.mixer.music.play(loops=loops)
         _current_track = "title"
+        # Verify it's actually playing
+        import time
+        time.sleep(0.1)
+        busy = pygame.mixer.music.get_busy()
+        vol = pygame.mixer.music.get_volume()
+        with open("logs/_audio_status.log", "a", encoding="utf-8") as _f:
+            _f.write(f"  path: {path}\n")
+            _f.write(f"  music.play() OK, busy={busy}, vol={vol}\n")
         return True
     except pygame.error as exc:
+        with open("logs/_audio_status.log", "a", encoding="utf-8") as _f:
+            _f.write(f"  pygame.error: {exc}\n")
         print(f"[music] WARN: failed to load '{TITLE_TRACK}': {exc}")
         return False
 
@@ -210,8 +245,6 @@ def play_voice_jefe() -> bool:
 def play_voice_act_cleared() -> bool:
     """Announce act completion ('Acto completado' in Spanish)."""
     return play_voice_clip("voice_act_cleared.wav", volume=1.0)
-        print(f"[music] WARN: failed to load '{GAMEPLAY_TRACK}': {exc}")
-        return False
 
 
 def stop_music() -> None:

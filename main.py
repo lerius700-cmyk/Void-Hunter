@@ -19,8 +19,21 @@ import time
 # cables), the default can be the muted one. Explicitly trying
 # wasapi first, then directsound, then winmm, gives the most reliable
 # audio output across configurations.
-if sys.platform == "win32" and "SDL_AUDIODRIVER" not in os.environ:
-    os.environ["SDL_AUDIODRIVER"] = "wasapi"
+# BLOQUE 58.57: don't force a specific driver — let pygame pick. If
+# the user has weird audio routing, the default works better than a
+# forced driver that might fail. Diagnostic logging will reveal what
+# was actually selected.
+if sys.platform == "win32":
+    # Make sure logs dir exists
+    try:
+        os.makedirs("logs", exist_ok=True)
+    except Exception:
+        pass
+    with open("logs/_audio_status.log", "w", encoding="utf-8") as _f:
+        _f.write(f"=== void-hunter audio diagnostic ===\n")
+        _f.write(f"SDL_VIDEODRIVER={os.environ.get('SDL_VIDEODRIVER', '<unset>')}\n")
+        _f.write(f"SDL_AUDIODRIVER={os.environ.get('SDL_AUDIODRIVER', '<unset>')}\n")
+        _f.write(f"sys.platform={sys.platform}\n")
 
 
 def _detect_screen_scale() -> float:
