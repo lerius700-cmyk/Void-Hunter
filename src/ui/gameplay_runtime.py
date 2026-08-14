@@ -4011,17 +4011,30 @@ class GameplayRuntime:
     # ------------------------------------------------------------------
     # BLOQUE 58.47: ship scale wrappers (player +5%, enemies +5%)
     # BLOQUE 58.48: prefer PNG sprite over procedural code when available
+    # BLOQUE 58.50: rotate the player PNG to match nose_angle so the
+    # ship always points where the player is aiming (was static before).
     # ------------------------------------------------------------------
     def _draw_player_scaled(self, target: pygame.Surface, shx: int, shy: int) -> None:
         """Render the player ship to a scratch surface, scale up by
         _ship_scale_player, then blit at the player's screen position.
         Hitboxes and game logic are unchanged — only the visual size.
         BLOQUE 58.48: prefers the pre-rendered PNG sprite from
-        Assets/sprites/ over the procedural code."""
+        Assets/sprites/ over the procedural code.
+        BLOQUE 58.50: rotates the PNG to match the player's nose angle
+        (the procedural code did this internally; the static PNG needs
+        an explicit rotate())."""
         scale = self._ship_scale_player
         sprite = self._get_player_sprite()
+        # BLOQUE 58.50: nose_angle = 0° (up), 90° (right), 180° (down),
+        # 270° (left). The sprite points UP at 0°. pygame.transform.rotate
+        # uses degrees CCW, so we negate the angle to get a clockwise
+        # rotation matching the in-game convention.
+        nose_angle = getattr(self._player, "nose_angle", 0.0)
+        rot_deg = -nose_angle
         if sprite is not None:
-            # Use the PNG sprite directly
+            # Rotate, then scale
+            if abs(rot_deg) > 0.5:
+                sprite = pygame.transform.rotate(sprite, rot_deg)
             w, h = sprite.get_size()
             scaled = pygame.transform.scale(
                 sprite, (int(w * scale), int(h * scale)),
