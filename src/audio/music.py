@@ -115,11 +115,22 @@ def play_title_music(loops: int = -1) -> bool:
         return False
 
 
-def play_gameplay_music(loops: int = -1) -> bool:
-    """Play the gameplay soundtrack on loop. Returns True on success."""
+def play_gameplay_music(loops: int = -1, force: bool = False) -> bool:
+    """Play the gameplay soundtrack on loop. Returns True on success.
+
+    BLOQUE 58.53: when `force=False` (default), the music is NOT
+    restarted if the gameplay track is already the current track.
+    This keeps the music playing continuously through the sub-boss
+    warning (SUB_BOSS_INTRO -> Gameplay) without restarting from
+    the beginning. Pass `force=True` for explicit reloads (e.g.
+    after game over, act transition).
+    """
     global _current_track
     if not _ensure_mixer():
         return False
+    if not force and _current_track == "gameplay" and pygame.mixer.music.get_busy():
+        # Already playing the gameplay track — let it keep going.
+        return True
     path = _find_track(GAMEPLAY_TRACK)
     if path is None:
         print(f"[music] WARN: '{GAMEPLAY_TRACK}' not found in Assets/")
@@ -132,6 +143,69 @@ def play_gameplay_music(loops: int = -1) -> bool:
         _current_track = "gameplay"
         return True
     except pygame.error as exc:
+        print(f"[music] WARN: failed to load '{GAMEPLAY_TRACK}': {exc}")
+        return False
+
+
+# BLOQUE 58.53: voice clip playback (SAPI-generated "pantalla principal"
+# etc. announcements). Uses a separate pygame.mixer.Channel so the BGM
+# on Channel 0 keeps playing. Falls back gracefully if the file is
+# missing.
+_voice_channel: Optional[pygame.mixer.Channel] = None
+
+
+def _ensure_voice_channel() -> Optional[pygame.mixer.Channel]:
+    """Get a dedicated mixer channel for voice clips (1-shot, no loop)."""
+    global _voice_channel
+    if not _ensure_mixer():
+        return None
+    if _voice_channel is None:
+        pygame.mixer.set_num_channels(8)  # BGM (reserved) + 7 SFX/voice
+        _voice_channel = pygame.mixer.Channel(1)
+    return _voice_channel
+
+
+def play_voice_clip(filename: str, volume: float = 1.0) -> bool:
+    """Play a short voice announcement (e.g. "pantalla principal").
+
+    Files live in Assets/ next to the music tracks. Returns True on
+    success. The clip is one-shot; the BGM (pygame.mixer.music) keeps
+    playing on its own channel.
+    """
+    path = _find_track(filename)
+    if path is None:
+        return False
+    try:
+        sound = pygame.mixer.Sound(str(path))
+        sound.set_volume(volume)
+        channel = _ensure_voice_channel()
+        if channel is None:
+            return False
+        channel.play(sound)
+        return True
+    except pygame.error as exc:
+        print(f"[voice] WARN: failed to play '{filename}': {exc}")
+        return False
+
+
+def play_voice_pantalla_principal() -> bool:
+    """Announce the title screen ('Pantalla principal' in Spanish)."""
+    return play_voice_clip("voice_pantalla_principal.wav", volume=1.0)
+
+
+def play_voice_gameplay() -> bool:
+    """Announce gameplay start ('Gameplay' in Spanish)."""
+    return play_voice_clip("voice_gameplay.wav", volume=1.0)
+
+
+def play_voice_jefe() -> bool:
+    """Announce the boss ('Jefe' in Spanish)."""
+    return play_voice_clip("voice_jefe.wav", volume=1.0)
+
+
+def play_voice_act_cleared() -> bool:
+    """Announce act completion ('Acto completado' in Spanish)."""
+    return play_voice_clip("voice_act_cleared.wav", volume=1.0)
         print(f"[music] WARN: failed to load '{GAMEPLAY_TRACK}': {exc}")
         return False
 

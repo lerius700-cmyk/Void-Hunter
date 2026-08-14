@@ -175,6 +175,8 @@ class TitleScene(Scene):
         # BLOQUE 58.45: play the title-screen track on loop.
         from src.audio import music
         music.play_title_music()
+        # BLOQUE 58.53: voice announcement ("Pantalla principal")
+        music.play_voice_pantalla_principal()
 
     def _spawn_demo_ship(self) -> None:
         """Spawn an enemy or player demo ship on the left or right side."""
@@ -738,7 +740,9 @@ class GameplayScene(Scene):
         self._rt.on_enter()
         # BLOQUE 58.45: switch to the gameplay soundtrack (loop).
         from src.audio import music
-        music.play_gameplay_music()
+        music.play_gameplay_music(force=True)
+        # BLOQUE 58.53: voice announcement ("Gameplay")
+        music.play_voice_gameplay()
 
     def on_exit(self) -> None:
         # BLOQUE 58.46: push the player's accumulated score to the game
@@ -1069,10 +1073,13 @@ class BossFightScene(Scene):
         # accumulated score from gameplay so the HUD doesn't reset to 0.
         if self._get_session_score is not None:
             self._rt._scoring.score = self._get_session_score()
-        # BLOQUE 58.45: gameplay music keeps playing through boss fights.
+        # BLOQUE 58.45/53: gameplay music keeps playing through boss fights.
+        # Now `play_gameplay_music` is idempotent — it won't restart the
+        # track if it's already the current track.
         from src.audio import music
         if music.get_current_track() != "gameplay":
-            music.play_gameplay_music()
+            music.play_gameplay_music(force=True)
+        music.play_voice_jefe()
 
     def on_exit(self) -> None:
         # BLOQUE 58.46: push the boss score back to the session so the
@@ -1119,6 +1126,9 @@ class ActClearedScene(Scene):
             self._set_session_score(
                 self._get_session_score() + self.ACT_CLEAR_BONUS,
             )
+        # BLOQUE 58.53: voice announcement ("Acto completado")
+        from src.audio import music
+        music.play_voice_act_cleared()
 
     def update(self, dt: float) -> None:
         self._t += dt
