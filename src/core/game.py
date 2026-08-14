@@ -158,9 +158,24 @@ class Game:
             self.audio = None
         self.easy: bool = easy  # BLOQUE 28: easy mode flag
         self.scenes: SceneManager = SceneManager()
+        # BLOQUE 58.46: session-level score that survives scene transitions
+        # (gameplay → boss → act_cleared). The new boss/act-cleared runtime
+        # would otherwise start at 0, losing the player's accumulated score.
+        self.session_score: int = 0
         self._register_scenes()
         self._running: bool = True
         self._accumulator: float = 0.0
+
+    # ------------------------------------------------------------------
+    # BLOQUE 58.46: session score carry-over
+    # ------------------------------------------------------------------
+    def _set_session_score(self, score: int) -> None:
+        """Update the session score (called by GameplayScene.on_exit)."""
+        self.session_score = score
+
+    def _get_session_score(self) -> int:
+        """Read the current session score (called by BossFightScene / ActClearedScene)."""
+        return self.session_score
 
     def _present(self) -> None:
         """Scale the internal 320x480 surface to the display and present."""
@@ -190,15 +205,36 @@ class Game:
 
         self.scenes.register_scene(GameState.TITLE, TitleScene(transition_to))
         self.scenes.register_scene(GameState.ACT_INTRO, ActIntroScene(transition_to, act=1))
-        self.scenes.register_scene(GameState.GAMEPLAY, GameplayScene(transition_to, audio=self.audio))
+        # BLOQUE 58.46: pass session_score callbacks so the score carries
+        # over between gameplay, boss, and act_cleared scenes.
+        self.scenes.register_scene(
+            GameState.GAMEPLAY,
+            GameplayScene(transition_to, audio=self.audio,
+                          set_session_score=self._set_session_score),
+        )
         # BLOQUE 58.23: pass the shared audio engine to BOSS_INTRO and
         # SUB_BOSS_INTRO. The previous versions did `AudioEngine()` in
         # on_enter, which re-initialized pygame.mixer and re-baked all
         # SFX + BGM (~1.2s freeze) right when the wave cleared.
         self.scenes.register_scene(GameState.BOSS_INTRO, BossIntroScene(transition_to, audio=self.audio))
-        self.scenes.register_scene(GameState.BOSS_FIGHT, BossFightScene(transition_to, act=1, audio=self.audio))
-        self.scenes.register_scene(GameState.ACT_CLEARED, ActClearedScene(transition_to))
-        self.scenes.register_scene(GameState.GAME_OVER, GameOverScene(transition_to))
+        self.scenes.register_scene(
+            GameState.BOSS_FIGHT,
+            BossFightScene(transition_to, act=1, audio=self.audio,
+                           get_session_score=self._get_session_score,
+                           set_session_score=self._set_session_score),
+        )
+        self.scenes.register_scene(
+            GameState.ACT_CLEARED,
+            ActClearedScene(transition_to,
+                            get_session_score=self._get_session_score,
+                            set_session_score=self._set_session_score),
+        )
+        self.scenes.register_scene(
+            GameState.GAME_OVER,
+            GameOverScene(transition_to,
+                          get_session_score=self._get_session_score,
+                          set_session_score=self._set_session_score),
+        )
         self.scenes.register_scene(GameState.VICTORY, VictoryScene(transition_to))
         self.scenes.register_scene(GameState.CREDITS, CreditsScene(transition_to))
         # BLOQUE 50: sub-boss mid-wave warning (yellow)

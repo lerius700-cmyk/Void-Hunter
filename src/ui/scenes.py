@@ -611,9 +611,11 @@ class GameplayScene(Scene):
     """
 
     def __init__(self, transition_to: "TransitionFn", act: int = 1,
-                 audio: Optional["AudioEngine"] = None) -> None:
+                 audio: Optional["AudioEngine"] = None,
+                 set_session_score: "Optional[Callable[[int], None]]" = None) -> None:
         self._transition_to = transition_to
         self._act = act
+        self._set_session_score = set_session_score  # BLOQUE 58.46: score carry-over
         from src.ui.gameplay_runtime import GameplayRuntime
         self._rt = GameplayRuntime(transition_to, is_boss=False, act=act, audio=audio)
 
@@ -624,6 +626,10 @@ class GameplayScene(Scene):
         music.play_gameplay_music()
 
     def on_exit(self) -> None:
+        # BLOQUE 58.46: push the player's accumulated score to the game
+        # session so the boss / act_cleared scene can keep it.
+        if self._set_session_score is not None:
+            self._set_session_score(self._rt._scoring.score)
         self._rt.on_exit()
 
     def update(self, dt: float) -> None:
@@ -931,20 +937,33 @@ class BossFightScene(Scene):
     """BOSS_FIGHT — boss arena. Delegates to GameplayRuntime in boss mode."""
 
     def __init__(self, transition_to: "TransitionFn", act: int = 1,
-                 audio: Optional["AudioEngine"] = None) -> None:
+                 audio: Optional["AudioEngine"] = None,
+                 get_session_score: "Optional[Callable[[], int]]" = None,
+                 set_session_score: "Optional[Callable[[int], None]]" = None) -> None:
         self._transition_to = transition_to
         self._act = act
+        # BLOQUE 58.46: callbacks for the cross-scene session score.
+        self._get_session_score = get_session_score
+        self._set_session_score = set_session_score
         from src.ui.gameplay_runtime import GameplayRuntime
         self._rt = GameplayRuntime(transition_to, is_boss=True, act=act, audio=audio)
 
     def on_enter(self) -> None:
         self._rt.on_enter()
+        # BLOQUE 58.46: override the fresh scoring system with the player's
+        # accumulated score from gameplay so the HUD doesn't reset to 0.
+        if self._get_session_score is not None:
+            self._rt._scoring.score = self._get_session_score()
         # BLOQUE 58.45: gameplay music keeps playing through boss fights.
         from src.audio import music
         if music.get_current_track() != "gameplay":
             music.play_gameplay_music()
 
     def on_exit(self) -> None:
+        # BLOQUE 58.46: push the boss score back to the session so the
+        # GAME_OVER / ACT_CLEARED scenes can read the right number.
+        if self._set_session_score is not None:
+            self._set_session_score(self._rt._scoring.score)
         self._rt.on_exit()
 
     def update(self, dt: float) -> None:
@@ -961,13 +980,28 @@ class BossFightScene(Scene):
 class ActClearedScene(Scene):
     """ACT_CLEARED — act boss defeated, +25000 pts, act transition."""
 
-    def __init__(self, transition_to: TransitionFn) -> None:
+    # BLOQUE 58.46: bonus added to the session score when an act is cleared.
+    ACT_CLEAR_BONUS: int = 25000
+
+    def __init__(self, transition_to: TransitionFn,
+                 get_session_score: "Optional[Callable[[], int]]" = None,
+                 set_session_score: "Optional[Callable[[int], None]]" = None) -> None:
         self._transition_to = transition_to
         self._t: float = 0.0
         self._duration: float = 4.0
+        # BLOQUE 58.46: when this scene starts, add the clear bonus to the
+        # session score so it carries over to the next act.
+        self._get_session_score = get_session_score
+        self._set_session_score = set_session_score
 
     def on_enter(self) -> None:
         self._t = 0.0
+        # BLOQUE 58.46: commit the act-clear bonus to the session score.
+        if (self._get_session_score is not None
+                and self._set_session_score is not None):
+            self._set_session_score(
+                self._get_session_score() + self.ACT_CLEAR_BONUS,
+            )
 
     def update(self, dt: float) -> None:
         self._t += dt
@@ -991,13 +1025,26 @@ class ActClearedScene(Scene):
 class GameOverScene(Scene):
     """GAME_OVER — 0 lives, end of run."""
 
-    def __init__(self, transition_to: TransitionFn) -> None:
+    def __init__(self, transition_to: TransitionFn,
+                 get_session_score: "Optional[Callable[[], int]]" = None,
+                 set_session_score: "Optional[Callable[[int], None]]" = None) -> None:
         self._transition_to = transition_to
         self._t: float = 0.0
         self._duration: float = 5.0
+        # BLOQUE 58.46: keep a snapshot of the final score for the display
+        # and reset the session score so the next run starts at 0.
+        self._get_session_score = get_session_score
+        self._set_session_score = set_session_score
+        self._final_score: int = 0
 
     def on_enter(self) -> None:
         self._t = 0.0
+        # BLOQUE 58.46: snapshot the final score for display, then reset
+        # the session so the next run starts fresh.
+        if self._get_session_score is not None:
+            self._final_score = self._get_session_score()
+        if self._set_session_score is not None:
+            self._set_session_score(0)
 
     def update(self, dt: float) -> None:
         self._t += dt
@@ -1013,6 +1060,13 @@ class GameOverScene(Scene):
         font = pygame.font.Font(None, 32)
         text = font.render("GAME OVER", True, (255, 60, 40))
         _center_blit(target, text, 140)
+        # BLOQUE 58.46: show the player's final score so they know what
+        # they scored before dying.
+        font2 = pygame.font.Font(None, 18)
+        score_text = font2.render(
+            f"FINAL SCORE: {self._final_score:06d}", True, (255, 200, 80),
+        )
+        _center_blit(target, score_text, 200)
 
 
 class VictoryScene(Scene):
