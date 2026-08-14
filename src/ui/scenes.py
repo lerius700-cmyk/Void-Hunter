@@ -334,6 +334,13 @@ class TitleScene(Scene):
         screen shows the same recognizable Arwing-style spaceships the
         player sees in gameplay.
 
+        BLOQUE 58.52: rotate each ship to match its velocity direction
+        so the nose/tip points WHERE the ship is moving. Previously the
+        player ship moved horizontally (vx=±60) but its sprite pointed
+        UP, making it look like it was flying sideways. Now we compute
+        the angle from the velocity vector and apply pygame.transform.
+        rotate to align the nose with motion.
+
         Falls back to the procedural drawers if the sprite PNGs are
         missing (e.g. running from source without the bundle).
         """
@@ -356,8 +363,18 @@ class TitleScene(Scene):
                 key = kind.value if hasattr(kind, "value") else str(kind)
                 sprite_name = _ENEMY_SPRITE_FILES.get(key, "")
             sprite = _load_sprite(sprite_name) if sprite_name else None
+            # BLOQUE 58.52: compute rotation from velocity so the ship's
+            # TIP/NOSE points in the direction it's moving. Convention
+            # (matches gameplay): 0°=up, 90°=right, 180°=down, 270°=left.
+            # pygame.transform.rotate is CCW, so we negate the angle.
+            import math
+            nose_angle_deg = math.degrees(math.atan2(ship.vx, -ship.vy)) % 360.0
+            rot_deg = -nose_angle_deg
             if sprite is not None:
-                # Scale and blit the loaded sprite
+                # Rotate first, then scale (so the resulting image is
+                # cleaner than scaling-then-rotating).
+                if abs(rot_deg) > 0.5:
+                    sprite = pygame.transform.rotate(sprite, rot_deg)
                 w, h = sprite.get_size()
                 scaled = pygame.transform.scale(
                     sprite, (int(w * scale), int(h * scale)),
@@ -380,6 +397,8 @@ class TitleScene(Scene):
                         drawer(self, scratch, mid, mid, ship)
                     else:
                         self._draw_enemy_fallback(scratch, mid, mid, ship)
+                if abs(rot_deg) > 0.5:
+                    scratch = pygame.transform.rotate(scratch, rot_deg)
                 scaled = pygame.transform.scale(
                     scratch, (int(scratch_size * scale), int(scratch_size * scale)),
                 )
