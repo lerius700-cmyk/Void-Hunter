@@ -28,10 +28,11 @@ from src.systems.scoring_system import ScoringSystem
 from src.systems.weapon_system import WeaponSystem
 
 
-# Layout — BLOQUE 58.41 (minimalist)
+# Layout — BLOQUE 58.42 (missile icons now 9x5, horizontal)
 HUD_MARGIN = 3
-ROW_H = 11  # tighter spacing
-ICON_SIZE = 8
+ROW_H = 11
+ICON_SIZE_W = 9
+ICON_SIZE_H = 5
 GOLD_RING_ICON_SIZE = 5
 HP_BAR_W = 80
 HP_BAR_H = 5
@@ -202,74 +203,109 @@ class HUD:
         return y + ROW_H
 
     def _draw_missiles(self, target: pygame.Surface, player: Player, y: int, t: float) -> int:
-        """BLOQUE 58.41: minimalist missile icons (replaces bomb rounds).
+        """BLOQUE 58.41/58.42: clear horizontal missile icons (replaces bomb rounds).
 
-        Each icon is a tiny vertical missile silhouette: pointed nose,
-        thin body, two small fins. Ready missiles pulse warm yellow with
-        a faint engine glow. Spent missiles are dark silhouettes.
+        Each icon is a 9x5 horizontal missile: pointed red warhead, body
+        with band ring, 2 fins, and engine flame trail. Ready missiles
+        pulse warm yellow with bright flame. Spent = dark silhouette.
         """
         x = HUD_MARGIN
         bombs = player.bombs
         max_bombs = player.bombs_max
         icon_cy = y + ROW_H // 2
         for i in range(max_bombs):
-            bx = x + i * (ICON_SIZE + 3)
+            bx = x + i * (ICON_SIZE_W + 4)
             is_ready = i < bombs
             self._draw_missile_icon(target, bx, icon_cy, ready=is_ready, t=t, idx=i)
         return y + ROW_H
 
     def _draw_missile_icon(self, target: pygame.Surface, x: int, y: int,
                             ready: bool, t: float, idx: int) -> None:
-        """BLOQUE 58.41: draw a single minimalist missile silhouette.
+        """BLOQUE 58.42: draw a clear missile silhouette.
 
-        Vertical orientation. Pointed nose at top, body, two small fins at
-        the bottom, optional engine glow when ready.
+        Horizontal orientation (nose pointing right) so the silhouette
+        reads instantly as "missile". 9x5 px footprint with:
+          - pointed warhead (triangle nose)
+          - cylindrical body (rect with darker edge)
+          - band/ring (mid-body detail, makes it look like a real warhead)
+          - 2 fins at the back
+          - engine glow trailing behind
+        When ready: warm yellow with pulsing engine flame. Spent: dark gray.
         """
-        # Missile geometry (6 px tall, 4 px wide)
-        body_x = x
-        body_y = y - 2  # center vertically in the row
-        body_w = 4
+        # Center the missile on (x, y)
+        body_w = 7
         body_h = 5
+        body_x = x
+        body_y = y - body_h // 2
         # Color palette
         if ready:
-            pulse = 0.7 + 0.3 * math.sin(t * 4.0 + idx * 0.6)
-            body_col = (int(220 * pulse), int(200 * pulse), int(120 * pulse))
-            nose_col = (255, 180, 100)
+            pulse = 0.75 + 0.25 * math.sin(t * 4.0 + idx * 0.6)
+            body_col = (int(230 * pulse), int(210 * pulse), int(130 * pulse))
+            body_dark = (160, 130, 70)
+            nose_col = (255, 100, 90)        # red warhead tip
+            band_col = (180, 180, 200)      # silver/gray ring
             fin_col = (200, 130, 60)
-            engine_col = (255, 220, 140)
+            engine_col = (255, 200, 100)
         else:
-            body_col = (50, 50, 60)
-            nose_col = (60, 60, 70)
-            fin_col = (40, 40, 50)
+            body_col = (55, 55, 65)
+            body_dark = (30, 30, 40)
+            nose_col = (70, 70, 80)
+            band_col = (45, 45, 55)
+            fin_col = (35, 35, 45)
             engine_col = (40, 40, 50)
-        # Nose (pointed triangle on top)
-        pygame.draw.polygon(target, nose_col, [
-            (body_x + body_w // 2, body_y - 1),       # tip
-            (body_x + body_w, body_y + 1),           # right base
-            (body_x, body_y + 1),                    # left base
-        ])
-        # Body (rectangle)
-        pygame.draw.rect(target, body_col, (body_x, body_y + 1, body_w, body_h - 2))
-        # Body outline (darker edge for definition)
-        pygame.draw.rect(target, (max(0, body_col[0] - 50), max(0, body_col[1] - 50),
-                                    max(0, body_col[2] - 50)),
-                          (body_x, body_y + 1, body_w, body_h - 2), 1)
-        # Wings / fins (small triangles at the bottom)
-        pygame.draw.polygon(target, fin_col, [
-            (body_x, body_y + body_h - 1),
-            (body_x - 1, body_y + body_h + 1),
-            (body_x + 1, body_y + body_h - 1),
-        ])
-        pygame.draw.polygon(target, fin_col, [
-            (body_x + body_w, body_y + body_h - 1),
-            (body_x + body_w + 1, body_y + body_h + 1),
-            (body_x + body_w - 1, body_y + body_h - 1),
-        ])
-        # Engine glow (small dot below when ready)
+        # Engine glow trail (behind the missile, when ready)
         if ready:
-            glow = pygame.Surface((6, 3), pygame.SRCALPHA)
-            pygame.draw.ellipse(glow, (*engine_col, 180), (0, 0, 6, 3))
-            target.blit(glow, (body_x - 1, body_y + body_h))
+            trail_w = 5
+            trail = pygame.Surface((trail_w + 4, body_h + 4), pygame.SRCALPHA)
+            for i in range(trail_w):
+                t_factor = i / max(1, trail_w - 1)
+                col = (
+                    int(255 * (1 - t_factor)),
+                    int(200 * (1 - t_factor)),
+                    int(100 * (1 - t_factor * 0.5)),
+                    int(220 * (1 - t_factor)),
+                )
+                pygame.draw.rect(trail, col,
+                                  (i, 2 + (1 - t_factor) * 1, 1, body_h - int(2 * (1 - t_factor))))
+            target.blit(trail, (body_x - trail_w - 2, body_y - 2))
+        # Fins (back, 2 triangles extending out)
+        fin_back_x = body_x
+        fin_mid_y = body_y + 1
+        fin_bot_y = body_y + body_h + 1
+        pygame.draw.polygon(target, fin_col, [
+            (fin_back_x, fin_mid_y),
+            (fin_back_x - 2, fin_bot_y),
+            (fin_back_x + 1, fin_bot_y - 1),
+        ])
+        pygame.draw.polygon(target, fin_col, [
+            (fin_back_x, fin_mid_y + body_h - 2),
+            (fin_back_x - 2, fin_mid_y + body_h - 2),
+            (fin_back_x + 1, fin_mid_y + body_h - 1),
+        ])
+        # Body (rectangle) - main cylinder
+        pygame.draw.rect(target, body_col, (body_x, body_y, body_w, body_h))
+        # Body darker top/bottom edges (gives cylinder look)
+        pygame.draw.line(target, body_dark,
+                          (body_x, body_y), (body_x + body_w, body_y), 1)
+        pygame.draw.line(target, body_dark,
+                          (body_x, body_y + body_h - 1),
+                          (body_x + body_w, body_y + body_h - 1), 1)
+        # Band/ring around the middle (3/4 from back)
+        band_x = body_x + 2
+        pygame.draw.line(target, band_col,
+                          (band_x, body_y), (band_x, body_y + body_h - 1), 1)
+        # Warhead (red pointed nose) at the FRONT (right side)
+        warhead_back_x = body_x + body_w
+        warhead_mid_y = body_y + body_h // 2
+        pygame.draw.polygon(target, nose_col, [
+            (warhead_back_x, body_y),
+            (warhead_back_x, body_y + body_h - 1),
+            (warhead_back_x + 2, warhead_mid_y),
+        ])
+        # Bright tip dot
+        if ready:
+            pygame.draw.circle(target, (255, 240, 200),
+                              (warhead_back_x + 2, warhead_mid_y), 0)
 
     def _draw_score(self, target: pygame.Surface, scoring: ScoringSystem,
                     kill_ratio: float, t: float) -> None:
