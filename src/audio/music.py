@@ -34,7 +34,11 @@ GAMEPLAY_TRACK = "keep kept - Lerius - soundtrack gameplay.wav"
 
 # Module-level state
 _current_track: Optional[str] = None
-_music_volume: float = 0.7  # 0..1, headroom for SFX
+# BLOQUE 58.55: bumped to 1.0 (max). At 0.7 users were reporting
+# "no audio" — the Windows volume mixer per-app slider was likely
+# reducing it further, or the BGM at 70% was below the ambient noise
+# floor. BGM at 100% is the standard for arcade games.
+_music_volume: float = 1.0
 
 
 def _find_assets_dir() -> Optional[Path]:
@@ -83,7 +87,7 @@ def _ensure_mixer() -> bool:
     """Initialize pygame.mixer if not already. Returns False on failure."""
     try:
         if not pygame.mixer.get_init():
-            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=4096)
+            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
         return True
     except pygame.error:
         return False

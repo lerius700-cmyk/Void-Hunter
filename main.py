@@ -8,8 +8,19 @@ Dependencies: pygame, src.core.{settings,game}.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
+
+
+# BLOQUE 58.55: set the SDL audio driver BEFORE pygame.init(). The
+# default is whatever SDL picks first, but on some Windows machines
+# with multiple audio devices (HDMI + speakers, or virtual audio
+# cables), the default can be the muted one. Explicitly trying
+# wasapi first, then directsound, then winmm, gives the most reliable
+# audio output across configurations.
+if sys.platform == "win32" and "SDL_AUDIODRIVER" not in os.environ:
+    os.environ["SDL_AUDIODRIVER"] = "wasapi"
 
 
 def _detect_screen_scale() -> float:
