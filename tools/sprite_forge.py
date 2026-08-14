@@ -772,32 +772,31 @@ def render_hud(category_dir: Path) -> list[tuple[str, pygame.Surface]]:
         out.append((f"hud_heat_{label}", _crop_bounds(target, pad=2)))
 
     # Rings at 3 levels
-    for rings, label in [(0, "0"), (2, "2"), (3, "3")]:
-        rt._player.gold_rings = rings
-        size = (130, 14)
-        target = pygame.Surface(size, pygame.SRCALPHA)
-        target.fill((0, 0, 0, 0))
-        hud._draw_gold_rings(target, rt._player, 0, 0.0)
-        out.append((f"hud_rings_{label}", _crop_bounds(target, pad=2)))
-
-    # Bombs at 3 levels
+    # BLOQUE 58.41: missiles at 3 levels (replaces the old bomb counter)
     for bombs, label in [(3, "3"), (2, "2"), (0, "0")]:
         rt._player.bombs = bombs
         size = (130, 14)
         target = pygame.Surface(size, pygame.SRCALPHA)
         target.fill((0, 0, 0, 0))
-        hud._draw_bombs(target, rt._player, 0, 0.0)
-        out.append((f"hud_bombs_{label}", _crop_bounds(target, pad=2)))
+        hud._draw_missiles(target, rt._player, 0, 0.0)
+        out.append((f"hud_missiles_{label}", _crop_bounds(target, pad=2)))
 
-    # Score panel (rendered at right margin, so use the full width)
-    sc = ScoringSystem()
-    sc.score = 123456
+    # Score panel — render at multiple kill ratios to show the dynamic color
     from src.core.settings import INTERNAL_W
-    size = (INTERNAL_W, 24)
-    target = pygame.Surface(size, pygame.SRCALPHA)
-    target.fill((0, 0, 0, 0))
-    hud._draw_score(target, sc)
-    out.append(("hud_score", _crop_bounds(target, pad=2)))
+    sc = ScoringSystem()
+    for score_val, ratio, label in [
+        (123456, 1.00, "100pct"),   # 100%: red + glow + gold border
+        (123456, 0.99, "99pct"),    # 99%: red, plain
+        (123456, 0.75, "75pct"),    # 75%: red→yellow blend
+        (123456, 0.49, "49pct"),    # 49%: yellow
+        (123456, 0.10, "10pct"),    # 10%: white
+    ]:
+        sc.score = score_val
+        size = (INTERNAL_W, 24)
+        target = pygame.Surface(size, pygame.SRCALPHA)
+        target.fill((0, 0, 0, 0))
+        hud._draw_score(target, sc, ratio, 0.0)
+        out.append((f"hud_score_{label}", _crop_bounds(target, pad=2)))
 
     return out
 

@@ -132,8 +132,8 @@ def test_hud_has_no_section_methods():
 
 
 def test_hud_has_minimal_api():
-    """BLOQUE 58.19: HUD has the 5 expected draw methods (HP,
-    overheat, rings, bombs, score).
+    """BLOQUE 58.41: HUD has the 4 expected draw methods (HP, overheat,
+    missiles, score). The old rings/bombs section was removed in 58.41.
     """
     from src.ui.hud import HUD
     hud = HUD()
@@ -143,9 +143,13 @@ def test_hud_has_minimal_api():
     # Internal helpers
     assert hasattr(hud, "_draw_hp_bar")
     assert hasattr(hud, "_draw_overheat_bar")
-    assert hasattr(hud, "_draw_gold_rings")
-    assert hasattr(hud, "_draw_bombs")
+    assert hasattr(hud, "_draw_missiles")
+    assert hasattr(hud, "_draw_missile_icon")
     assert hasattr(hud, "_draw_score")
+    # BLOQUE 58.41: removed in favor of minimalist missiles
+    assert not hasattr(hud, "_draw_gold_rings")
+    assert not hasattr(hud, "_draw_bombs")
+    assert not hasattr(hud, "_draw_bomb_icon")
 
 
 def test_hud_draws_with_overheat_state():
@@ -159,23 +163,48 @@ def test_hud_draws_with_overheat_state():
         hud.draw(target, p, w, s, t=0.5)  # must not crash
 
 
-def test_hud_draws_with_gold_rings():
-    """BLOQUE 58.19: HUD draws the 3 ring slots correctly."""
-    from src.ui.hud import HUD
-    from src.core.settings import INTERNAL_W, INTERNAL_H
-    hud = HUD()
-    for rings in (0, 1, 2, 3):
-        p, w, s = _make_state(rings=rings)
-        target = pygame.Surface((INTERNAL_W, INTERNAL_H))
-        hud.draw(target, p, w, s, t=0.5)
-
-
-def test_hud_draws_with_bomb_count():
-    """BLOQUE 58.19: HUD draws the bomb counter for various bomb counts."""
+def test_hud_draws_with_missile_count():
+    """BLOQUE 58.41: HUD draws the missile counter for various bomb counts."""
     from src.ui.hud import HUD
     from src.core.settings import INTERNAL_W, INTERNAL_H
     hud = HUD()
     for bombs, max_bombs in [(0, 3), (1, 3), (3, 3), (0, 4), (4, 4)]:
         p, w, s = _make_state(bombs=bombs, bombs_max=max_bombs)
         target = pygame.Surface((INTERNAL_W, INTERNAL_H))
-        hud.draw(target, p, w, s, t=0.5)
+        hud.draw(target, p, w, s, t=0.5, kill_ratio=0.5)
+
+
+def test_hud_score_color_tiers():
+    """BLOQUE 58.41: score color reflects kill ratio (100% red, 99% red,
+    49% yellow, <20% white).
+    """
+    from src.ui.hud import score_color_for_ratio, score_has_glow, GOLD_BORDER
+    # 100% → bright red + glow
+    assert score_has_glow(1.0) is True
+    assert score_has_glow(0.99) is False
+    assert score_has_glow(0.5) is False
+    # Color tiers
+    c100 = score_color_for_ratio(1.0)
+    c99 = score_color_for_ratio(0.99)
+    c75 = score_color_for_ratio(0.75)
+    c49 = score_color_for_ratio(0.49)
+    c20 = score_color_for_ratio(0.20)
+    c10 = score_color_for_ratio(0.10)
+    # 100% brightest red, 99% red, 75% red+yellow blend, 49% yellow, white below
+    assert c100[0] >= c99[0]      # 100% has equal or more red than 99%
+    assert c75[1] > c99[1]        # mid-tier has more green than 99% (red→yellow shift)
+    # Yellow at 49% has more green than red at 99% (proves we shifted toward yellow)
+    assert c49[1] > c99[1]        # green: 49% > 99%
+    assert c10[0] > 200           # white-ish
+    # Gold border is reserved for 100% only
+    assert GOLD_BORDER == (255, 200, 80)
+
+
+def test_hud_draws_at_100_percent():
+    """BLOQUE 58.41: HUD draws score with glow + gold border at 100%."""
+    from src.ui.hud import HUD
+    from src.core.settings import INTERNAL_W, INTERNAL_H
+    hud = HUD()
+    p, w, s = _make_state()
+    target = pygame.Surface((INTERNAL_W, INTERNAL_H))
+    hud.draw(target, p, w, s, t=0.5, kill_ratio=1.0)  # must not crash

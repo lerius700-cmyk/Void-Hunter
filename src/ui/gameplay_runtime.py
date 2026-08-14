@@ -3022,8 +3022,13 @@ class GameplayRuntime:
         self._draw_wave_indicator(target)
         # Play-area frame (always on top so the border is visible)
         self._draw_play_area_frame(target)
-        # HUD (BLOQUE 25: pass t for animations)
-        self._hud.draw(target, self._player, self._weapon, self._scoring, t=self._t)
+        # HUD (BLOQUE 25: pass t for animations; BLOQUE 58.41: kill_ratio
+        # drives the score color — 100% red+glow+gold, drops to white at <20%)
+        ratio = 1.0
+        if self._enemies_spawned_total > 0:
+            ratio = min(1.0, self._scoring.kills / self._enemies_spawned_total)
+        self._hud.draw(target, self._player, self._weapon, self._scoring,
+                       t=self._t, kill_ratio=ratio)
         # Screen flash (bomb) — drawn last, fades over time
         if self._screen_flash > 0.0:
             flash_alpha = int(200 * self._screen_flash)

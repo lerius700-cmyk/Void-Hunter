@@ -5,12 +5,16 @@ scaled 4x to 960x1440 by Game._present). 240px width is the hard cap.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Optional
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Callable, Optional
 import math
+import random
+from pathlib import Path
 
 import pygame
 
 from src.core.scene_manager import GameState, Scene
+from src.core.settings import INTERNAL_H, INTERNAL_W
 from src.utils.palette import PALETTE
 
 
@@ -19,6 +23,7 @@ TransitionFn = Callable[[GameState], None]
 
 if TYPE_CHECKING:
     from src.audio.synth import AudioEngine
+    from src.systems.parallax import ParallaxBackground
 
 
 def _center_blit(
@@ -64,24 +69,149 @@ def _wrap_text(text: str, font: pygame.font.Font, max_width: int) -> list[str]:
 
 
 class TitleScene(Scene):
-    """TITLE — main menu, void logo, 'PRESS ANY KEY TO START'.
+    """BLOQUE 58.41: TITLE — animated background with ships fighting,
+    just the logo + 'PRESS ANY KEY' overlay. Controls are gone (moved
+    to the Pause scene for an interactive reference).
 
-    Waits for ANY keypress or mouse click to start. Removed the
-    BLOQUE 46 auto-start so the player has control over when the
-    game begins (fix for "game opens and immediately starts").
+    Background runs a small demo loop:
+      - ParallaxBackground starfield
+      - 2 enemy ships + 1 player ship flying across the screen
+      - Projectiles between them
+      - Occasional explosions (death)
     """
 
     def __init__(self, transition_to: TransitionFn) -> None:
         self._transition_to = transition_to
         self._t: float = 0.0
+        # Background demo
+        self._bg: Optional[ParallaxBackground] = None
+        self._demo_ships: list[_TitleDemoShip] = []
+        self._demo_bullets: list[_TitleDemoBullet] = []
+        self._demo_explosions: list[_TitleDemoExplosion] = []
+        self._demo_rng: random.Random = random.Random(0xCAFE2026)
+        self._next_shoot: float = 0.0
+        self._next_explode: float = 1.5
 
     def on_enter(self) -> None:
         self._t = 0.0
+        # Init background + demo entities
+        from src.systems.parallax import ParallaxBackground
+        self._bg = ParallaxBackground(rng_seed=0xCAFE2026)
+        self._demo_ships.clear()
+        self._demo_bullets.clear()
+        self._demo_explosions.clear()
+        # Spawn initial ships
+        for _ in range(3):
+            self._spawn_demo_ship()
+
+    def _spawn_demo_ship(self) -> None:
+        """Spawn an enemy or player demo ship on the left or right side."""
+        from src.entities.enemies.enemy import EnemyKind
+        # Player ship (small) flying up-right or down-left
+        is_player = (len(self._demo_ships) % 3 == 0)
+        if is_player:
+            from_left = self._demo_rng.random() < 0.5
+            x = -16.0 if from_left else INTERNAL_W + 16.0
+            y = self._demo_rng.uniform(40, INTERNAL_H - 40)
+            vx = 60.0 if from_left else -60.0
+            vy = (self._demo_rng.random() - 0.5) * 30.0
+            self._demo_ships.append(_TitleDemoShip(
+                x=x, y=y, vx=vx, vy=vy,
+                kind="player", angle_deg=0.0,
+                health=1, fire_cd=self._demo_rng.uniform(0.5, 2.0),
+            ))
+        else:
+            enemy_kinds = [
+                (EnemyKind.SCOUT, (12, 8)),
+                (EnemyKind.CRUISER, (14, 10)),
+                (EnemyKind.DRONE, (8, 8)),
+                (EnemyKind.KAMIKAZE, (10, 10)),
+            ]
+            kind, size = self._demo_rng.choice(enemy_kinds)
+            x = self._demo_rng.uniform(20, INTERNAL_W - 20)
+            y = -16.0
+            vx = (self._demo_rng.random() - 0.5) * 20.0
+            vy = self._demo_rng.uniform(40, 70)
+            self._demo_ships.append(_TitleDemoShip(
+                x=x, y=y, vx=vx, vy=vy,
+                kind="enemy", enemy_kind=kind, size=size,
+                health=1, fire_cd=self._demo_rng.uniform(1.0, 3.0),
+            ))
+
+    def _spawn_demo_bullet(self, x: float, y: float, vx: float, vy: float,
+                            color: tuple[int, int, int]) -> None:
+        self._demo_bullets.append(_TitleDemoBullet(
+            x=x, y=y, vx=vx, vy=vy, color=color, life=2.0,
+        ))
+
+    def _spawn_demo_explosion(self, x: float, y: float) -> None:
+        # 8-12 particles
+        for _ in range(self._demo_rng.randint(8, 12)):
+            a = self._demo_rng.uniform(0, 6.28)
+            speed = self._demo_rng.uniform(40, 100)
+            self._demo_explosions.append(_TitleDemoExplosion(
+                x=x, y=y,
+                vx=math.cos(a) * speed,
+                vy=math.sin(a) * speed,
+                life=self._demo_rng.uniform(0.4, 0.8),
+                color=(255, 200, 100) if self._demo_rng.random() < 0.5 else (255, 100, 80),
+            ))
 
     def update(self, dt: float) -> None:
         self._t += dt
+        # Background
+        if self._bg is not None:
+            self._bg.update(dt)
+        # Update ships
+        for ship in self._demo_ships:
+            ship.x += ship.vx * dt
+            ship.y += ship.vy * dt
+            ship.fire_cd -= dt
+        # Remove off-screen ships + maybe respawn
+        kept = []
+        for ship in self._demo_ships:
+            if -20 <= ship.x <= INTERNAL_W + 20 and -20 <= ship.y <= INTERNAL_H + 20:
+                kept.append(ship)
+            else:
+                # Spawn an explosion + a new ship elsewhere
+                self._spawn_demo_explosion(ship.x, ship.y)
+        self._demo_ships = kept
+        while len(self._demo_ships) < 3:
+            self._spawn_demo_ship()
+        # Ships shoot
+        for ship in self._demo_ships:
+            if ship.fire_cd <= 0.0:
+                ship.fire_cd = self._demo_rng.uniform(0.8, 2.5)
+                if ship.kind == "player":
+                    # Player shoots UP (toward enemies)
+                    self._spawn_demo_bullet(ship.x, ship.y - 6, 0, -200, (255, 220, 100))
+                else:
+                    # Enemy shoots DOWN
+                    self._spawn_demo_bullet(ship.x, ship.y + 4,
+                                              (self._demo_rng.random() - 0.5) * 40,
+                                              150, (255, 100, 100))
+        # Update bullets
+        for b in self._demo_bullets:
+            b.x += b.vx * dt
+            b.y += b.vy * dt
+            b.life -= dt
+        self._demo_bullets = [b for b in self._demo_bullets if b.life > 0 and
+                              -10 <= b.x <= INTERNAL_W + 10 and
+                              -10 <= b.y <= INTERNAL_H + 10]
+        # Update explosions
+        for e in self._demo_explosions:
+            e.x += e.vx * dt
+            e.y += e.vy * dt
+            e.life -= dt
+        self._demo_explosions = [e for e in self._demo_explosions if e.life > 0]
+        # Random ambient explosion every few seconds (for visual interest)
+        if self._t > self._next_explode:
+            self._next_explode = self._t + self._demo_rng.uniform(2.5, 5.0)
+            x = self._demo_rng.uniform(40, INTERNAL_W - 40)
+            y = self._demo_rng.uniform(40, INTERNAL_H - 40)
+            self._spawn_demo_explosion(x, y)
+        # Any key / click → start
         for event in pygame.event.get(pygame.KEYDOWN):
-            # Any key starts the game (except a few modifiers)
             if event.key in (
                 pygame.K_LSHIFT, pygame.K_RSHIFT,
                 pygame.K_LCTRL, pygame.K_RCTRL,
@@ -90,31 +220,158 @@ class TitleScene(Scene):
                 continue
             self._transition_to(GameState.ACT_INTRO)
             return
-        # Mouse click also starts
         for event in pygame.event.get(pygame.MOUSEBUTTONDOWN):
             self._transition_to(GameState.ACT_INTRO)
             return
 
     def draw(self, target: pygame.Surface) -> None:
-        target.fill((0, 0, 0))
-        # Title — 32px sized to fit "VOID HUNTER" in 240px
+        # Background (parallax starfield)
+        if self._bg is not None:
+            self._bg.draw(target)
+        else:
+            target.fill((0, 0, 0))
+        # Explosions (behind ships)
+        self._draw_demo_explosions(target)
+        # Ships
+        self._draw_demo_ships(target)
+        # Bullets (on top of ships)
+        self._draw_demo_bullets(target)
+        # Title — big + bold
         font = pygame.font.Font(None, 32)
         title = font.render("VOID HUNTER", True, (220, 220, 255))
         _center_blit(target, title, 100)
-        # Subtitle
+        # Subtle subtitle (just the prompt, blinks)
         font2 = pygame.font.Font(None, 14)
         sub = font2.render("PRESS ANY KEY TO START", True, (255, 240, 140))
-        # Blink
         if int(self._t * 2) % 2 == 0:
             _center_blit(target, sub, 200)
-        # Hint about controls
-        ctrl1 = font2.render("WASD MOVE  |  MOUSE AIM  |  LMB CHARGE  |  RMB RAPID", True, (140, 140, 160))
-        _center_blit(target, ctrl1, 220)
-        ctrl2 = font2.render("B MISSILE  |  SHIFT DASH  |  ESC PAUSE", True, (140, 140, 160))
-        _center_blit(target, ctrl2, 235)
-        # Credits hint
-        sub2 = font2.render("C: CREDITS", True, (120, 120, 140))
-        _center_blit(target, sub2, 230)
+        # Tiny credits hint (corner, not center)
+        credits = font2.render("C: CREDITS", True, (80, 80, 100))
+        target.blit(credits, (INTERNAL_W - credits.get_width() - 4,
+                              INTERNAL_H - credits.get_height() - 2))
+
+    def _draw_demo_ships(self, target: pygame.Surface) -> None:
+        """Render the demo ships using the real gameplay drawing routines
+        so the title screen uses the exact same sprites as the game.
+        """
+        # Build a fake GameplayRuntime-like context for the drawing fns
+        from src.ui.gameplay_runtime import GameplayRuntime
+        from src.entities.enemies.enemy import Enemy, EnemyKind
+        # We don't have a full runtime here; draw the sprites directly using
+        # the sprite_forge's drawing functions via a minimal mock. Simpler:
+        # use the atlas sprites via the existing per-enemy drawing helpers.
+        for ship in self._demo_ships:
+            cx, cy = int(ship.x), int(ship.y)
+            if ship.kind == "player":
+                # Use the new _draw_player from gameplay (cheapest path: blit
+                # the player_idle sprite from the atlas)
+                sprite = self._try_get_player_sprite()
+                if sprite is not None:
+                    target.blit(sprite, (cx - sprite.get_width() // 2,
+                                          cy - sprite.get_height() // 2))
+                else:
+                    # Fallback: simple triangle
+                    pygame.draw.polygon(target, (220, 230, 255), [
+                        (cx, cy - 6), (cx - 4, cy + 4), (cx + 4, cy + 4),
+                    ])
+            else:
+                sprite = self._try_get_enemy_sprite(ship.enemy_kind)
+                if sprite is not None:
+                    target.blit(sprite, (cx - sprite.get_width() // 2,
+                                          cy - sprite.get_height() // 2))
+                else:
+                    # Fallback: red diamond
+                    pygame.draw.polygon(target, (255, 100, 100), [
+                        (cx, cy - 4), (cx + 4, cy), (cx, cy + 4), (cx - 4, cy),
+                    ])
+
+    def _try_get_player_sprite(self) -> Optional[pygame.Surface]:
+        """Load the player_idle sprite from the atlas (cached)."""
+        if not hasattr(self, "_player_sprite_cache"):
+            self._player_sprite_cache: Optional[pygame.Surface] = None
+            try:
+                atlas_path = Path("tools/playtest_out/forge/player/player_idle.png")
+                if atlas_path.exists():
+                    self._player_sprite_cache = pygame.image.load(str(atlas_path)).convert_alpha()
+            except Exception:
+                pass
+        return self._player_sprite_cache
+
+    def _try_get_enemy_sprite(self, kind: Any) -> Optional[pygame.Surface]:
+        """Load the enemy sprite from the atlas (cached)."""
+        if not hasattr(self, "_enemy_sprite_cache"):
+            self._enemy_sprite_cache: dict[str, Optional[pygame.Surface]] = {}
+        key = kind.value if hasattr(kind, "value") else str(kind)
+        if key not in self._enemy_sprite_cache:
+            try:
+                atlas_path = Path(f"tools/playtest_out/forge/enemies/enemy_{key}.png")
+                if atlas_path.exists():
+                    self._enemy_sprite_cache[key] = pygame.image.load(str(atlas_path)).convert_alpha()
+                else:
+                    self._enemy_sprite_cache[key] = None
+            except Exception:
+                self._enemy_sprite_cache[key] = None
+        return self._enemy_sprite_cache.get(key)
+
+    def _draw_demo_bullets(self, target: pygame.Surface) -> None:
+        for b in self._demo_bullets:
+            alpha = int(255 * min(1.0, b.life))
+            # Simple glow + core
+            halo = pygame.Surface((8, 8), pygame.SRCALPHA)
+            pygame.draw.circle(halo, (*b.color, alpha // 2), (4, 4), 3)
+            target.blit(halo, (int(b.x) - 4, int(b.y) - 4))
+            pygame.draw.circle(target, b.color, (int(b.x), int(b.y)), 1)
+            # Bright center
+            pygame.draw.circle(target, (255, 255, 255), (int(b.x), int(b.y)), 0)
+
+    def _draw_demo_explosions(self, target: pygame.Surface) -> None:
+        for e in self._demo_explosions:
+            t = max(0.0, e.life / 0.8)
+            r = max(1, int(3 * (1.0 - t) + 1))
+            alpha = int(220 * t)
+            halo = pygame.Surface((r * 4 + 4, r * 4 + 4), pygame.SRCALPHA)
+            pygame.draw.circle(halo, (*e.color, alpha), (r * 2 + 2, r * 2 + 2), r * 2)
+            target.blit(halo, (int(e.x) - r * 2 - 2, int(e.y) - r * 2 - 2))
+            # Bright core
+            pygame.draw.circle(target, (255, 240, 200),
+                              (int(e.x), int(e.y)), max(0, r - 1))
+
+
+@dataclass
+class _TitleDemoShip:
+    """A demo ship flying across the title screen."""
+    x: float = 0.0
+    y: float = 0.0
+    vx: float = 0.0
+    vy: float = 0.0
+    kind: str = "enemy"  # "player" or "enemy"
+    enemy_kind: Any = None
+    size: tuple[int, int] = (12, 8)
+    health: int = 1
+    fire_cd: float = 1.0
+    angle_deg: float = 0.0
+
+
+@dataclass
+class _TitleDemoBullet:
+    """A demo bullet flying across the title screen."""
+    x: float = 0.0
+    y: float = 0.0
+    vx: float = 0.0
+    vy: float = 0.0
+    color: tuple[int, int, int] = (255, 255, 255)
+    life: float = 2.0
+
+
+@dataclass
+class _TitleDemoExplosion:
+    """A demo explosion particle."""
+    x: float = 0.0
+    y: float = 0.0
+    vx: float = 0.0
+    vy: float = 0.0
+    life: float = 0.8
+    color: tuple[int, int, int] = (255, 200, 100)
 
 
 class ActIntroScene(Scene):
@@ -623,25 +880,107 @@ class CreditsScene(Scene):
 
 
 class PauseScene(Scene):
-    """PAUSE overlay — dim screen, 'PAUSED' text, ESC to resume."""
+    """BLOQUE 58.41: PAUSE overlay with interactive control reference.
+
+    Layout (centered on screen):
+      - "PAUSED" header at top
+      - Control reference panel below (categorized):
+        * MOVEMENT   WASD / arrows
+        * AIM        mouse
+        * SHOOTING   LMB charge, RMB rapid, B missile
+        * MOVEMENT2  SHIFT dash/propulsion, ESC pause
+      - "ESC to resume" footer
+    """
 
     def __init__(self, transition_to: TransitionFn) -> None:
         self._transition_to = transition_to
+        self._t: float = 0.0
+        self._selected: int = 0  # for future interactive nav (BLOQUE 58.42)
+
+    def on_enter(self) -> None:
+        self._t = 0.0
 
     def update(self, dt: float) -> None:
+        self._t += dt
         for event in pygame.event.get(pygame.KEYDOWN):
             if event.key == pygame.K_ESCAPE:
                 self._transition_to(GameState.GAMEPLAY)  # will pop overlay
+                return
+            # C: CREDITS from pause (was on title)
+            if event.key == pygame.K_c:
+                self._transition_to(GameState.CREDITS)
+                return
 
     def draw(self, target: pygame.Surface) -> None:
-        # Dim overlay
+        # Dim overlay (slightly darker than before for contrast)
         dim = pygame.Surface(target.get_size(), pygame.SRCALPHA)
-        dim.fill((0, 0, 0, 128))
+        dim.fill((0, 0, 0, 160))
         target.blit(dim, (0, 0))
-        # 48px fits "PAUSED" (6 chars) in 240px
-        font = pygame.font.Font(None, 48)
-        text = font.render("PAUSED", True, (255, 255, 255))
-        _center_blit(target, text, 140)
-        font2 = pygame.font.Font(None, 14)
-        sub = font2.render("ESC to resume", True, (200, 200, 200))
-        _center_blit(target, sub, 220)
+        # PAUSED header
+        font = pygame.font.Font(None, 36)
+        text = font.render("PAUSED", True, (255, 240, 100))
+        _center_blit(target, text, 16)
+        # Control reference panel
+        self._draw_controls_panel(target)
+        # Footer
+        font2 = pygame.font.Font(None, 12)
+        footer = font2.render("ESC: resume  |  C: credits", True, (160, 160, 180))
+        _center_blit(target, footer, INTERNAL_H - 16)
+
+    def _draw_controls_panel(self, target: pygame.Surface) -> None:
+        """Draw the categorized control reference panel."""
+        # 4 categories, each with its own row
+        categories = [
+            ("MOVEMENT", [
+                ("WASD / Arrows", "move"),
+            ]),
+            ("AIM", [
+                ("Mouse", "aim"),
+            ]),
+            ("SHOOTING", [
+                ("LMB (hold)", "charge shot"),
+                ("RMB (hold)", "rapid fire"),
+                ("B", "homing missile"),
+            ]),
+            ("TACTICAL", [
+                ("Shift", "dash / propulsion"),
+                ("ESC", "pause"),
+            ]),
+        ]
+        # Panel area: starts at y=70, each category is ~20 px tall
+        panel_x = 12
+        panel_y = 70
+        panel_w = INTERNAL_W - 24
+        # Panel background (subtle)
+        panel = pygame.Surface((panel_w, 130), pygame.SRCALPHA)
+        pygame.draw.rect(panel, (15, 15, 30, 180),
+                          (0, 0, panel_w, 130), border_radius=4)
+        pygame.draw.rect(panel, (60, 60, 100, 200),
+                          (0, 0, panel_w, 130), 1, border_radius=4)
+        target.blit(panel, (panel_x, panel_y))
+        # Column headers
+        font_header = pygame.font.Font(None, 12)
+        font_key = pygame.font.Font(None, 12)
+        font_desc = pygame.font.Font(None, 12)
+        # Layout: 2 columns
+        col_w = panel_w // 2
+        for col_idx, (cat_name, items) in enumerate(categories):
+            col_x = panel_x + 4 + col_idx * col_w
+            # Category header
+            header_surf = font_header.render(cat_name, True, (180, 200, 240))
+            target.blit(header_surf, (col_x, panel_y + 6))
+            # Underline
+            pygame.draw.line(target, (100, 130, 180),
+                              (col_x, panel_y + 6 + header_surf.get_height() + 1),
+                              (col_x + header_surf.get_width(),
+                               panel_y + 6 + header_surf.get_height() + 1), 1)
+            # Items
+            for i, (key, desc) in enumerate(items):
+                item_y = panel_y + 24 + i * 24
+                # Key (highlighted, bold-looking)
+                key_surf = font_key.render(key, True, (255, 220, 100))
+                target.blit(key_surf, (col_x, item_y))
+                # Description (dimmer)
+                desc_surf = font_desc.render(desc, True, (200, 200, 220))
+                target.blit(desc_surf,
+                            (col_x + key_surf.get_width() + 6, item_y + 1))
