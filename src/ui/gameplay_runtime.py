@@ -1244,7 +1244,18 @@ class GameplayRuntime:
         formation = self._wave_mgr.current_formation()
         if formation is not None:
             from src.systems.wave_manager import spawn_formation
-            spawns = spawn_formation(formation)
+            # BLOQUE 58.44: double the regular enemy count (excludes
+            # SUB_BOSS, which is spawned separately via _spawn_sub_boss,
+            # and bosses GOLIATH/HYDRA/PHANTOM/NEMESIS which are spawned
+            # through different paths).
+            effective_formation = formation
+            if (formation.enemy_type.upper() != "SUB_BOSS"
+                    and formation.enemy_type.upper() != "BOSS"):
+                # Double count by replacing the NamedTuple field
+                effective_formation = formation._replace(
+                    enemy_count=formation.enemy_count * 2
+                )
+            spawns = spawn_formation(effective_formation)
             # Each enemy is spawned with a small stagger so they don't all
             # appear at the exact same frame. SQUADRON followers get an
             # extra delay equal to their time_offset_s.
@@ -1256,7 +1267,7 @@ class GameplayRuntime:
                     continue
                 stagger = i * base_stagger + sp.time_offset_s
                 # Mark for squadron if needed
-                is_squadron = formation.formation_type == "squadron"
+                is_squadron = effective_formation.formation_type == "squadron"
                 self._pending_wave_spawns.append((
                     stagger, kind, sp.x, sp.y, is_squadron,
                     sp.time_offset_s,
@@ -1269,6 +1280,9 @@ class GameplayRuntime:
                 kind = EnemyKind(kind_str)
             except ValueError:
                 continue
+            # BLOQUE 58.44: double regular enemy counts (excludes SUB_BOSS).
+            if kind_str.upper() != "SUB_BOSS" and kind_str.upper() != "BOSS":
+                count = count * 2
             for _ in range(count):
                 x = random.uniform(20, INTERNAL_W - 20)
                 y = -10.0 - random.uniform(0, 60)
@@ -2401,14 +2415,13 @@ class GameplayRuntime:
         # BLOQUE 26: continuous engine smoke + dash stars
         if not self._player.is_dead:
             self._emit_player_motion_particles(effective_dt)
-            # BLOQUE 58.8.1: PROPULSION light trail (x2 speed, shift held)
+            # BLOQUE 58.8.1: PROPULSION blue particle trail (BLOQUE 58.43:
+            # replaced the Tron polyline with the same particle style as
+            # the Wolfen sub-boss, but in royal blue). Fires at the back
+            # of the ship while shift is held. The Tron polyline is no
+            # longer used for the player PROPULSION.
             if self._player.state == PlayerState.PROPULSION:
                 self._emit_propulsion_trail(effective_dt)
-                # BLOQUE 58.11: Tron trail — spawn wall segments at the
-                # back of the ship while propelling. The angle matches
-                # the ship's current facing direction so the wall
-                # extends naturally along the flight path.
-                self._spawn_tron_trail_segment(effective_dt)
         else:
             # Player just died — clear the Tron trail so it doesn't
             # linger forever or damage enemies after the player is gone.
@@ -2637,22 +2650,27 @@ class GameplayRuntime:
                 )
 
     def _emit_propulsion_trail(self, dt: float) -> None:
-        """BLOQUE 58.8.1: emit a LIGHT TRAIL behind the player while
-        in PROPULSION state (shift held, x2 speed). The trail is a
-        dense stream of bright white/yellow sparks + a few cyan/blue
-        core glows to give it the "rocket thruster" look.
+        """BLOQUE 58.8.1 + 58.43: emit a BLUE PARTICLE trail behind the
+        player while in PROPULSION state (shift held, x2 speed).
 
-        BLOQUE 58.11: the delayed orange WAKE emission (BLOQUE 58.8.3-
-        58.8.4) was REMOVED — the user wants ONLY the Tron-style
-        light trail (see self._tron_trail). The main propulsion trail
-        (yellow/cyan sparks) is kept for the immediate thruster feel.
+        BLOQUE 58.43: the Tron polyline (BLOQUE 58.11–58.31) was
+        REMOVED from the player. The user wanted the same style as
+        the Wolfen sub-boss's purple propulsion but in ROYAL BLUE.
+
+        Wolfen uses 3 particle kinds (P_SPARK + P_GLOW + P_SMOKE) at
+        the back of the ship, trailing opposite the velocity. We do
+        the same here but tinted blue:
+          - blue_spark  (140, 200, 255) — bright cyan-blue dot, fast
+          - blue_glow   (90, 150, 235)  — saturated blue core glow
+          - blue_smoke  (30, 50, 100)   — dark blue puffy trail
         """
-        from src.systems.particle_engine import P_GLOW, P_SPARK
+        from src.systems.particle_engine import P_GLOW, P_SMOKE, P_SPARK
         from src.core.settings import (
             PLAYER_PROPULSION_TRAIL_INTERVAL_S,
         )
         # Throttle: respect the per-frame interval (~40 Hz) for the
-        # main propulsion trail (yellow sparks + cyan glows).
+        # blue propulsion trail. Higher rate than Wolfen because the
+        # player ship is small and moves at 2x speed.
         if self._player.propulsion_trail_timer < PLAYER_PROPULSION_TRAIL_INTERVAL_S:
             return
         self._player.propulsion_trail_timer = 0.0
@@ -2661,31 +2679,32 @@ class GameplayRuntime:
         for sign in (-1, 1):
             ex = px + sign * 2
             ey = py + 4  # slightly behind the ship
-            # Bright yellow/white spark (the "thrust glow")
+            # Exhaust velocity: trailing BEHIND the player (downward in
+            # screen coords, since the player faces UP). Slight random
+            # spread so the trail looks organic.
+            spread = 6.0
+            exh_vx = (random.random() - 0.5) * spread
+            exh_vy = 20.0 + (random.random() - 0.5) * spread
+            # P_SPARK: small bright cyan-blue dot, fast
             self._particles.emit(
                 P_SPARK, ex, ey,
-                vx=(random.random() - 0.5) * 8.0,
-                vy=20.0 + (random.random() - 0.5) * 6.0,  # trailing BEHIND
-                life=0.22, radius=1.2,
-                color=(255, 240, 180),
+                vx=exh_vx, vy=exh_vy,
+                color=(140, 200, 255), life=0.25, radius=1.5,
             )
-            # Cyan/white core (the "hot thruster")
-            if random.random() < 0.5:
+            # P_GLOW: saturated blue core glow, slower, longer life
+            self._particles.emit(
+                P_GLOW, ex, ey,
+                vx=exh_vx * 0.5, vy=exh_vy * 0.5,
+                color=(90, 150, 235), life=0.35, radius=2.0,
+            )
+            # P_SMOKE: dark blue puffy trail, ~40% of the time
+            if random.random() < 0.4:
                 self._particles.emit(
-                    P_GLOW, ex, ey,
-                    vx=(random.random() - 0.5) * 4.0,
-                    vy=15.0 + (random.random() - 0.5) * 4.0,
-                    life=0.18, radius=2.5,
-                    color=(180, 230, 255),
-                )
-            # Occasional orange ember
-            if random.random() < 0.3:
-                self._particles.emit(
-                    P_SPARK, ex, ey,
-                    vx=(random.random() - 0.5) * 6.0,
-                    vy=22.0 + (random.random() - 0.5) * 4.0,
-                    life=0.18, radius=1.0,
-                    color=(255, 180, 80),
+                    P_SMOKE,
+                    ex + (random.random() - 0.5) * 3.0,
+                    ey + (random.random() - 0.5) * 3.0,
+                    vx=exh_vx * 0.7, vy=exh_vy * 0.7,
+                    color=(30, 50, 100), life=0.5, radius=1.5,
                 )
 
     # -----------------------------------------------------------------------
@@ -2993,11 +3012,15 @@ class GameplayRuntime:
         self._draw_bullets_with_glow(target, shx, shy)
         # BLOQUE 39: homing missiles (drawn after bullets, before player)
         self._draw_missiles(target, shx, shy)
-        # BLOQUE 58.11: Tron trail — drawn BEFORE the player so the ship
-        # sits on top of the wall, but AFTER the enemies so the trail
+        # BLOQUE 58.11 + 58.43: Tron trail — drawn BEFORE the player so the
+        # ship sits on top of the wall, but AFTER the enemies so the trail
         # overlaps the enemy hitboxes (which is the whole point — the
         # wall damages enemies that overlap it).
-        if self._tron_trail.is_active():
+        # BLOQUE 58.43: NOT drawn during PROPULSION. The player now uses a
+        # blue particle stream (see _emit_propulsion_trail) instead. The
+        # Tron trail is still used internally for collision detection and
+        # can still be drawn during DASH (not just PROPULSION).
+        if self._tron_trail.is_active() and self._player.state != PlayerState.PROPULSION:
             self._tron_trail.draw(target, (shx, shy))
         # Player (only if not in DEAD state and not i-frames invisible)
         if not self._player.is_dead:

@@ -589,10 +589,15 @@ class Player:
             return
 
     def _update_propulsion(self, dt: float) -> None:
-        """BLOQUE 58.8.1: PROPULSION state — continuous thruster while
-        shift is held. 2x speed, light trail from the back, heat builds
-        at PROPULSION_HEAT_PER_S. Auto-cancels on overheat or shift
+        """BLOQUE 58.8.1 + 58.43: PROPULSION state — continuous thruster while
+        shift is held. 2x speed, blue particle trail from the back, heat
+        builds at PROPULSION_HEAT_PER_S. Auto-cancels on overheat or shift
         release. Must release shift and re-press to use again.
+
+        BLOQUE 58.43: can fire (LMB rapid and RMB rapid) WITHOUT exiting
+        the PROPULSION state. Previously each shot briefly exited to
+        SHOOT then back to IDLE, breaking the propulsion flow. Now the
+        player keeps the 2x speed + blue trail while shooting.
         """
         # Heat is updated in the main update() loop
         # Overheat already handled in main update() (sets dash_held=False
@@ -635,20 +640,20 @@ class Player:
         # gameplay_runtime (which has access to the particle engine).
         # We just expose the timer so the runtime knows when to spawn.
         self.propulsion_trail_timer += dt
-        # BLOQUE 58.11: removed propulsion_wake_timer (no more delayed
-        # wake). The Tron trail is managed by the engine.
-        # Can fire during propulsion (brief SHOOT state, then back here)
+        # BLOQUE 58.43: can fire during propulsion WITHOUT exiting the
+        # state. Just set wants_to_shoot and let the runtime fire the
+        # bullet. State stays PROPULSION (keeps 2x speed + blue trail).
         if self.input_fire and self.fire_cd <= 0.0:
             self.wants_to_shoot = True
             self.fire_cd = PLAYER_FIRE_COOLDOWN_S
-            # Briefly exit to SHOOT for recoil animation
-            self._enter_shoot()
-            return
+        # BLOQUE 58.43: RMB rapid fire also works in propulsion.
+        if self.input_rapid_fire and self.fire_cd <= 0.0:
+            self.wants_to_shoot = True
+            self.fire_cd = PLAYER_FIRE_COOLDOWN_S
         # Can drop bomb during propulsion
         if self.input_bomb and self.bombs > 0:
             self.wants_to_bomb = True
             self._consume_bomb()
-            return
         # If user is charging (fire held > 0.5s), exit to CHARGE
         # (CHARGE keeps its own movement restrictions per the user
         # request: 'deja las limitaciones de movimiento que ya tiene
