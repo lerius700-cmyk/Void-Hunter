@@ -588,38 +588,42 @@ class WaveManager:
 # ---------------------------------------------------------------------------
 # BLOQUE 48: chained wave system for level 1 mode
 # ---------------------------------------------------------------------------
+# BLOQUE 58.56: enemy counts doubled (2x) and max_duration_s extended
+# so the level lasts as long as the gameplay song (5.5 min ≈ 330s).
+# Sum of wave max_durations = 30+60+70+80 = 240s of wave time;
+# + sub-boss + boss + act-cleared ≈ 90s more = ~330s total.
 LEVEL1_WAVES: list[dict[str, Any]] = [
-    # O1 — intro/tutorial: 12 SCOUT diagonal, no fire (was 8)
+    # O1 — intro/tutorial: 24 SCOUT diagonal, no fire (was 12 = 2x)
     {
-        "enemies": ["SCOUT"] * 12,
-        "spawn_cadence_s": 1.0,
-        "max_duration_s": 10.0,
+        "enemies": ["SCOUT"] * 24,
+        "spawn_cadence_s": 0.8,
+        "max_duration_s": 30.0,
         "formation": "diagonal",
         "fire_allowed": False,
     },
-    # O2 — pattern recognition: 14 SCOUT + 5 CRUISER, V formation (was 10+3)
+    # O2 — pattern recognition: 28 SCOUT + 10 CRUISER, V formation
     # BLOQUE 50: triggers a sub-boss encounter after this wave is cleared
     {
-        "enemies": ["SCOUT"] * 14 + ["CRUISER"] * 5,
-        "spawn_cadence_s": 0.6,
-        "max_duration_s": 16.0,
+        "enemies": ["SCOUT"] * 28 + ["CRUISER"] * 10,
+        "spawn_cadence_s": 0.5,
+        "max_duration_s": 60.0,
         "formation": "v",
         "fire_allowed": True,
         "sub_boss_after": True,
     },
-    # O3 — mixed composition: 10 SCOUT + 4 HEAVY, line, HEAVY as anchor (was 8+2)
+    # O3 — mixed composition: 20 SCOUT + 8 HEAVY, line, HEAVY as anchor
     {
-        "enemies": ["SCOUT"] * 10 + ["HEAVY"] * 4,
-        "spawn_cadence_s": 0.8,
-        "max_duration_s": 19.0,
+        "enemies": ["SCOUT"] * 20 + ["HEAVY"] * 8,
+        "spawn_cadence_s": 0.7,
+        "max_duration_s": 70.0,
         "formation": "line",
         "fire_allowed": True,
     },
-    # O4 — finale: 8 SCOUT + 6 CRUISER + 3 HEAVY, diamond (was 6+4+2)
+    # O4 — finale: 16 SCOUT + 12 CRUISER + 6 HEAVY, diamond
     {
-        "enemies": ["SCOUT"] * 8 + ["CRUISER"] * 6 + ["HEAVY"] * 3,
-        "spawn_cadence_s": 0.9,
-        "max_duration_s": 22.0,
+        "enemies": ["SCOUT"] * 16 + ["CRUISER"] * 12 + ["HEAVY"] * 6,
+        "spawn_cadence_s": 0.8,
+        "max_duration_s": 80.0,
         "formation": "diamond",
         "fire_allowed": True,
     },

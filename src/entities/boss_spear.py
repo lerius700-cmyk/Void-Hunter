@@ -51,8 +51,11 @@ class BossSpear:
     wave_amp_growth: float = 8.0
 
     # Combat
-    hp: int = 3
-    max_hp: int = 3
+    # BLOQUE 58.56: x10 health. The spear was a 1-shot kill with 3 HP
+    # which felt too fragile. Now it's a 30-HP mini-boss that takes
+    # sustained fire to bring down, rewarding focused aim.
+    hp: int = 30
+    max_hp: int = 30
     damage: int = 2
 
     # Lifetime

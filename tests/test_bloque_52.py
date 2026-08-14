@@ -64,11 +64,12 @@ def test_boss_spear_starts_inactive() -> None:
 
 def test_boss_spear_apply_damage_kills_at_zero() -> None:
     from src.entities.boss_spear import BossSpear
-    s = BossSpear(active=True, hp=3, max_hp=3)
-    assert s.apply_damage(1) is False
-    assert s.hp == 2
-    assert s.apply_damage(1) is False
+    s = BossSpear(active=True, hp=30, max_hp=30)
+    # 29 hits to bring down to 1 HP
+    for _ in range(29):
+        assert s.apply_damage(1) is False
     assert s.hp == 1
+    # 30th hit kills
     assert s.apply_damage(1) is True
     assert s.active is False
 
@@ -160,7 +161,7 @@ def test_spawn_spear_creates_main_spear() -> None:
     s = rt._boss_spears[0]
     assert s.kind == "main"
     assert s.is_main is True
-    assert s.hp == 3
+    assert s.hp == 30  # BLOQUE 58.56: x10 HP (was 3)
     # The base direction should be roughly toward the player (positive y)
     assert s.base_vy > 0.5
 
@@ -275,7 +276,7 @@ def test_player_bullet_damages_spear() -> None:
     s = BossSpear(
         active=True, kind="main", is_main=True,
         x=160, y=200, base_vx=0.0, base_vy=1.0,
-        speed=100.0, hp=3, max_hp=3, life=5.0, max_life=5.0,
+        speed=100.0, hp=30, max_hp=30, life=5.0, max_life=5.0,
     )
     rt._boss_spears.append(s)
     # Spawn a player bullet at the spear's position
@@ -285,7 +286,7 @@ def test_player_bullet_damages_spear() -> None:
     )
     rt._handle_spear_collisions(rt._player.hitbox)
     # Spear took 1 damage
-    assert s.hp == 2
+    assert s.hp == 29
     assert s.flash_t > 0.0
 
 

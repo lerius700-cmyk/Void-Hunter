@@ -1655,7 +1655,7 @@ class GameplayRuntime:
             speed=160.0,
             wave_amp=18.0, wave_freq_hz=1.6,
             wave_amp_growth=10.0,
-            hp=3, max_hp=3,
+            hp=30, max_hp=30,  # BLOQUE 58.56: x10 HP (was 3)
             damage=2,
             life=6.0, max_life=6.0,
         )

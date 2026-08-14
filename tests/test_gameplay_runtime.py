@@ -1367,15 +1367,15 @@ def test_movement_world_relative():
     assert abs(p.x - INTERNAL_W / 2) < 5.0
 
 
-def test_level1_mode_has_62_ships():
-    """BLOQUE 50: level 1 chains 62 ships in 4 waves (was 43 in BLOQUE 49).
+def test_level1_mode_has_124_ships():
+    """BLOQUE 58.56: level 1 chains 124 ships in 4 waves (doubled from 62).
     Plus a mid-wave sub-boss is triggered after wave index 1.
     """
     from src.systems.wave_manager import LEVEL1_WAVES
     rt = _make_runtime()
     assert rt._is_level1_mode()
     total = sum(len(w["enemies"]) for w in LEVEL1_WAVES)
-    assert total == 62
+    assert total == 124
     # Sub-boss after wave 1 (O2) — verification of mid-wave challenge
     assert LEVEL1_WAVES[1].get("sub_boss_after") is True
 
@@ -1888,7 +1888,7 @@ def test_boss_trigger_fast_requires_at_least_one_kill() -> None:
 # ---------------------------------------------------------------------------
 # BLOQUE 42: density cap
 # ---------------------------------------------------------------------------
-def test_density_cap_setting_is_8() -> None:
-    """BLOQUE 42: MAX_ENEMIES_ON_SCREEN is 8."""
+def test_density_cap_setting_is_12() -> None:
+    """BLOQUE 58.56: MAX_ENEMIES_ON_SCREEN is 12 (bumped from 8 for 2x ships)."""
     from src.core.settings import MAX_ENEMIES_ON_SCREEN
-    assert MAX_ENEMIES_ON_SCREEN == 8
+    assert MAX_ENEMIES_ON_SCREEN == 12

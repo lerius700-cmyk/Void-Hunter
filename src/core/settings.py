@@ -226,7 +226,7 @@ WAVE_TIME_LIMIT_S: float = 30.0
 SUBBOSS_TRIGGER_KILLS: int = 40
 WAVE_GROWTH: int = 2
 # BLOQUE 40: formation-based encounter pacing
-MAX_ENEMIES_ON_SCREEN: int = 8            # density cap (no more than 8 active)
+MAX_ENEMIES_ON_SCREEN: int = 12           # BLOQUE 58.56: 8→12 (doubled enemies need more on-screen capacity)
 SPAWN_CADENCE_S_MIN: float = 0.8         # min time between spawns
 SPAWN_CADENCE_S_MAX: float = 1.5         # max time between spawns
 WAVE_RESPITE_S_MIN: float = 4.0          # min breathing room between waves
@@ -250,8 +250,10 @@ WAVE_MAX_DURATION_S: float = 8.0         # max time a wave can take (chaining)
 BOSS_MIN_TRIGGER_S: float = 45.0         # boss won't fire before this (timer hard)
 BOSS_PERFECT_TRIGGER_S: float = 60.0     # perfect-score fast path
 BOSS_SAFETY_TRIGGER_S: float = 120.0     # lenient timeout (no score required)
-LEVEL1_TOTAL_SHIPS: int = 62             # BLOQUE 50: 12+19+14+17 ships across 4 waves (was 43)
-LEVEL1_FLAT_SCORE: int = 87              # 44*1 + 11*2 + 7*3 = 44+22+21 = 87 (was 57)
+# BLOQUE 58.56: doubled enemy counts and extended duration so the level
+# lasts as long as the gameplay song (5.5 min ≈ 330s).
+LEVEL1_TOTAL_SHIPS: int = 124            # 24+38+28+34 = 124 ships across 4 waves (was 62)
+LEVEL1_FLAT_SCORE: int = 174             # 88*1 + 22*2 + 14*3 = 88+44+42 = 174 (was 87)
 PERFECT_RUN_BONUS: int = 15              # awarded on _enemies_escaped == 0 at boss
 # Per-archetype flat score (used by the new level 1 chain)
 SCOUT_FLAT_SCORE: int = 1
