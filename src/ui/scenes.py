@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Optional
 import math
 import random
+import sys
 from pathlib import Path
 
 import pygame
@@ -32,6 +33,66 @@ if TYPE_CHECKING:
 # sprites aren't bundled (i.e. when running from the .exe).
 _ENEMY_DRAWERS: dict[str, Any] = {}  # populated below once the
 # TitleScene class is defined; the values are bound methods.
+
+# BLOQUE 58.47: path resolver for the pre-rendered ship sprite PNGs.
+# Same logic as src.audio.music._find_assets_dir — probes
+# <_MEIPASS>/Assets/sprites/, <exe_dir>/Assets/sprites/, etc.
+_sprite_cache: dict[str, pygame.Surface] = {}
+
+
+def _find_sprites_dir() -> Optional[Path]:
+    """Locate the Assets/sprites/ directory containing ship PNGs."""
+    candidates: list[Path] = []
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        meipass_p = Path(meipass)
+        candidates.append(meipass_p / "Assets" / "sprites")
+        candidates.append(meipass_p / "_internal" / "Assets" / "sprites")
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).parent
+    else:
+        exe_dir = Path(__file__).resolve().parent.parent.parent
+    candidates.append(exe_dir / "Assets" / "sprites")
+    candidates.append(exe_dir / "_internal" / "Assets" / "sprites")
+    candidates.append(exe_dir.parent / "Assets" / "sprites")
+    for c in candidates:
+        if c.is_dir():
+            return c
+    return None
+
+
+def _load_sprite(name: str) -> Optional[pygame.Surface]:
+    """Load a pre-rendered ship sprite from Assets/sprites/.
+
+    Returns the Surface (with alpha preserved) or None if not found.
+    Results are cached in `_sprite_cache` so we only load each file once.
+    """
+    if name in _sprite_cache:
+        return _sprite_cache[name]
+    sprites_dir = _find_sprites_dir()
+    if sprites_dir is None:
+        return None
+    path = sprites_dir / name
+    if not path.is_file():
+        return None
+    try:
+        surf = pygame.image.load(str(path)).convert_alpha()
+    except pygame.error:
+        return None
+    _sprite_cache[name] = surf
+    return surf
+
+
+# Map enemy kind value → sprite PNG filename (BLOQUE 58.47)
+_ENEMY_SPRITE_FILES: dict[str, str] = {
+    "scout":    "enemy_scout.png",
+    "cruiser":  "enemy_cruiser.png",
+    "heavy":    "enemy_heavy.png",
+    "kamikaze": "enemy_kamikaze.png",
+    "drone":    "enemy_drone.png",
+    "sniper":   "enemy_sniper.png",
+    "turret":   "enemy_turret.png",
+}
 
 
 def _center_blit(
@@ -262,54 +323,69 @@ class TitleScene(Scene):
                               INTERNAL_H - credits.get_height() - 2))
 
     def _draw_demo_ships(self, target: pygame.Surface) -> None:
-        """BLOQUE 58.47: draw demo ships with PROCEDURAL spaceship sprites,
-        scaled up so they look like proper spaceships (not tiny dots).
+        """BLOQUE 58.47: draw demo ships using the REAL ship sprites
+        from `Assets/sprites/` (the same PNGs that the gameplay forge
+        generates for the player + enemy ships).
 
-        The previous version drew ships at native 14x8 px, which were
-        barely visible. Now we render to a small scratch surface and
-        transform-scale by TITLE_SHIP_SCALE so the player sees clearly
-        recognizable Arwing-style ships fighting on the title screen.
+        Previously this drew simplified procedural versions (~14x8 px)
+        and scaled them 2.5x, which still looked like little colored
+        dots. Now we load the pre-rendered PNGs (28x26 player, 13-24
+        for enemies) and scale them by TITLE_SHIP_SCALE so the title
+        screen shows the same recognizable Arwing-style spaceships the
+        player sees in gameplay.
 
-        Ship kinds (all procedural, no atlas needed):
-          - Player: cyan/white Arwing (delta wing + body + engines)
-          - SCOUT: small cyan dart
-          - CRUISER: green delta wing with side guns
-          - HEAVY: red armored delta wing
-          - KAMIKAZE: orange delta with bright flame
-          - DRONE: small cyan round
-          - SNIPER: blue elongated with long cannon
-          - TURRET: pink round with rotating guns
+        Falls back to the procedural drawers if the sprite PNGs are
+        missing (e.g. running from source without the bundle).
         """
         # BLOQUE 58.47: scale factor for title screen ships. The base
-        # procedural drawings are ~14x8 px; SCALE=2.5 makes them ~35x20,
-        # big enough to be clearly recognizable spaceships.
-        scale = getattr(self, "_title_ship_scale", 2.5)
-        # Scratch surface big enough to hold a scaled ship. We center the
-        # ship at the scratch's center so the blit lines up with cx,cy.
-        scratch_size = 64
-        scratch = pygame.Surface((scratch_size, scratch_size), pygame.SRCALPHA)
+        # sprites are 13-28 px; SCALE=3.0 makes them ~40-85 px, big
+        # enough to be clearly recognizable spaceships.
+        scale = getattr(self, "_title_ship_scale", 3.0)
         for ship in self._demo_ships:
             cx, cy = int(ship.x), int(ship.y)
-            scratch.fill((0, 0, 0, 0))
-            # Draw at the center of the scratch surface
-            mid = scratch_size // 2
+            # Pick the right sprite PNG
             if ship.kind == "player":
-                self._draw_player_ship(scratch, mid, mid, ship)
+                # Alternate between IDLE and PROPULSION based on velocity
+                # for visual variety (fast ship = propulsion sprite).
+                if abs(ship.vx) + abs(ship.vy) > 60.0:
+                    sprite_name = "player_propulsion.png"
+                else:
+                    sprite_name = "player_idle.png"
             else:
                 kind = ship.enemy_kind
                 key = kind.value if hasattr(kind, "value") else str(kind)
-                drawer = _ENEMY_DRAWERS.get(key)
-                if drawer is not None:
-                    drawer(self, scratch, mid, mid, ship)
+                sprite_name = _ENEMY_SPRITE_FILES.get(key, "")
+            sprite = _load_sprite(sprite_name) if sprite_name else None
+            if sprite is not None:
+                # Scale and blit the loaded sprite
+                w, h = sprite.get_size()
+                scaled = pygame.transform.scale(
+                    sprite, (int(w * scale), int(h * scale)),
+                )
+                blit_x = int(cx - scaled.get_width() / 2)
+                blit_y = int(cy - scaled.get_height() / 2)
+                target.blit(scaled, (blit_x, blit_y))
+            else:
+                # Fallback: scratch + procedural (in case PNGs missing)
+                scratch_size = 64
+                scratch = pygame.Surface((scratch_size, scratch_size), pygame.SRCALPHA)
+                mid = scratch_size // 2
+                if ship.kind == "player":
+                    self._draw_player_ship(scratch, mid, mid, ship)
                 else:
-                    self._draw_enemy_fallback(scratch, mid, mid, ship)
-            # Scale up and blit at the ship's world position
-            scaled = pygame.transform.scale(
-                scratch, (scratch_size * scale, scratch_size * scale),
-            )
-            blit_x = int(cx - (scratch_size * scale) / 2)
-            blit_y = int(cy - (scratch_size * scale) / 2)
-            target.blit(scaled, (blit_x, blit_y))
+                    kind = ship.enemy_kind
+                    key = kind.value if hasattr(kind, "value") else str(kind)
+                    drawer = _ENEMY_DRAWERS.get(key)
+                    if drawer is not None:
+                        drawer(self, scratch, mid, mid, ship)
+                    else:
+                        self._draw_enemy_fallback(scratch, mid, mid, ship)
+                scaled = pygame.transform.scale(
+                    scratch, (int(scratch_size * scale), int(scratch_size * scale)),
+                )
+                blit_x = int(cx - (scratch_size * scale) / 2)
+                blit_y = int(cy - (scratch_size * scale) / 2)
+                target.blit(scaled, (blit_x, blit_y))
 
     # ----- BLOQUE 58.45: procedural ship sprites for the title demo -----
     def _draw_player_ship(self, target: pygame.Surface,

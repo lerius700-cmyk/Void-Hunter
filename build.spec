@@ -35,6 +35,12 @@ a = Analysis(
     # the game finds them automatically with no code changes.
     datas=[
         (str(PROJECT_ROOT / "Assets"), "Assets"),
+        # BLOQUE 58.47: bundle the pre-rendered ship sprites (PNG) so the
+        # title screen can load the ACTUAL game sprites (player + enemies)
+        # instead of drawing a simplified procedural version in code.
+        # `src.ui.scenes._load_sprite_atlas` probes `<_MEIPASS>/Assets/sprites/`
+        # which is where these land in onedir mode.
+        (str(PROJECT_ROOT / "Assets" / "sprites"), "Assets/sprites"),
     ],
     hiddenimports=[
         # pygame submodules that PyInstaller's static analysis can miss.
