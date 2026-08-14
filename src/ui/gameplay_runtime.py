@@ -1403,6 +1403,9 @@ class GameplayRuntime:
           - spawn cadence per wave
           - density cap (8 simultaneous)
           - max duration per wave (advances to next on timeout)
+        BLOQUE 58.6x: if a wave spec has a `path` field, attach a
+        PathFollower to the enemy. The path replaces the straight-line
+        vx/vy for this enemy (it now follows the bezier/waypoint path).
         """
         from src.entities.enemies.enemy import EnemyKind
         chain = self._level1_chain
@@ -1425,6 +1428,13 @@ class GameplayRuntime:
         if chain.spawn(chain.current_wave_idx, x, y, kind_str):
             e = self._enemies.spawn(kind, x, y)
             if e is not None:
+                # BLOQUE 58.6x: attach a PathFollower if the wave spec
+                # defines a `path` field. The path is a dict describing
+                # a HybridPath (list of bezier + waypoint segments).
+                path_spec = spec.get("path")
+                if path_spec is not None and e is not None:
+                    self._attach_wave_path(e, path_spec, idx=next_idx,
+                                            total=len(spec["enemies"]))
                 # Mark the enemy with the wave_idx so kill() can decrement
                 # the right counter. We use a simple approach: every enemy in
                 # level 1 mode increments kills on kill (single source of truth).
@@ -1463,6 +1473,83 @@ class GameplayRuntime:
             step = (INTERNAL_W - 40.0) / max(1, total - 1)
             return 20.0 + idx * step
         return cx
+
+    def _attach_wave_path(
+        self,
+        e: "Enemy",
+        path_spec: dict,
+        idx: int,
+        total: int,
+    ) -> None:
+        """BLOQUE 58.6x: build a HybridPath from a path_spec dict and
+        attach it to the given enemy.
+
+        path_spec format:
+          {
+            "kind": "hybrid" | "bezier" | "waypoint" | "straight",
+            "segments": [ <segment_dict>, ... ],
+            "durations": [float, ...],   # optional
+            "slot_dx": float, "slot_dy": float,  # optional override
+          }
+
+        If `slot_dx/dy` is not provided, it's derived from the formation
+        so the formation shape moves with the path (absolute offsets).
+        """
+        from src.movement import (
+            BezierPath, HybridPath, PathFollower, Point, WaypointPath,
+        )
+        kind = path_spec.get("kind", "hybrid")
+        if kind == "straight":
+            # Just a straight line from the enemy's current position
+            # downward to bottom of screen — no segments needed.
+            from src.movement.hybrid import HybridPath
+            start = Point(e.x, e.y)
+            end = Point(e.x, INTERNAL_H + 40.0)
+            speed = float(path_spec.get("speed", 80.0))
+            path = HybridPath.straighten(start, end, speed_px_s=speed)
+            slot_dx = float(path_spec.get("slot_dx", 0.0))
+            slot_dy = float(path_spec.get("slot_dy", 0.0))
+            e.attach_path(PathFollower(path), slot_dx=slot_dx, slot_dy=slot_dy)
+            return
+
+        segments = path_spec.get("segments", [])
+        if not segments:
+            return  # empty path -> don't attach
+        durations = path_spec.get("durations")
+        seg_objs: list = []
+        for seg in segments:
+            stype = seg.get("type", "waypoint")
+            if stype == "bezier":
+                p0 = seg["p0"]
+                p1 = seg["p1"]
+                p2 = seg["p2"]
+                p3 = seg["p3"]
+                seg_objs.append(BezierPath(
+                    Point(p0[0], p0[1]),
+                    Point(p1[0], p1[1]),
+                    Point(p2[0], p2[1]),
+                    Point(p3[0], p3[1]),
+                ))
+            elif stype == "waypoint":
+                pts = [Point(p[0], p[1]) for p in seg["points"]]
+                speed = float(seg.get("speed", 100.0))
+                linger = seg.get("linger")
+                seg_objs.append(WaypointPath(pts, speed_px_s=speed,
+                                              linger_s=linger))
+            else:
+                continue  # skip unknown
+        if not seg_objs:
+            return
+        if durations is not None:
+            path = HybridPath(seg_objs, segment_durations=list(durations))
+        else:
+            path = HybridPath.from_segments(seg_objs)
+        # Slot offset (default: 0,0; the formation's existing x positions
+        # are already baked into the spawn x, so ships in the same wave
+        # follow the same path with the same starting x).
+        slot_dx = float(path_spec.get("slot_dx", 0.0))
+        slot_dy = float(path_spec.get("slot_dy", 0.0))
+        e.attach_path(PathFollower(path), slot_dx=slot_dx, slot_dy=slot_dy)
 
     def _update_enemies(self, dt: float) -> None:
         # BLOQUE 47: SQUADRON path parameters — shared for all squadron members

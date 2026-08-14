@@ -593,15 +593,26 @@ class WaveManager:
 # Sum of wave max_durations = 30+60+70+80 = 240s of wave time;
 # + sub-boss + boss + act-cleared ≈ 90s more = ~330s total.
 LEVEL1_WAVES: list[dict[str, Any]] = [
-    # O1 — intro/tutorial: 24 SCOUT diagonal, no fire (was 12 = 2x)
+    # O1 — intro/tutorial: 24 SCOUT diagonal, no fire (was 12 = 2x).
+    # BLOQUE 58.6x: each ship follows a straight HybridPath from its
+    # formation spawn position to the bottom of the screen. The path
+    # is short (~3s) so the wave is brisk and the player can read the
+    # pattern.
     {
         "enemies": ["SCOUT"] * 24,
         "spawn_cadence_s": 0.8,
         "max_duration_s": 30.0,
         "formation": "diagonal",
         "fire_allowed": False,
+        "path": {
+            "kind": "straight",
+            "speed": 80.0,
+        },
     },
-    # O2 — pattern recognition: 28 SCOUT + 10 CRUISER, V formation
+    # O2 — pattern recognition: 28 SCOUT + 10 CRUISER, V formation.
+    # BLOQUE 58.6x: ships follow a BEZIER S-curve from spawn position
+    # down to the bottom-right corner. The control points pull the curve
+    # left-then-right, creating a smooth S that the player can predict.
     # BLOQUE 50: triggers a sub-boss encounter after this wave is cleared
     {
         "enemies": ["SCOUT"] * 28 + ["CRUISER"] * 10,
@@ -610,22 +621,72 @@ LEVEL1_WAVES: list[dict[str, Any]] = [
         "formation": "v",
         "fire_allowed": True,
         "sub_boss_after": True,
+        "path": {
+            "kind": "hybrid",
+            "segments": [
+                {
+                    "type": "bezier",
+                    "p0": [40, -10],
+                    "p1": [40, 200],
+                    "p2": [280, 200],
+                    "p3": [280, 480],
+                },
+            ],
+            "durations": [5.0],
+        },
     },
-    # O3 — mixed composition: 20 SCOUT + 8 HEAVY, line, HEAVY as anchor
+    # O3 — mixed composition: 20 SCOUT + 8 HEAVY, line, HEAVY as anchor.
+    # BLOQUE 58.6x: ships follow a WAYPOINT zigzag — straight down to
+    # mid-screen, then sharp right, then straight down again. The
+    # sharp turn tests the player's tracking on direction changes.
     {
         "enemies": ["SCOUT"] * 20 + ["HEAVY"] * 8,
         "spawn_cadence_s": 0.7,
         "max_duration_s": 70.0,
         "formation": "line",
         "fire_allowed": True,
+        "path": {
+            "kind": "hybrid",
+            "segments": [
+                {
+                    "type": "waypoint",
+                    "points": [[160, -10], [160, 200], [240, 200], [240, 480]],
+                    "speed": 90.0,
+                    "linger": [0.0, 0.0, 0.0, 0.0],
+                },
+            ],
+            "durations": [5.5],
+        },
     },
-    # O4 — finale: 16 SCOUT + 12 CRUISER + 6 HEAVY, diamond
+    # O4 — finale: 16 SCOUT + 12 CRUISER + 6 HEAVY, diamond.
+    # BLOQUE 58.6x: ships follow a HYBRID path — a smooth bezier arc
+    # (entrance sweep) followed by a straight waypoint descent. This
+    # combines both path types in one wave.
     {
         "enemies": ["SCOUT"] * 16 + ["CRUISER"] * 12 + ["HEAVY"] * 6,
         "spawn_cadence_s": 0.8,
         "max_duration_s": 80.0,
         "formation": "diamond",
         "fire_allowed": True,
+        "path": {
+            "kind": "hybrid",
+            "segments": [
+                {
+                    "type": "bezier",
+                    "p0": [40, -10],
+                    "p1": [40, 100],
+                    "p2": [280, 100],
+                    "p3": [280, 200],
+                },
+                {
+                    "type": "waypoint",
+                    "points": [[280, 200], [160, 350], [160, 480]],
+                    "speed": 100.0,
+                    "linger": [0.0, 0.2, 0.0],
+                },
+            ],
+            "durations": [2.5, 4.0],
+        },
     },
 ]
 
