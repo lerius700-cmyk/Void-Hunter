@@ -187,8 +187,11 @@ class TitleScene(Scene):
                 _f.write(f"  play_title_music() returned: {ok}\n")
         except Exception:
             pass
-        # BLOQUE 58.53: voice announcement ("Pantalla principal")
-        music.play_voice_pantalla_principal()
+        # BLOQUE 58.58: title-screen voice clip removed per user request
+        # (was: "Pantalla principal" SAPI announcement). The other voice
+        # clips (gameplay / jefe / act_cleared) stay — they fire mid-game
+        # and help the player know which phase is starting. Title screen
+        # already has its own BGM; the redundant announcement was noise.
 
     def _spawn_demo_ship(self) -> None:
         """Spawn an enemy or player demo ship on the left or right side."""
