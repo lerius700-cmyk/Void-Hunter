@@ -243,6 +243,18 @@ class Game:
 
     def run(self) -> int:
         """Main loop with fixed-timestep accumulator (120 FPS)."""
+        # BLOQUE 58.51: explicitly trigger on_enter for the initial scene
+        # (TITLE). SceneManager.__init__ sets current_state=TITLE but
+        # never calls on_enter — that only happens on transitions. Without
+        # this, the title scene runs draw() (with lazy ship spawn in
+        # update()) but on_enter's side effects (init parallax, spawn
+        # ships, START MUSIC) never run. Symptom: no music, ships appear
+        # only via the update() fallback, and the title feels broken.
+        if (self.scenes.current_state in self.scenes.scenes
+                and not self.scenes.overlay_stack):
+            scene = self.scenes.scenes[self.scenes.current_state]
+            if scene is not None:
+                scene.on_enter()
         try:
             while self._running:
                 # Handle window-level events

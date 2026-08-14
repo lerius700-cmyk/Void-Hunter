@@ -27,7 +27,10 @@ import pygame
 
 # Track filenames (relative to Assets/)
 TITLE_TRACK = "pantalla principal.wav"
-GAMEPLAY_TRACK = "soundtrack gameplay.wav"
+# BLOQUE 58.51: actual file is "keep kept - Lerius - soundtrack gameplay.wav"
+# (with the artist prefix). The old name was wrong, which is why music
+# never played in the .exe even after the path fix.
+GAMEPLAY_TRACK = "keep kept - Lerius - soundtrack gameplay.wav"
 
 # Module-level state
 _current_track: Optional[str] = None
@@ -84,6 +87,11 @@ def _ensure_mixer() -> bool:
         return True
     except pygame.error:
         return False
+
+
+def _diag_log(msg: str) -> None:
+    """Diagnostic helper (no-op in production; left in for debugging)."""
+    pass
 
 
 def play_title_music(loops: int = -1) -> bool:
