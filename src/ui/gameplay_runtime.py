@@ -1499,10 +1499,12 @@ class GameplayRuntime:
                     e.squadron_age = -e.squadron_time_offset
                 e.squadron_age += dt
                 age = e.squadron_age
-                # Path: sine-wave x over linear-falling y
-                e.x = e.squadron_origin_x + math.sin(
-                    age * squadron_freq_hz * 2.0 * math.pi
-                ) * squadron_amplitude
+                # BLOQUE 58.54: straight-line path. Previously the squadron
+                # used a sine-wave X over linear-falling Y, which made the
+                # ships sway left-right as they descended. Now they all
+                # fall straight down from the same X; the time_offset still
+                # gives a vertical "follow the leader" stagger.
+                e.x = e.squadron_origin_x
                 e.y = 16.0 + age * squadron_y_speed
             # Fire
             if e.on_fire:
