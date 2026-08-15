@@ -754,8 +754,14 @@ class GameplayScene(Scene):
     def on_enter(self) -> None:
         self._rt.on_enter()
         # BLOQUE 58.45: switch to the gameplay soundtrack (loop).
+        # BLOQUE 58.6x: don't restart if already playing. on_enter fires
+        # every time we return to gameplay (after sub-boss kill, after
+        # boss death before act_cleared, etc.). Restarting the BGM every
+        # time was audible to the user. With force=False the music
+        # continues seamlessly through transitions.
         from src.audio import music
-        music.play_gameplay_music(force=True)
+        if music.get_current_track() != "gameplay":
+            music.play_gameplay_music(force=True)
         # BLOQUE 58.59: voice clip removed per user request (was "Gameplay")
 
     def on_exit(self) -> None:
