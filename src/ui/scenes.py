@@ -960,9 +960,9 @@ class SubBossIntroScene(Scene):
         self._transition_to = transition_to
         self._audio = audio
         self._t: float = 0.0
-        self._duration: float = 4.0  # BLOQUE 58.6y: longer so the player
-                                       # actually notices the warning before
-                                       # the sub-boss dart spawns in.
+        self._duration: float = 5.0  # BLOQUE 58.7x: even longer so the
+                                       # player has time to react + position
+                                       # themselves before the dart spawns.
 
     def on_enter(self) -> None:
         self._t = 0.0

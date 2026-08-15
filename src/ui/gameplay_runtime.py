@@ -1385,6 +1385,9 @@ class GameplayRuntime:
         Enemy.update() handles subsequent re-entries and L patterns.
         BLOQUE 58.6y: spawn y=0 (visible at top edge) so the player
         actually notices the dart instead of it appearing off-screen.
+        BLOQUE 58.7x: spawn y=20 (fully inside the playfield) so the
+        entire body is visible immediately, not half-clipped. Also
+        pre-emits a spawn flash so the dart is impossible to miss.
         """
         import random
         from src.entities.enemies.enemy import EnemyKind
@@ -1393,15 +1396,22 @@ class GameplayRuntime:
         # of always INTERNAL_W/2. Sub-boss width is 24, so margin = 16.
         margin = 16
         rand_x = float(random.randint(margin, INTERNAL_W - margin))
-        # BLOQUE 58.6y: y=0 (visible at top) instead of -16. With the
-        # longer warning scene (4.0s), the player now has time to look
-        # up and see the dart enter from the top edge.
-        e = self._enemies.spawn(EnemyKind.SUB_BOSS, rand_x, 0.0)
+        # BLOQUE 58.7x: spawn y=20 (fully on-screen). The dart body is
+        # 24x14 centered on (rand_x, 20) so it extends from y=13 to y=27.
+        # With the 4-5s warning scene, the player has time to look up
+        # and see the full dart before it descends.
+        e = self._enemies.spawn(EnemyKind.SUB_BOSS, rand_x, 20.0)
+        import os
         try:
-            with open("logs/_sub_boss.log", "a", encoding="utf-8") as _f:
-                _f.write(f"spawned SUB_BOSS at ({rand_x:.1f}, 0) chain.elapsed={self._level1_chain.elapsed_s if self._level1_chain else -1:.1f}s\n")
-        except Exception:
-            pass
+            log_path = os.path.join(os.getcwd(), "logs", "_sub_boss.log")
+            with open(log_path, "a", encoding="utf-8") as _f:
+                _f.write(f"spawned SUB_BOSS at ({rand_x:.1f}, 0) chain.elapsed={self._level1_chain.elapsed_s if self._level1_chain else -1:.1f}s cwd={os.getcwd()}\n")
+        except Exception as exc:
+            try:
+                with open("D:/AI/void-hunter/logs/_sub_boss.log", "a", encoding="utf-8") as _f:
+                    _f.write(f"FALLBACK spawn exc={exc}\n")
+            except Exception:
+                pass
         if e is not None:
             self._sub_boss_alive = True
             self._sub_boss_intro_done = True
@@ -1416,6 +1426,41 @@ class GameplayRuntime:
             # chain pending and award the sub-boss bonus score. We use
             # a simple attribute on the enemy.
             e._is_sub_boss_instance = True  # type: ignore[attr-defined]
+            # BLOQUE 58.7x: spawn flash so the dart is impossible to miss.
+            # A bright yellow ring expands from the spawn position for 0.4s
+            # and a thick yellow shockwave pushes outward. Triggers the
+            # screen flash + plays a "warning" SFX for audio cue.
+            self._shockwaves.append(Shockwave(
+                x=rand_x, y=20.0, radius=2.0, max_radius=80.0,
+                life=0.5, max_life=0.5,
+            ))
+            self._screen_flash = max(self._screen_flash, 0.5)
+            try:
+                from src.audio.synth import get_audio
+                get_audio().play_sfx("boss_warning", volume=0.85)
+            except Exception:
+                pass
+            # Pre-emit a cluster of yellow particles at the spawn point
+            # so the dart has a "materialized from the ether" visual cue.
+            from src.systems.particle_engine import P_SPARK, P_GLOW
+            for _ in range(18):
+                ang = random.random() * 6.283
+                speed = 30.0 + random.random() * 60.0
+                self._particles.emit(
+                    P_SPARK, rand_x, 20.0,
+                    vx=math.cos(ang) * speed,
+                    vy=math.sin(ang) * speed,
+                    color=(255, 220, 80), life=0.45, radius=1.6,
+                )
+            for _ in range(8):
+                ang = random.random() * 6.283
+                speed = 15.0 + random.random() * 30.0
+                self._particles.emit(
+                    P_GLOW, rand_x, 20.0,
+                    vx=math.cos(ang) * speed,
+                    vy=math.sin(ang) * speed,
+                    color=(255, 180, 60), life=0.55, radius=2.4,
+                )
 
     def _spawn_level1_enemies(self, dt: float) -> None:
         """BLOQUE 48: spawn one enemy per tick from the chained WaveChain.
@@ -2327,11 +2372,24 @@ class GameplayRuntime:
         # SUB_BOSS_INTRO. The sub-boss itself is spawned on the way back
         # to GAMEPLAY (see _spawn_sub_boss_on_resume).
         if chain.sub_boss_pending and not self._sub_boss_alive:
+            import os, sys
+            msg = f"TRIGGER SUB_BOSS_INTRO at chain.elapsed={chain.elapsed_s:.1f}s wave={chain.current_wave_idx} cwd={os.getcwd()}\n"
             try:
-                with open("logs/_sub_boss.log", "a", encoding="utf-8") as _f:
-                    _f.write(f"triggering SUB_BOSS_INTRO at chain.elapsed={chain.elapsed_s:.1f}s wave={chain.current_wave_idx}\n")
+                sys.stderr.write(msg)
+                sys.stderr.flush()
             except Exception:
                 pass
+            try:
+                log_path = os.path.join(os.getcwd(), "logs", "_sub_boss.log")
+                os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                with open(log_path, "a", encoding="utf-8") as _f:
+                    _f.write(msg)
+            except Exception as exc:
+                try:
+                    sys.stderr.write(f"  log write failed: {exc}\n")
+                    sys.stderr.flush()
+                except Exception:
+                    pass
             self._transition_to(GameState.SUB_BOSS_INTRO)
             return
         # BLOQUE 53d: GOLIATH_SUMMON trigger. If the player has the
@@ -2801,12 +2859,14 @@ class GameplayRuntime:
         REMOVED from the player. The user wanted the same style as
         the Wolfen sub-boss's purple propulsion but in NEON BLUE.
 
-        BLOQUE 58.6y: brighter, more saturated neon blue palette:
-          - neon_core   (80, 200, 255)   — bright neon cyan-blue core
-          - neon_glow   (40, 160, 255)   — saturated neon blue halo
-          - neon_smoke  (20, 80, 200)    — bright dark-blue smoke
-          - extra_outer (120, 220, 255)  — large faint outer glow
-        Plus an additional outer-halo particle for the "neon glow" look.
+        BLOQUE 58.7x: ULTRA-NEON palette with 6 particles per engine:
+          - white_hot_core (220, 250, 255) — near-white plasma core
+          - electric_blue  (60, 180, 255)  — saturated electric blue
+          - cyan_glow      (140, 230, 255) — cyan-white halo
+          - violet_edge    (130, 80, 255)  — hint of violet at edge
+          - deep_navy      (30, 90, 220)   — deep navy smoke
+        Adds electric blue + violet edge particles for a richer, brighter
+        trail that reads as "neon plasma" instead of "blue dust".
         """
         from src.systems.particle_engine import P_GLOW, P_SMOKE, P_SPARK
         from src.core.settings import (
@@ -2829,34 +2889,44 @@ class GameplayRuntime:
             spread = 6.0
             exh_vx = (random.random() - 0.5) * spread
             exh_vy = 20.0 + (random.random() - 0.5) * spread
-            # P_SPARK: small bright neon cyan-blue dot, fast
+            # P_SPARK #1: near-white plasma core (brightest, fastest)
             self._particles.emit(
                 P_SPARK, ex, ey,
                 vx=exh_vx, vy=exh_vy,
-                color=(80, 200, 255), life=0.28, radius=1.6,
+                color=(220, 250, 255), life=0.30, radius=1.8,
             )
-            # P_GLOW: saturated neon blue core glow, slower, longer life
+            # P_SPARK #2: electric blue mid-core
+            self._particles.emit(
+                P_SPARK, ex, ey,
+                vx=exh_vx * 1.1, vy=exh_vy * 1.1,
+                color=(60, 180, 255), life=0.26, radius=1.4,
+            )
+            # P_GLOW: saturated electric blue halo
             self._particles.emit(
                 P_GLOW, ex, ey,
                 vx=exh_vx * 0.5, vy=exh_vy * 0.5,
-                color=(40, 160, 255), life=0.40, radius=2.4,
+                color=(60, 180, 255), life=0.45, radius=2.8,
             )
-            # BLOQUE 58.6y: extra outer-halo particle for the neon glow
-            # effect. Larger, longer life, slightly slower \u2014 gives the
-            # "bright halo" look that makes the trail read as neon.
+            # P_GLOW: large cyan-white outer halo
             self._particles.emit(
                 P_GLOW, ex, ey,
                 vx=exh_vx * 0.3, vy=exh_vy * 0.3,
-                color=(120, 220, 255), life=0.55, radius=3.2,
+                color=(140, 230, 255), life=0.60, radius=3.6,
             )
-            # P_SMOKE: bright dark-blue smoke trail, ~40% of the time
-            if random.random() < 0.4:
+            # P_GLOW: violet edge -- adds a hint of color depth
+            self._particles.emit(
+                P_GLOW, ex, ey,
+                vx=exh_vx * 0.2, vy=exh_vy * 0.2,
+                color=(130, 80, 255), life=0.50, radius=2.4,
+            )
+            # P_SMOKE: deep navy smoke, ~50% of the time
+            if random.random() < 0.5:
                 self._particles.emit(
                     P_SMOKE,
                     ex + (random.random() - 0.5) * 3.0,
                     ey + (random.random() - 0.5) * 3.0,
                     vx=exh_vx * 0.7, vy=exh_vy * 0.7,
-                    color=(20, 80, 200), life=0.5, radius=1.6,
+                    color=(30, 90, 220), life=0.55, radius=1.8,
                 )
 
     # -----------------------------------------------------------------------
