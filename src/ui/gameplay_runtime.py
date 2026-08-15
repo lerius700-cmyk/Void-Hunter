@@ -2549,12 +2549,19 @@ class GameplayRuntime:
         self._tron_trail.update(effective_dt)
         self._update_tron_trail_collisions()
         self._check_player_death_explosion()
-        # BLOQUE 58.6w: advance the galaxy background scroll. Fall back
-        # to the old TilingImage if the galaxy panels aren't bundled.
-        if self._galaxy_bg is not None and self._galaxy_bg.is_ready:
-            self._galaxy_bg.update(effective_dt)
-        elif self._tiling_bg is not None:
-            self._tiling_bg.update(effective_dt)
+        # BLOQUE 58.6w: advance the galaxy background scroll (waves +
+        # sub-boss). For boss fights we use the pixel art TilingImage
+        # (the user-supplied "imagen fondo del juego.jpg") instead.
+        if self._is_boss:
+            # Boss fight: pixel art TilingImage
+            if self._tiling_bg is not None:
+                self._tiling_bg.update(effective_dt)
+        else:
+            # Waves + sub-boss: galaxy scroll (with tiling fallback)
+            if self._galaxy_bg is not None and self._galaxy_bg.is_ready:
+                self._galaxy_bg.update(effective_dt)
+            elif self._tiling_bg is not None:
+                self._tiling_bg.update(effective_dt)
         _section("particles_below", _section_t0)
         _section_t0 = _time.perf_counter()
         self._particles.update(effective_dt)
@@ -3048,14 +3055,24 @@ class GameplayRuntime:
         import time as _time
         _render_t0 = _time.perf_counter()
         # Background
-        # BLOQUE 58.6w: prefer the galaxy scroll (3 panels stacked) over
-        # the old tiling image. Falls back to tiling -> parallax stars.
-        if self._galaxy_bg is not None and self._galaxy_bg.is_ready:
-            self._galaxy_bg.draw(target)
-        elif self._tiling_bg is not None and self._tiling_bg.is_ready:
-            self._tiling_bg.draw(target)
+        # BLOQUE 58.6w: split backgrounds by scene type.
+        #   - Waves + sub-boss: galaxy scroll (3 panels stacked)
+        #   - Boss fight: pixel art TilingImage ("imagen fondo del juego.jpg")
+        # Falls back to parallax stars if neither image is bundled.
+        if self._is_boss:
+            # Boss fight: pixel art TilingImage
+            if self._tiling_bg is not None and self._tiling_bg.is_ready:
+                self._tiling_bg.draw(target)
+            else:
+                self._bg.draw(target)
         else:
-            self._bg.draw(target)
+            # Waves + sub-boss: galaxy scroll (with tiling fallback)
+            if self._galaxy_bg is not None and self._galaxy_bg.is_ready:
+                self._galaxy_bg.draw(target)
+            elif self._tiling_bg is not None and self._tiling_bg.is_ready:
+                self._tiling_bg.draw(target)
+            else:
+                self._bg.draw(target)
         # BLOQUE 25: ambient drift particles in background
         self._draw_ambient_dust(target)
         # Shake offset
