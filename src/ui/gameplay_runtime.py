@@ -166,9 +166,20 @@ class GameplayRuntime:
 
         # Core
         self._player = Player()
-        # BLOQUE 58.45: scroll the user's background image as a tiled
-        # "tape". The ParallaxBackground (5-layer starfield) is kept as
-        # a fallback when the Assets/ image isn't bundled.
+        # BLOQUE 58.6w: scrolling galaxy background. 3 distinct galaxy
+        # panels (Assets/background/galaxy_panel_{0,1,2}.png) are stacked
+        # vertically and scrolled downward at a constant slow speed.
+        # REPLACES the TilingImage (the old fondo tiling). Parallax
+        # stars remain on top (separate concern).
+        from src.ui.scrolling_galaxy import ScrollingGalaxyBackground
+        self._galaxy_bg: Optional["ScrollingGalaxyBackground"] = (
+            ScrollingGalaxyBackground(
+                width=INTERNAL_W, height=INTERNAL_H,
+                scroll_speed_px_per_s=30.0,  # BLOQUE 58.6w: slow parallax
+            )
+        )
+        # Keep the old TilingImage as a fallback (in case the galaxy
+        # panels aren't bundled).
         from src.ui.tiling_image import TilingImage
         self._tiling_bg: Optional["TilingImage"] = TilingImage(
             width=INTERNAL_W, height=INTERNAL_H, scroll_speed_px_per_s=12.0,
@@ -2538,8 +2549,11 @@ class GameplayRuntime:
         self._tron_trail.update(effective_dt)
         self._update_tron_trail_collisions()
         self._check_player_death_explosion()
-        # BLOQUE 58.45: advance the tiling background scroll.
-        if self._tiling_bg is not None:
+        # BLOQUE 58.6w: advance the galaxy background scroll. Fall back
+        # to the old TilingImage if the galaxy panels aren't bundled.
+        if self._galaxy_bg is not None and self._galaxy_bg.is_ready:
+            self._galaxy_bg.update(effective_dt)
+        elif self._tiling_bg is not None:
             self._tiling_bg.update(effective_dt)
         _section("particles_below", _section_t0)
         _section_t0 = _time.perf_counter()
@@ -3034,9 +3048,11 @@ class GameplayRuntime:
         import time as _time
         _render_t0 = _time.perf_counter()
         # Background
-        # BLOQUE 58.45: prefer the user's tiled image (if loaded);
-        # otherwise fall back to the parallax starfield.
-        if self._tiling_bg is not None and self._tiling_bg.is_ready:
+        # BLOQUE 58.6w: prefer the galaxy scroll (3 panels stacked) over
+        # the old tiling image. Falls back to tiling -> parallax stars.
+        if self._galaxy_bg is not None and self._galaxy_bg.is_ready:
+            self._galaxy_bg.draw(target)
+        elif self._tiling_bg is not None and self._tiling_bg.is_ready:
             self._tiling_bg.draw(target)
         else:
             self._bg.draw(target)
