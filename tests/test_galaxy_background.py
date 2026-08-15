@@ -1,7 +1,9 @@
 """BLOQUE 58.6w: tests for the ScrollingGalaxyBackground class.
 
-BLOQUE 58.6y+ update: now uses a single loopable image (galaxy_strip.png)
-or falls back to 3 panels (galaxy_panel_{0,1,2}.png) for backward compat.
+BLOQUE 58.7y: now uses 3 vertical panels (galaxy_panel_{0,1,2}.png) split
+from the user-supplied 1920x1920 image. Each panel is 1920x640, scaled
+to 320 wide, so each panel is 320x106. The strip stacks 3 panels top->mid->bot
+and the loop is total_strip_height (~318 pixels) at 30 px/s.
 """
 from __future__ import annotations
 
@@ -18,38 +20,35 @@ sys.path.insert(0, str(ROOT))
 
 
 def test_galaxy_background_loads_strip() -> None:
-    """The new single-image strip is the preferred background.
-    galaxy_strip.png is the user-supplied loopable image.
-    """
+    """BLOQUE 58.7y: 3 panels are the new standard background."""
     from src.ui.scrolling_galaxy import ScrollingGalaxyBackground
 
     bg = ScrollingGalaxyBackground(width=320, height=480)
     assert bg.is_ready, f"Expected background to be ready, mode={bg.mode}"
-    # In single mode we have exactly 1 strip
     if bg.mode == "single":
         assert bg.total_strip_height > 0
     else:
-        # Backward compat: 3 panels
-        assert bg.panel_count_loaded == 3, (
-            f"Expected 3 panels (fallback), got {bg.panel_count_loaded}"
+        # 3 panels from the new 1920x1920 image, each 320x106
+        assert len(bg._panels) == 3, (
+            f"Expected 3 panels, got {len(bg._panels)}"
         )
 
 
 def test_galaxy_background_total_strip_height() -> None:
-    """Total strip height depends on mode (single vs panels)."""
+    """Total strip height = 3 * panel_height (panels stacked top->mid->bot)."""
     from src.ui.scrolling_galaxy import ScrollingGalaxyBackground
 
     bg = ScrollingGalaxyBackground(width=320, height=480)
     if bg.mode == "single":
-        # galaxy_strip.png is 1920x1920; scaled to 320 wide = 320x320
-        # The strip image has a height of 320 after scaling.
+        # Single-image fallback: scaled to 320x320
         assert bg.total_strip_height == 320, (
             f"Expected single strip height 320, got {bg.total_strip_height}"
         )
     else:
-        # 3 panels stacked: 3 * 960 = 2880
-        assert bg.total_strip_height == 2880, (
-            f"Expected 3 panels total 2880, got {bg.total_strip_height}"
+        # 3 panels stacked: each ~106 tall, total ~318
+        assert bg.total_strip_height > 0
+        assert abs(bg.total_strip_height - len(bg._panels) * 106) < 10, (
+            f"Expected 3 panels total ~318, got {bg.total_strip_height}"
         )
 
 
@@ -107,29 +106,25 @@ def test_galaxy_background_scrolls_top_to_bottom() -> None:
 
     if bg.mode == "single":
         # Single strip: only one image, scrolls in place
-        # At scroll_y=0: top of strip at y=0
-        # At scroll_y=100: top of strip at y=-100
-        # The strip extends downward forever (it's looped)
         bg._scroll_y = 0
-        # Verify the image is drawn at y = -scroll_y
-        # (this is implementation detail; just verify scroll increments)
         bg.update(1.0)
         assert bg._scroll_y > 0
     else:
         # 3-panel mode: verify order [0, 1, 2]
-        panel_h = 960
+        # BLOQUE 58.7y: panels are 320x106 each, stacked
+        panel_h = bg._panels[0].get_height()
         total_h = bg.total_strip_height
 
         def visible_panels(scroll_y):
             visible = []
-            for i in range(3):
+            for i in range(len(bg._panels)):
                 y_top = -scroll_y + i * panel_h
                 if y_top < 480 and (y_top + panel_h) > 0:
                     visible.append(i)
             return visible
 
         seen_order = []
-        for sy in range(0, total_h, 50):
+        for sy in range(0, total_h, max(1, panel_h // 4)):
             for p in visible_panels(sy):
                 if p not in seen_order:
                     seen_order.append(p)
