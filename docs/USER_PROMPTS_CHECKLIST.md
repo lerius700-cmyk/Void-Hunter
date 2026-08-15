@@ -174,6 +174,217 @@
 
 ---
 
+## G. SISTEMAS MAYORES QUE MINIMICÉ EN EL CHECKLIST INICIAL
+
+**ESTO ES LO QUE NO TRACÉ BIEN.** El usuario me señaló explícitamente que estos sistemas merecían su propia sección, no una mención superficial. Son el CORAZÓN del gameplay, no "features secundarios".
+
+### G1. 🛩️ FlightFormations (BLOQUE 58.6x, 55, 45)
+
+**Sistema completo de formaciones de vuelo.** `src/movement/formation.py` (212 líneas).
+
+**9 presets disponibles** (FormationKind enum):
+- V — clásico Star Fox, líder al frente, alas en V
+- LINE — hilera horizontal
+- DIAMOND — diamante
+- SQUARE — cuadrado
+- WEDGE — cuña
+- CIRCLE — círculo
+- TRIANGLE — triángulo
+- HALF_V — V invertida
+- CUSTOM — definida por offsets arbitrarios
+
+**Integración**: BLOQUE 58.6x part 2 (`40b3a28`) integró el sistema en las waves level 1:
+- O1: 30 SCOUT diagonal
+- O2: 25 SCOUT + 15 CRUISER en V
+- O3: 25 SCOUT + 12 HEAVY + 8 CRUISER en línea
+- O4: 20 SCOUT + 18 CRUISER + 12 HEAVY en diamante
+
+**Tests**: 37 nuevos (bezier math, waypoint follow, hybrid concat, follower timing, formation presets, slot offsets, enemy + follower integration, wave spec validation).
+
+**Commits**: `971f779` (BLOQUE 58.6x part 1) + `40b3a28` (BLOQUE 58.6x part 2).
+
+### G2. 📈 Bezier Curves (BLOQUE 56, 58.6x)
+
+**Movimiento con curvas Bézier cúbicas.** `src/movement/bezier.py` (95 líneas), `src/movement/waypoint.py` (99 líneas), `src/movement/hybrid.py` (107 líneas).
+
+**Componentes**:
+- `BezierPath` — curva Bézier cúbica con position + tangent at t
+- `WaypointPath` — lista de waypoints, velocidad constante + linger opcional
+- `HybridPath` — concatenar segmentos bezier + waypoint en una sola ruta
+- `PathFollower` — stateful, avanza t sobre el tiempo
+
+**Uso en waves**:
+- O2: bezier S-curve
+- O3: waypoint zigzag
+- O4: hybrid (bezier arc + waypoint + linger)
+- GOLIATH entrance path: bezier + linger
+
+**Tests**: 37 nuevos cubren math, waypoint, hybrid, follower timing.
+
+**Commits**:
+- `5e5b823` (BLOQUE 56 — primera implementación)
+- `971f779` (BLOQUE 58.6x — integración + refactor)
+
+### G3. ✈️ Flight Paths (BLOQUE 58.6x, 45)
+
+**Paths procedurales por seed.** `src/movement/spec.py` (60 líneas) — `FormationPathSpec` es el bridge entre formation + path.
+
+**Capacidades**:
+- Cada wave tiene un `path` field (dict)
+- El runtime lo parsea y adjunta `PathFollower` al enemy
+- El path reemplaza el straight-line vx/vy
+- Soporta bezier S, waypoint zigzag, hybrid multi-segmento
+
+**Test**: `test_movement_wave_integration.py` valida que O1-O4 + sub-boss paths funcionan end-to-end.
+
+### G4. 👥 Leader Following (BLOQUE 47, 58.6x, 48)
+
+**Sistema de leader-follower en escuadrones.** `src/entities/enemies/enemy.py` (squadron_id, squadron_origin_x, squadron_time_offset, squadron_age).
+
+**Funcionamiento**:
+- 1 líder fija el path (bezier/waypoint)
+- N followers tienen `squadron_time_offset` que los pone detrás del líder en el tiempo
+- Replay del path del líder con delay (efecto "follow the leader")
+- BLOQUE 58.54: forzado a línea recta (no más serpentina). `e.x = e.squadron_origin_x; e.y = 16.0 + age * squadron_y_speed`
+
+**Star Fox squadron feel**: BLOQUE 47 introdujo el concepto inicial, BLOQUE 48 lo pulió, BLOQUE 58.54 lo enderezó.
+
+**Test**: `test_movement_enemy.py` cubre el offset + age + position update.
+
+### G5. 🎲 ROGUELIKE (BLOQUE 57)
+
+**Sistema roguelike completo.** `src/roguelike/` — **12 archivos, 1,540 líneas.**
+
+**Componentes**:
+- `seed.py` (93) — seed del run
+- `rng.py` (140) — RNG determinístico
+- `run.py` (202) — estado del run
+- `level_generator.py` (196) — generación procedural de niveles
+- `formation_generator.py` (266) — generación procedural de formations
+- `integration.py` (135) — integración con el resto
+- `telemetry.py` (112) — kills, perfect, time, score
+- `replay.py` (125) — replay desde seed (opt-in)
+- `boss_pool.py` (70) — pool de bosses
+- `powerup_pool.py` (48) — pool de power-ups
+- `anti_stuck.py` (95) — anti-stuck detection
+
+**Activación**: `--roguelike` flag. Default sigue siendo JSON setup.
+
+**Tests**: 8+ nuevos (seed determinism, RNG repeatability, level gen, formation gen, replay, telemetry).
+
+**Commit**: `beec655` (BLOQUE 57 — roguelike core).
+
+### G6. 🛡️ Boss systems (BLOQUE 51-53, 58.37)
+
+**4 bosses con phase FSM** (no los conté bien):
+- HYDRA, PHANTOM, NEMESIS — BLOQUE 58.37 (3 bosses simples Star Fox 64 redesign)
+- **GOLIATH** — BLOQUE 51 (biblical giant warrior), BLOQUE 53a (shield charge 20 hits), BLOQUE 53b (HP bar 30 max), BLOQUE 53c (gold rings con HP double), BLOQUE 53d (tech upgrades GOLIATH_SUMMON)
+
+**Spear mechanic**: BLOQUE 52 — spear throw con serpentine motion + split-on-destroy.
+
+### G7. ⚔️ Weapon system (BLOQUE 6+7, 39)
+
+**3 paths × 3 levels** — no lo conté:
+- Standard (L1)
+- Plasma (L2)
+- Missile / homing (L3, BLOQUE 39)
+
+**State machine**: weapon level-up detection (BLOQUE 24).
+
+### G8. 🏃 Player FSM (BLOQUE 6+7, 58.8)
+
+**7 estados**: IDLE, MOVE, DASH, PROPULSION, HIT, DEAD, RESPAWN.
+
+**DASH vs PROPULSION** (BLOQUE 58.8): separados por duración (0.6s threshold). Click = DASH, Hold = PROPULSION. Ambos tienen overheat (BLOQUE 58.8).
+
+### G9. Tron trail (BLOQUE 58.11, 58.22-58.31)
+
+**Light trail estilo Tron** — pared cyan que sale del motor en PROPULSION state. **3x bullet damage** a enemies que tocan la pared. Iterado 7 veces (BLOQUES 22-31) para llegar a la versión final (continuous polyline, ultra-thin, spectral multi-streak).
+
+### G10. HUD system (BLOQUE 58.14, 58.15, 58.16, 58.41)
+
+**HUD dinámico**:
+- Score dinámico
+- Bombas → misiles
+- HP bar con segments
+- Overheat bar
+- Tech upgrades tracker
+- Score popups + damage popups
+- Fixed row height 14px (BLOQUE 58.15 — fixed overlap)
+
+**No conté ninguno de estos en mi checklist anterior.** Debería haber sido una sección propia.
+
+### G11. Music + SFX (BLOQUE 58.13, 58.23, 58.45, 58.53, 58.57)
+
+- 24 SFX sintetizados (sin archivos externos)
+- 2 tracks streaming (162 MB total)
+- 4 voice clips SAPI (BLOQUE 58.53, removidos BLOQUE 58.59)
+- Boss warning, level up, multiplier up, act clear
+- Multiple freezes arreglados (BOSS_INTRO 1.2s freeze, etc.)
+
+### G12. Visual juice systems (25+ sistemas)
+
+- Screen shake (BLOQUE 58.17 enriched log)
+- Hitstop (frame freeze on hits, BLOQUE 58.17)
+- Slow-mo (boss phase transitions, BLOQUE 58.18)
+- Particles (18 kinds, BLOQUE 1)
+- Damage popups (BLOQUE 15+16)
+- Muzzle flash (BLOQUE 22)
+- Boss death stages (BLOQUE 22)
+- Screen flash (BLOQUE 21)
+- Shockwave rings (BLOQUE 21)
+- Boss entry warning border (BLOQUE 23)
+- Pickup flash (BLOQUE 24)
+- Speed lines (BLOQUE 24)
+- Power-up pulse (BLOQUE 23)
+- Bomb explosion 5x bigger (BLOQUE 58.9)
+- Dash stars (BLOQUE 58.26)
+- Engine smoke (BLOQUE 58.26)
+- Bullet trails (BLOQUE 19)
+- Thrust particles (BLOQUE 19)
+- Wall indicator (BLOQUE 19)
+- Ambient dust (BLOQUE 25)
+- Wing lights (BLOQUE 25)
+- Heavy-kill particles (BLOQUE 25)
+- Hit sparks ring on player (BLOQUE 27)
+- Power-up magnet (BLOQUE 27)
+- Boss kill test (BLOQUE 28)
+
+**Esto son 25+ sistemas visuales** que tienen su propia historia. No los conté.
+
+### G13. Star Fox style complete (BLOQUE 58.36-58.36h)
+
+- Window 320x480 portrait
+- Mouse reticle 1:1
+- Sprite scale 0.75 (BLOQUE 35)
+- Nose lerp (BLOQUE 35)
+- Player ship rediseño (BLOQUE 58.12, 58.36a)
+- Enemigos rediseño unificado (BLOQUE 58.36b/c/d)
+- 83 sprites atlas (BLOQUE 58.41)
+
+---
+
+## H. RESUMEN DE OMISIONES EN MI CHECKLIST ANTERIOR
+
+**Lo que conté mal o subestimé**:
+- ❌ Traté 4 BLOQUES pequeños (58.7aa-58.7ad) como "el trabajo de la sesión"
+- ✅ Era la PUNTA del iceberg. La sesión completa (BLOQUE 47-58.7ad) tiene **~80 BLOQUES**
+- ❌ Las preferencias B1-B24 eran 24 micro-restricciones, no los SISTEMAS MAYORES pedidos
+- ❌ No destaqué los 12 sistemas que el usuario acaba de mencionar (ROGUELIKE, Bezier, Paths, Formations, Leader, etc.)
+- ❌ Sección C "Trabajo Realizado" debería haber sido la sección más grande, no la más corta
+
+**El checklist CORRECTO** debería tener:
+- A. Prompts explícitos del usuario (8-9 mensajes)
+- B. Preferencias operacionales (24 micro-restricciones)
+- **G. SISTEMAS MAYORES (los 13 sistemas que el usuario acaba de pedirme)** ← NUEVA, ahora la más grande
+- D. Pendientes
+- E. Feedback textual
+- F. Resumen
+
+**G es ahora la sección más grande del documento, no la más pequeña.** Eso es lo que el usuario me señaló.
+
+---
+
 ## D. PENDIENTE / NO HECHO / ESPERANDO
 
 ### D1. ZIP v1.28
