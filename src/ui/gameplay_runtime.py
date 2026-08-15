@@ -2387,12 +2387,30 @@ class GameplayRuntime:
 
         Each pattern is a group of enemies that all spawn together. The
         group follows the pattern's path (bezier, rigid, or mirror).
+
+        BLOQUE 58.10: also tick the WaveChain so the sub-boss and boss
+        triggers still fire. Before this fix, --patterns mode never called
+        chain.tick() (it bypassed _spawn_level1_enemies), so chain.elapsed_s
+        stayed at 0 and the Wolfen sub-boss and GOLIATH boss never spawned.
+        Now both the procedural patterns AND the chain advance together.
         """
         from src.systems.wave_patterns.runtime import (
             spawn_pattern_wave, update_pattern_runtime,
             get_pattern_hud_label,
         )
         if self._proc_mgr is None:
+            return
+        # BLOQUE 58.10: advance the chain so the sub-boss and boss
+        # triggers evaluate against the right chain state. The chain.tick
+        # also handles sub_boss_pending pause (returns early without
+        # advancing per-wave state).
+        if self._level1_chain is not None:
+            self._level1_chain.tick(dt)
+        # BLOQUE 58.10: while the chain is paused on a sub-boss or already
+        # completed, don't spawn new patterns either.
+        if (self._level1_chain is not None
+                and (self._level1_chain.sub_boss_pending
+                     or self._level1_chain.waves_complete)):
             return
         # Update active pattern timer
         if self._active_pattern_runtime is not None:

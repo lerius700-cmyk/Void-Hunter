@@ -166,3 +166,49 @@ class TestRuntimeLeaderTracking:
         runtime = PatternRuntime(kind=WavePatternKind.V_FORMATION,
                                  ships_spawned=[], result=fake)
         draw_leader_glows(surface, runtime, [], 0.0)
+
+
+# =====================================================================
+# --patterns mode + chain (Wolfen + GOLIATH) integration
+# =====================================================================
+class TestPatternsModeChainIntegration:
+    """BLOQUE 58.10: --patterns mode must still advance the chain so
+    the sub-boss (Wolfen) and boss (GOLIATH) triggers fire.
+
+    Before this fix, _spawn_procedural_patterns bypassed chain.tick(),
+    so chain.elapsed_s stayed at 0 and the Wolfen/GOLIATH never appeared.
+    """
+
+    def test_chain_advances_in_patterns_mode(self):
+        """BLOQUE 58.10: --patterns mode ticks the chain."""
+        from src.ui.gameplay_runtime import GameplayRuntime
+        from src.entities.enemies.enemy import EnemyKind
+
+        rt = GameplayRuntime(transition_to=lambda s: None, is_boss=False, act=1)
+        rt.on_enter()
+        rt.enable_procedural_patterns(seed=1, floor=1, spawn_interval=2.0)
+        # Tick the runtime for 5 seconds
+        for _ in range(300):
+            rt.update(1.0 / 60.0)
+        # Chain must have advanced
+        assert rt._level1_chain.elapsed_s > 4.0, (
+            f"chain.elapsed_s should advance in --patterns mode, got {rt._level1_chain.elapsed_s}"
+        )
+
+    def test_patterns_pause_when_sub_boss_pending(self):
+        """BLOQUE 58.10: when chain.sub_boss_pending, patterns stop spawning."""
+        from src.ui.gameplay_runtime import GameplayRuntime
+
+        rt = GameplayRuntime(transition_to=lambda s: None, is_boss=False, act=1)
+        rt.on_enter()
+        rt.enable_procedural_patterns(seed=1, floor=1, spawn_interval=1.0)
+        # Manually mark sub_boss_pending
+        rt._level1_chain._sub_boss_pending = True
+        rt._level1_chain.current_wave_idx = 2
+        # Force a tick; no new pattern should spawn
+        for _ in range(180):
+            rt.update(1.0 / 60.0)
+        # No new pattern after sub_boss_pending
+        assert rt._active_pattern_runtime is None, (
+            "Pattern spawned while sub_boss_pending=True"
+        )
