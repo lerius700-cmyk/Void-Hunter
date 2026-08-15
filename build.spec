@@ -34,13 +34,19 @@ a = Analysis(
     # is where PyInstaller drops these data files in onedir mode), so
     # the game finds them automatically with no code changes.
     datas=[
-        (str(PROJECT_ROOT / "Assets"), "Assets"),
-        # BLOQUE 58.47: bundle the pre-rendered ship sprites (PNG) so the
-        # title screen can load the ACTUAL game sprites (player + enemies)
-        # instead of drawing a simplified procedural version in code.
-        # `src.ui.scenes._load_sprite_atlas` probes `<_MEIPASS>/Assets/sprites/`
-        # which is where these land in onedir mode.
+        # BLOQUE 58.12: bundle ONLY the runtime assets, not the dev
+        # references (Bezier curves.mp4, etc). We split the Assets
+        # folder so the .exe stays small (~180 MB instead of ~230 MB).
+        # The runtime needs: backgrounds, sprites, music .wav files.
+        (str(PROJECT_ROOT / "Assets" / "background"), "Assets/background"),
         (str(PROJECT_ROOT / "Assets" / "sprites"), "Assets/sprites"),
+        # Music files (BLOQUE 58.45): only the runtime wav files, not
+        # dev references. The 2 voice clips are tiny.
+        (str(PROJECT_ROOT / "Assets" / "pantalla principal.wav"), "Assets"),
+        (str(PROJECT_ROOT / "Assets" / "keep kept - Lerius - soundtrack gameplay.wav"), "Assets"),
+        (str(PROJECT_ROOT / "Assets" / "voice_pantalla_principal.wav"), "Assets"),
+        (str(PROJECT_ROOT / "Assets" / "voice_act_cleared.wav"), "Assets"),
+        (str(PROJECT_ROOT / "Assets" / "voice_jefe.wav"), "Assets"),
     ],
     hiddenimports=[
         # pygame submodules that PyInstaller's static analysis can miss.
