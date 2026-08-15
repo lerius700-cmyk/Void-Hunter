@@ -43,16 +43,23 @@ class VFormationPattern(WavePattern):
         # Direction: 1 (left-to-right) or -1 (right-to-left)
         direction = rng.choice((-1, 1))
 
-        # V spacing: leader in front, wings trail at 22px back, 16px out
+        # V spacing: leader in front, wings trail at 22px back, 16px out.
+        # BLOQUE 58.11: wings now have a slight curve (each wing's y
+        # offset is multiplied by a small slope factor so the V bends
+        # gracefully as it moves, like a flying goose flock).
         wing_dx = 16.0 * direction
         wing_dy = 22.0
+        # Curve: outer wings have extra dx to bend the V (graceful sweep)
+        curve_factor = 0.15  # 0.0 = rigid V, 0.3 = strong curve
 
         # Build offsets: leader at (0,0), then alternating L/R
         offsets: list[tuple[float, float]] = [(0.0, 0.0)]
         for i in range(1, ship_count):
             side = 1 if i % 2 == 1 else -1
             magnitude = (i + 1) // 2  # 1, 1, 2, 2, 3, 3, ...
-            offsets.append((side * wing_dx * magnitude, wing_dy * magnitude))
+            # Add curve: outer wings sweep further out as they trail back
+            curve_dx = side * wing_dx * magnitude * (1.0 + curve_factor * magnitude)
+            offsets.append((curve_dx, wing_dy * magnitude))
 
         # Color: leader is bright, wings get progressively dimmer
         base_hue = rng.random() * 360

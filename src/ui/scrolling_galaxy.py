@@ -139,11 +139,20 @@ class ScrollingGalaxyBackground:
         return self._mode
 
     def update(self, dt: float) -> None:
-        """Advance the scroll position by `dt` seconds."""
+        """Advance the scroll position by `dt` seconds.
+
+        BLOQUE 58.11: scroll direction is now TOP-TO-BOTTOM (arriba
+        para abajo). Before this fix the strip moved up; the user
+        wanted objects to fall down the screen instead.
+        """
         if not self.is_ready:
             return
-        self._scroll_y += self._scroll_speed * dt
+        # Subtract so the strip's y-offset decreases over time, which
+        # makes the visible content shift DOWNWARD on screen.
+        self._scroll_y -= self._scroll_speed * dt
         if self._total_strip_h > 0:
+            # Wrap into the [0, total_strip_h) range. After subtraction
+            # scroll_y can be negative; use mod that handles that.
             self._scroll_y = self._scroll_y % self._total_strip_h
 
     def draw(self, target: pygame.Surface) -> None:
@@ -152,6 +161,13 @@ class ScrollingGalaxyBackground:
         The strip is a tall image that loops on itself. We draw it
         (and one extra copy below) so the screen is always fully
         covered regardless of scroll_y.
+
+        BLOQUE 58.11: applies a runtime darkening vignette AFTER the
+        strip is drawn. The vignette uses BLEND_RGBA_MULT with a soft
+        radial gradient (lighter in the center, darker at edges).
+        This deepens the contrast of the playfield WITHOUT affecting
+        anything drawn after this call (enemies, particles, etc are
+        drawn on top and remain at full brightness).
         """
         if not self.is_ready:
             return
@@ -172,3 +188,30 @@ class ScrollingGalaxyBackground:
                     if y + h >= 0 and y < screen_h:
                         target.blit(panel, (0, int(y)))
                     y += h
+        # BLOQUE 58.11: apply runtime vignette. Multiply blend with a
+        # soft radial gradient — center 100% (255), edges 60% (153).
+        # This makes the corners and edges of the playfield look deeper
+        # without affecting anything drawn after this.
+        vignette = self._get_vignette(target.get_size())
+        target.blit(vignette, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+
+    def _get_vignette(self, size: tuple[int, int]) -> pygame.Surface:
+        """BLOQUE 58.11: cached radial gradient (255 center, 153 edge)."""
+        cache_key = ("vignette", size)
+        if cache_key in _strip_cache:
+            return _strip_cache[cache_key]
+        w, h = size
+        surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        cx, cy = w / 2.0, h / 2.0
+        max_dist = (cx * cx + cy * cy) ** 0.5
+        # For each pixel, compute distance and set color to 153..255
+        for y in range(h):
+            for x in range(w):
+                dx, dy = x - cx, y - cy
+                d = (dx * dx + dy * dy) ** 0.5 / max_dist
+                # 0 at center, 1 at corners
+                # Color goes from 255 (center) to 153 (edges, ~60%)
+                v = int(255 - 102 * d)
+                surf.set_at((x, y), (v, v, v, 255))
+        _strip_cache[cache_key] = surf
+        return surf

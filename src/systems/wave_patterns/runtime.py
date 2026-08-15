@@ -201,6 +201,7 @@ def get_pattern_hud_label(kind: WavePatternKind) -> str:
         WavePatternKind.LEADER_FOLLOWER_CHAIN: "LEADER CHAIN",
         WavePatternKind.DICE_FIVE_GRID: "DICE-FIVE",
         WavePatternKind.PINCER_CROSS: "PINCER CROSS",
+        WavePatternKind.OSCILLATING_BUTTERFLY: "BUTTERFLY",
     }.get(kind, kind.value.upper())
 
 

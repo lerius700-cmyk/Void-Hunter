@@ -32,8 +32,8 @@ class PincerCrossPattern(WavePattern):
         level: int,
         enemy_kind: str = "SCOUT",
     ) -> WavePatternResult:
-        # 4-6 ships per side (8-12 total)
-        per_side = min(6, 4 + level // 4)
+        # BLOQUE 58.11: 5-8 ships per side (10-16 total) for denser pincer.
+        per_side = min(8, 5 + level // 3)
 
         # Convergence point: somewhere in the middle 60% of the playfield
         converge_x = INTERNAL_W * rng.uniform(0.3, 0.7)
@@ -45,8 +45,8 @@ class PincerCrossPattern(WavePattern):
         # Control points: each side has 2 control points (P1, P2) that
         # shape the curve. We make them symmetric across the y axis.
 
-        # Spread: how far apart the control points are (curve amplitude)
-        spread = 80.0 + rng.uniform(0, 40)
+        # BLOQUE 58.11: bigger spread for more dramatic curve.
+        spread = 100.0 + rng.uniform(0, 60)
 
         # Left side curve
         l_p0 = (-20, rng.uniform(40, INTERNAL_H * 0.4))

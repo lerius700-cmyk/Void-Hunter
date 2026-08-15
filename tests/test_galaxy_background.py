@@ -63,7 +63,11 @@ def test_galaxy_background_total_strip_height() -> None:
 
 
 def test_galaxy_background_update_advances_scroll() -> None:
-    """After update(dt), scroll_y should advance by speed * dt."""
+    """After update(dt), scroll_y should advance by speed * dt.
+
+    BLOQUE 58.11: direction is now TOP-TO-BOTTOM (decreasing scroll_y).
+    Before this fix the scroll_y was increasing (bottom-to-top motion).
+    """
     from src.ui.scrolling_galaxy import ScrollingGalaxyBackground
 
     bg = ScrollingGalaxyBackground(
@@ -71,9 +75,17 @@ def test_galaxy_background_update_advances_scroll() -> None:
     )
     assert bg._scroll_y == 0.0
     bg.update(1.0)
-    assert bg._scroll_y == 30.0, f"After 1s @ 30px/s, scroll should be 30, got {bg._scroll_y}"
+    # Decreasing (top-to-bottom). After 1s, raw value is -30.
+    # After % 2880 wrap, the result is 2880 - 30 = 2850.
+    total_h = bg.total_strip_height
+    expected = (total_h - 30) if total_h > 0 else 0
+    assert bg._scroll_y == expected, (
+        f"After 1s @ 30px/s, scroll should be {expected} "
+        f"({total_h} - 30, top-to-bottom direction), got {bg._scroll_y}"
+    )
     bg.update(0.5)
-    assert bg._scroll_y == 45.0
+    expected2 = (total_h - 45) if total_h > 0 else 0
+    assert bg._scroll_y == expected2
 
 
 def test_galaxy_background_wraps_at_strip_height() -> None:

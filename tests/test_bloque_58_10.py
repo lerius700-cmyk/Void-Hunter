@@ -38,7 +38,8 @@ class TestFloor1AllPatterns:
     def test_floor_1_pool_has_all_5(self):
         mgr = ProceduralWaveManager(seed=42, floor=1)
         pool = mgr.preview_next_pool()
-        assert len(pool) == 5, f"floor 1 should have all 5 patterns, got {pool}"
+        # BLOQUE 58.11: 6 patterns now (added OSCILLATING_BUTTERFLY)
+        assert len(pool) == 6, f"floor 1 should have all 6 patterns, got {pool}"
 
     def test_floor_1_eventually_picks_each_kind(self):
         """BLOQUE 58.10: across many picks, all 5 kinds appear at floor 1."""

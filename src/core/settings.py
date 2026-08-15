@@ -256,10 +256,10 @@ BOSS_PERFECT_TRIGGER_S: float = 100.0    # perfect-score fast path (after sub-bo
 BOSS_SAFETY_TRIGGER_S: float = 140.0     # lenient timeout (no score required)
 # BLOQUE 58.56: doubled enemy counts and extended duration so the level
 # lasts as long as the gameplay song (5.5 min ≈ 330s).
-LEVEL1_TOTAL_SHIPS: int = 165            # BLOQUE 58.6z: 30+40+45+50 = 165 ships (was 124)
+LEVEL1_TOTAL_SHIPS: int = 380            # BLOQUE 58.11: 60+80+90+100+50 = 380 ships (was 165)
                                         # Tuned so minimum clear time is 3:30 (player can
                                         # actually listen to the song before GOLIATH).
-LEVEL1_FLAT_SCORE: int = 254             # 100 SCOUT*1 + 41 CRUISER*2 + 24 HEAVY*3 = 100+82+72 = 254 (was 174)
+LEVEL1_FLAT_SCORE: int = 558             # BLOQUE 58.11: 250 SCOUT*1 + 82 CRUISER*2 + 48 HEAVY*3 = 250+164+144 = 558 (was 254)
 PERFECT_RUN_BONUS: int = 15              # awarded on _enemies_escaped == 0 at boss
 # Per-archetype flat score (used by the new level 1 chain)
 SCOUT_FLAT_SCORE: int = 1

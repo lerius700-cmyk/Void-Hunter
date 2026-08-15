@@ -42,33 +42,38 @@ from src.systems.wave_patterns.v_formation import VFormationPattern
 from src.systems.wave_patterns.leader_chain import LeaderFollowerChainPattern
 from src.systems.wave_patterns.dice_grid import DiceFiveGridPattern
 from src.systems.wave_patterns.pincer_cross import PincerCrossPattern
+from src.systems.wave_patterns.oscillating_butterfly import OscillatingButterflyPattern
 
 
 # BLOQUE 58.10: Weighted pool per floor. Weights determine probability,
-# not availability. All 5 patterns are always eligible.
+# not availability. All patterns are always eligible.
+# BLOQUE 58.11: added OSCILLATING_BUTTERFLY to all floors.
 _WEIGHTED_POOL: dict[int, list[tuple[WavePatternKind, int]]] = {
     1: [
-        (WavePatternKind.V_FORMATION, 25),
-        (WavePatternKind.DICE_FIVE_GRID, 20),
-        (WavePatternKind.LEADER_FOLLOWER_CHAIN, 20),
-        (WavePatternKind.BEZIER_SWEEP, 20),
-        (WavePatternKind.PINCER_CROSS, 15),
+        (WavePatternKind.V_FORMATION, 20),
+        (WavePatternKind.DICE_FIVE_GRID, 18),
+        (WavePatternKind.LEADER_FOLLOWER_CHAIN, 16),
+        (WavePatternKind.BEZIER_SWEEP, 16),
+        (WavePatternKind.PINCER_CROSS, 12),
+        (WavePatternKind.OSCILLATING_BUTTERFLY, 18),
     ],
     2: [
-        (WavePatternKind.V_FORMATION, 20),
-        (WavePatternKind.DICE_FIVE_GRID, 20),
-        (WavePatternKind.LEADER_FOLLOWER_CHAIN, 20),
-        (WavePatternKind.BEZIER_SWEEP, 20),
-        (WavePatternKind.PINCER_CROSS, 20),
+        (WavePatternKind.V_FORMATION, 16),
+        (WavePatternKind.DICE_FIVE_GRID, 16),
+        (WavePatternKind.LEADER_FOLLOWER_CHAIN, 16),
+        (WavePatternKind.BEZIER_SWEEP, 16),
+        (WavePatternKind.PINCER_CROSS, 16),
+        (WavePatternKind.OSCILLATING_BUTTERFLY, 20),
     ],
 }
-# Floor 3+ = equal weight for all 5 patterns
+# Floor 3+ = roughly equal weight, with OSCILLATING_BUTTERFLY slightly preferred
 _EQUAL_WEIGHT = [
-    (WavePatternKind.V_FORMATION, 20),
-    (WavePatternKind.DICE_FIVE_GRID, 20),
-    (WavePatternKind.LEADER_FOLLOWER_CHAIN, 20),
-    (WavePatternKind.BEZIER_SWEEP, 20),
-    (WavePatternKind.PINCER_CROSS, 20),
+    (WavePatternKind.V_FORMATION, 16),
+    (WavePatternKind.DICE_FIVE_GRID, 16),
+    (WavePatternKind.LEADER_FOLLOWER_CHAIN, 16),
+    (WavePatternKind.BEZIER_SWEEP, 16),
+    (WavePatternKind.PINCER_CROSS, 16),
+    (WavePatternKind.OSCILLATING_BUTTERFLY, 20),
 ]
 
 
@@ -159,6 +164,8 @@ class ProceduralWaveManager:
             return DiceFiveGridPattern()
         if kind == WavePatternKind.PINCER_CROSS:
             return PincerCrossPattern()
+        if kind == WavePatternKind.OSCILLATING_BUTTERFLY:
+            return OscillatingButterflyPattern()
         raise ValueError(f"Unknown pattern kind: {kind}")
 
     def _log_pick(

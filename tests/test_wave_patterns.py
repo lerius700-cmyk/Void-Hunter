@@ -258,11 +258,12 @@ class TestLeaderFollowerChain:
         result = LeaderFollowerChainPattern().generate(rng, level=1)
         assert len(result.ships) >= 4
 
-    def test_maximum_6_ships(self):
+    def test_maximum_8_ships(self):
+        """BLOQUE 58.11: bigger chain (was 6, now 8)."""
         from src.systems.wave_patterns import LeaderFollowerChainPattern
         rng = random.Random(42)
         result = LeaderFollowerChainPattern().generate(rng, level=100)
-        assert len(result.ships) <= 6
+        assert len(result.ships) <= 8
 
     def test_amplitude_in_range(self):
         from src.systems.wave_patterns import LeaderFollowerChainPattern
@@ -404,11 +405,12 @@ class TestPincerCross:
         assert ra.duration_s == pytest.approx(rb.duration_s, abs=0.01)
 
     def test_total_ship_count(self):
+        """BLOQUE 58.11: bigger pincer (10-16 ships total, was 8-12)."""
         from src.systems.wave_patterns import PincerCrossPattern
         for level in [1, 3, 5, 10]:
             rng = random.Random(42)
             result = PincerCrossPattern().generate(rng, level=level)
-            assert 8 <= len(result.ships) <= 12
+            assert 10 <= len(result.ships) <= 16
 
 
 # =====================================================================
@@ -419,14 +421,14 @@ class TestProceduralWaveManager:
         from src.systems.wave_patterns import ProceduralWaveManager, WavePatternKind
         mgr = ProceduralWaveManager(seed=42, floor=1)
         pool = mgr.preview_next_pool()
-        # BLOQUE 58.10: all 5 patterns are available from floor 1
-        # (weights differ, not eligibility).
-        assert len(pool) == 5
+        # BLOQUE 58.11: 6 patterns now (added OSCILLATING_BUTTERFLY)
+        assert len(pool) == 6
         assert WavePatternKind.V_FORMATION.value in pool
         assert WavePatternKind.DICE_FIVE_GRID.value in pool
         assert WavePatternKind.LEADER_FOLLOWER_CHAIN.value in pool
         assert WavePatternKind.BEZIER_SWEEP.value in pool
         assert WavePatternKind.PINCER_CROSS.value in pool
+        assert WavePatternKind.OSCILLATING_BUTTERFLY.value in pool
 
     def test_floor_5_includes_all(self):
         from src.systems.wave_patterns import ProceduralWaveManager
@@ -499,13 +501,14 @@ class TestProceduralWaveManager:
     def test_floor_4_includes_pincer(self):
         from src.systems.wave_patterns import ProceduralWaveManager
         from src.systems.wave_patterns.base import WavePatternKind
-        # BLOQUE 58.10: floor 4 uses _EQUAL_WEIGHT (all 5 patterns)
+        # BLOQUE 58.11: floor 4+ uses _EQUAL_WEIGHT (all 6 patterns)
         mgr = ProceduralWaveManager(seed=42, floor=4)
         pool = mgr.preview_next_pool()
-        assert len(pool) == 5
+        assert len(pool) == 6
         assert WavePatternKind.PINCER_CROSS.value in pool
         assert WavePatternKind.BEZIER_SWEEP.value in pool
         assert WavePatternKind.LEADER_FOLLOWER_CHAIN.value in pool
+        assert WavePatternKind.OSCILLATING_BUTTERFLY.value in pool
 
     def test_floor_1_sees_all_5_over_many_picks(self):
         """BLOQUE 58.10: floor 1 must eventually pick all 5 patterns

@@ -60,13 +60,12 @@ class LeaderFollowerChainPattern(WavePattern):
         p1 = (cx1, cy_center - amplitude * frequency)
         p2 = (cx2, cy_center + amplitude * frequency)
 
-        # 2. Ship count: leader + 3-5 followers
-        ship_count = min(6, 4 + level // 5)
+        # 2. BLOQUE 58.11: bigger chain. leader + 4-7 followers.
+        ship_count = min(8, 5 + level // 4)
 
-        # 3. Each follower's t_offset = position in queue
-        # History queue has 60 entries (1 second at 60fps)
-        # Each follower's effective t_offset is N frames back
-        delay_per_follower = 0.10  # 0.10s = 6 frames at 60fps
+        # 3. BLOQUE 58.11: tighter history for a smoother, more graceful chain.
+        # Each follower's t_offset is N frames back in the history queue.
+        delay_per_follower = 0.08  # 0.08s = ~5 frames at 60fps (was 0.10s)
 
         base_color = self._random_color(rng)
         ships: list[SpawnedShip] = []

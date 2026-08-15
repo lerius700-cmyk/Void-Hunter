@@ -39,75 +39,80 @@ def test_settings_boss_trigger_constants_exist() -> None:
 
 
 def test_settings_level1_ship_counts_match() -> None:
-    """BLOQUE 58.6z: 165 ships total = 100 SCOUT + 41 CRUISER + 24 HEAVY.
-    Tuned so even a perfect player takes 3:30 to reach GOLIATH (so
-    the gameplay song gets a proper listen before the boss fight)."""
+    """BLOQUE 58.11: 380 ships total = 250 SCOUT + 82 CRUISER + 48 HEAVY.
+    Doubled from BLOQUE 58.6z (165 ships). New clear target ~4:00 (was 3:30).
+    User wanted "mas naves, mas frenetico, pero un poco mas de tiempo total"."""
     from src.core import settings
-    assert settings.LEVEL1_TOTAL_SHIPS == 165
-    assert settings.LEVEL1_FLAT_SCORE == 254
+    assert settings.LEVEL1_TOTAL_SHIPS == 380
+    assert settings.LEVEL1_FLAT_SCORE == 558
     assert settings.PERFECT_RUN_BONUS == 15
 
 
 # ---------------------------------------------------------------------------
-# 2. Level 1 wave structure (4 waves chained)
+# 2. Level 1 wave structure (5 waves chained, BLOQUE 58.11)
 # ---------------------------------------------------------------------------
-def test_level1_waves_has_exactly_4_waves() -> None:
-    """BLOQUE 48: 4 waves in level 1 mode (intro, pattern, mixed, finale)."""
+def test_level1_waves_has_exactly_5_waves() -> None:
+    """BLOQUE 58.11: 5 waves in level 1 mode (intro, pattern, mixed, finale, bridge)."""
     from src.systems.wave_manager import LEVEL1_WAVES
-    assert len(LEVEL1_WAVES) == 4
+    assert len(LEVEL1_WAVES) == 5
 
 
-def test_level1_wave_1_is_30_scout_diagonal() -> None:
-    """BLOQUE 58.6z: O1: 30 SCOUT in diagonal column, no fire (tutorial).
-    Spawn cadence 1.1s = 33s minimum spawn time, contributes to 3:30
-    total minimum clear time."""
+def test_level1_wave_1_is_60_scout_diagonal() -> None:
+    """BLOQUE 58.11: O1: 60 SCOUT in diagonal column, no fire (tutorial).
+    2x of BLOQUE 58.6z. Spawn cadence 0.6s = 36s minimum spawn time."""
     from src.systems.wave_manager import LEVEL1_WAVES
     w = LEVEL1_WAVES[0]
-    assert w["enemies"] == ["SCOUT"] * 30
-    assert w["max_duration_s"] == 40.0
+    assert w["enemies"] == ["SCOUT"] * 60
+    assert w["max_duration_s"] == 50.0
     assert w["fire_allowed"] is False
 
 
-def test_level1_wave_2_is_25_scout_15_cruiser_v() -> None:
-    """BLOQUE 58.6z: O2: 25 SCOUT + 15 CRUISER in V formation, fire enabled,
-    triggers sub-boss after this wave is cleared. 40 ships * 1.1s = 44s
-    minimum spawn time."""
+def test_level1_wave_2_is_50_scout_30_cruiser_v() -> None:
+    """BLOQUE 58.11: O2: 50 SCOUT + 30 CRUISER in V formation, fire enabled,
+    triggers sub-boss after this wave is cleared. 80 ships * 0.6s = 48s
+    minimum spawn time. 2x of BLOQUE 58.6z (25+15=40)."""
     from src.systems.wave_manager import LEVEL1_WAVES
     w = LEVEL1_WAVES[1]
-    assert w["enemies"] == ["SCOUT"] * 25 + ["CRUISER"] * 15
+    assert w["enemies"] == ["SCOUT"] * 50 + ["CRUISER"] * 30
     assert w["fire_allowed"] is True
     assert w["formation"] == "v"
     assert w.get("sub_boss_after") is True
 
 
-def test_level1_wave_3_is_25_scout_12_heavy_8_cruiser_line() -> None:
-    """BLOQUE 58.6z: O3: 25 SCOUT + 12 HEAVY + 8 CRUISER in line, 45 ships
-    total. 45 * 1.1s = 49.5s minimum spawn time."""
+def test_level1_wave_3_is_50_scout_24_heavy_16_cruiser_line() -> None:
+    """BLOQUE 58.11: O3: 50 SCOUT + 24 HEAVY + 16 CRUISER in line, 90 ships
+    total. 90 * 0.6s = 54s minimum spawn time. 2x of BLOQUE 58.6z (25+12+8=45)."""
     from src.systems.wave_manager import LEVEL1_WAVES
     w = LEVEL1_WAVES[2]
-    assert w["enemies"] == ["SCOUT"] * 25 + ["HEAVY"] * 12 + ["CRUISER"] * 8
+    assert w["enemies"] == ["SCOUT"] * 50 + ["HEAVY"] * 24 + ["CRUISER"] * 16
     assert w["formation"] == "line"
 
 
-def test_level1_wave_4_is_20_scout_18_cruiser_12_heavy_diamond() -> None:
-    """BLOQUE 58.6z: O4: 20 SCOUT + 18 CRUISER + 12 HEAVY in diamond, the
-    finale. 50 ships * 1.2s = 60s minimum spawn time. Together with
-    O1/O2/O3/sub-boss/transitions/boss-intro the total minimum clear
-    is 3:31 — matches the gameplay song length to give the player
-    time to listen before GOLIATH appears."""
+def test_level1_wave_4_is_40_scout_36_cruiser_24_heavy_diamond() -> None:
+    """BLOQUE 58.11: O4: 40 SCOUT + 36 CRUISER + 24 HEAVY in diamond.
+    100 ships * 0.6s = 60s minimum spawn time. 2x of BLOQUE 58.6z (20+18+12=50)."""
     from src.systems.wave_manager import LEVEL1_WAVES
     w = LEVEL1_WAVES[3]
-    assert w["enemies"] == ["SCOUT"] * 20 + ["CRUISER"] * 18 + ["HEAVY"] * 12
+    assert w["enemies"] == ["SCOUT"] * 40 + ["CRUISER"] * 36 + ["HEAVY"] * 24
     assert w["formation"] == "diamond"
 
 
-def test_level1_total_ships_equals_165() -> None:
-    """BLOQUE 58.6z: 30 + 40 + 45 + 50 = 165 ships. Tuned so the minimum
-    clear time is 3:30 even for a perfect-speed player (so the gameplay
-    song gets a proper listen before GOLIATH)."""
+def test_level1_wave_5_is_50_scout_bridge() -> None:
+    """BLOQUE 58.11: O5: NEW bridge wave. 50 SCOUT diagonal, no fire.
+    Fills the gap between Wolfen (after O2) and GOLIATH (after O5)."""
+    from src.systems.wave_manager import LEVEL1_WAVES
+    w = LEVEL1_WAVES[4]
+    assert w["enemies"] == ["SCOUT"] * 50
+    assert w["fire_allowed"] is False
+
+
+def test_level1_total_ships_equals_380() -> None:
+    """BLOQUE 58.11: 60+80+90+100+50 = 380 ships. Doubled from 165.
+    New clear target ~4:00 (was 3:30). User wanted "mas naves, mas
+    frenetico, pero un poco mas de tiempo total"."""
     from src.systems.wave_manager import LEVEL1_WAVES
     total = sum(len(w["enemies"]) for w in LEVEL1_WAVES)
-    assert total == 165
+    assert total == 380
 
 
 # ---------------------------------------------------------------------------
@@ -207,16 +212,17 @@ def test_level1_flat_score_is_254() -> None:
                 total += CRUISER_FLAT_SCORE
             elif kind == "HEAVY":
                 total += HEAVY_FLAT_SCORE
-    # 100 SCOUT * 1 + 41 CRUISER * 2 + 24 HEAVY * 3 = 100 + 82 + 72 = 254
-    assert total == 254
+    # BLOQUE 58.11: 250 SCOUT + 82 CRUISER + 48 HEAVY
+    # = 250*1 + 82*2 + 48*3 = 250 + 164 + 144 = 558
+    assert total == 558
 
 
-def test_perfect_run_bonus_score_is_269_total() -> None:
-    """BLOQUE 58.6z: 254 flat + 15 perfect = 269pt (achievable).
+def test_perfect_run_bonus_score_is_573_total() -> None:
+    """BLOQUE 58.11: 558 flat + 15 perfect = 573pt (achievable).
     Plus sub-boss bonus brings the practical max higher.
     """
     from src.core.settings import LEVEL1_FLAT_SCORE, PERFECT_RUN_BONUS
-    assert LEVEL1_FLAT_SCORE + PERFECT_RUN_BONUS == 269
+    assert LEVEL1_FLAT_SCORE + PERFECT_RUN_BONUS == 573
 
 
 # ---------------------------------------------------------------------------

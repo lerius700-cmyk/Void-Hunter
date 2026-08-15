@@ -18,12 +18,18 @@ from src.core.settings import INTERNAL_W, INTERNAL_H
 
 
 class WavePatternKind(Enum):
-    """5 patterns inspired by Star Fox 64 wave variety."""
+    """6 patterns inspired by Star Fox 64 wave variety.
+
+    BLOQUE 58.11: added OSCILLATING_BUTTERFLY (sinusoidal dancing motion).
+    Each pattern produces visually distinctive motion so the player can
+    learn to read the wave and predict where to fire.
+    """
     BEZIER_SWEEP = "bezier_sweep"           # curve sweep, all ships
     V_FORMATION = "v_formation"             # rigid V, fixed offsets
     LEADER_FOLLOWER_CHAIN = "leader_chain"  # leader + history queue
     DICE_FIVE_GRID = "dice_five_grid"       # 5 ships in dice-5
     PINCER_CROSS = "pincer_cross"           # two mirror bezier curves
+    OSCILLATING_BUTTERFLY = "oscillating_butterfly"  # sinusoidal dancing
 
 
 class PatternDifficulty(Enum):

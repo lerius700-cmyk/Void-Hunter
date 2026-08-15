@@ -37,8 +37,11 @@ class BezierSweepPattern(WavePattern):
         #    ships to come INTO the playfield, not exit at start)
         entry_side = rng.choice(("top", "left", "right"))
 
-        # 2. Generate control points P_0..P_3
-        p0, p1, p2, p3 = self._random_control_points(rng, entry_side)
+        # 2. BLOQUE 58.11: more dramatic curve. Generate control points
+        #    that make a wavy S-curve (up-down-up) instead of a single
+        #    smooth arc. Star Fox 64 enemies often do this kind of
+        #    "grace note" sweep across the playfield.
+        p0, p1, p2, p3 = self._wavy_control_points(rng, entry_side)
 
         # 3. Ship count scales with level (4-8)
         ship_count = min(8, 4 + level // 3)
@@ -73,6 +76,42 @@ class BezierSweepPattern(WavePattern):
             duration_s=ships[0].extra["duration_s"] if ships else 5.5,
             seed_used=rng.randint(0, 2**31 - 1),
         )
+
+    # ------------------------------------------------------------------
+    # BLOQUE 58.11: wavy control points (S-curve / dancing motion)
+    # ------------------------------------------------------------------
+    def _wavy_control_points(
+        self,
+        rng: random.Random,
+        entry_side: str,
+    ) -> tuple[tuple[float, float], ...]:
+        """Generate 4 control points that make a wavy S-curve.
+
+        Star Fox 64 enemies often "swoop" across the playfield in a
+        dancing pattern: enter, swoop up, swoop down, exit. We achieve
+        this by offsetting P1 and P2 in opposite vertical directions
+        from a straight line between P0 and P3.
+        """
+        if entry_side == "top":
+            p0 = (rng.uniform(20, INTERNAL_W - 20), -20)
+            p3 = (rng.choice([20, INTERNAL_W - 20]), INTERNAL_H + 20)
+            mid_y = (p0[1] + p3[1]) / 2
+            # Wavy: first control UP, second control DOWN
+            p1 = (rng.uniform(40, INTERNAL_W - 40), mid_y - 80)
+            p2 = (rng.uniform(40, INTERNAL_W - 40), mid_y + 80)
+        elif entry_side == "left":
+            p0 = (-20, rng.uniform(20, INTERNAL_H * 0.5))
+            p3 = (INTERNAL_W + 20, rng.uniform(INTERNAL_H * 0.5, INTERNAL_H - 20))
+            mid_y = (p0[1] + p3[1]) / 2
+            p1 = (INTERNAL_W * 0.3, mid_y - 80)
+            p2 = (INTERNAL_W * 0.7, mid_y + 80)
+        else:  # right
+            p0 = (INTERNAL_W + 20, rng.uniform(20, INTERNAL_H * 0.5))
+            p3 = (-20, rng.uniform(INTERNAL_H * 0.5, INTERNAL_H - 20))
+            mid_y = (p0[1] + p3[1]) / 2
+            p1 = (INTERNAL_W * 0.7, mid_y + 80)
+            p2 = (INTERNAL_W * 0.3, mid_y - 80)
+        return p0, p1, p2, p3
 
     # ------------------------------------------------------------------
     # Curve generation

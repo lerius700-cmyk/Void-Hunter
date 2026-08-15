@@ -29,15 +29,16 @@ def test_full_wave_flow_triggers_sub_boss():
     assert chain is not None
     print(f"Start: current_wave={chain.current_wave_idx}, sub_boss_pending={chain.sub_boss_pending}")
     print(f"_sub_boss_after_waves: {chain._sub_boss_after_waves}")
-    # Run for 100 seconds (should cover all 4 waves + sub-boss)
+    # BLOQUE 58.11: doubled ships, so 100s no longer covers all 4 waves
+    # (O1+O2 = 36+48 = 84s minimum). Extended to 200s.
     transitions = []
     real_transition = rt._transition_to
     def capture(state):
         transitions.append((rt._t, state))
     rt._transition_to = capture
-    for i in range(6000):  # 100 seconds at 60fps
+    for i in range(12000):  # 200 seconds at 60fps
         rt.update(1.0 / 60.0)
-        if i % 600 == 0:
+        if i % 1200 == 0:
             print(f"t={rt._t:.1f}s wave={chain.current_wave_idx} sub_boss_pending={chain.sub_boss_pending} enemies_alive={sum(1 for e in rt._enemies.pool if e.active)}")
     rt._transition_to = real_transition
     # Print all transitions

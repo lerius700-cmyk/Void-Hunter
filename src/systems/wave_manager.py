@@ -593,15 +593,30 @@ class WaveManager:
 # Sum of wave max_durations = 30+60+70+80 = 240s of wave time;
 # + sub-boss + boss + act-cleared ≈ 90s more = ~330s total.
 LEVEL1_WAVES: list[dict[str, Any]] = [
-    # O1 — intro/tutorial: 30 SCOUT diagonal, no fire.
-    # BLOQUE 58.6z: ship counts + spawn cadence tuned so the MINIMUM
-    # clear time (even a perfect-speed player) is 3:30 — gives people
-    # time to actually listen to the gameplay song before GOLIATH.
-    # 30 ships * 1.1s cadence = 33s spawn, +2s buffer = 35s minimum.
+    # BLOQUE 58.11: ship counts DOUBLED from 30/40/45/50 to 60/80/90/100,
+    # spawn cadence 1.1s → 0.6s so the level still clears in ~4:00.
+    # The user wanted "mas naves, mas frenetico, pero un poco mas de
+    # tiempo total". Doubling ships + faster cadence = double the
+    # density on screen at any moment. We also added O5 (50 ships) so
+    # there's MORE time between Wolfen (after O2) and GOLIATH (after O5).
+    #
+    # Timing math (cadence 0.6s):
+    #   O1: 60 * 0.6 = 36.0s
+    #   O2: 80 * 0.6 = 48.0s    (sub_boss_after: True → Wolfen)
+    #   O3: 90 * 0.6 = 54.0s
+    #   O4: 100 * 0.6 = 60.0s
+    #   O5: 50 * 0.6 = 30.0s    (NEW — bridges Wolfen → GOLIATH gap)
+    #   Sub-boss: intro 5s + kill ~4s = 9s
+    #   Boss intro: 4.5s
+    #   Transitions: 4 * 1.5s = 6s
+    #   TOTAL: 36+48+54+60+30 + 9 + 4.5 + 6 = 247.5s ≈ 4:07
+    #   Wolfen entry: ~85s   GOLIATH entry: ~243s   gap: ~158s (2:38)
+    #
+    # O1 — intro/tutorial: 60 SCOUT diagonal, no fire. 2x of 30.
     {
-        "enemies": ["SCOUT"] * 30,
-        "spawn_cadence_s": 1.1,
-        "max_duration_s": 40.0,
+        "enemies": ["SCOUT"] * 60,
+        "spawn_cadence_s": 0.6,
+        "max_duration_s": 50.0,
         "formation": "diagonal",
         "fire_allowed": False,
         "path": {
@@ -609,13 +624,12 @@ LEVEL1_WAVES: list[dict[str, Any]] = [
             "speed": 80.0,
         },
     },
-    # O2 — pattern recognition: 25 SCOUT + 15 CRUISER, V formation.
-    # 40 ships * 1.1s = 44s spawn + 2s = 46s minimum. Triggers sub-boss
-    # after this wave clears.
+    # O2 — pattern recognition: 50 SCOUT + 30 CRUISER, V formation. 2x of (25+15).
+    # Triggers sub-boss (Wolfen) after this wave clears.
     {
-        "enemies": ["SCOUT"] * 25 + ["CRUISER"] * 15,
-        "spawn_cadence_s": 1.1,
-        "max_duration_s": 55.0,
+        "enemies": ["SCOUT"] * 50 + ["CRUISER"] * 30,
+        "spawn_cadence_s": 0.6,
+        "max_duration_s": 60.0,
         "formation": "v",
         "fire_allowed": True,
         "sub_boss_after": True,
@@ -633,12 +647,11 @@ LEVEL1_WAVES: list[dict[str, Any]] = [
             "durations": [5.0],
         },
     },
-    # O3 — mixed composition: 25 SCOUT + 12 HEAVY + 8 CRUISER, line.
-    # 45 ships * 1.1s = 49.5s spawn + 2s = 51.5s minimum.
+    # O3 — mixed composition: 50 SCOUT + 24 HEAVY + 16 CRUISER, line. 2x of (25+12+8).
     {
-        "enemies": ["SCOUT"] * 25 + ["HEAVY"] * 12 + ["CRUISER"] * 8,
-        "spawn_cadence_s": 1.1,
-        "max_duration_s": 60.0,
+        "enemies": ["SCOUT"] * 50 + ["HEAVY"] * 24 + ["CRUISER"] * 16,
+        "spawn_cadence_s": 0.6,
+        "max_duration_s": 65.0,
         "formation": "line",
         "fire_allowed": True,
         "path": {
@@ -654,13 +667,10 @@ LEVEL1_WAVES: list[dict[str, Any]] = [
             "durations": [5.5],
         },
     },
-    # O4 — finale: 20 SCOUT + 18 CRUISER + 12 HEAVY, diamond.
-    # 50 ships * 1.2s = 60s spawn + 2s = 62s minimum.
-    # TOTAL all waves + sub-boss + transitions + boss intro
-    # = 35+46+51.5+62 + 6.5+6+4.5 = 211.5s ≈ 3:31
+    # O4 — finale: 40 SCOUT + 36 CRUISER + 24 HEAVY, diamond. 2x of (20+18+12).
     {
-        "enemies": ["SCOUT"] * 20 + ["CRUISER"] * 18 + ["HEAVY"] * 12,
-        "spawn_cadence_s": 1.2,
+        "enemies": ["SCOUT"] * 40 + ["CRUISER"] * 36 + ["HEAVY"] * 24,
+        "spawn_cadence_s": 0.6,
         "max_duration_s": 75.0,
         "formation": "diamond",
         "fire_allowed": True,
@@ -682,6 +692,21 @@ LEVEL1_WAVES: list[dict[str, Any]] = [
                 },
             ],
             "durations": [2.5, 4.0],
+        },
+    },
+    # O5 — bridge wave (NEW in BLOQUE 58.11). Lighter, just SCOUTs, no
+    # fire. Fills the gap between Wolfen (after O2) and GOLIATH (after O5)
+    # so the player has more time to "appreciate" the sub-boss before the
+    # final boss drops. 50 ships at 0.6s cadence = 30s of frenetic SCOUTs.
+    {
+        "enemies": ["SCOUT"] * 50,
+        "spawn_cadence_s": 0.6,
+        "max_duration_s": 40.0,
+        "formation": "diagonal",
+        "fire_allowed": False,
+        "path": {
+            "kind": "straight",
+            "speed": 90.0,
         },
     },
 ]
