@@ -6,14 +6,16 @@ User feedback (BLOQUE 58.41):
 - Score color reflects performance:
   * 100% kills: blood red + bright glow + gold border
   * 99%: red, no glow, no border
-  * 99% → 49%: red → yellow
-  * 49% → 20%: yellow → white
+  * 99% -> 49%: red -> yellow
+  * 49% -> 20%: yellow -> white
   * <20%: white
 
-Layout (minimalist):
-  - Top-left: HP bar (compact)
+Layout (minimalist) — BLOQUE 58.7ab:
+  - BOTTOM-left: HP bar (compact)
   - Below HP: Overheat bar (compact)
-  - Right column: Score (dynamic color, gold-bordered at 100%)
+  - BOTTOM-right: Score (dynamic color, gold-bordered at 100%)
+Moved to bottom in BLOQUE 58.7ab so it does NOT cover incoming ships
+and the sub-boss that spawns at the top of the screen.
 """
 from __future__ import annotations
 
@@ -121,12 +123,15 @@ class HUD:
         kill_ratio: float = 1.0,
     ) -> None:
         self._ensure_fonts()
-        # Stack: HP, overheat (left column)
-        y = HUD_MARGIN
+        # BLOQUE 58.7ab: HUD moved to BOTTOM. Ships + sub-boss spawn at
+        # the top of the screen, so the HUD was covering them.
+        # Left column starts at the bottom and stacks upward.
+        left_col_h = 3 * ROW_H + HUD_MARGIN  # HP + overheat + missiles rows
+        y = INTERNAL_H - left_col_h
         y = self._draw_hp_bar(target, player, y, t)
         y = self._draw_overheat_bar(target, player, y, t)
         y = self._draw_missiles(target, player, y, t)
-        # Right column: score
+        # Right column: score at the BOTTOM
         self._draw_score(target, scoring, kill_ratio, t)
 
     def _draw_hp_bar(self, target: pygame.Surface, player: Player, y: int, t: float) -> int:
@@ -314,9 +319,12 @@ class HUD:
         Color tiers (based on kill_ratio = kills / enemies_spawned):
           * 100%:  blood red + bright glow halo + gold border (extra-pumped)
           * 99% :  blood red, no extras
-          * 99→49%: red → yellow gradient
-          * 49→20%: yellow → white gradient
+          * 99->49%: red -> yellow gradient
+          * 49->20%: yellow -> white gradient
           * <20%:   white
+
+        BLOQUE 58.7ab: score is at the BOTTOM-right so it does not
+        cover incoming ships or the sub-boss that spawn at the top.
         """
         if self.font_score is None:
             return
@@ -324,7 +332,7 @@ class HUD:
         col = score_color_for_ratio(kill_ratio)
         # 100% perk: glow halo + gold border around the number
         if score_has_glow(kill_ratio):
-            # Pulsing glow (intensity breathes 0.85 → 1.0)
+            # Pulsing glow (intensity breathes 0.85 -> 1.0)
             pulse = 0.85 + 0.15 * math.sin(t * 4.0)
             # Layer 1: outer red glow (soft)
             outer_glow = self.font_score.render(score_text, True, (255, 60, 80))
@@ -332,7 +340,7 @@ class HUD:
             text_w = outer_glow.get_width()
             text_h = outer_glow.get_height()
             ox = INTERNAL_W - HUD_MARGIN - text_w
-            oy = HUD_MARGIN
+            oy = INTERNAL_H - SCORE_FONT_SIZE - HUD_MARGIN - 2
             for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
                 target.blit(outer_glow, (ox + dx, oy + dy))
             # Layer 2: gold border (drawn behind the main text)
@@ -345,10 +353,11 @@ class HUD:
             # Layer 3: bright red core text
             target.blit(text_main, (ox, oy))
         else:
-            # Plain text in the tier color
+            # Plain text in the tier color — at the BOTTOM-right
             text = self.font_score.render(score_text, True, col)
             text_w = text.get_width()
-            target.blit(text, (INTERNAL_W - HUD_MARGIN - text_w, HUD_MARGIN))
+            score_y = INTERNAL_H - SCORE_FONT_SIZE - HUD_MARGIN - 2
+            target.blit(text, (INTERNAL_W - HUD_MARGIN - text_w, score_y))
 
 
 # ---------------------------------------------------------------------------

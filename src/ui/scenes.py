@@ -984,9 +984,9 @@ class SubBossIntroScene(Scene):
 
     def update(self, dt: float) -> None:
         self._t += dt
-        for event in pygame.event.get(pygame.KEYDOWN):
-            if event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                self._transition_to(GameState.GAMEPLAY)
+        # BLOQUE 58.7ab: ENTER/SPACE skip removed — the sub-boss warning
+        # must play for the full 5s duration so the player can NOT
+        # accidentally skip it. Player must wait.
         if self._t >= self._duration:
             self._transition_to(GameState.GAMEPLAY)
 
