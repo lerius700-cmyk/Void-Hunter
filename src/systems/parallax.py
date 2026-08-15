@@ -27,7 +27,9 @@ LAYER_SPEEDS: tuple[int, ...] = (20, 50, 100, 180, 280)
 NUM_LAYERS = 5
 
 # Star count per layer (per screen height)
-STARS_PER_LAYER = 50
+# BLOQUE 58.12: lowered from 50 to 12 default — user wants ~80% black space.
+# Title screen keeps the dense look; gameplay uses sparse.
+STARS_PER_LAYER_DEFAULT = 12
 
 # Planet spawn timer (seconds)
 PLANET_SPAWN_MIN_S = 8.0
@@ -36,6 +38,9 @@ PLANET_SPAWN_MAX_S = 18.0
 # Planet sizes (radius in px)
 PLANET_RADIUS_MIN = 8
 PLANET_RADIUS_MAX = 24
+
+# Backward-compat alias (used by some tests)
+STARS_PER_LAYER = STARS_PER_LAYER_DEFAULT
 
 
 @dataclass
@@ -82,7 +87,20 @@ class ParallaxBackground:
         width: int = INTERNAL_W,
         height: int = INTERNAL_H,
         rng_seed: int | None = 42,
+        stars_per_layer: int = STARS_PER_LAYER_DEFAULT,
+        nebula_count: int = 6,
+        spawn_planets: bool = True,
     ) -> None:
+        """BLOQUE 58.12: configurable density for sparse gameplay background.
+
+        Args:
+            stars_per_layer: number of stars per parallax layer.
+                Default 12 (sparse, ~80% black). Title screen overrides
+                to 50 for the dense look.
+            nebula_count: number of nebula clouds. Default 6 (title). 0
+                for gameplay (user wants pure stars, no nebulas).
+            spawn_planets: if False, no planets spawn. Default True (title).
+        """
         self._w = width
         self._h = height
         self._rng = random.Random(rng_seed)
@@ -92,6 +110,9 @@ class ParallaxBackground:
         self._planet_timer: float = PLANET_SPAWN_MIN_S
         self._t: float = 0.0
         self._theme_name: str = "blue_void"
+        self._stars_per_layer = stars_per_layer
+        self._nebula_count = nebula_count
+        self._spawn_planets_enabled = spawn_planets
         self._init_stars()
         self._init_nebula()
 
@@ -132,6 +153,8 @@ class ParallaxBackground:
             if self._planet.y - self._planet.radius > self._h:
                 self._planet = None
         else:
+            if not self._spawn_planets_enabled:
+                return
             self._planet_timer -= dt
             if self._planet_timer <= 0.0:
                 self._spawn_planet()
@@ -174,7 +197,7 @@ class ParallaxBackground:
     def _init_stars(self) -> None:
         self._stars = []
         for layer in range(NUM_LAYERS):
-            for _ in range(STARS_PER_LAYER):
+            for _ in range(self._stars_per_layer):
                 self._stars.append(Star(
                     x=self._rng.uniform(0, self._w),
                     y=self._rng.uniform(0, self._h),
@@ -184,11 +207,13 @@ class ParallaxBackground:
                 ))
 
     def _init_nebula(self) -> None:
-        """6 nebula clouds (GDD §4: '6 nebula types procedurales')."""
+        """BLOQUE 58.12: configurable nebula count. Default 6 (title), 0 (gameplay)."""
         self._nebula = []
+        if self._nebula_count == 0:
+            return
         theme = get_theme(self._theme_name)
         nebula_swatches = theme["nebula"]
-        for i in range(6):
+        for i in range(self._nebula_count):
             self._nebula.append(Nebula(
                 x=self._rng.uniform(0, self._w),
                 y=self._rng.uniform(-self._h, self._h * 2),

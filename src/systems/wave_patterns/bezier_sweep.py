@@ -37,23 +37,64 @@ class BezierSweepPattern(WavePattern):
         #    ships to come INTO the playfield, not exit at start)
         entry_side = rng.choice(("top", "left", "right"))
 
-        # 2. BLOQUE 58.11: more dramatic curve. Generate control points
-        #    that make a wavy S-curve (up-down-up) instead of a single
-        #    smooth arc. Star Fox 64 enemies often do this kind of
-        #    "grace note" sweep across the playfield.
+        # 2. BLOQUE 58.12: 3-Segment compound bezier (Star Fox 64 style).
+        # Segment 1: short entry bezier (1.5s) — ship swoops in
+        # Segment 2: main S-curve (3.5s) — ship does the "dancing" sweep
+        # Segment 3: exit bezier (1.0s) — ship exits gracefully
+        # Total path time: 6 seconds, split into 3 segments.
         p0, p1, p2, p3 = self._wavy_control_points(rng, entry_side)
+        # Generate exit endpoint and segment 2 (main) + segment 3 (exit)
+        if entry_side == "left":
+            # Ships enter from left, exit to right
+            entry_p0 = (-20, rng.uniform(INTERNAL_H * 0.2, INTERNAL_H * 0.4))
+            entry_p3 = (INTERNAL_W * 0.2, INTERNAL_H * 0.4)
+            entry_p1 = (INTERNAL_W * 0.05, entry_p0[1] + 30)
+            entry_p2 = (INTERNAL_W * 0.10, entry_p3[1] - 30)
+            # Main sweep: p0..p3 (already wavy)
+            # Exit: from p3 to far right
+            exit_p0 = p3
+            exit_p3 = (INTERNAL_W + 20, p3[1] + rng.uniform(-40, 40))
+            exit_p1 = (INTERNAL_W + 5, exit_p0[1] + 10)
+            exit_p2 = (INTERNAL_W + 10, exit_p3[1] - 10)
+        elif entry_side == "right":
+            # Ships enter from right, exit to left
+            entry_p0 = (INTERNAL_W + 20, rng.uniform(INTERNAL_H * 0.2, INTERNAL_H * 0.4))
+            entry_p3 = (INTERNAL_W * 0.8, INTERNAL_H * 0.4)
+            entry_p1 = (INTERNAL_W * 0.95, entry_p0[1] + 30)
+            entry_p2 = (INTERNAL_W * 0.90, entry_p3[1] - 30)
+            exit_p0 = p3
+            exit_p3 = (-20, p3[1] + rng.uniform(-40, 40))
+            exit_p1 = (-5, exit_p0[1] + 10)
+            exit_p2 = (-10, exit_p3[1] - 10)
+        else:  # top
+            entry_p0 = (rng.uniform(40, INTERNAL_W - 40), -20)
+            entry_p3 = (rng.uniform(40, INTERNAL_W - 40), INTERNAL_H * 0.25)
+            entry_p1 = (entry_p0[0] + 30, INTERNAL_H * 0.05)
+            entry_p2 = (entry_p3[0] - 30, INTERNAL_H * 0.10)
+            exit_p0 = p3
+            exit_p3 = (p3[0] + rng.uniform(-30, 30), INTERNAL_H + 20)
+            exit_p1 = (p3[0], INTERNAL_H * 0.85)
+            exit_p2 = (exit_p3[0], INTERNAL_H * 0.95)
 
         # 3. Ship count scales with level (4-8)
         ship_count = min(8, 4 + level // 3)
 
-        # 4. Stagger t_offsets so they form a moving line
+        # 4. Build the 3-segment path (Star Fox 64 choreography).
+        # Each ship shares the same path but with a t_offset so they
+        # form a moving line.
+        segments = [
+            (entry_p0, entry_p1, entry_p2, entry_p3),
+            (p0, p1, p2, p3),
+            (exit_p0, exit_p1, exit_p2, exit_p3),
+        ]
+        segment_durations = [1.5, 3.5, 1.0]  # total 6s
+
         ships: list[SpawnedShip] = []
         base_t = rng.uniform(0.0, 0.05)
         for slot in range(ship_count):
-            t_offset = base_t + slot * 0.06   # 0.06s between ships
-            # Each ship starts at the curve position at t_offset
-            x, y = self._bezier_point(t_offset, p0, p1, p2, p3)
-            # Color: HSL hue based on slot, same family for group cohesion
+            t_offset = base_t + slot * 0.08   # 0.08s between ships
+            # Each ship starts at the entry bezier position at t=0
+            x, y = entry_p0
             color = self._slot_color(rng, slot, ship_count)
             ships.append(SpawnedShip(
                 spawn_x=x,
@@ -63,8 +104,10 @@ class BezierSweepPattern(WavePattern):
                 color=color,
                 is_leader=(slot == 0),  # BLOQUE 58.10: leader (front of sweep)
                 extra={
-                    "p0": p0, "p1": p1, "p2": p2, "p3": p3,
-                    "duration_s": 5.5 + rng.uniform(-0.5, 1.0),
+                    # BLOQUE 58.12: multi-segment path
+                    "segments": segments,
+                    "segment_durations": segment_durations,
+                    "duration_s": sum(segment_durations),
                     "curve_id": rng.randint(0, 999_999),
                 },
             ))
@@ -73,7 +116,7 @@ class BezierSweepPattern(WavePattern):
             ships=ships,
             kind=self.kind,
             difficulty=self.difficulty,
-            duration_s=ships[0].extra["duration_s"] if ships else 5.5,
+            duration_s=ships[0].extra["duration_s"] if ships else 6.0,
             seed_used=rng.randint(0, 2**31 - 1),
         )
 

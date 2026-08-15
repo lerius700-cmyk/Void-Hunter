@@ -59,15 +59,19 @@ class TestBezierSweep:
         result = BezierSweepPattern().generate(rng, level=100)
         assert len(result.ships) <= 8
 
-    def test_has_bezier_control_points(self):
+    def test_has_multi_segment_path(self):
+        """BLOQUE 58.12: BEZIER_SWEEP now uses a 3-segment compound bezier
+        (entry + main sweep + exit) for Star Fox 64 style choreography.
+        """
         from src.systems.wave_patterns import BezierSweepPattern
         rng = random.Random(42)
         result = BezierSweepPattern().generate(rng, level=3)
         ship = result.ships[0]
-        assert "p0" in ship.extra
-        assert "p1" in ship.extra
-        assert "p2" in ship.extra
-        assert "p3" in ship.extra
+        assert "segments" in ship.extra
+        assert "segment_durations" in ship.extra
+        # 3 segments (entry, main, exit)
+        assert len(ship.extra["segments"]) == 3
+        assert len(ship.extra["segment_durations"]) == 3
 
     def test_ships_have_t_offset_stagger(self):
         from src.systems.wave_patterns import BezierSweepPattern
@@ -94,14 +98,19 @@ class TestBezierSweep:
             assert len(s.color) == 3
 
     def test_entry_off_screen(self):
+        """BLOQUE 58.12: the first segment of the multi-segment path
+        should start off-screen (P0 of segment 0)."""
         from src.systems.wave_patterns import BezierSweepPattern
         from src.core.settings import INTERNAL_W, INTERNAL_H
         rng = random.Random(42)
         for _ in range(20):
             result = BezierSweepPattern().generate(rng, level=3)
-            p0 = result.ships[0].extra["p0"]
-            # p0 should be off-screen
-            assert p0[0] < 0 or p0[0] > INTERNAL_W or p0[1] < 0 or p0[1] > INTERNAL_H
+            seg0_p0 = result.ships[0].extra["segments"][0][0]
+            # segment 0's P0 should be off-screen
+            assert (
+                seg0_p0[0] < 0 or seg0_p0[0] > INTERNAL_W
+                or seg0_p0[1] < 0 or seg0_p0[1] > INTERNAL_H
+            ), f"Entry not off-screen: {seg0_p0}"
 
     def test_duration_positive(self):
         from src.systems.wave_patterns import BezierSweepPattern

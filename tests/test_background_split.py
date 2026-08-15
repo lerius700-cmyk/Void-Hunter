@@ -66,6 +66,11 @@ def test_runtime_actually_has_is_boss_branch() -> None:
     """Belt-and-suspenders: verify the runtime's draw code actually checks
     is_boss. If a future refactor accidentally drops the branch, this
     catches it.
+
+    BLOQUE 58.12: gameplay now uses the SPARSE parallax as the primary
+    background (the user wants ~80% black). The galaxy_strip is no
+    longer drawn during waves/sub-boss. The boss fight still uses the
+    pixel-art TilingImage.
     """
     from src.ui import gameplay_runtime
     src = Path(gameplay_runtime.__file__).read_text(encoding="utf-8")
@@ -73,5 +78,11 @@ def test_runtime_actually_has_is_boss_branch() -> None:
     assert "if self._is_boss:" in src, (
         "Expected the runtime to branch on self._is_boss in its draw/update"
     )
-    assert "_galaxy_bg.draw" in src
-    assert "_tiling_bg.draw" in src
+    # Boss fight: pixel art TilingImage
+    assert "_tiling_bg.draw" in src, (
+        "Boss fight should still use TilingImage (pixel art)"
+    )
+    # Gameplay: sparse parallax
+    assert "_parallax_bg.draw" in src, (
+        "Gameplay should use the new sparse ParallaxBackground"
+    )

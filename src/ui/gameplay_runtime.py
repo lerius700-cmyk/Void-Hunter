@@ -179,6 +179,18 @@ class GameplayRuntime:
                 scroll_speed_px_per_s=30.0,  # BLOQUE 58.6w: slow parallax
             )
         )
+        # BLOQUE 58.12: SPARSE ParallaxBackground (8 stars/layer, 0 nebulas,
+        # 0 planets). Used as the PRIMARY gameplay background for that
+        # "vast empty space" feel (~80% black). The galaxy_strip can
+        # still be loaded as a deeper background layer.
+        from src.systems.parallax import ParallaxBackground
+        self._parallax_bg: "ParallaxBackground" = ParallaxBackground(
+            width=INTERNAL_W, height=INTERNAL_H,
+            rng_seed=0xC0FFEE58,
+            stars_per_layer=8,   # sparse (was 50)
+            nebula_count=0,      # no nebulas (was 6)
+            spawn_planets=False, # no planets
+        )
         # Keep the old TilingImage as a fallback (in case the galaxy
         # panels aren't bundled).
         from src.ui.tiling_image import TilingImage
@@ -194,6 +206,14 @@ class GameplayRuntime:
         self._weapon = WeaponSystem()
         self._enemies = EnemyPool(capacity=64)
         self._scoring = ScoringSystem()
+        # BLOQUE 58.12: asteroids (brown rocky obstacles) + asteroid-powerups
+        # (drops from destroyed asteroids, roguelike distribution). These
+        # are SEPARATE from the existing powerup system (gold rings, etc).
+        from src.entities.asteroid import Asteroid, Powerup as AsteroidPowerup
+        self._asteroids: list = []  # type: list[Asteroid]
+        self._asteroid_powerups: list = []  # type: list[AsteroidPowerup]
+        # Roguelike RNG for asteroid/powerup spawn decisions
+        self._asteroid_rng = random.Random(0xA57E2012)
         self._particles = ParticleEngine(pool_size=512)
         self._hud = HUD()
         # BLOQUE 58.6.5: pre-allocated scratch surface for the rotating
@@ -1558,6 +1578,125 @@ class GameplayRuntime:
             return 20.0 + idx * step
         return cx
 
+    # ------------------------------------------------------------------
+    # BLOQUE 58.12: Asteroids + Powerups
+    # ------------------------------------------------------------------
+    def _update_asteroids_and_powerups(self, dt: float) -> None:
+        """BLOQUE 58.12: spawn, drift, and clean up asteroids + powerups.
+
+        Spawn cadence: 1 asteroid every 3-5 seconds while in waves.
+        30% of asteroids hide a roguelike powerup (bomb/hp/weapon/score).
+        """
+        from src.entities.asteroid import (
+            Powerup, PowerupKind, spawn_asteroid, pick_random_powerup,
+        )
+        # Spawn timer (only spawn during waves, not during boss fight)
+        if not self._is_boss and not self._level1_chain.sub_boss_pending:
+            self._asteroid_spawn_timer = getattr(self, "_asteroid_spawn_timer", 0.0) + dt
+            spawn_interval = self._asteroid_rng.uniform(3.0, 5.0)
+            if self._asteroid_spawn_timer >= spawn_interval:
+                self._asteroid_spawn_timer = 0.0
+                # Cap at 8 active asteroids
+                if len(self._asteroids) < 8:
+                    self._asteroids.append(spawn_asteroid(self._asteroid_rng))
+        else:
+            # Reset timer so asteroids don't all spawn at once after sub-boss
+            self._asteroid_spawn_timer = 0.0
+        # Update asteroids
+        for ast in self._asteroids:
+            ast.update(dt)
+        # Cull off-screen
+        self._asteroids = [a for a in self._asteroids if a.active and not a.is_off_screen()]
+        # Update asteroid-powerups (separate from existing powerup system)
+        for p in self._asteroid_powerups:
+            p.update(dt)
+        # Cull
+        self._asteroid_powerups = [p for p in self._asteroid_powerups if p.active and not p.is_off_screen()]
+
+    def _draw_asteroids_and_powerups(self, target: pygame.Surface) -> None:
+        """BLOQUE 58.12: draw asteroids (procedural sprites) and powerups."""
+        from src.entities.asteroid import draw_asteroid
+        # Asteroids first (behind everything)
+        for ast in self._asteroids:
+            draw_asteroid(target, ast)
+        # Asteroid powerups on top
+        for p in self._asteroid_powerups:
+            p.draw(target)
+
+    def _asteroid_bullet_collision(self) -> None:
+        """BLOQUE 58.12: bullets hit asteroids. On destroy, drop powerup."""
+        from src.entities.asteroid import Powerup, PowerupKind
+        for ast in self._asteroids:
+            if not ast.active:
+                continue
+            for b in self._bullets.pool:
+                if not b.active:
+                    continue
+                # Quick distance check
+                dx = b.x - ast.x
+                dy = b.y - ast.y
+                if dx * dx + dy * dy <= (ast.radius + 4) ** 2:
+                    b.active = False
+                    destroyed = ast.hit(damage=1)
+                    if destroyed:
+                        # BLOQUE 58.12: drop the hidden powerup (if any)
+                        if ast.hidden_powerup is not None and not ast.powerup_dropped:
+                            ast.powerup_dropped = True
+                            self._asteroid_powerups.append(Powerup(
+                                x=ast.x, y=ast.y,
+                                kind=ast.hidden_powerup,
+                            ))
+                    break  # asteroid can be hit by 1 bullet per tick
+
+    def _asteroid_player_collision(self) -> None:
+        """BLOQUE 58.12: asteroids damage the player on contact."""
+        for ast in self._asteroids:
+            if not ast.active:
+                continue
+            dx = self._player.x - ast.x
+            dy = self._player.y - ast.y
+            r = ast.radius + 8
+            if dx * dx + dy * dy <= r * r:
+                # Contact damage (1 HP)
+                if not self._player.is_dead:
+                    self._player.hp = max(0, self._player.hp - 1)
+                # Push the asteroid away
+                ast.x -= 20 if dx > 0 else -20
+
+    def _player_pickup_powerups(self) -> None:
+        """BLOQUE 58.12: player collects asteroid-powerups."""
+        for p in self._asteroid_powerups:
+            if not p.active:
+                continue
+            dx = self._player.x - p.x
+            dy = self._player.y - p.y
+            if dx * dx + dy * dy <= 18 * 18:
+                # Apply the powerup
+                self._apply_powerup(p.kind)
+                p.active = False
+
+    def _apply_powerup(self, kind) -> None:
+        """BLOQUE 58.12: apply a powerup effect to the player."""
+        from src.entities.asteroid import PowerupKind
+        if kind == PowerupKind.BOMB:
+            # +1 bomb (BLOQUE 53a bomb system). Use weapon_system for bombs.
+            self._bombs = min(getattr(self, "_bombs", 0) + 1, 5)
+        elif kind == PowerupKind.HP:
+            # +30 HP, capped at max
+            max_hp = self._player.max_hp if hasattr(self._player, "max_hp") else 100
+            self._player.hp = min(max_hp, self._player.hp + 30)
+        elif kind == PowerupKind.WEAPON:
+            # Upgrade weapon level (simple: +1, capped)
+            cur_level = getattr(self._weapon, "level", 0) if hasattr(self, "_weapon") else 0
+            # The weapon system has its own logic; we just bump a flag.
+            # (Most simple: just call _weapon.upgrade() if it exists.)
+            if hasattr(self._weapon, "level"):
+                self._weapon.level = min(getattr(self._weapon, "level", 0) + 1, 2)
+        elif kind == PowerupKind.SCORE:
+            # +500 score
+            if hasattr(self, "_scoring"):
+                self._scoring.score = getattr(self._scoring, "score", 0) + 500
+
     def _attach_wave_path(
         self,
         e: "Enemy",
@@ -2679,6 +2818,13 @@ class GameplayRuntime:
         self._update_enemies(effective_dt)
         _section("enemies", _section_t0)
         _section_t0 = _time.perf_counter()
+        # BLOQUE 58.12: asteroids (drift, collision with bullets, drop powerup)
+        self._update_asteroids_and_powerups(effective_dt)
+        self._asteroid_bullet_collision()
+        self._asteroid_player_collision()
+        self._player_pickup_powerups()
+        _section("asteroids", _section_t0)
+        _section_t0 = _time.perf_counter()
         self._handle_collisions()
         _section("collisions", _section_t0)
         _section_t0 = _time.perf_counter()
@@ -2759,6 +2905,9 @@ class GameplayRuntime:
                 self._galaxy_bg.update(effective_dt)
             elif self._tiling_bg is not None:
                 self._tiling_bg.update(effective_dt)
+        # BLOQUE 58.12: parallax stars/nebula (separate from galaxy strip)
+        if not self._is_boss and self._parallax_bg is not None:
+            self._parallax_bg.update(effective_dt)
         _section("particles_below", _section_t0)
         _section_t0 = _time.perf_counter()
         self._particles.update(effective_dt)
@@ -3283,13 +3432,17 @@ class GameplayRuntime:
             else:
                 self._bg.draw(target)
         else:
-            # Waves + sub-boss: galaxy scroll (with tiling fallback)
-            if self._galaxy_bg is not None and self._galaxy_bg.is_ready:
-                self._galaxy_bg.draw(target)
-            elif self._tiling_bg is not None and self._tiling_bg.is_ready:
-                self._tiling_bg.draw(target)
-            else:
-                self._bg.draw(target)
+            # BLOQUE 58.12: gameplay uses the SPARSE parallax as the
+            # primary background (the user wants ~80% black, not the
+            # dense galaxy strip). The galaxy_strip is too busy.
+            # The parallax is drawn below enemies and provides the
+            # top-to-bottom dust motion.
+            self._bg.draw(target)  # base black background
+        # BLOQUE 58.12: sparse parallax stars drawn ON TOP of black.
+        # This is the primary "moving" background — its stars drift
+        # top→bottom at varying speeds, giving a sense of forward motion.
+        if not self._is_boss and self._parallax_bg is not None:
+            self._parallax_bg.draw(target)
         # BLOQUE 25: ambient drift particles in background
         self._draw_ambient_dust(target)
         # Shake offset
@@ -3350,6 +3503,10 @@ class GameplayRuntime:
             if e.active:
                 # BLOQUE 58.47: scale up enemy ships by 1.05x.
                 self._draw_enemy_scaled(target, e, shx, shy)
+        # BLOQUE 58.12: asteroids (procedural brown sprites) + powerups
+        # Drawn on top of enemies so they overlap nicely when ships pass
+        # behind/through the asteroid field.
+        self._draw_asteroids_and_powerups(target)
         # BLOQUE 58.10: leader glow rings for pattern leaders
         # (drawn on playfield AFTER enemies, BEFORE bullets/particles so
         # the ring sits on top of ships but below muzzle flashes)

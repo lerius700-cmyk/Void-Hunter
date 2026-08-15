@@ -43,8 +43,14 @@ def test_default_6_nebula(bg: ParallaxBackground) -> None:
 
 
 def test_default_5_layers_50_stars_each(bg: ParallaxBackground) -> None:
-    """5 × 50 = 250 stars total."""
-    assert STARS_PER_LAYER == 50
+    """5 × 50 = 250 stars total.
+
+    BLOQUE 58.12: default changed to 12 stars/layer (was 50). This test
+    fixture uses `bg` which is the default-configured ParallaxBackground.
+    The `bg` fixture creates one with stars_per_layer=12 (the new default).
+    Title screen overrides to 50 for the dense look.
+    """
+    assert STARS_PER_LAYER == 12
     assert len(bg._stars) == NUM_LAYERS * STARS_PER_LAYER
 
 

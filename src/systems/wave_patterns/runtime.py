@@ -85,6 +85,7 @@ def attach_bezier_path(
     p2: tuple[float, float],
     p3: tuple[float, float],
     t_offset: float = 0.0,
+    duration_s: float = 6.0,
 ) -> None:
     """Attach a bezier path follower to an enemy.
 
@@ -92,6 +93,9 @@ def attach_bezier_path(
     advances the enemy along the curve over time. The slot_dy is
     used to stagger the entry (the pattern's t_offset is converted
     to a small dy so the enemy enters the curve at the right point).
+
+    BLOQUE 58.12: added `duration_s` parameter so patterns can override
+    the default 6s with their own path duration.
     """
     from src.movement.hybrid import HybridPath
     bezier = BezierPath(
@@ -101,11 +105,44 @@ def attach_bezier_path(
         p3=Point(p3[0], p3[1]),
     )
     # Wrap in HybridPath. Duration controls how long the path takes
-    # to traverse. We use a default of 6 seconds.
-    path = HybridPath([bezier], segment_durations=[6.0])
+    # to traverse.
+    path = HybridPath([bezier], segment_durations=[duration_s])
     follower = PathFollower(path)
     # t_offset becomes a slot_dy so the enemy enters the curve later
     # (negative dy means "start the path later in time")
+    enemy.attach_path(follower, slot_dx=0.0, slot_dy=-t_offset * 100.0)
+
+
+def attach_multi_segment_path(
+    enemy: Enemy,
+    segments: list,
+    segment_durations: list[float],
+    t_offset: float = 0.0,
+) -> None:
+    """BLOQUE 58.12: attach a multi-segment HybridPath (compound bezier).
+
+    Star Fox 64 enemy choreography often uses MULTIPLE chained bezier
+    segments per ship (e.g., entry bezier + main sweep + exit swoop).
+    This function attaches a HybridPath with N bezier segments.
+
+    Args:
+        enemy: the Enemy to attach the path to
+        segments: list of (p0, p1, p2, p3) tuples (one per segment)
+        segment_durations: list of float seconds (one per segment)
+        t_offset: phase offset in seconds
+    """
+    from src.movement.hybrid import HybridPath
+    beziers = []
+    for seg in segments:
+        p0, p1, p2, p3 = seg
+        beziers.append(BezierPath(
+            p0=Point(p0[0], p0[1]),
+            p1=Point(p1[0], p1[1]),
+            p2=Point(p2[0], p2[1]),
+            p3=Point(p3[0], p3[1]),
+        ))
+    path = HybridPath(beziers, segment_durations=segment_durations)
+    follower = PathFollower(path)
     enemy.attach_path(follower, slot_dx=0.0, slot_dy=-t_offset * 100.0)
 
 
@@ -162,6 +199,8 @@ def spawn_pattern_wave(
 
         # Attach bezier path if pattern provides control points
         if "p0" in spawned.extra:
+            # BLOQUE 58.12: support custom path duration
+            path_dur = spawned.extra.get("duration_s", 6.0)
             attach_bezier_path(
                 e,
                 spawned.extra["p0"],
@@ -169,6 +208,15 @@ def spawn_pattern_wave(
                 spawned.extra["p2"],
                 spawned.extra["p3"],
                 t_offset=spawned.t_offset,
+                duration_s=path_dur,
+            )
+        elif "segments" in spawned.extra:
+            # BLOQUE 58.12: multi-segment path (compound bezier).
+            # Used for more complex Star Fox 64 style choreography.
+            segments = spawned.extra["segments"]
+            seg_durs = spawned.extra.get("segment_durations", [3.0] * len(segments))
+            attach_multi_segment_path(
+                e, segments, seg_durs, t_offset=spawned.t_offset,
             )
 
         # Apply color tint
