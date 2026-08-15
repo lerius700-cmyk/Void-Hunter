@@ -1,21 +1,23 @@
 """BLOQUE 58.6w: Scrolling galaxy background.
 
-Loads 3 distinct galaxy panels (`Assets/background/galaxy_panel_{0,1,2}.png`),
-stacks them into a single tall strip, and scrolls it downward at a constant
-slow speed. The 3 panels have DIFFERENT content (different galaxy
-arrangements), so the strip shows unique content from top to bottom and
-wraps after the 3rd panel returns to the 1st.
+Loads a galaxy background image (single `Assets/background/galaxy_strip.png`
+designed to be loopable, OR 3 stacked panels `galaxy_panel_{0,1,2}.png`)
+and scrolls it downward at a constant slow speed.
+
+The image is wrapped modulo its own height, so the strip cycles
+indefinitely. The user-supplied `galaxy_strip.png` is the new design
+(2026-08-14): a single 1920x1920 image with a vertical-loopable pattern
+of galaxies that scrolls down (Arriba para abajo).
 
 User spec (2026-08-14):
-  - HARD CUTS at seams (no blending) \u2014 the panels are intentionally
-    different and the visible transitions are part of the look.
+  - HARD CUTS at seams (no blending) \u2014 the strip is intentionally
+    different from the previous panel set.
   - CONSTANT slow scroll (~30 px/s) for a "traveling through space" feel.
   - REPLACES the TilingImage gameplay background.
   - Active in: gameplay waves + sub-boss. NOT in boss fights or title.
 
-Coordinate convention: 320x480 internal playfield. The panels are
-640x1920 each; we scale them DOWN to 320 wide for the playfield and
-stack them as 320x(480*3)=320x1440 vertical strip.
+Coordinate convention: 320x480 internal playfield. The galaxy strip is
+scaled DOWN to 320 wide and scrolls vertically.
 """
 from __future__ import annotations
 
@@ -27,8 +29,8 @@ from typing import Optional
 import pygame
 
 
-# Module-level cache: load each panel ONCE per process
-_panel_cache: dict[int, pygame.Surface] = {}
+# Module-level cache so we load each image only once per process
+_strip_cache: dict[tuple[str, int], pygame.Surface] = {}
 
 
 def _find_assets_dir() -> Optional[Path]:
@@ -49,44 +51,42 @@ def _find_assets_dir() -> Optional[Path]:
     return None
 
 
-def _load_panel(index: int, target_width: int) -> Optional[pygame.Surface]:
-    """Load galaxy_panel_{index}.png and scale to target_width.
+def _load_image(filename: str, target_width: int) -> Optional[pygame.Surface]:
+    """Load a background image by filename and scale to target_width.
 
-    We use plain pygame.image.load (no .convert()) so this works
-    even when no video mode has been set (e.g. headless tests, or
-    pygame.display.init() not called yet). The .convert() call would
-    require a video surface and fail in those cases.
+    Uses plain pygame.image.load (no .convert()) so this works even
+    when no video mode has been set (e.g. headless tests, or
+    pygame.display.init() not called yet).
     """
-    cache_key = (index, target_width)
-    if cache_key in _panel_cache:
-        return _panel_cache[cache_key]
+    cache_key = (filename, target_width)
+    if cache_key in _strip_cache:
+        return _strip_cache[cache_key]
     assets = _find_assets_dir()
     if assets is None:
         return None
-    # Try png first, then jpg (defensive)
-    for ext in (".png", ".jpg", ".jpeg"):
-        path = assets / "background" / f"galaxy_panel_{index}{ext}"
+    for ext in ("", ".png", ".jpg", ".jpeg"):
+        path = assets / "background" / (filename + ext) if ext else assets / "background" / filename
         if path.is_file():
             try:
                 surf = pygame.image.load(str(path))
             except pygame.error:
                 return None
-            # Scale to target_width preserving aspect
             src_w, src_h = surf.get_size()
             new_h = max(1, int(src_h * (target_width / float(src_w))))
             scaled = pygame.transform.scale(surf, (target_width, new_h))
-            _panel_cache[cache_key] = scaled
+            _strip_cache[cache_key] = scaled
             return scaled
     return None
 
 
 class ScrollingGalaxyBackground:
-    """Vertical-scrolling galaxy strip made of 3 stacked panels.
+    """Vertical-scrolling galaxy strip.
 
-    The strip is 3 * panel_height tall. It scrolls DOWN at constant
-    speed. When the bottom of the strip is reached, the top of the
-    strip is back at the top of the screen \u2014 effectively the 3
-    panels cycle in order (panel 0, 1, 2, 0, 1, 2, ...).
+    Looks for `Assets/background/galaxy_strip.png` first (the new
+    user-supplied loopable image). Falls back to 3 stacked panels
+    (`galaxy_panel_{0,1,2}.png`) for backward compat with the
+    BLOQUE 58.6w panel set. The strip scrolls DOWN at constant speed
+    and wraps modulo its own height so it cycles indefinitely.
 
     Use:
         bg = ScrollingGalaxyBackground(width=320, height=480,
@@ -100,25 +100,33 @@ class ScrollingGalaxyBackground:
         width: int = 320,
         height: int = 480,
         scroll_speed_px_per_s: float = 30.0,
-        panel_count: int = 3,
     ) -> None:
         self._w = width
         self._h = height
         self._scroll_speed: float = scroll_speed_px_per_s
-        self._panel_count: int = panel_count
         self._scroll_y: float = 0.0  # 0 to total_strip_height
-        # Load each panel and remember its scaled size
-        self._panels: list[pygame.Surface] = []
-        for i in range(panel_count):
-            p = _load_panel(i, width)
-            if p is not None:
-                self._panels.append(p)
-        # Total height of the stacked strip
-        self._total_strip_h: int = sum(p.get_height() for p in self._panels)
+        # Try the new single-strip image first; fall back to 3 panels.
+        self._strip: Optional[pygame.Surface] = _load_image("galaxy_strip", width)
+        self._mode: str = "single" if self._strip is not None else "panels"
+        if self._strip is None:
+            self._panels: list[pygame.Surface] = []
+            for i in range(3):
+                p = _load_image(f"galaxy_panel_{i}", width)
+                if p is not None:
+                    self._panels.append(p)
+        else:
+            self._panels = []
+        # Total height of the strip (single or stacked)
+        if self._strip is not None:
+            self._total_strip_h = self._strip.get_height()
+        else:
+            self._total_strip_h = sum(p.get_height() for p in self._panels)
 
     @property
     def is_ready(self) -> bool:
-        """True if at least 2 panels are loaded and the strip can be drawn."""
+        """True if the strip can be drawn (either single image or 2+ panels)."""
+        if self._strip is not None:
+            return self._total_strip_h > 0
         return len(self._panels) >= 2 and self._total_strip_h > 0
 
     @property
@@ -126,39 +134,41 @@ class ScrollingGalaxyBackground:
         return self._total_strip_h
 
     @property
-    def panel_count_loaded(self) -> int:
-        return len(self._panels)
+    def mode(self) -> str:
+        """Which mode the background loaded: 'single' or 'panels'."""
+        return self._mode
 
     def update(self, dt: float) -> None:
         """Advance the scroll position by `dt` seconds."""
         if not self.is_ready:
             return
         self._scroll_y += self._scroll_speed * dt
-        # Wrap at the total strip height \u2014 this is what makes the
-        # 3 panels cycle indefinitely.
         if self._total_strip_h > 0:
             self._scroll_y = self._scroll_y % self._total_strip_h
 
     def draw(self, target: pygame.Surface) -> None:
-        """Blit the 3 panels as a vertical strip covering the play area.
+        """Blit the strip to the play area, offset by -scroll_y.
 
-        The strip is offset by -scroll_y. We draw 4 copies of the strip
-        to ensure the screen is always fully covered (the offset can
-        put the visible window anywhere within the strip cycle).
+        The strip is a tall image that loops on itself. We draw it
+        (and one extra copy below) so the screen is always fully
+        covered regardless of scroll_y.
         """
         if not self.is_ready:
             return
         screen_h = target.get_height()
-        # We need to cover the screen + an extra strip's worth in case
-        # the scroll offset puts us near the bottom of the visible strip.
-        # Start drawing from -scroll_y (the top of the visible window
-        # maps to scroll_y within the strip).
         y = -self._scroll_y
-        # Draw the strip + 1 extra copy to cover the screen
-        for _ in range(self._panel_count + 1):
-            for panel in self._panels:
-                ph = panel.get_height()
-                # Only blit if the panel is on screen (or near it)
-                if y + ph >= 0 and y < screen_h:
-                    target.blit(panel, (0, int(y)))
-                y += ph
+        if self._strip is not None:
+            # Single-image mode: draw the strip twice (current + next)
+            for _ in range(2):
+                h = self._strip.get_height()
+                if y + h >= 0 and y < screen_h:
+                    target.blit(self._strip, (0, int(y)))
+                y += h
+        else:
+            # Panels mode: draw all panels + 1 extra copy
+            for _ in range(len(self._panels) + 1):
+                for panel in self._panels:
+                    h = panel.get_height()
+                    if y + h >= 0 and y < screen_h:
+                        target.blit(panel, (0, int(y)))
+                    y += h

@@ -1383,6 +1383,8 @@ class GameplayRuntime:
         BLOQUE 58.6.4: initial entry is always from the top (entry_count=0,
         cycle=0 = "top entry, down, exit bottom"). The wrap-around in
         Enemy.update() handles subsequent re-entries and L patterns.
+        BLOQUE 58.6y: spawn y=0 (visible at top edge) so the player
+        actually notices the dart instead of it appearing off-screen.
         """
         import random
         from src.entities.enemies.enemy import EnemyKind
@@ -1391,7 +1393,15 @@ class GameplayRuntime:
         # of always INTERNAL_W/2. Sub-boss width is 24, so margin = 16.
         margin = 16
         rand_x = float(random.randint(margin, INTERNAL_W - margin))
-        e = self._enemies.spawn(EnemyKind.SUB_BOSS, rand_x, -16.0)
+        # BLOQUE 58.6y: y=0 (visible at top) instead of -16. With the
+        # longer warning scene (4.0s), the player now has time to look
+        # up and see the dart enter from the top edge.
+        e = self._enemies.spawn(EnemyKind.SUB_BOSS, rand_x, 0.0)
+        try:
+            with open("logs/_sub_boss.log", "a", encoding="utf-8") as _f:
+                _f.write(f"spawned SUB_BOSS at ({rand_x:.1f}, 0) chain.elapsed={self._level1_chain.elapsed_s if self._level1_chain else -1:.1f}s\n")
+        except Exception:
+            pass
         if e is not None:
             self._sub_boss_alive = True
             self._sub_boss_intro_done = True
@@ -2317,6 +2327,11 @@ class GameplayRuntime:
         # SUB_BOSS_INTRO. The sub-boss itself is spawned on the way back
         # to GAMEPLAY (see _spawn_sub_boss_on_resume).
         if chain.sub_boss_pending and not self._sub_boss_alive:
+            try:
+                with open("logs/_sub_boss.log", "a", encoding="utf-8") as _f:
+                    _f.write(f"triggering SUB_BOSS_INTRO at chain.elapsed={chain.elapsed_s:.1f}s wave={chain.current_wave_idx}\n")
+            except Exception:
+                pass
             self._transition_to(GameState.SUB_BOSS_INTRO)
             return
         # BLOQUE 53d: GOLIATH_SUMMON trigger. If the player has the
@@ -2779,19 +2794,19 @@ class GameplayRuntime:
                 )
 
     def _emit_propulsion_trail(self, dt: float) -> None:
-        """BLOQUE 58.8.1 + 58.43: emit a BLUE PARTICLE trail behind the
-        player while in PROPULSION state (shift held, x2 speed).
+        """BLOQUE 58.8.1 + 58.43 + 58.6y: emit a NEON BLUE PARTICLE trail
+        behind the player while in PROPULSION state (shift held, x2 speed).
 
         BLOQUE 58.43: the Tron polyline (BLOQUE 58.11–58.31) was
         REMOVED from the player. The user wanted the same style as
-        the Wolfen sub-boss's purple propulsion but in ROYAL BLUE.
+        the Wolfen sub-boss's purple propulsion but in NEON BLUE.
 
-        Wolfen uses 3 particle kinds (P_SPARK + P_GLOW + P_SMOKE) at
-        the back of the ship, trailing opposite the velocity. We do
-        the same here but tinted blue:
-          - blue_spark  (140, 200, 255) — bright cyan-blue dot, fast
-          - blue_glow   (90, 150, 235)  — saturated blue core glow
-          - blue_smoke  (30, 50, 100)   — dark blue puffy trail
+        BLOQUE 58.6y: brighter, more saturated neon blue palette:
+          - neon_core   (80, 200, 255)   — bright neon cyan-blue core
+          - neon_glow   (40, 160, 255)   — saturated neon blue halo
+          - neon_smoke  (20, 80, 200)    — bright dark-blue smoke
+          - extra_outer (120, 220, 255)  — large faint outer glow
+        Plus an additional outer-halo particle for the "neon glow" look.
         """
         from src.systems.particle_engine import P_GLOW, P_SMOKE, P_SPARK
         from src.core.settings import (
@@ -2814,26 +2829,34 @@ class GameplayRuntime:
             spread = 6.0
             exh_vx = (random.random() - 0.5) * spread
             exh_vy = 20.0 + (random.random() - 0.5) * spread
-            # P_SPARK: small bright cyan-blue dot, fast
+            # P_SPARK: small bright neon cyan-blue dot, fast
             self._particles.emit(
                 P_SPARK, ex, ey,
                 vx=exh_vx, vy=exh_vy,
-                color=(140, 200, 255), life=0.25, radius=1.5,
+                color=(80, 200, 255), life=0.28, radius=1.6,
             )
-            # P_GLOW: saturated blue core glow, slower, longer life
+            # P_GLOW: saturated neon blue core glow, slower, longer life
             self._particles.emit(
                 P_GLOW, ex, ey,
                 vx=exh_vx * 0.5, vy=exh_vy * 0.5,
-                color=(90, 150, 235), life=0.35, radius=2.0,
+                color=(40, 160, 255), life=0.40, radius=2.4,
             )
-            # P_SMOKE: dark blue puffy trail, ~40% of the time
+            # BLOQUE 58.6y: extra outer-halo particle for the neon glow
+            # effect. Larger, longer life, slightly slower \u2014 gives the
+            # "bright halo" look that makes the trail read as neon.
+            self._particles.emit(
+                P_GLOW, ex, ey,
+                vx=exh_vx * 0.3, vy=exh_vy * 0.3,
+                color=(120, 220, 255), life=0.55, radius=3.2,
+            )
+            # P_SMOKE: bright dark-blue smoke trail, ~40% of the time
             if random.random() < 0.4:
                 self._particles.emit(
                     P_SMOKE,
                     ex + (random.random() - 0.5) * 3.0,
                     ey + (random.random() - 0.5) * 3.0,
                     vx=exh_vx * 0.7, vy=exh_vy * 0.7,
-                    color=(30, 50, 100), life=0.5, radius=1.5,
+                    color=(20, 80, 200), life=0.5, radius=1.6,
                 )
 
     # -----------------------------------------------------------------------
