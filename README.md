@@ -1,99 +1,177 @@
 # VOID HUNTER
 
-> Vertical shmup. 8-bit pixel art with Metal Slug-grade juice. **120 FPS lock.**
+> Vertical shmup. 8-bit pixel art with Metal Slug-grade juice.
+> Star Fox 64 inspired. **120 FPS lock. Windowed 320×480 portrait.**
 
-A 25-minute arcade run through three acts of a collapsing void, fighting 8 enemy
-archetypes, 4 bosses with 4-phase patterns, 3 weapon paths, 6 visual themes,
-24 procedural SFX and 4 BGM tracks. Built in Pygame 2.6+, zero external
-dependencies (no numpy, no scipy — everything on `array.array` and `math`).
+A 5-minute arcade run through Act 1, fighting 8 enemy archetypes, 4 bosses
+with multi-phase patterns, a sub-boss dart, 3 weapon paths, 9 flight
+formations, bezier-curve flight paths, leader-follower squadrons, a
+roguelike mode with seed/RNG/level-gen, 24 procedural SFX, 2 streaming
+BGM tracks, and 25+ visual juice systems. Built in Pygame 2.6, zero
+heavy dependencies (no numpy, no scipy — stdlib math only).
 
-**Status:** `BLOQUE 0` — bootstrap. Spec is final; implementation in progress.
+**Status:** 🚧 **In-progress product.** v1.0 → v1.27 shipped.
+Currently polishing visuals (galaxy scroll, sub-boss visibility,
+HUD layout, neon propulsion). See [ROADMAP.md](./ROADMAP.md).
 
 ---
 
 ## Quick start
 
-```powershell
-python -m pip install -r requirements-dev.txt
-python main.py --check       # validate imports + scene wiring
-python main.py --profile     # run with FPS overlay (BLOQUE 14+)
-python main.py                # play (BLOQUE 14+)
+```bash
+# Run from source
+python main.py --easy
+
+# Run the roguelike mode
+python main.py --easy --roguelike 42
+
+# Build a Windows .exe (one-time)
+pyinstaller build.spec --noconfirm
+# → dist/void-hunter/void-hunter.exe
 ```
 
-## Controls (BLOQUE 34)
+**Download releases:** [releases/](./releases/) (v1.0 → v1.27, 27 zips)
 
-| Action     | Keyboard | Mouse | Gamepad |
-| ---------- | -------- | ----- | ------- |
-| Move WASD  | `W`/`A`/`S`/`D` (world-relative) | — | Stick |
-| Aim        | — | Mouse 360° yaw | Right stick |
-| Charge shot| — | `LMB` hold = charge, release = fire | `X` |
-| Rapid fire | — | `RMB` hold = continuous L1 | — |
-| Dash       | `Shift` (left, one-shot) | — | `Y` |
-| Bomb       | `L` | — | `B` |
-| Pause      | `Esc` | — | Start |
-| FPS overlay| `F1` | — | — |
+---
 
-Legacy keys: `J` still fires (testing), `K` is now free for future use.
+## What you can do
 
-**BLOQUE 34 changes:**
-- 🖱️ **LMB** = charge shot (hold to charge to L1/L2/L3, release fires)
-- 🖱️ **RMB** = rapid fire (continuous L1, never charges)
-- 🖼️ Resolution grew to 320x480 (was 240x360) — ships/projectiles look smaller
-- ⚡ Mouse tracking is now fast (24°/s lerp, always tracking — was slow + frozen when stopped)
-- 🔇 Background music disabled
-- 🐛 Fixed L3 beam bug: charge_time was being reset on every SHOOT→IDLE cycle, preventing L3 from ever triggering. Now charge builds continuously while LMB is held.
+- 🎮 **Shoot** — LMB rapid fire, hold to charge plasma
+- 🚀 **Dash** — single click = dash, hold = propulsion (Tron trail)
+- 💣 **Bombs → Missiles** — homing missiles, B/L key
+- ✈️ **9 flight formations** — V, line, diamond, square, wedge, circle, triangle, half-V, custom
+- 📈 **Bezier flight paths** — S-curves, waypoint zigzags, hybrid multi-segment
+- 👥 **Leader-follower squadrons** — Star Fox style "follow the leader"
+- 🎲 **Roguelike mode** — `--roguelike <seed>` for deterministic procedural runs
+- 🏆 **5+ minute run** — Act 1 with 4 wave types, sub-boss dart, GOLIATH final boss
 
-## CLI flags
+---
 
-| Flag                 | Effect                                                 |
-| -------------------- | ------------------------------------------------------ |
-| `--check`            | Validate imports + scene wiring; exit 0/1              |
-| `--profile`          | Run with FPS overlay                                   |
-| `--act N`            | Start at act N (1, 2, or 3)                            |
-| `--boss NAME`        | Fight boss (goliath, hydra, phantom, nemesis)          |
-| `--debug`            | Enable debug HUD                                       |
-| `--stress SPEC`      | Stress test: `1500particles 400bullets`                |
-| `--duration SECS`    | Profile/stress duration (default 30)                   |
-| `--validate-waves`   | Validate the 18 wave JSON scripts                      |
-
-## Spec
-
-The full GDD + Technical Spec lives at `docs/design/void-hunter-gdd.md`
-(14 sections, ~19k words, BLOQUE 0..17 execution plan). The GDD is the source
-of truth; this README is the dev cheatsheet.
-
-## Architecture
+## Project layout
 
 ```
 void-hunter/
-├── main.py                  # entry, CLI flags
-├── src/
-│   └── core/                # game loop, scene stack, input, event bus, settings
-│       └── settings.py      # all constants (single source of truth)
-├── tests/                   # pytest, coverage gate 35%
-├── docs/design/             # GDD
-├── pyproject.toml           # mypy strict, pytest, coverage config
-└── requirements*.txt
+├── main.py                  # entry point + CLI (--easy, --roguelike, --scale)
+├── smoke.py                 # 11-gate smoke test (run before commit)
+├── build.spec               # PyInstaller spec for .exe builds
+├── pyproject.toml           # pytest config
+├── requirements.txt         # pygame only
+├── requirements-dev.txt     # pytest, mypy, ruff
+│
+├── src/                     # game source (28k LOC, 118 .py files)
+│   ├── audio/               # 24 SFX synth + 2 streaming BGM
+│   ├── core/                # settings, scene_manager, event_bus
+│   ├── entities/            # player, enemies (8 types), boss (4), projectile
+│   ├── movement/            # BezierPath, WaypointPath, HybridPath, PathFollower
+│   │                        # FlightFormation (9 presets), FormationPathSpec
+│   ├── roguelike/           # seed, RNG, level_gen, formation_gen, telemetry, replay
+│   ├── systems/             # wave_manager, particle_engine, scoring, theme
+│   ├── ui/                  # gameplay_runtime (5.7k LOC), scenes, HUD, galaxy bg
+│   └── utils/               # math, paths, logging
+│
+├── tests/                   # 1024 tests, 100% passing
+│
+├── tools/                   # development utilities
+│   ├── capture/             # screenshot capture scripts
+│   ├── build/               # asset pipeline (galaxy split, etc.)
+│   ├── analysis/            # SFX spectral analysis
+│   ├── sprite/              # sprite_forge (procedural sprite generator)
+│   └── playtest_out/        # current session captures (gitignored)
+│
+├── Assets/                  # bundled with the .exe
+│   ├── background/          # galaxy_strip.png (640×5760), 3 panels
+│   ├── sprites/             # 83-sprite atlas (player, enemies, bosses)
+│   └── *.wav                # 2 streaming BGM tracks
+│
+├── docs/                    # documentation
+│   ├── design/              # GDD
+│   ├── references/          # Star Fox 64 reference images
+│   ├── CHANGELOG_v1.x.md    # full version history
+│   ├── USER_PROMPTS_CHECKLIST.md
+│   └── ...
+│
+├── releases/                # 27 zips (v1.0 → v1.27) — gitignored
+├── archive/                 # legacy content (kept, gitignored)
+│   ├── _legacy_builds/      # 10 archive_* folders from old PyInstaller builds
+│   ├── _legacy_data/        # data/, .cleanup_backup/
+│   ├── _legacy_references/  # Referencias/, source PNGs
+│   ├── _legacy_screenshots/ # 156 historical playtest PNGs
+│   ├── _legacy_scripts/     # debug scripts, COMMIT_MSG_*.txt, tools/_legacy/
+│   └── _legacy_v1_0/        # archive_dist_void_hunter_v1.0
+│
+└── dist/                    # .exe build output (gitignored)
+    └── void-hunter/void-hunter.exe
 ```
 
-## Performance target
+---
 
-- **Normal gameplay:** 120 FPS lock (8.33ms/frame budget).
-- **Stress (1500 particles + 400 bullets + boss + shake):** 90 FPS minimum.
-- **Zero allocations per frame** in `update()`/`draw()` of any system.
-- **Single `target.blits()` batch** per frame in `ParticleEngine.draw()` and
-  in `GameplayScene.draw()`.
+## Architecture highlights
 
-## Quality gates
+See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the full breakdown.
 
-```powershell
-pytest -q                                                          # tests
-pytest --cov=src/ --cov-fail-under=35                               # coverage gate
-mypy src/                                                          # mypy strict 0 errors
-rg 'pygame\.Surface\(' src/systems/                                 # 0 matches outside init
-rg 'import motor' src/                                             # 0 matches (soberanía)
+**13 major systems** (each with its own BLOQUE history):
+
+| # | System | Where | Lines |
+|---|---|---|---|
+| 1 | **FlightFormations** (9 presets) | `src/movement/formation.py` | 212 |
+| 2 | **Bezier Curves** (BezierPath, WaypointPath, HybridPath, PathFollower) | `src/movement/` | 381 |
+| 3 | **Flight Paths** (procedural by seed) | `src/movement/spec.py` | 60 |
+| 4 | **Leader Following** (squadron + time_offset) | `src/entities/enemies/enemy.py` | inline |
+| 5 | **ROGUELIKE** (seed, RNG, level gen, formation gen, telemetry, replay) | `src/roguelike/` | 1,540 |
+| 6 | **Boss FSM** (HYDRA, PHANTOM, NEMESIS, GOLIATH) | `src/entities/bosses/` | varies |
+| 7 | **Weapon system** (3 paths × 3 levels) | `src/entities/weapons/` | varies |
+| 8 | **Player FSM** (7 states) | `src/entities/player/` | varies |
+| 9 | **Tron trail** (continuous polyline, 3x damage) | `src/entities/player/` | varies |
+| 10 | **HUD system** (score, HP, bombs, overheat, tech) | `src/ui/hud.py` | 404 |
+| 11 | **Music + SFX** (24 SFX + 2 streaming) | `src/audio/` | 1,420 |
+| 12 | **Visual juice** (25+ systems) | various | varies |
+| 13 | **Star Fox style** (portrait, reticle, sprites) | `src/ui/` | varies |
+
+---
+
+## Development
+
+```bash
+# Run tests
+python -m pytest tests/
+
+# Run with headless rendering (no window)
+SDL_VIDEODRIVER=dummy python main.py --easy
+
+# Capture a frame
+python tools/capture/capture_sub_boss.py
+# → tools/playtest_out/sub_boss_v1.26.png
+
+# Build the .exe
+pyinstaller build.spec --noconfirm
 ```
 
-## License
+**Quality gates:**
+- 1,024 / 1,024 tests passing (29s)
+- 0 numpy/scipy imports
+- Internal coordinates 320×480
+- Windowed mode (never fullscreen, never terminal)
 
-MIT.
+---
+
+## Roadmap
+
+See [docs/ROADMAP.md](./docs/ROADMAP.md). TL;DR:
+
+- **Now**: visual polish (galaxy scroll, sub-boss visibility, HUD)
+- **Next**: gameplay depth (more bosses, act 2, leader-follower polish)
+- **Later**: leaderboards, Steam release, achievements, multiplayer
+
+---
+
+## Credits
+
+- **Engine:** Python 3.11 + Pygame 2.6.1 (SDL 2.28.4)
+- **Inspiration:** Star Fox 64, Metal Slug, Galaga
+- **Audio:** synthesized (no external SFX), 2 streaming BGM tracks
+- **Total LOC:** 28,066 (118 Python files, including tests)
+- **Status:** in-progress product, v1.27 is the last released version
+
+---
+
+*Last updated: 2026-08-15*
