@@ -139,6 +139,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--campaign", action="store_true",
         help="BLOQUE 58: opt back into the 18 hand-tuned JSON waves (legacy mode).",
     )
+    parser.add_argument(
+        "--patterns", type=int, nargs="?", const=42, default=None, metavar="SEED",
+        help="BLOQUE 58.8: use procedural wave patterns (5 Star Fox-inspired "
+             "patterns: BEZIER_SWEEP, V_FORMATION, LEADER_FOLLOWER_CHAIN, "
+             "DICE_FIVE_GRID, PINCER_CROSS) instead of the hardcoded WaveChain. "
+             "SEED is optional (default 42).",
+    )
     return parser.parse_args(argv)
 
 
@@ -326,6 +333,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  - final boss at fixed position (end of level)")
         print(f"  - boss identity random per seed (4-boss pool)")
         print(f"  - powerup drops between waves (seeded pool)")
+
+    if args.patterns is not None:
+        # BLOQUE 58.8: procedural wave patterns. The seed is optional.
+        # When set, level 1 mode uses ProceduralWaveManager instead of
+        # the hardcoded WaveChain. Player sees 5 different patterns
+        # (BEZIER_SWEEP, V_FORMATION, LEADER_FOLLOWER_CHAIN, DICE_FIVE_GRID,
+        # PINCER_CROSS) with bezier curves for visual variety.
+        seed = args.patterns
+        print(f"VOID HUNTER: --patterns mode (seed={seed})")
+        print(f"  - 5 Star Fox-inspired patterns (bezier + rigid)")
+        print(f"  - difficulty curve by floor (1-2 easy, 3-4 medium, 5+ hard)")
+        print(f"  - active pattern shown as banner at top")
+        # We set the flag on the Game so the runtime picks it up at level 1
+        import os as _os
+        _os.environ["VOID_HUNTER_PATTERNS_SEED"] = str(seed)
     elif args.campaign:
         # BLOQUE 58: opt back into the 18 hand-tuned JSON waves.
         from src.roguelike.integration import disable_roguelike

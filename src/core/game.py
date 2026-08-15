@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+from typing import Optional
 
 import pygame
 
@@ -158,6 +159,16 @@ class Game:
             self.audio = None
         self.easy: bool = easy  # BLOQUE 28: easy mode flag
         self.scenes: SceneManager = SceneManager()
+        # BLOQUE 58.8: if --patterns was passed, enable procedural
+        # patterns on the gameplay scene.
+        import os as _os
+        _patterns_seed_env = _os.environ.get("VOID_HUNTER_PATTERNS_SEED", "")
+        self._patterns_seed: Optional[int] = None
+        try:
+            if _patterns_seed_env:
+                self._patterns_seed = int(_patterns_seed_env)
+        except (ValueError, TypeError):
+            pass
         # BLOQUE 58.46: session-level score that survives scene transitions
         # (gameplay → boss → act_cleared). The new boss/act-cleared runtime
         # would otherwise start at 0, losing the player's accumulated score.
@@ -249,6 +260,13 @@ class Game:
             GameplayScene(transition_to, audio=self.audio,
                           set_session_score=self._set_session_score),
         )
+        # BLOQUE 58.8: enable procedural patterns if --patterns was used
+        if self._patterns_seed is not None:
+            gp_scene = self.scenes.scenes.get(GameState.GAMEPLAY)
+            if gp_scene is not None:
+                gp_scene.enable_procedural_patterns(
+                    seed=self._patterns_seed, floor=1, spawn_interval=4.0,
+                )
         # BLOQUE 58.23: pass the shared audio engine to BOSS_INTRO and
         # SUB_BOSS_INTRO. The previous versions did `AudioEngine()` in
         # on_enter, which re-initialized pygame.mixer and re-baked all

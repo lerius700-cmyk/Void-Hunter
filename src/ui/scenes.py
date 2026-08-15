@@ -777,6 +777,14 @@ class GameplayScene(Scene):
     def draw(self, target: pygame.Surface) -> None:
         self._rt.draw(target)
 
+    def enable_procedural_patterns(
+        self, seed: int = 42, floor: int = 1, spawn_interval: float = 4.0,
+    ) -> None:
+        """BLOQUE 58.8: forward to the runtime to enable procedural patterns."""
+        self._rt.enable_procedural_patterns(
+            seed=seed, floor=floor, spawn_interval=spawn_interval,
+        )
+
 
 class BossIntroScene(Scene):
     """BOSS_INTRO — RED ALARM warning, 4-6s animated intro (BLOQUE 50).

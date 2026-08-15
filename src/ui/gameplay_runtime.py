@@ -16,6 +16,7 @@ in fixed timesteps via Game's accumulator.
 from __future__ import annotations
 
 import math
+import os
 import random
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional, Tuple
@@ -256,6 +257,18 @@ class GameplayRuntime:
         # is still alive.
         self._sub_boss_alive: bool = False
         self._sub_boss_intro_done: bool = False
+
+        # BLOQUE 58.8: Procedural Wave Patterns (opt-in via --patterns).
+        # When enabled, level 1 spawns enemies via ProceduralWaveManager
+        # (5 patterns: BEZIER_SWEEP, V_FORMATION, LEADER_FOLLOWER_CHAIN,
+        # DICE_FIVE_GRID, PINCER_CROSS) instead of the hardcoded WaveChain.
+        self._use_procedural_patterns: bool = False
+        self._proc_mgr: Optional["ProceduralWaveManager"] = None
+        self._active_pattern_runtime: Optional["PatternRuntime"] = None
+        self._active_pattern_kind_label: str = ""
+        self._pattern_spawn_timer: float = 0.0
+        self._pattern_spawn_interval: float = 4.0  # seconds between patterns
+        self._proc_floor: int = 1
 
         # Polish state
         self._score_popups: list[ScorePopup] = []
@@ -1340,6 +1353,11 @@ class GameplayRuntime:
     def _spawn_pending(self, dt: float) -> None:
         if self._is_boss:
             return
+        # BLOQUE 58.8: if procedural patterns are enabled, use them
+        # instead of the hardcoded WaveChain. (Opt-in via --patterns)
+        if self._use_procedural_patterns and self._is_level1_mode():
+            self._spawn_procedural_patterns(dt)
+            return
         # BLOQUE 48: level 1 mode uses the chained WaveChain (not the
         # legacy _pending_wave_spawns list)
         if self._is_level1_mode() and self._level1_chain is not None:
@@ -2328,6 +2346,75 @@ class GameplayRuntime:
         return (not self._is_boss
                 and self._wave_idx == 0
                 and self._act == 1)
+
+    # ------------------------------------------------------------------
+    # BLOQUE 58.8: Procedural Wave Patterns
+    # ------------------------------------------------------------------
+    def enable_procedural_patterns(
+        self, seed: int = 42, floor: int = 1, spawn_interval: float = 4.0,
+    ) -> None:
+        """Activate procedural pattern spawning for level 1 mode.
+
+        When enabled, _spawn_pending uses ProceduralWaveManager to pick
+        5 different patterns (BEZIER_SWEEP, V_FORMATION, etc.) instead
+        of the hardcoded WaveChain. The active pattern is shown as a
+        banner at the top of the screen.
+        """
+        from src.systems.wave_patterns import ProceduralWaveManager
+        from src.systems.wave_patterns.runtime import (
+            get_pattern_hud_label, spawn_pattern_wave, update_pattern_runtime,
+        )
+        self._use_procedural_patterns = True
+        self._proc_mgr = ProceduralWaveManager(
+            seed=seed, floor=floor,
+            log_path=os.path.join(os.getcwd(), "logs", "patterns.log"),
+        )
+        self._proc_floor = floor
+        self._pattern_spawn_interval = spawn_interval
+        self._pattern_spawn_timer = 0.0
+        self._active_pattern_runtime = None
+        self._active_pattern_kind_label = ""
+
+    def disable_procedural_patterns(self) -> None:
+        """Restore default WaveChain spawning."""
+        self._use_procedural_patterns = False
+        self._proc_mgr = None
+        self._active_pattern_runtime = None
+        self._active_pattern_kind_label = ""
+
+    def _spawn_procedural_patterns(self, dt: float) -> None:
+        """BLOQUE 58.8: spawn a new procedural pattern when the timer hits 0.
+
+        Each pattern is a group of enemies that all spawn together. The
+        group follows the pattern's path (bezier, rigid, or mirror).
+        """
+        from src.systems.wave_patterns.runtime import (
+            spawn_pattern_wave, update_pattern_runtime,
+            get_pattern_hud_label,
+        )
+        if self._proc_mgr is None:
+            return
+        # Update active pattern timer
+        if self._active_pattern_runtime is not None:
+            update_pattern_runtime(self._active_pattern_runtime, dt)
+            if self._active_pattern_runtime.completed:
+                self._active_pattern_runtime = None
+                self._active_pattern_kind_label = ""
+        # Tick spawn timer
+        self._pattern_spawn_timer += dt
+        if self._pattern_spawn_timer >= self._pattern_spawn_interval:
+            self._pattern_spawn_timer = 0.0
+            if self._active_pattern_runtime is None:
+                # Only spawn if no active pattern
+                result = self._proc_mgr.pick_pattern(level=self._proc_floor)
+                self._active_pattern_runtime = spawn_pattern_wave(
+                    self._enemies, result
+                )
+                self._active_pattern_kind_label = get_pattern_hud_label(result.kind)
+
+    def get_active_pattern_label(self) -> str:
+        """For HUD: returns the active pattern name or empty string."""
+        return self._active_pattern_kind_label
 
     def _update_wave_state(self, dt: float) -> None:
         if self._is_boss:
@@ -3322,6 +3409,17 @@ class GameplayRuntime:
             ratio = min(1.0, self._scoring.kills / self._enemies_spawned_total)
         self._hud.draw(target, self._player, self._weapon, self._scoring,
                        t=self._t, kill_ratio=ratio)
+        # BLOQUE 58.8: pattern indicator banner (top center)
+        if self._use_procedural_patterns and self._active_pattern_kind_label:
+            font = pygame.font.Font(None, 18)
+            label = f"PATTERN: {self._active_pattern_kind_label}"
+            text_surf = font.render(label, True, (220, 220, 255))
+            # Draw with shadow
+            shadow = font.render(label, True, (20, 20, 40))
+            text_x = (INTERNAL_W - text_surf.get_width()) // 2
+            text_y = 30
+            target.blit(shadow, (text_x + 1, text_y + 1))
+            target.blit(text_surf, (text_x, text_y))
         # Screen flash (bomb) — drawn last, fades over time
         if self._screen_flash > 0.0:
             flash_alpha = int(200 * self._screen_flash)
