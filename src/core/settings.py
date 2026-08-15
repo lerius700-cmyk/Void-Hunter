@@ -248,8 +248,12 @@ FORMATION_TELEGRAPH_FRAMES_MAX: int = 60
 # ---------------------------------------------------------------------------
 WAVE_MAX_DURATION_S: float = 8.0         # max time a wave can take (chaining)
 BOSS_MIN_TRIGGER_S: float = 45.0         # boss won't fire before this (timer hard)
-BOSS_PERFECT_TRIGGER_S: float = 60.0     # perfect-score fast path
-BOSS_SAFETY_TRIGGER_S: float = 120.0     # lenient timeout (no score required)
+# BLOQUE 58.7ac: perfect trigger raised to 100s so the sub-boss (which
+# fires at ~95s) ALWAYS gets a turn. Previously 60s caused the boss to
+# fire on the same frame as the sub-boss resume, killing the dart before
+# the player could see it.
+BOSS_PERFECT_TRIGGER_S: float = 100.0    # perfect-score fast path (after sub-boss)
+BOSS_SAFETY_TRIGGER_S: float = 140.0     # lenient timeout (no score required)
 # BLOQUE 58.56: doubled enemy counts and extended duration so the level
 # lasts as long as the gameplay song (5.5 min ≈ 330s).
 LEVEL1_TOTAL_SHIPS: int = 165            # BLOQUE 58.6z: 30+40+45+50 = 165 ships (was 124)

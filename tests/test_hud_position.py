@@ -15,9 +15,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import pytest
 import pygame
 pygame.init()
 pygame.display.set_mode((320, 480))
+
+
+@pytest.fixture(autouse=True)
+def _ensure_pygame():
+    """Re-init pygame for each test (previous tests may have called quit)."""
+    if not pygame.get_init():
+        pygame.init()
+    if not pygame.display.get_init():
+        pygame.display.set_mode((320, 480))
+    yield
 
 
 def test_hud_appears_at_bottom() -> None:

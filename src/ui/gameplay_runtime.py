@@ -1405,7 +1405,7 @@ class GameplayRuntime:
         try:
             log_path = os.path.join(os.getcwd(), "logs", "_sub_boss.log")
             with open(log_path, "a", encoding="utf-8") as _f:
-                _f.write(f"spawned SUB_BOSS at ({rand_x:.1f}, 0) chain.elapsed={self._level1_chain.elapsed_s if self._level1_chain else -1:.1f}s cwd={os.getcwd()}\n")
+                _f.write(f"spawned SUB_BOSS at ({rand_x:.1f}, 20.0) chain.elapsed={self._level1_chain.elapsed_s if self._level1_chain else -1:.1f}s cwd={os.getcwd()}\n")
         except Exception as exc:
             try:
                 with open("D:/AI/void-hunter/logs/_sub_boss.log", "a", encoding="utf-8") as _f:
@@ -2171,6 +2171,14 @@ class GameplayRuntime:
             from src.core.settings import SUB_BOSS_FLAT_SCORE
             self._scoring.on_kill(SUB_BOSS_FLAT_SCORE)
             self._sub_boss_alive = False
+            # BLOQUE 58.7ac: log sub-boss death for debugging visibility issues.
+            import os
+            try:
+                log_path = os.path.join(os.getcwd(), "logs", "_sub_boss.log")
+                with open(log_path, "a", encoding="utf-8") as _f:
+                    _f.write(f"KILLED SUB_BOSS at ({e.x:.1f}, {e.y:.1f}) chain.elapsed={self._level1_chain.elapsed_s if self._level1_chain else -1:.1f}s\n")
+            except Exception:
+                pass
             if self._is_level1_mode() and self._level1_chain is not None:
                 self._level1_chain.clear_sub_boss_pending()
                 # BLOQUE 53d: drop HP_BOOST_10 tech upgrade
@@ -2391,6 +2399,17 @@ class GameplayRuntime:
                 except Exception:
                     pass
             self._transition_to(GameState.SUB_BOSS_INTRO)
+            return
+        # BLOQUE 58.7ac: CRITICAL — while a sub-boss is alive (or pending),
+        # the BOSS_INTRO trigger MUST NOT fire. The perfect-run boss trigger
+        # is at chain.elapsed >= 60s, but the sub-boss doesn't spawn until
+        # chain.elapsed ~ 95s. Without this guard, on a perfect run the
+        # boss intro fires at 60s and the sub-boss never gets a turn.
+        # We also need to guard against the BOSS_INTRO firing the same
+        # frame the sub-boss spawns on resume (where sub_boss_alive=True
+        # but the boss trigger condition is already met).
+        if chain.sub_boss_pending and self._sub_boss_alive:
+            # Sub-boss is on-screen and being fought. Do NOT fire the boss.
             return
         # BLOQUE 53d: GOLIATH_SUMMON trigger. If the player has the
         # upgrade and the chain has been running for GOLIATH_SUMMON_AT_S

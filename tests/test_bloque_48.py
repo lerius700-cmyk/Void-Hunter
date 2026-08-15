@@ -32,8 +32,10 @@ def test_settings_wave_max_duration_s_exists() -> None:
 def test_settings_boss_trigger_constants_exist() -> None:
     from src.core import settings
     assert settings.BOSS_MIN_TRIGGER_S == 45.0
-    assert settings.BOSS_PERFECT_TRIGGER_S == 60.0
-    assert settings.BOSS_SAFETY_TRIGGER_S == 120.0
+    # BLOQUE 58.7ac: PERFECT raised to 100s so sub-boss (~95s) gets a turn.
+    # SAFETY raised to 140s so it fires after the sub-boss, not at the same time.
+    assert settings.BOSS_PERFECT_TRIGGER_S == 100.0
+    assert settings.BOSS_SAFETY_TRIGGER_S == 140.0
 
 
 def test_settings_level1_ship_counts_match() -> None:
@@ -231,17 +233,22 @@ def test_boss_main_trigger_requires_completion_and_45s() -> None:
 
 
 def test_boss_perfect_trigger_at_60s() -> None:
-    """elapsed >= 60s AND perfect AND kills >= 1 → boss."""
+    """BLOQUE 58.7ac: perfect trigger now at 100s (after sub-boss ~95s)."""
     from src.systems.wave_manager import BossTrigger
     bt = BossTrigger()
-    assert bt.evaluate(elapsed_s=59.0, waves_complete=False, perfect=True, kills=10) is None
-    assert bt.evaluate(elapsed_s=60.0, waves_complete=False, perfect=True, kills=10) == "perfect"
-    assert bt.evaluate(elapsed_s=60.0, waves_complete=False, perfect=True, kills=0) is None
+    # Before 100s: no trigger even with perfect + kills
+    assert bt.evaluate(elapsed_s=99.0, waves_complete=False, perfect=True, kills=10) is None
+    # At 100s: perfect trigger fires
+    assert bt.evaluate(elapsed_s=100.0, waves_complete=False, perfect=True, kills=10) == "perfect"
+    # At 100s with no kills: no trigger (still requires kills >= 1)
+    assert bt.evaluate(elapsed_s=100.0, waves_complete=False, perfect=True, kills=0) is None
 
 
 def test_boss_safety_trigger_at_120s() -> None:
-    """elapsed >= 120s → boss regardless of kills."""
+    """BLOQUE 58.7ac: safety trigger now at 140s (after sub-boss + perfect)."""
     from src.systems.wave_manager import BossTrigger
     bt = BossTrigger()
-    assert bt.evaluate(elapsed_s=119.0, waves_complete=False, perfect=False, kills=0) is None
-    assert bt.evaluate(elapsed_s=120.0, waves_complete=False, perfect=False, kills=0) == "safety"
+    # Before 140s: no trigger without perfect + kills
+    assert bt.evaluate(elapsed_s=139.0, waves_complete=False, perfect=False, kills=0) is None
+    # At 140s: safety trigger fires
+    assert bt.evaluate(elapsed_s=140.0, waves_complete=False, perfect=False, kills=0) == "safety"
