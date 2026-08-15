@@ -474,3 +474,31 @@ Pero el usuario decide.
 ---
 
 *Generado el 2026-08-15 11:04 por Mavis*
+
+## v1.1.1 — BLOQUE 58.10 — Floor-1 fix + leader glow (2026-08-15)
+
+**Bug fix**: User reported "only 2 patterns visible in v1.1" (V_FORMATION
+and DICE_FIVE_GRID). Root cause: BLOQUE 58.8 gated patterns by floor.
+Floor 1's pool was hardcoded to [V_FORMATION, DICE_FIVE_GRID] only.
+The capture script used floor=5 to verify all 5, masking the bug.
+
+**Changes**:
+- manager.py: floor 1-2 now use weighted pools (all 5 patterns always
+  eligible, weights control probability not availability).
+- ase.py: SpawnedShip now has is_leader: bool = False field.
+- All 5 patterns mark their leader ship (slot==0 for sweep/chain/V,
+  center for DICE, slot==0 for each side of PINCER).
+- untime.py: spawn_pattern_wave() tracks leader_enemy_ids in
+  PatternRuntime. New draw_leader_glows() draws a pulsing cyan/white
+  ring around the leader on the playfield (not on the 32x24 sprite
+  scratch, so the ring is fully visible).
+- gameplay_runtime.py: calls draw_leader_glows() after enemy draw
+  loop, before particles/bullets.
+
+**Tests**: +12 new (test_bloque_58_10.py), 1103 -> 1117 total pass.
+
+**Visual evidence**: 5 mid-life captures in tools/playtest_out/
+showing each pattern with visible leader glow ring.
+
+**v1.1 zip rebuilt**: 181.2 MB at releases/void-hunter-v1.1-windows.zip
+(previous v1.1 moved to archive/_legacy_releases/).

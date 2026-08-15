@@ -5,10 +5,21 @@ Picks a WavePattern per wave based on:
   - roguelike seed (for reproducibility)
   - player progression (anti-stuck)
 
-Difficulty curve (from user brief):
-  Floor 1-2 (easy):   V_FORMATION, DICE_FIVE_GRID
-  Floor 3-4 (medium): LEADER_FOLLOWER_CHAIN, BEZIER_SWEEP
-  Floor 5+   (hard):  PINCER_CROSS, mixed patterns
+BLOQUE 58.10: Difficulty curve fix.
+  - All 5 patterns are available from floor 1 (BEFORE: floor 1 only had 2)
+  - Difficulty is now controlled by IN-pattern parameters (ship count,
+    curve amplitude, bezier sweep count), not by GATING which patterns
+    can appear. The user wants to see all formations in v1.1, not
+    "unlock them later".
+  - Each floor has a weight vector; easier patterns are still more
+    likely on early floors, but nothing is hidden.
+
+Weight per floor (out of ~100 picks per 100 waves):
+  Floor 1: 25% V_FORMATION, 20% DICE_FIVE_GRID, 20% LEADER_FOLLOWER_CHAIN,
+           20% BEZIER_SWEEP, 15% PINCER_CROSS
+  Floor 2: 20% V_FORMATION, 20% DICE_FIVE_GRID, 20% LEADER_FOLLOWER_CHAIN,
+           20% BEZIER_SWEEP, 20% PINCER_CROSS
+  Floor 3+: 17% each, equal rotation
 
 The manager logs each pick to logs/patterns.log so the user can
 verify the pattern sequence matches their difficulty curve.
@@ -33,22 +44,41 @@ from src.systems.wave_patterns.dice_grid import DiceFiveGridPattern
 from src.systems.wave_patterns.pincer_cross import PincerCrossPattern
 
 
-# Floor -> allowed pattern pool (difficulty curve)
-_DIFFICULTY_POOL: dict[int, list[WavePatternKind]] = {
-    1: [WavePatternKind.V_FORMATION, WavePatternKind.DICE_FIVE_GRID],
-    2: [WavePatternKind.V_FORMATION, WavePatternKind.DICE_FIVE_GRID,
-        WavePatternKind.LEADER_FOLLOWER_CHAIN],
-    3: [WavePatternKind.LEADER_FOLLOWER_CHAIN, WavePatternKind.BEZIER_SWEEP,
-        WavePatternKind.DICE_FIVE_GRID],
-    4: [WavePatternKind.LEADER_FOLLOWER_CHAIN, WavePatternKind.BEZIER_SWEEP,
-        WavePatternKind.PINCER_CROSS],
+# BLOQUE 58.10: Weighted pool per floor. Weights determine probability,
+# not availability. All 5 patterns are always eligible.
+_WEIGHTED_POOL: dict[int, list[tuple[WavePatternKind, int]]] = {
+    1: [
+        (WavePatternKind.V_FORMATION, 25),
+        (WavePatternKind.DICE_FIVE_GRID, 20),
+        (WavePatternKind.LEADER_FOLLOWER_CHAIN, 20),
+        (WavePatternKind.BEZIER_SWEEP, 20),
+        (WavePatternKind.PINCER_CROSS, 15),
+    ],
+    2: [
+        (WavePatternKind.V_FORMATION, 20),
+        (WavePatternKind.DICE_FIVE_GRID, 20),
+        (WavePatternKind.LEADER_FOLLOWER_CHAIN, 20),
+        (WavePatternKind.BEZIER_SWEEP, 20),
+        (WavePatternKind.PINCER_CROSS, 20),
+    ],
 }
-# Floor 5+ = all patterns available
-def _pool_for_floor(floor: int) -> list[WavePatternKind]:
-    if floor in _DIFFICULTY_POOL:
-        return list(_DIFFICULTY_POOL[floor])
-    # 5+: all 5 patterns
-    return list(WavePatternKind)
+# Floor 3+ = equal weight for all 5 patterns
+_EQUAL_WEIGHT = [
+    (WavePatternKind.V_FORMATION, 20),
+    (WavePatternKind.DICE_FIVE_GRID, 20),
+    (WavePatternKind.LEADER_FOLLOWER_CHAIN, 20),
+    (WavePatternKind.BEZIER_SWEEP, 20),
+    (WavePatternKind.PINCER_CROSS, 20),
+]
+
+
+def _pool_for_floor(floor: int) -> list[tuple[WavePatternKind, int]]:
+    """Return weighted pool for the given floor. All 5 patterns always
+    available; weights control probability not eligibility.
+    """
+    if floor in _WEIGHTED_POOL:
+        return list(_WEIGHTED_POOL[floor])
+    return list(_EQUAL_WEIGHT)
 
 
 class ProceduralWaveManager:
@@ -94,12 +124,19 @@ class ProceduralWaveManager:
 
         `level` is the in-floor wave index (1, 2, 3...). Affects ship count
         and curve amplitude.
+
+        BLOQUE 58.10: Uses weighted random choice from full pool of 5
+        patterns (BEFORE: hard pool that gated patterns by floor).
         """
-        pool = _pool_for_floor(self._floor)
+        weighted_pool = _pool_for_floor(self._floor)
         # Filter out the previous kind (avoid immediate repeats)
-        if self._last_kind is not None and len(pool) > 1:
-            pool = [k for k in pool if k != self._last_kind]
-        kind = self._rng.choice(pool)
+        if self._last_kind is not None and len(weighted_pool) > 1:
+            weighted_pool = [(k, w) for k, w in weighted_pool if k != self._last_kind]
+        # Build flat list weighted by count, then random.choice
+        flat: list[WavePatternKind] = []
+        for kind, weight in weighted_pool:
+            flat.extend([kind] * weight)
+        kind = self._rng.choice(flat)
         self._last_kind = kind
 
         # Instantiate the pattern
@@ -143,5 +180,12 @@ class ProceduralWaveManager:
             pass
 
     def preview_next_pool(self) -> list[str]:
-        """For UI/debug: returns the pool of patterns the manager could pick next."""
-        return [k.value for k in _pool_for_floor(self._floor)]
+        """For UI/debug: returns the pool of patterns the manager could pick next.
+        BLOQUE 58.10: returns the deduped kinds (one entry per kind)."""
+        seen: set[WavePatternKind] = set()
+        out: list[str] = []
+        for k, _ in _pool_for_floor(self._floor):
+            if k not in seen:
+                seen.add(k)
+                out.append(k.value)
+        return out

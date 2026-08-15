@@ -73,6 +73,7 @@ class PincerCrossPattern(WavePattern):
             ships.append(SpawnedShip(
                 spawn_x=x, spawn_y=y,
                 t_offset=t_offset, slot=slot, color=left_color,
+                is_leader=(slot == 0),  # BLOQUE 58.10: front of pincer
                 extra={
                     "p0": l_p0, "p1": l_p1, "p2": l_p2, "p3": l_p3,
                     "side": "left", "side_idx": slot,
@@ -86,6 +87,7 @@ class PincerCrossPattern(WavePattern):
             ships.append(SpawnedShip(
                 spawn_x=x, spawn_y=y,
                 t_offset=t_offset, slot=slot, color=right_color,
+                is_leader=(slot == 0),  # BLOQUE 58.10: front of pincer
                 extra={
                     "p0": r_p0, "p1": r_p1, "p2": r_p2, "p3": r_p3,
                     "side": "right", "side_idx": slot,

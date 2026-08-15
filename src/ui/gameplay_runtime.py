@@ -3332,6 +3332,15 @@ class GameplayRuntime:
             if e.active:
                 # BLOQUE 58.47: scale up enemy ships by 1.05x.
                 self._draw_enemy_scaled(target, e, shx, shy)
+        # BLOQUE 58.10: leader glow rings for pattern leaders
+        # (drawn on playfield AFTER enemies, BEFORE bullets/particles so
+        # the ring sits on top of ships but below muzzle flashes)
+        if self._use_procedural_patterns and self._active_pattern_runtime is not None:
+            from src.systems.wave_patterns.runtime import draw_leader_glows
+            active_enemies = [e for e in self._enemies.pool if e.active]
+            draw_leader_glows(
+                target, self._active_pattern_runtime, active_enemies, self._t,
+            )
         # Boss
         if self._is_boss and self._boss is not None and self._boss.active:
             self._draw_boss(target, shx, shy)

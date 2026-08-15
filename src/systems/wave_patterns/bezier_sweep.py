@@ -58,6 +58,7 @@ class BezierSweepPattern(WavePattern):
                 t_offset=t_offset,
                 slot=slot,
                 color=color,
+                is_leader=(slot == 0),  # BLOQUE 58.10: leader (front of sweep)
                 extra={
                     "p0": p0, "p1": p1, "p2": p2, "p3": p3,
                     "duration_s": 5.5 + rng.uniform(-0.5, 1.0),

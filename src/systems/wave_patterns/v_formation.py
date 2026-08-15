@@ -64,6 +64,7 @@ class VFormationPattern(WavePattern):
                 t_offset=0.0,           # V moves together, no stagger
                 slot=slot,
                 color=self._wing_color(base_hue, slot, ship_count),
+                is_leader=(slot == 0),  # BLOQUE 58.10: leader glow ring
                 extra={
                     "entry_x": entry_x,
                     "entry_y": entry_y,

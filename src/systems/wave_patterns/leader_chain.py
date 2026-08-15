@@ -80,6 +80,7 @@ class LeaderFollowerChainPattern(WavePattern):
                 t_offset=t_offset,
                 slot=slot,
                 color=base_color,
+                is_leader=(slot == 0),  # BLOQUE 58.10: leader glow ring
                 extra={
                     "p0": p0, "p1": p1, "p2": p2, "p3": p3,
                     "frequency": frequency,
@@ -87,7 +88,6 @@ class LeaderFollowerChainPattern(WavePattern):
                     "delay_per_follower": delay_per_follower,
                     "history_size": 60,
                     "duration_s": 6.0 + rng.uniform(-0.5, 1.0),
-                    "is_leader": (slot == 0),
                 },
             ))
 

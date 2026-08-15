@@ -71,12 +71,15 @@ class DiceFiveGridPattern(WavePattern):
 
         ships: list[SpawnedShip] = []
         for slot, (ox, oy) in enumerate(self.DICE_OFFSETS):
+            # BLOQUE 58.10: center ship of the dice is the "leader"
+            is_leader = (ox == 0.0 and oy == 0.0)
             ships.append(SpawnedShip(
                 spawn_x=start_x + ox,
                 spawn_y=start_y + oy,
                 t_offset=0.0,    # dice moves as one
                 slot=slot,
                 color=palette[slot],
+                is_leader=is_leader,
                 extra={
                     "start_x": start_x, "start_y": start_y,
                     "end_x": end_x, "end_y": end_y,

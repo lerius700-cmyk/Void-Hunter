@@ -65,6 +65,9 @@ class PatternRuntime:
     elapsed: float = 0.0
     duration: float = 6.0
     completed: bool = False
+    # BLOQUE 58.10: enemy ids that are the "leader" of their formation.
+    # The draw layer highlights these with a glow ring.
+    leader_enemy_ids: list[int] = field(default_factory=list)
 
 
 def pattern_kind_to_enemy_kind(spawned: SpawnedShip) -> EnemyKind:
@@ -152,6 +155,11 @@ def spawn_pattern_wave(
             continue  # pool exhausted
         runtime.ships_spawned.append(id(e))
 
+        # BLOQUE 58.10: track the leader enemy so the draw layer can
+        # highlight it with a glow ring.
+        if spawned.is_leader:
+            runtime.leader_enemy_ids.append(id(e))
+
         # Attach bezier path if pattern provides control points
         if "p0" in spawned.extra:
             attach_bezier_path(
@@ -194,3 +202,46 @@ def get_pattern_hud_label(kind: WavePatternKind) -> str:
         WavePatternKind.DICE_FIVE_GRID: "DICE-FIVE",
         WavePatternKind.PINCER_CROSS: "PINCER CROSS",
     }.get(kind, kind.value.upper())
+
+
+def draw_leader_glows(
+    surface,
+    runtime: "PatternRuntime | None",
+    enemies_iter,
+    time_s: float,
+) -> None:
+    """BLOQUE 58.10: Draw a pulsing glow ring around each leader enemy.
+
+    Called from gameplay_runtime._draw_enemies() AFTER the enemies are
+    drawn. The ring is drawn on the playfield so it's not clipped to
+    the small sprite scratch surface.
+
+    Args:
+        surface: the playfield surface (320x480)
+        runtime: the active PatternRuntime (or None)
+        enemies_iter: iterable of live enemies (Enemy instances)
+        time_s: current absolute time (for pulse animation)
+    """
+    if runtime is None or not runtime.leader_enemy_ids:
+        return
+    import math
+    import pygame
+    leader_ids = set(runtime.leader_enemy_ids)
+    pulse = 0.5 + 0.5 * math.sin(time_s * 6.0)  # 0..1, ~1Hz pulse
+    for e in enemies_iter:
+        if id(e) not in leader_ids:
+            continue
+        # Pulsing ring radius 10..16, alpha 140..220
+        radius = int(10 + pulse * 6)
+        alpha = int(140 + pulse * 80)
+        cx, cy = int(e.x), int(e.y)
+        # Outer ring (cyan, bright)
+        ring_surf = pygame.Surface((radius * 2 + 2, radius * 2 + 2), pygame.SRCALPHA)
+        pygame.draw.circle(
+            ring_surf, (140, 230, 255, alpha), (radius + 1, radius + 1), radius, width=2
+        )
+        surface.blit(ring_surf, (cx - radius - 1, cy - radius - 1))
+        # Inner dot (white, small)
+        dot_surf = pygame.Surface((6, 6), pygame.SRCALPHA)
+        pygame.draw.circle(dot_surf, (255, 255, 255, 220), (3, 3), 2)
+        surface.blit(dot_surf, (cx - 3, cy - 3))

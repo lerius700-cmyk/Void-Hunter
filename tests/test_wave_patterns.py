@@ -203,9 +203,10 @@ class TestLeaderFollowerChain:
         from src.systems.wave_patterns import LeaderFollowerChainPattern
         rng = random.Random(42)
         result = LeaderFollowerChainPattern().generate(rng, level=3)
-        assert result.ships[0].extra["is_leader"] is True
+        # BLOQUE 58.10: is_leader is now a SpawnedShip field, not in extra
+        assert result.ships[0].is_leader is True
         for s in result.ships[1:]:
-            assert s.extra["is_leader"] is False
+            assert s.is_leader is False
 
     def test_followers_have_increasing_delay(self):
         from src.systems.wave_patterns import LeaderFollowerChainPattern
@@ -418,10 +419,14 @@ class TestProceduralWaveManager:
         from src.systems.wave_patterns import ProceduralWaveManager, WavePatternKind
         mgr = ProceduralWaveManager(seed=42, floor=1)
         pool = mgr.preview_next_pool()
+        # BLOQUE 58.10: all 5 patterns are available from floor 1
+        # (weights differ, not eligibility).
+        assert len(pool) == 5
         assert WavePatternKind.V_FORMATION.value in pool
         assert WavePatternKind.DICE_FIVE_GRID.value in pool
-        # Should NOT include hard patterns
-        assert WavePatternKind.PINCER_CROSS.value not in pool
+        assert WavePatternKind.LEADER_FOLLOWER_CHAIN.value in pool
+        assert WavePatternKind.BEZIER_SWEEP.value in pool
+        assert WavePatternKind.PINCER_CROSS.value in pool
 
     def test_floor_5_includes_all(self):
         from src.systems.wave_patterns import ProceduralWaveManager
@@ -494,9 +499,47 @@ class TestProceduralWaveManager:
     def test_floor_4_includes_pincer(self):
         from src.systems.wave_patterns import ProceduralWaveManager
         from src.systems.wave_patterns.base import WavePatternKind
+        # BLOQUE 58.10: floor 4 uses _EQUAL_WEIGHT (all 5 patterns)
         mgr = ProceduralWaveManager(seed=42, floor=4)
         pool = mgr.preview_next_pool()
+        assert len(pool) == 5
         assert WavePatternKind.PINCER_CROSS.value in pool
+        assert WavePatternKind.BEZIER_SWEEP.value in pool
+        assert WavePatternKind.LEADER_FOLLOWER_CHAIN.value in pool
+
+    def test_floor_1_sees_all_5_over_many_picks(self):
+        """BLOQUE 58.10: floor 1 must eventually pick all 5 patterns
+        (weights favor V_FORMATION but nothing is gated).
+        With 200 picks at floor 1, all 5 kinds should appear.
+        """
+        from src.systems.wave_patterns import ProceduralWaveManager
+        from src.systems.wave_patterns.base import WavePatternKind
+        mgr = ProceduralWaveManager(seed=1234, floor=1)
+        kinds_seen = set()
+        for i in range(200):
+            r = mgr.pick_pattern(level=1 + (i % 4))
+            kinds_seen.add(r.kind)
+        assert len(kinds_seen) == len(WavePatternKind), (
+            f"After 200 picks at floor 1, only saw {kinds_seen}"
+        )
+
+    def test_floor_1_weights_favor_v_formation(self):
+        """BLOQUE 58.10: V_FORMATION should be picked MORE often than
+        PINCER_CROSS at floor 1 (V has weight 25, PINCER has weight 15).
+        """
+        from src.systems.wave_patterns import ProceduralWaveManager
+        from src.systems.wave_patterns.base import WavePatternKind
+        mgr = ProceduralWaveManager(seed=9999, floor=1)
+        from collections import Counter
+        counts = Counter()
+        for i in range(500):
+            r = mgr.pick_pattern(level=1)
+            counts[r.kind] += 1
+        # V_FORMATION count > PINCER_CROSS count
+        assert counts[WavePatternKind.V_FORMATION] > counts[WavePatternKind.PINCER_CROSS], (
+            f"V_FORMATION should be more common than PINCER_CROSS at floor 1, "
+            f"got {counts}"
+        )
 
 
 # =====================================================================

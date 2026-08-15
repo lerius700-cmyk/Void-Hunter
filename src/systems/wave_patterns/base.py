@@ -41,6 +41,9 @@ class SpawnedShip:
     `t_offset` is the time offset (seconds) so leader/sweep stagger works.
     `slot` is the formation slot index (for V_FORMATION / DICE_FIVE_GRID).
     `color` is optional RGB tint for the engine trail / sprite.
+    `is_leader` is True for the ship that leads the formation. BLOQUE 58.10:
+    the runtime uses this to draw a glow ring around the leader so the
+    player can tell which ship is "the first one".
     `extra` carries pattern-specific data (bezier control points, etc).
     """
     spawn_x: float
@@ -48,6 +51,7 @@ class SpawnedShip:
     t_offset: float = 0.0
     slot: int = 0
     color: Optional[tuple[int, int, int]] = None
+    is_leader: bool = False
     extra: dict[str, Any] = field(default_factory=dict)
 
 
