@@ -1367,15 +1367,17 @@ def test_movement_world_relative():
     assert abs(p.x - INTERNAL_W / 2) < 5.0
 
 
-def test_level1_mode_has_124_ships():
-    """BLOQUE 58.56: level 1 chains 124 ships in 4 waves (doubled from 62).
+def test_level1_mode_has_165_ships():
+    """BLOQUE 58.6z: level 1 chains 165 ships in 4 waves (was 124, +41).
+    Tuned so the minimum clear time is 3:30 even for a perfect-speed
+    player (so the gameplay song gets a proper listen before GOLIATH).
     Plus a mid-wave sub-boss is triggered after wave index 1.
     """
     from src.systems.wave_manager import LEVEL1_WAVES
     rt = _make_runtime()
     assert rt._is_level1_mode()
     total = sum(len(w["enemies"]) for w in LEVEL1_WAVES)
-    assert total == 124
+    assert total == 165
     # Sub-boss after wave 1 (O2) — verification of mid-wave challenge
     assert LEVEL1_WAVES[1].get("sub_boss_after") is True
 

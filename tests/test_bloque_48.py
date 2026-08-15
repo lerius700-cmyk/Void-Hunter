@@ -37,10 +37,12 @@ def test_settings_boss_trigger_constants_exist() -> None:
 
 
 def test_settings_level1_ship_counts_match() -> None:
-    """BLOQUE 58.56: 124 ships total = 88 SCOUT + 22 CRUISER + 14 HEAVY (doubled)."""
+    """BLOQUE 58.6z: 165 ships total = 100 SCOUT + 41 CRUISER + 24 HEAVY.
+    Tuned so even a perfect player takes 3:30 to reach GOLIATH (so
+    the gameplay song gets a proper listen before the boss fight)."""
     from src.core import settings
-    assert settings.LEVEL1_TOTAL_SHIPS == 124
-    assert settings.LEVEL1_FLAT_SCORE == 174
+    assert settings.LEVEL1_TOTAL_SHIPS == 165
+    assert settings.LEVEL1_FLAT_SCORE == 254
     assert settings.PERFECT_RUN_BONUS == 15
 
 
@@ -53,47 +55,57 @@ def test_level1_waves_has_exactly_4_waves() -> None:
     assert len(LEVEL1_WAVES) == 4
 
 
-def test_level1_wave_1_is_6_scout_diagonal() -> None:
-    """BLOQUE 50/58.56: O1: 24 SCOUT in diagonal column, no fire (tutorial)."""
+def test_level1_wave_1_is_30_scout_diagonal() -> None:
+    """BLOQUE 58.6z: O1: 30 SCOUT in diagonal column, no fire (tutorial).
+    Spawn cadence 1.1s = 33s minimum spawn time, contributes to 3:30
+    total minimum clear time."""
     from src.systems.wave_manager import LEVEL1_WAVES
     w = LEVEL1_WAVES[0]
-    assert w["enemies"] == ["SCOUT"] * 24
-    assert w["max_duration_s"] == 30.0
+    assert w["enemies"] == ["SCOUT"] * 30
+    assert w["max_duration_s"] == 40.0
     assert w["fire_allowed"] is False
 
 
-def test_level1_wave_2_is_6_scout_2_cruiser_v() -> None:
-    """BLOQUE 50/58.56: O2: 28 SCOUT + 10 CRUISER in V formation, fire enabled,
-    triggers sub-boss after this wave is cleared."""
+def test_level1_wave_2_is_25_scout_15_cruiser_v() -> None:
+    """BLOQUE 58.6z: O2: 25 SCOUT + 15 CRUISER in V formation, fire enabled,
+    triggers sub-boss after this wave is cleared. 40 ships * 1.1s = 44s
+    minimum spawn time."""
     from src.systems.wave_manager import LEVEL1_WAVES
     w = LEVEL1_WAVES[1]
-    assert w["enemies"] == ["SCOUT"] * 28 + ["CRUISER"] * 10
+    assert w["enemies"] == ["SCOUT"] * 25 + ["CRUISER"] * 15
     assert w["fire_allowed"] is True
     assert w["formation"] == "v"
     assert w.get("sub_boss_after") is True
 
 
-def test_level1_wave_3_is_6_scout_1_heavy_line() -> None:
-    """BLOQUE 50/58.56: O3: 20 SCOUT + 8 HEAVY in horizontal line, HEAVY as anchor."""
+def test_level1_wave_3_is_25_scout_12_heavy_8_cruiser_line() -> None:
+    """BLOQUE 58.6z: O3: 25 SCOUT + 12 HEAVY + 8 CRUISER in line, 45 ships
+    total. 45 * 1.1s = 49.5s minimum spawn time."""
     from src.systems.wave_manager import LEVEL1_WAVES
     w = LEVEL1_WAVES[2]
-    assert w["enemies"] == ["SCOUT"] * 20 + ["HEAVY"] * 8
+    assert w["enemies"] == ["SCOUT"] * 25 + ["HEAVY"] * 12 + ["CRUISER"] * 8
     assert w["formation"] == "line"
 
 
-def test_level1_wave_4_is_diamond_3_scout_2_cruiser_1_heavy() -> None:
-    """BLOQUE 50/58.56: O4: 16 SCOUT + 12 CRUISER + 6 HEAVY in diamond, hardest wave."""
+def test_level1_wave_4_is_20_scout_18_cruiser_12_heavy_diamond() -> None:
+    """BLOQUE 58.6z: O4: 20 SCOUT + 18 CRUISER + 12 HEAVY in diamond, the
+    finale. 50 ships * 1.2s = 60s minimum spawn time. Together with
+    O1/O2/O3/sub-boss/transitions/boss-intro the total minimum clear
+    is 3:31 — matches the gameplay song length to give the player
+    time to listen before GOLIATH appears."""
     from src.systems.wave_manager import LEVEL1_WAVES
     w = LEVEL1_WAVES[3]
-    assert w["enemies"] == ["SCOUT"] * 16 + ["CRUISER"] * 12 + ["HEAVY"] * 6
+    assert w["enemies"] == ["SCOUT"] * 20 + ["CRUISER"] * 18 + ["HEAVY"] * 12
     assert w["formation"] == "diamond"
 
 
-def test_level1_total_ships_equals_124() -> None:
-    """BLOQUE 58.56: 24 + 38 + 28 + 34 = 124 ships (doubled from 62)."""
+def test_level1_total_ships_equals_165() -> None:
+    """BLOQUE 58.6z: 30 + 40 + 45 + 50 = 165 ships. Tuned so the minimum
+    clear time is 3:30 even for a perfect-speed player (so the gameplay
+    song gets a proper listen before GOLIATH)."""
     from src.systems.wave_manager import LEVEL1_WAVES
     total = sum(len(w["enemies"]) for w in LEVEL1_WAVES)
-    assert total == 124
+    assert total == 165
 
 
 # ---------------------------------------------------------------------------
@@ -176,10 +188,11 @@ def test_wave_chain_has_single_kill_counter() -> None:
 # ---------------------------------------------------------------------------
 # 6. Scoring: 35 flat + 12 perfect = 47
 # ---------------------------------------------------------------------------
-def test_level1_flat_score_is_57() -> None:
-    """BLOQUE 58.56: 88 SCOUT (1pt) + 22 CRUISER (2pt) + 14 HEAVY (3pt) = 174pt.
+def test_level1_flat_score_is_254() -> None:
+    """BLOQUE 58.6z: 100 SCOUT (1pt) + 41 CRUISER (2pt) + 24 HEAVY (3pt) = 254pt.
 
-    Doubled from 87pt (was 44+11+7=62 ships @ 87pt).
+    Tuned alongside the new ship counts so the minimum clear time is
+    3:30 (so the gameplay song gets a proper listen before GOLIATH).
     """
     from src.systems.wave_manager import LEVEL1_WAVES
     from src.core.settings import SCOUT_FLAT_SCORE, CRUISER_FLAT_SCORE, HEAVY_FLAT_SCORE
@@ -192,16 +205,16 @@ def test_level1_flat_score_is_57() -> None:
                 total += CRUISER_FLAT_SCORE
             elif kind == "HEAVY":
                 total += HEAVY_FLAT_SCORE
-    # 88 SCOUT * 1 + 22 CRUISER * 2 + 14 HEAVY * 3 = 88 + 44 + 42 = 174
-    assert total == 174
+    # 100 SCOUT * 1 + 41 CRUISER * 2 + 24 HEAVY * 3 = 100 + 82 + 72 = 254
+    assert total == 254
 
 
-def test_perfect_run_bonus_score_is_189_total() -> None:
-    """BLOQUE 58.56: 174 flat + 15 perfect = 189pt (achievable).
-    Plus sub-boss bonus (+5pt) brings the practical max to 194pt.
+def test_perfect_run_bonus_score_is_269_total() -> None:
+    """BLOQUE 58.6z: 254 flat + 15 perfect = 269pt (achievable).
+    Plus sub-boss bonus brings the practical max higher.
     """
     from src.core.settings import LEVEL1_FLAT_SCORE, PERFECT_RUN_BONUS
-    assert LEVEL1_FLAT_SCORE + PERFECT_RUN_BONUS == 189
+    assert LEVEL1_FLAT_SCORE + PERFECT_RUN_BONUS == 269
 
 
 # ---------------------------------------------------------------------------

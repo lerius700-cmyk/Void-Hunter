@@ -593,15 +593,15 @@ class WaveManager:
 # Sum of wave max_durations = 30+60+70+80 = 240s of wave time;
 # + sub-boss + boss + act-cleared ≈ 90s more = ~330s total.
 LEVEL1_WAVES: list[dict[str, Any]] = [
-    # O1 — intro/tutorial: 24 SCOUT diagonal, no fire (was 12 = 2x).
-    # BLOQUE 58.6x: each ship follows a straight HybridPath from its
-    # formation spawn position to the bottom of the screen. The path
-    # is short (~3s) so the wave is brisk and the player can read the
-    # pattern.
+    # O1 — intro/tutorial: 30 SCOUT diagonal, no fire.
+    # BLOQUE 58.6z: ship counts + spawn cadence tuned so the MINIMUM
+    # clear time (even a perfect-speed player) is 3:30 — gives people
+    # time to actually listen to the gameplay song before GOLIATH.
+    # 30 ships * 1.1s cadence = 33s spawn, +2s buffer = 35s minimum.
     {
-        "enemies": ["SCOUT"] * 24,
-        "spawn_cadence_s": 0.8,
-        "max_duration_s": 30.0,
+        "enemies": ["SCOUT"] * 30,
+        "spawn_cadence_s": 1.1,
+        "max_duration_s": 40.0,
         "formation": "diagonal",
         "fire_allowed": False,
         "path": {
@@ -609,15 +609,13 @@ LEVEL1_WAVES: list[dict[str, Any]] = [
             "speed": 80.0,
         },
     },
-    # O2 — pattern recognition: 28 SCOUT + 10 CRUISER, V formation.
-    # BLOQUE 58.6x: ships follow a BEZIER S-curve from spawn position
-    # down to the bottom-right corner. The control points pull the curve
-    # left-then-right, creating a smooth S that the player can predict.
-    # BLOQUE 50: triggers a sub-boss encounter after this wave is cleared
+    # O2 — pattern recognition: 25 SCOUT + 15 CRUISER, V formation.
+    # 40 ships * 1.1s = 44s spawn + 2s = 46s minimum. Triggers sub-boss
+    # after this wave clears.
     {
-        "enemies": ["SCOUT"] * 28 + ["CRUISER"] * 10,
-        "spawn_cadence_s": 0.5,
-        "max_duration_s": 60.0,
+        "enemies": ["SCOUT"] * 25 + ["CRUISER"] * 15,
+        "spawn_cadence_s": 1.1,
+        "max_duration_s": 55.0,
         "formation": "v",
         "fire_allowed": True,
         "sub_boss_after": True,
@@ -635,14 +633,12 @@ LEVEL1_WAVES: list[dict[str, Any]] = [
             "durations": [5.0],
         },
     },
-    # O3 — mixed composition: 20 SCOUT + 8 HEAVY, line, HEAVY as anchor.
-    # BLOQUE 58.6x: ships follow a WAYPOINT zigzag — straight down to
-    # mid-screen, then sharp right, then straight down again. The
-    # sharp turn tests the player's tracking on direction changes.
+    # O3 — mixed composition: 25 SCOUT + 12 HEAVY + 8 CRUISER, line.
+    # 45 ships * 1.1s = 49.5s spawn + 2s = 51.5s minimum.
     {
-        "enemies": ["SCOUT"] * 20 + ["HEAVY"] * 8,
-        "spawn_cadence_s": 0.7,
-        "max_duration_s": 70.0,
+        "enemies": ["SCOUT"] * 25 + ["HEAVY"] * 12 + ["CRUISER"] * 8,
+        "spawn_cadence_s": 1.1,
+        "max_duration_s": 60.0,
         "formation": "line",
         "fire_allowed": True,
         "path": {
@@ -658,14 +654,14 @@ LEVEL1_WAVES: list[dict[str, Any]] = [
             "durations": [5.5],
         },
     },
-    # O4 — finale: 16 SCOUT + 12 CRUISER + 6 HEAVY, diamond.
-    # BLOQUE 58.6x: ships follow a HYBRID path — a smooth bezier arc
-    # (entrance sweep) followed by a straight waypoint descent. This
-    # combines both path types in one wave.
+    # O4 — finale: 20 SCOUT + 18 CRUISER + 12 HEAVY, diamond.
+    # 50 ships * 1.2s = 60s spawn + 2s = 62s minimum.
+    # TOTAL all waves + sub-boss + transitions + boss intro
+    # = 35+46+51.5+62 + 6.5+6+4.5 = 211.5s ≈ 3:31
     {
-        "enemies": ["SCOUT"] * 16 + ["CRUISER"] * 12 + ["HEAVY"] * 6,
-        "spawn_cadence_s": 0.8,
-        "max_duration_s": 80.0,
+        "enemies": ["SCOUT"] * 20 + ["CRUISER"] * 18 + ["HEAVY"] * 12,
+        "spawn_cadence_s": 1.2,
+        "max_duration_s": 75.0,
         "formation": "diamond",
         "fire_allowed": True,
         "path": {
