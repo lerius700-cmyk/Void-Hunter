@@ -1,9 +1,10 @@
 """BLOQUE 58.6w: tests for the ScrollingGalaxyBackground class.
 
-BLOQUE 58.7z: 3 vertical COLUMNS (galaxy_panel_{0,1,2}.png) from the
-1920x1920 source. Each panel is 640x1920, scaled to 320 wide, so each
-panel is 320x960. The strip stacks 3 columns top->mid->bot, total
-~2880 pixels, loop ~96s at 30 px/s.
+BLOQUE 58.7ad: now uses galaxy_strip.png (the LONG single image) as
+the primary background, with galaxy_panel_{0,1,2}.png as a 3-column
+fallback. The strip is 640x5760 (3 vertical columns of 640x1920
+glued together vertically), scaled to 320x2880. Loop period at
+30 px/s is 96s.
 """
 from __future__ import annotations
 
@@ -20,29 +21,38 @@ sys.path.insert(0, str(ROOT))
 
 
 def test_galaxy_background_loads_strip() -> None:
-    """BLOQUE 58.7y: 3 panels are the new standard background."""
+    """BLOQUE 58.7ad: background loads either the long strip or 3 panels."""
     from src.ui.scrolling_galaxy import ScrollingGalaxyBackground
 
     bg = ScrollingGalaxyBackground(width=320, height=480)
     assert bg.is_ready, f"Expected background to be ready, mode={bg.mode}"
     if bg.mode == "single":
-        assert bg.total_strip_height > 0
+        # The long galaxy_strip.png (640x5760), scaled to 320x2880
+        assert bg.total_strip_height == 2880, (
+            f"Expected single strip height 2880 (3x 1920/2 = 960x3), "
+            f"got {bg.total_strip_height}"
+        )
     else:
-        # 3 panels from the new 1920x1920 image, each 320x106
+        # 3 vertical columns of 640x1920, scaled to 320x960 each
         assert len(bg._panels) == 3, (
             f"Expected 3 panels, got {len(bg._panels)}"
+        )
+        panel_h = bg._panels[0].get_height()
+        assert abs(panel_h - 960) < 10, (
+            f"Expected each panel ~320x960 (640x1920 scaled), got 320x{panel_h}"
         )
 
 
 def test_galaxy_background_total_strip_height() -> None:
-    """Total strip height = 3 * panel_height (panels stacked top->mid->bot)."""
+    """Total strip height = 3 * panel_height (panels stacked top->mid->bot)
+    OR 2880 for the single long strip mode."""
     from src.ui.scrolling_galaxy import ScrollingGalaxyBackground
 
     bg = ScrollingGalaxyBackground(width=320, height=480)
     if bg.mode == "single":
-        # Single-image fallback: scaled to 320x320
-        assert bg.total_strip_height == 320, (
-            f"Expected single strip height 320, got {bg.total_strip_height}"
+        # Long strip: 640x5760, scaled to 320x2880
+        assert bg.total_strip_height == 2880, (
+            f"Expected single strip height 2880, got {bg.total_strip_height}"
         )
     else:
         # 3 columns stacked: each 640x1920, scaled to 320x960, total ~2880
@@ -111,7 +121,7 @@ def test_galaxy_background_scrolls_top_to_bottom() -> None:
         assert bg._scroll_y > 0
     else:
         # 3-panel mode: verify order [0, 1, 2]
-        # BLOQUE 58.7y: panels are 320x106 each, stacked
+        # BLOQUE 58.7ad: panels are 320x960 each, stacked
         panel_h = bg._panels[0].get_height()
         total_h = bg.total_strip_height
 
@@ -132,3 +142,21 @@ def test_galaxy_background_scrolls_top_to_bottom() -> None:
             f"Panels must appear in order 0, 1, 2 (top to bottom). "
             f"Got: {seen_order}"
         )
+
+
+def test_galaxy_strip_image_is_long_single() -> None:
+    """BLOQUE 58.7ad: galaxy_strip.png exists and is the LONG single image.
+
+    The user wants a single image that's a "cinta" (ribbon) of the
+    3 vertical columns glued together. The runtime prefers this single
+    image over the 3-panel fallback.
+    """
+    from src.ui.scrolling_galaxy import _load_image
+    strip = _load_image("galaxy_strip", 320)
+    if strip is None:
+        # galaxy_strip.png not present; 3 panels fallback is fine
+        return
+    w, h = strip.get_size()
+    # The strip should be TALL: 320x2880 (3x 1920/2 = 960x3)
+    assert w == 320, f"Expected strip width 320, got {w}"
+    assert h == 2880, f"Expected strip height 2880 (3 vertical columns stacked), got {h}"
