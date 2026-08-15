@@ -1,11 +1,47 @@
-# VOID HUNTER — Changelog & Bug Log v1.x
+# VOID HUNTER — Changelog & Bug Log
 
 **Proyecto:** VOID HUNTER (D:\AI\void-hunter)
 **Repositorio:** https://github.com/lerius700-cmyk/Void-Hunter
 **Stack:** Python 3.11 + pygame 2.6 (sin numpy/scipy, stdlib math only)
-**Total código:** 28,066 líneas en 118 archivos Python
-**Total tests:** 1,024 passing
-**Última revisión:** 2026-08-15 11:04 AM
+**Total código:** ~30,000 líneas en 130+ archivos Python
+**Total tests:** 1,103 passing
+**Última revisión:** 2026-08-15 15:53 PM
+
+**Versioning policy (2026-08-15):** All v1.0–v1.27 zips moved to `archive/_legacy_releases/`. Current build is **v1.2** (the first consolidated release with the procedural patterns system + recent polish BLOQUES).
+
+---
+
+## 1. Resumen del Proyecto
+
+## 0. v1.2 — 2026-08-15 — Consolidated Release
+
+**Headline features (since v0.2.0 → v1.27 era):**
+
+- 5 procedural wave patterns (Bezier-based, Star Fox inspired)
+- ProceduralWaveManager with difficulty curve + anti-stuck
+- Procedural enemy variety (5 archetypes × 5 variation axes)
+- 13 major systems (Formations, Bezier, Leader, Roguelike, etc)
+- HUD moved to BOTTOM (root cause fix for sub-boss visibility)
+- Sub-boss root cause fix (boss trigger guard)
+- Galaxy background: long single strip (640×5760) replacing tile pattern
+- DASH afterimage restored
+- Ultra-neon propulsion (6 particles per engine)
+- Sub-boss 5s warning (no skip)
+- 1103/1103 tests passing
+
+**BLOQUES since v1.27 (the previous release):**
+
+- **58.7aa** DASH afterimage (BLOQUE commit `61b6146`)
+- **58.7ab** HUD moved to BOTTOM (`6afaddf`)
+- **58.7ac** Sub-boss root cause fix (`c2af8bc`)
+- **58.7ad** Galaxy background long strip (`4602ea4`)
+- **58.8** Procedural wave patterns (5 patterns + manager + enemy variety, `60379cb`)
+- **58.9** Pattern runtime integration (--patterns flag, HUD banner, `13d1679`)
+
+**Versioning reset:** All v1.0–v1.27 zips moved to `archive/_legacy_releases/`. The project has been re-versioned to **v1.2** as a clean consolidated release.
+
+**Download:** `releases/void-hunter-v1.2-windows.zip` (181 MB)
+**Launch:** `void-hunter.exe` (default mode) or `void-hunter.exe --patterns 2` (procedural patterns)
 
 ---
 
