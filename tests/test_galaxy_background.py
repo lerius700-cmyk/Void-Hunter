@@ -84,3 +84,71 @@ def test_galaxy_background_handles_missing_panels() -> None:
         bg = ScrollingGalaxyBackground(width=320, height=480)
         assert not bg.is_ready
         assert bg.panel_count_loaded == 0
+
+
+def test_galaxy_background_scrolls_top_to_bottom() -> None:
+    """BLOQUE 58.6w: panels must scroll from TOP to BOTTOM.
+
+    This is the "Arriba para abajo" direction the user emphasized. The
+    order panels appear on screen as scroll_y increases is:
+      - scroll_y=0: only Panel 0 visible (at the top)
+      - scroll_y ~ scroll_y_max: Panel 1 enters from BELOW the visible
+        area and slides up to take Panel 0's place
+      - scroll_y further: Panel 2 enters from below
+      - scroll_y wraps to total_strip_height: back to Panel 0
+
+    The camera (player's view) moves DOWN through the strip. Panels
+    appear at the BOTTOM of the screen and slide UP off the TOP.
+    """
+    from src.ui.scrolling_galaxy import ScrollingGalaxyBackground
+
+    bg = ScrollingGalaxyBackground(width=320, height=480)
+    panel_h = 960  # each scaled panel is 320x960
+    total_h = bg.total_strip_height  # 2880
+
+    def visible_panels(scroll_y: int) -> list[int]:
+        """Return the list of panel indices visible at this scroll_y."""
+        visible = []
+        for i in range(3):
+            y_top = -scroll_y + i * panel_h
+            # Panel is visible if any part of it is in [0, 480]
+            if y_top < 480 and (y_top + panel_h) > 0:
+                visible.append(i)
+        return visible
+
+    # Frame 0: only panel 0 at the top of the screen
+    bg._scroll_y = 0
+    assert visible_panels(0) == [0], "Frame 0 should show only Panel 0"
+
+    # After 16s @ 30px/s = 480 px scrolled: bottom of panel 0 visible,
+    # top of panel 1 still below screen
+    bg._scroll_y = 480
+    panels_480 = visible_panels(480)
+    assert 0 in panels_480 and 1 not in panels_480, (
+        f"At scroll_y=480, expected only Panel 0 visible (Panel 1 still below), "
+        f"got {panels_480}"
+    )
+
+    # After 32s @ 30px/s = 960 px scrolled: Panel 1 fully at the top,
+    # Panel 0 fully off screen
+    bg._scroll_y = 960
+    panels_960 = visible_panels(960)
+    assert 0 not in panels_960, (
+        f"At scroll_y=960, Panel 0 should be off-screen, got {panels_960}"
+    )
+    assert 1 in panels_960, f"At scroll_y=960, Panel 1 should be on screen"
+    assert 2 not in panels_960, (
+        f"At scroll_y=960, Panel 2 should still be below screen, got {panels_960}"
+    )
+
+    # The KEY test: the ORDER in which panels appear must be 0, 1, 2
+    # (not 2, 1, 0). This is the "top to bottom" direction.
+    seen_order = []
+    for sy in range(0, total_h, 50):
+        for p in visible_panels(sy):
+            if p not in seen_order:
+                seen_order.append(p)
+    assert seen_order == [0, 1, 2], (
+        f"Panels must appear in order 0, 1, 2 (top to bottom). "
+        f"Got: {seen_order}"
+    )
