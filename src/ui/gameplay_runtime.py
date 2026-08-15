@@ -3262,6 +3262,14 @@ class GameplayRuntime:
         # can still be drawn during DASH (not just PROPULSION).
         if self._tron_trail.is_active() and self._player.state != PlayerState.PROPULSION:
             self._tron_trail.draw(target, (shx, shy))
+        # BLOQUE 6+7: DASH after-image trail (was in v1). Drawn BEFORE the
+        # player on the playfield (not on the sprite scratch). The trail
+        # is 8 ghosts (PLAYER.AFTERIMAGE_LIFE = 0.13s each) that follow
+        # the dash path, fading from full to zero. Only visible while
+        # dashing (or just after) since afterimage is populated by the
+        # dash update loop in Player._update_dash().
+        if self._player.afterimage:
+            self._draw_player_afterimage(target, shx, shy)
         # Player (only if not in DEAD state and not i-frames invisible)
         if not self._player.is_dead:
             # BLOQUE 58.47: render the player to a scratch surface, scale
@@ -3675,22 +3683,9 @@ class GameplayRuntime:
             self._draw_charge_aura(target, ox, oy)
             est_dt = 1.0 / 60.0
             self._emit_energy_absorption(est_dt)
-        # Afterimage trail — bigger ghost matching the new 32x24 sprite
-        for tx, ty, age in self._player.afterimage:
-            alpha = max(0, int(255 * (1 - age / self._player.AFTERIMAGE_LIFE)))
-            ghost = pygame.Surface((32, 24), pygame.SRCALPHA)
-            # Simple Arwing silhouette
-            pygame.draw.polygon(ghost, (220, 240, 255, alpha), [
-                (cx, 1), (cx + 1, 8), (cx + 1, 17),
-                (cx, 21), (cx - 1, 17), (cx - 1, 8),
-            ])
-            pygame.draw.polygon(ghost, (180, 200, 230, alpha), [
-                (cx + 1, 12), (cx + 14, 20), (cx + 9, 16), (cx + 1, 17),
-            ])
-            pygame.draw.polygon(ghost, (180, 200, 230, alpha), [
-                (cx - 1, 12), (cx - 14, 20), (cx - 9, 16), (cx - 1, 17),
-            ])
-            target.blit(ghost, (int(tx - 16 + ox), int(ty - 12 + oy)))
+        # Afterimage trail — MOVED to draw() (was drawn here but the
+        # scratch 32x24 surface swallowed the blit, so the ghost trail
+        # was never visible. Now drawn in draw() on the playfield.)
         # Charge indicator: a ring around the player that fills as charge builds
         charge_level = self._player.get_charge_level()
         if self._player.state == PlayerState.CHARGE and charge_level > 0:
@@ -4229,10 +4224,46 @@ class GameplayRuntime:
     # BLOQUE 58.50: rotate the player PNG to match nose_angle so the
     # ship always points where the player is aiming (was static before).
     # ------------------------------------------------------------------
+    def _draw_player_afterimage(
+        self, target: pygame.Surface, shx: int, shy: int,
+    ) -> None:
+        """BLOQUE 6+7: dash after-image trail (the v1 animation).
+
+        During DASH, Player._update_dash() appends (x, y, age) tuples to
+        Player.afterimage every frame. Each ghost fades from full to
+        zero over AFTERIMAGE_LIFE (0.13s). We draw 8 ghosts per dash
+        max (Player caps the list at 8).
+
+        Drawn on the PLAYFIELD (not the player sprite scratch) so the
+        ghost actually shows up on screen. The previous version was
+        inside _draw_player() which used a 32x24 scratch surface, so
+        the blit went to the wrong target and the trail was invisible.
+        """
+        for tx, ty, age in self._player.afterimage:
+            alpha = max(0, int(255 * (1.0 - age / self._player.AFTERIMAGE_LIFE)))
+            if alpha <= 0:
+                continue
+            ghost = pygame.Surface((32, 24), pygame.SRCALPHA)
+            gcx = 16
+            # Body silhouette (matches the Arwing shape)
+            pygame.draw.polygon(ghost, (220, 240, 255, alpha), [
+                (gcx, 1), (gcx + 1, 8), (gcx + 1, 17),
+                (gcx, 21), (gcx - 1, 17), (gcx - 1, 8),
+            ])
+            # Right wing
+            pygame.draw.polygon(ghost, (180, 200, 230, alpha), [
+                (gcx + 1, 12), (gcx + 14, 20), (gcx + 9, 16), (gcx + 1, 17),
+            ])
+            # Left wing
+            pygame.draw.polygon(ghost, (180, 200, 230, alpha), [
+                (gcx - 1, 12), (gcx - 14, 20), (gcx - 9, 16), (gcx - 1, 17),
+            ])
+            target.blit(ghost, (int(tx - 16 + shx), int(ty - 12 + shy)))
+
     def _draw_player_scaled(self, target: pygame.Surface, shx: int, shy: int) -> None:
         """Render the player ship to a scratch surface, scale up by
         _ship_scale_player, then blit at the player's screen position.
-        Hitboxes and game logic are unchanged — only the visual size.
+        Hitboxes and game logic are unchanged - only the visual size.
         BLOQUE 58.48: prefers the pre-rendered PNG sprite from
         Assets/sprites/ over the procedural code.
         BLOQUE 58.50: rotates the PNG to match the player's nose angle

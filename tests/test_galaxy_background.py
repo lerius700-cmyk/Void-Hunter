@@ -1,9 +1,9 @@
 """BLOQUE 58.6w: tests for the ScrollingGalaxyBackground class.
 
-BLOQUE 58.7y: now uses 3 vertical panels (galaxy_panel_{0,1,2}.png) split
-from the user-supplied 1920x1920 image. Each panel is 1920x640, scaled
-to 320 wide, so each panel is 320x106. The strip stacks 3 panels top->mid->bot
-and the loop is total_strip_height (~318 pixels) at 30 px/s.
+BLOQUE 58.7z: 3 vertical COLUMNS (galaxy_panel_{0,1,2}.png) from the
+1920x1920 source. Each panel is 640x1920, scaled to 320 wide, so each
+panel is 320x960. The strip stacks 3 columns top->mid->bot, total
+~2880 pixels, loop ~96s at 30 px/s.
 """
 from __future__ import annotations
 
@@ -45,10 +45,10 @@ def test_galaxy_background_total_strip_height() -> None:
             f"Expected single strip height 320, got {bg.total_strip_height}"
         )
     else:
-        # 3 panels stacked: each ~106 tall, total ~318
+        # 3 columns stacked: each 640x1920, scaled to 320x960, total ~2880
         assert bg.total_strip_height > 0
-        assert abs(bg.total_strip_height - len(bg._panels) * 106) < 10, (
-            f"Expected 3 panels total ~318, got {bg.total_strip_height}"
+        assert abs(bg.total_strip_height - len(bg._panels) * 960) < 10, (
+            f"Expected 3 panels total ~2880, got {bg.total_strip_height}"
         )
 
 
