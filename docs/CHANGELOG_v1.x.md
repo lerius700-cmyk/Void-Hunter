@@ -5,17 +5,17 @@
 **Stack:** Python 3.11 + pygame 2.6 (sin numpy/scipy, stdlib math only)
 **Total código:** ~30,000 líneas en 130+ archivos Python
 **Total tests:** 1,103 passing
-**Última revisión:** 2026-08-15 15:53 PM
+**Última revisión:** 2026-08-15 16:18 PM
 
-**Versioning policy (2026-08-15):** All v1.0–v1.27 zips moved to `archive/_legacy_releases/`. Current build is **v1.2** (the first consolidated release with the procedural patterns system + recent polish BLOQUES).
+**Versioning policy (2026-08-15):** v1.0 stays as the bootstrap baseline. v1.1 is the consolidated release with the procedural patterns system + recent polish BLOQUES. v1.2 → v1.27 moved to `archive/_legacy_releases/` (kept for history).
 
 ---
 
 ## 1. Resumen del Proyecto
 
-## 0. v1.2 — 2026-08-15 — Consolidated Release
+## 0. v1.1 — 2026-08-15 — Consolidated Release (the one we're working on)
 
-**Headline features (since v0.2.0 → v1.27 era):**
+**Headline features (since v1.0):**
 
 - 5 procedural wave patterns (Bezier-based, Star Fox inspired)
 - ProceduralWaveManager with difficulty curve + anti-stuck
@@ -29,7 +29,7 @@
 - Sub-boss 5s warning (no skip)
 - 1103/1103 tests passing
 
-**BLOQUES since v1.27 (the previous release):**
+**BLOQUES since v1.0:**
 
 - **58.7aa** DASH afterimage (BLOQUE commit `61b6146`)
 - **58.7ab** HUD moved to BOTTOM (`6afaddf`)
@@ -38,9 +38,9 @@
 - **58.8** Procedural wave patterns (5 patterns + manager + enemy variety, `60379cb`)
 - **58.9** Pattern runtime integration (--patterns flag, HUD banner, `13d1679`)
 
-**Versioning reset:** All v1.0–v1.27 zips moved to `archive/_legacy_releases/`. The project has been re-versioned to **v1.2** as a clean consolidated release.
+**Versioning:** v1.0 stays as the bootstrap baseline. v1.1 is the new consolidated release. v1.2 → v1.27 moved to `archive/_legacy_releases/` (kept for history, not in current release).
 
-**Download:** `releases/void-hunter-v1.2-windows.zip` (181 MB)
+**Download:** `releases/void-hunter-v1.1-windows.zip` (181 MB)
 **Launch:** `void-hunter.exe` (default mode) or `void-hunter.exe --patterns 2` (procedural patterns)
 
 ---

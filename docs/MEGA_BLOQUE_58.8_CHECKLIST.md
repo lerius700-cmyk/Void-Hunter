@@ -3,6 +3,7 @@
 **Status:** ✅ COMPLETO (with BLOQUE 58.9 integration)
 **Started:** 2026-08-15 13:22
 **Completed:** 2026-08-15 13:55 (~33 min total)
+**Released as:** v1.1 (2026-08-15 16:18)
 **BLOQUE ID:** 58.8 + 58.9 (integration)
 **Scope:** mega-ronda (1 BLOQUE grande)
 **User directives:**
@@ -108,6 +109,7 @@
 - ✅ HUD pattern indicator ("PATTERN: <NAME>" banner)
 - ✅ 79 new tests (all pass)
 - ✅ 22 visual captures (15 standalone + 7 in-game)
+- ✅ Released as v1.1 (181 MB zip in `releases/`)
 
 ## How to use
 

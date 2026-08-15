@@ -10,9 +10,10 @@ roguelike mode with seed/RNG/level-gen, 24 procedural SFX, 2 streaming
 BGM tracks, and 25+ visual juice systems. Built in Pygame 2.6, zero
 heavy dependencies (no numpy, no scipy — stdlib math only).
 
-**Status:** 🚧 **In-progress product.** v1.0 → v1.27 shipped.
-Currently polishing visuals (galaxy scroll, sub-boss visibility,
-HUD layout, neon propulsion). See [ROADMAP.md](./ROADMAP.md).
+**Status:** 🚧 **In-progress product.** v1.0 (bootstrap) and v1.1
+(consolidated release) are the current versions. Currently polishing
+visuals (galaxy scroll, sub-boss visibility, HUD layout, neon
+propulsion). See [ROADMAP.md](./ROADMAP.md).
 
 ---
 
@@ -30,7 +31,7 @@ pyinstaller build.spec --noconfirm
 # → dist/void-hunter/void-hunter.exe
 ```
 
-**Download releases:** [releases/](./releases/) (v1.0 → v1.27, 27 zips)
+**Download releases:** [releases/](./releases/) (v1.0 + v1.1)
 
 ---
 
