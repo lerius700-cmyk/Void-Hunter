@@ -186,3 +186,54 @@ def test_bezier_sweep_pair_color_variation():
     assert s1.color is not None
     assert s2.color is not None
     assert s1.color != s2.color
+
+
+# ----------------------------------------------------------------------
+# OSCILLATING_BUTTERFLY orbital tests (3)
+# ----------------------------------------------------------------------
+def test_butterfly_uses_orbital_path():
+    """extra contains orbital key (not 'p0' anymore)."""
+    import random
+    from src.systems.wave_patterns.oscillating_butterfly import OscillatingButterflyPattern
+    from src.movement.orbital_path import OrbitalPath
+    rng = random.Random(42)
+    pattern = OscillatingButterflyPattern()
+    result = pattern.generate(rng, level=2)
+    for s in result.ships:
+        assert "orbital" in s.extra
+        assert isinstance(s.extra["orbital"], OrbitalPath)
+        assert "p0" not in s.extra
+
+
+def test_butterfly_6_ships_distributed():
+    """6 ships at t_offsets spread over 6s."""
+    import random
+    from src.systems.wave_patterns.oscillating_butterfly import OscillatingButterflyPattern
+    rng = random.Random(42)
+    pattern = OscillatingButterflyPattern()
+    result = pattern.generate(rng, level=1)
+    assert len(result.ships) == 6
+    t_offsets = sorted([s.t_offset for s in result.ships])
+    expected = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+    for got, exp in zip(t_offsets, expected):
+        assert got == pytest.approx(exp, abs=0.01)
+
+
+def test_butterfly_center_in_middle_60_percent():
+    """Center cx,cy in [0.2*W, 0.8*W]×[0.2*H, 0.8*H]."""
+    import random
+    from src.core.settings import INTERNAL_W, INTERNAL_H
+    from src.systems.wave_patterns.oscillating_butterfly import OscillatingButterflyPattern
+    rng = random.Random(42)
+    pattern = OscillatingButterflyPattern()
+    result = pattern.generate(rng, level=2)
+    op = result.ships[0].extra["orbital"]
+    path = op.get_path()
+    min_x = min(seg.p0.x for seg in path.segments)
+    max_x = max(seg.p0.x for seg in path.segments)
+    min_y = min(seg.p0.y for seg in path.segments)
+    max_y = max(seg.p0.y for seg in path.segments)
+    cx = (min_x + max_x) / 2
+    cy = (min_y + max_y) / 2
+    assert 0.2 * INTERNAL_W <= cx <= 0.8 * INTERNAL_W
+    assert 0.2 * INTERNAL_H <= cy <= 0.8 * INTERNAL_H
