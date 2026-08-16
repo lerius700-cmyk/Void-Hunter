@@ -1873,8 +1873,10 @@ def test_boss_trigger_does_not_fire_below_thresholds() -> None:
 
 
 def test_boss_trigger_fast_requires_at_least_one_kill() -> None:
-    """BLOQUE 48: even at 60s, the perfect path requires at least 1 kill."""
-    from src.core.settings import BOSS_PERFECT_TRIGGER_S
+    """BLOQUE 48: even at the perfect-trigger threshold, the perfect path
+    requires at least 1 kill. With 0 kills, only the safety trigger can
+    fire (which still triggers BOSS_INTRO at 220s)."""
+    from src.core.settings import BOSS_PERFECT_TRIGGER_S, BOSS_SAFETY_TRIGGER_S
     from src.core.scene_manager import GameState
     from src.systems.wave_manager import WaveChain, BossTrigger
     fn, transitions = _recording_transition()
@@ -1883,11 +1885,17 @@ def test_boss_trigger_fast_requires_at_least_one_kill() -> None:
     rt._is_level1_mode = lambda: True
     rt._level1_chain = WaveChain()
     rt._level1_boss_trigger = BossTrigger()
-    rt._level1_chain.elapsed_s = BOSS_PERFECT_TRIGGER_S
+    # BOSS_PERFECT and BOSS_SAFETY are now the same value (220s, BLOQUE 58.13.3).
+    # With 0 kills at the threshold, perfect doesn't fire but safety does.
+    # The test below uses an elapsed just BEFORE the safety trigger to
+    # validate that the perfect path requires kills.
+    rt._level1_chain.elapsed_s = BOSS_SAFETY_TRIGGER_S - 1.0
     rt._level1_chain.kills = 0  # no kills!
     rt._level1_chain.perfect = True
     rt._update_wave_state(0.0)
     assert GameState.BOSS_INTRO not in transitions
+    # Confirm BOSS_SAFETY_TRIGGER_S == BOSS_PERFECT_TRIGGER_S (this BLOQUE)
+    assert BOSS_SAFETY_TRIGGER_S == BOSS_PERFECT_TRIGGER_S
 
 
 # ---------------------------------------------------------------------------

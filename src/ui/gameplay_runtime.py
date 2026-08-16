@@ -188,7 +188,9 @@ class GameplayRuntime:
             width=INTERNAL_W, height=INTERNAL_H,
             rng_seed=0xC0FFEE58,
             stars_per_layer=8,   # sparse (was 50)
-            nebula_count=0,      # no nebulas (was 6)
+            nebula_count=1,      # BLOQUE 58.13.3: 1 large off-center nebula
+            nebula_radius_min=100, # large (was 40)
+            nebula_radius_max=140, # large (was 80)
             spawn_planets=False, # no planets
         )
         # Keep the old TilingImage as a fallback (in case the galaxy

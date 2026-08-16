@@ -55,7 +55,7 @@ def test_boss_trigger_does_not_fire_during_sub_boss_fight():
     rt._level1_chain._sub_boss_pending = True
     rt._level1_chain.perfect = True  # would normally trigger boss perfect
     rt._level1_chain.kills = 50
-    rt._level1_chain.elapsed_s = 100.0  # at the perfect trigger threshold
+    rt._level1_chain.elapsed_s = 220.0  # BLOQUE 58.13.3: at the perfect trigger threshold (was 100.0)
     # Spawn the sub-boss manually
     rt._spawn_sub_boss()
     assert rt._sub_boss_alive is True
@@ -72,9 +72,10 @@ def test_boss_trigger_does_not_fire_during_sub_boss_fight():
     )
 
 
-def test_boss_perfect_trigger_at_100s_after_sub_boss_killed():
-    """After the sub-boss is killed, the boss perfect trigger CAN fire
-    at 100s. This validates the new timing.
+def test_boss_perfect_trigger_at_220s_after_sub_boss_killed():
+    """BLOQUE 58.13.3: trigger raised to 220s. After the sub-boss is killed,
+    the boss perfect trigger CAN fire at 220s. This validates the new
+    timing (song midpoint 3:40).
     """
     from src.ui.gameplay_runtime import GameplayRuntime
     rt = GameplayRuntime(transition_to=lambda s: None, is_boss=False, act=1)
@@ -83,7 +84,7 @@ def test_boss_perfect_trigger_at_100s_after_sub_boss_killed():
     rt._level1_chain._sub_boss_pending = False  # sub-boss already killed
     rt._level1_chain.perfect = True
     rt._level1_chain.kills = 50
-    rt._level1_chain.elapsed_s = 100.0
+    rt._level1_chain.elapsed_s = 220.0
     rt._sub_boss_alive = False
     transitions = []
     rt._transition_to = lambda s: transitions.append(s)
@@ -97,11 +98,11 @@ def test_boss_perfect_trigger_at_100s_after_sub_boss_killed():
     )
 
 
-def test_boss_perfect_trigger_at_99s_does_not_fire():
-    """Just before the perfect trigger (99s), no trigger should fire.
-    This validates the boundary.
+def test_boss_perfect_trigger_at_219s_does_not_fire():
+    """BLOQUE 58.13.3: trigger raised to 220s. Just before (219s), no trigger
+    fires; at 220s, perfect fires (when the chain has the conditions met).
     """
     from src.systems.wave_manager import BossTrigger
     bt = BossTrigger()
-    assert bt.evaluate(elapsed_s=99.0, waves_complete=False, perfect=True, kills=10) is None
-    assert bt.evaluate(elapsed_s=100.0, waves_complete=False, perfect=True, kills=10) == "perfect"
+    assert bt.evaluate(elapsed_s=219.0, waves_complete=False, perfect=True, kills=10) is None
+    assert bt.evaluate(elapsed_s=220.0, waves_complete=False, perfect=True, kills=10) == "perfect"

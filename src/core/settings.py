@@ -252,8 +252,12 @@ BOSS_MIN_TRIGGER_S: float = 45.0         # boss won't fire before this (timer ha
 # fires at ~95s) ALWAYS gets a turn. Previously 60s caused the boss to
 # fire on the same frame as the sub-boss resume, killing the dart before
 # the player could see it.
-BOSS_PERFECT_TRIGGER_S: float = 100.0    # perfect-score fast path (after sub-boss)
-BOSS_SAFETY_TRIGGER_S: float = 140.0     # lenient timeout (no score required)
+BOSS_PERFECT_TRIGGER_S: float = 220.0    # BLOQUE 58.13.3: was 100s, raised so
+                                        # GOLIATH fires at song midpoint (3:40)
+BOSS_SAFETY_TRIGGER_S: float = 220.0     # BLOQUE 58.13.3: was 140s, same
+                                        # rationale — sync with perfect trigger
+                                        # so the player always reaches GOLIATH
+                                        # before the song ends (5:30)
 # BLOQUE 58.56: doubled enemy counts and extended duration so the level
 # lasts as long as the gameplay song (5.5 min ≈ 330s).
 LEVEL1_TOTAL_SHIPS: int = 380            # BLOQUE 58.11: 60+80+90+100+50 = 380 ships (was 165)

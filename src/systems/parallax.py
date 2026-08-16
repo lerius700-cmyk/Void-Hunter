@@ -89,16 +89,25 @@ class ParallaxBackground:
         rng_seed: int | None = 42,
         stars_per_layer: int = STARS_PER_LAYER_DEFAULT,
         nebula_count: int = 6,
+        nebula_radius_min: int = 40,
+        nebula_radius_max: int = 80,
         spawn_planets: bool = True,
     ) -> None:
         """BLOQUE 58.12: configurable density for sparse gameplay background.
+
+        BLOQUE 58.13.3: added nebula_radius_min / nebula_radius_max so the
+        gameplay background can have ONE LARGE off-center nebula (instead
+        of 6 small ones). Title screen keeps the dense 6-small default.
 
         Args:
             stars_per_layer: number of stars per parallax layer.
                 Default 12 (sparse, ~80% black). Title screen overrides
                 to 50 for the dense look.
             nebula_count: number of nebula clouds. Default 6 (title). 0
-                for gameplay (user wants pure stars, no nebulas).
+                for gameplay (pure stars). 1 + large radius for a single
+                dramatic off-center cloud.
+            nebula_radius_min: minimum nebula radius. Default 40.
+            nebula_radius_max: maximum nebula radius. Default 80.
             spawn_planets: if False, no planets spawn. Default True (title).
         """
         self._w = width
@@ -112,6 +121,8 @@ class ParallaxBackground:
         self._theme_name: str = "blue_void"
         self._stars_per_layer = stars_per_layer
         self._nebula_count = nebula_count
+        self._nebula_radius_min = nebula_radius_min
+        self._nebula_radius_max = nebula_radius_max
         self._spawn_planets_enabled = spawn_planets
         self._init_stars()
         self._init_nebula()
@@ -207,17 +218,41 @@ class ParallaxBackground:
                 ))
 
     def _init_nebula(self) -> None:
-        """BLOQUE 58.12: configurable nebula count. Default 6 (title), 0 (gameplay)."""
+        """BLOQUE 58.12: configurable nebula count. Default 6 (title), 0 (gameplay).
+
+        BLOQUE 58.13.3: when nebula_count == 1, place the single nebula in
+        the bottom-right quadrant (off-center, away from ship spawn paths
+        and the sub-boss entry point at y=20). It uses nebula_radius_min /
+        nebula_radius_max so the user can request a large dramatic cloud.
+        """
         self._nebula = []
         if self._nebula_count == 0:
             return
         theme = get_theme(self._theme_name)
         nebula_swatches = theme["nebula"]
         for i in range(self._nebula_count):
+            if self._nebula_count == 1:
+                # BLOQUE 58.13.3: single nebula → off-center bottom-right.
+                # Outside the central play column where ships + player move.
+                # Drifts down (vy=8) so it scrolls naturally with parallax.
+                # Initial y is below the visible area; it enters from the
+                # top edge as it drifts down (and wraps when off-bottom).
+                x = self._w * 0.70
+                y = self._h * 0.85
+                radius = self._rng.uniform(
+                    self._nebula_radius_min, self._nebula_radius_max
+                )
+            else:
+                # BLOQUE 58.12: dense mode (title screen) — random scatter
+                x = self._rng.uniform(0, self._w)
+                y = self._rng.uniform(-self._h, self._h * 2)
+                radius = self._rng.uniform(
+                    self._nebula_radius_min, self._nebula_radius_max
+                )
             self._nebula.append(Nebula(
-                x=self._rng.uniform(0, self._w),
-                y=self._rng.uniform(-self._h, self._h * 2),
-                radius=self._rng.uniform(40, 80),
+                x=x,
+                y=y,
+                radius=radius,
                 color=nebula_swatches[i % len(nebula_swatches)],
             ))
 
