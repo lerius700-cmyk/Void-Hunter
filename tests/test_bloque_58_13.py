@@ -143,3 +143,46 @@ def test_attach_orbital_path_attaches_follower():
     assert e.path_follower is None
     attach_orbital_path(e, op, t_offset=0.0)
     assert e.path_follower is not None
+
+
+# ----------------------------------------------------------------------
+# BEZIER_SWEEP pair dance tests (3)
+# ----------------------------------------------------------------------
+def test_bezier_sweep_5_pairs_at_level5():
+    """5 pairs (10 ships) at level 5+."""
+    import random
+    from src.systems.wave_patterns.bezier_sweep import BezierSweepPattern
+    rng = random.Random(42)
+    pattern = BezierSweepPattern()
+    result = pattern.generate(rng, level=5)
+    assert len(result.ships) == 10
+    leader_count = sum(1 for s in result.ships if s.is_leader)
+    assert leader_count == 5
+
+
+def test_bezier_sweep_pairs_share_parallel_pair():
+    """2 ships in a pair share the same parallel_pair but different sides."""
+    import random
+    from src.systems.wave_patterns.bezier_sweep import BezierSweepPattern
+    rng = random.Random(42)
+    pattern = BezierSweepPattern()
+    result = pattern.generate(rng, level=2)
+    for i in range(0, len(result.ships), 2):
+        s1 = result.ships[i]
+        s2 = result.ships[i + 1]
+        assert s1.extra["parallel_pair"] is s2.extra["parallel_pair"]
+        assert {s1.extra["side"], s2.extra["side"]} == {"top", "bot"}
+
+
+def test_bezier_sweep_pair_color_variation():
+    """Pair colors are close but distinct."""
+    import random
+    from src.systems.wave_patterns.bezier_sweep import BezierSweepPattern
+    rng = random.Random(42)
+    pattern = BezierSweepPattern()
+    result = pattern.generate(rng, level=2)
+    s1 = result.ships[0]
+    s2 = result.ships[1]
+    assert s1.color is not None
+    assert s2.color is not None
+    assert s1.color != s2.color

@@ -33,31 +33,31 @@ class BezierSweepPattern(WavePattern):
         level: int,
         enemy_kind: str = "SCOUT",
     ) -> WavePatternResult:
-        # 1. Choose entry side: top, left, or right (not bottom - we want
-        #    ships to come INTO the playfield, not exit at start)
+        """BLOQUE 58.13: Pair Dance.
+
+        5 PAIRS of ships on 2 parallel paths (10 ships at level 5+).
+        Each pair shares one ParallelPathPair but takes different sides.
+        The 3-segment compound bezier from BLOQUE 58.12 stays as the
+        centerline; both parallel paths derive from it.
+        """
+        from src.movement.parallel_path import ParallelPathPair
+
+        # 1. Choose entry side: top, left, or right
         entry_side = rng.choice(("top", "left", "right"))
 
-        # 2. BLOQUE 58.12: 3-Segment compound bezier (Star Fox 64 style).
-        # Segment 1: short entry bezier (1.5s) — ship swoops in
-        # Segment 2: main S-curve (3.5s) — ship does the "dancing" sweep
-        # Segment 3: exit bezier (1.0s) — ship exits gracefully
-        # Total path time: 6 seconds, split into 3 segments.
+        # 2. Build the 3-segment compound bezier (BLOQUE 58.12) — the
+        #    centerline for the pair.
         p0, p1, p2, p3 = self._wavy_control_points(rng, entry_side)
-        # Generate exit endpoint and segment 2 (main) + segment 3 (exit)
         if entry_side == "left":
-            # Ships enter from left, exit to right
             entry_p0 = (-20, rng.uniform(INTERNAL_H * 0.2, INTERNAL_H * 0.4))
             entry_p3 = (INTERNAL_W * 0.2, INTERNAL_H * 0.4)
             entry_p1 = (INTERNAL_W * 0.05, entry_p0[1] + 30)
             entry_p2 = (INTERNAL_W * 0.10, entry_p3[1] - 30)
-            # Main sweep: p0..p3 (already wavy)
-            # Exit: from p3 to far right
             exit_p0 = p3
             exit_p3 = (INTERNAL_W + 20, p3[1] + rng.uniform(-40, 40))
             exit_p1 = (INTERNAL_W + 5, exit_p0[1] + 10)
             exit_p2 = (INTERNAL_W + 10, exit_p3[1] - 10)
         elif entry_side == "right":
-            # Ships enter from right, exit to left
             entry_p0 = (INTERNAL_W + 20, rng.uniform(INTERNAL_H * 0.2, INTERNAL_H * 0.4))
             entry_p3 = (INTERNAL_W * 0.8, INTERNAL_H * 0.4)
             entry_p1 = (INTERNAL_W * 0.95, entry_p0[1] + 30)
@@ -76,12 +76,6 @@ class BezierSweepPattern(WavePattern):
             exit_p1 = (p3[0], INTERNAL_H * 0.85)
             exit_p2 = (exit_p3[0], INTERNAL_H * 0.95)
 
-        # 3. Ship count scales with level (4-8)
-        ship_count = min(8, 4 + level // 3)
-
-        # 4. Build the 3-segment path (Star Fox 64 choreography).
-        # Each ship shares the same path but with a t_offset so they
-        # form a moving line.
         segments = [
             (entry_p0, entry_p1, entry_p2, entry_p3),
             (p0, p1, p2, p3),
@@ -89,34 +83,43 @@ class BezierSweepPattern(WavePattern):
         ]
         segment_durations = [1.5, 3.5, 1.0]  # total 6s
 
+        # 3. Build the ParallelPathPair
+        pair = ParallelPathPair(segments, segment_durations, gap_px=14)
+        total_duration = sum(segment_durations)
+
+        # 4. Ship count: 3 pairs (6) at low levels, 5 pairs (10) at level 5+
+        num_pairs = min(5, 3 + (level - 1) // 2)
+        ship_count = num_pairs * 2
+
+        # 5. Spawn one ship per side per pair, with phase offset per pair
         ships: list[SpawnedShip] = []
         base_t = rng.uniform(0.0, 0.05)
-        for slot in range(ship_count):
-            t_offset = base_t + slot * 0.08   # 0.08s between ships
-            # Each ship starts at the entry bezier position at t=0
-            x, y = entry_p0
-            color = self._slot_color(rng, slot, ship_count)
-            ships.append(SpawnedShip(
-                spawn_x=x,
-                spawn_y=y,
-                t_offset=t_offset,
-                slot=slot,
-                color=color,
-                is_leader=(slot == 0),  # BLOQUE 58.10: leader (front of sweep)
-                extra={
-                    # BLOQUE 58.12: multi-segment path
-                    "segments": segments,
-                    "segment_durations": segment_durations,
-                    "duration_s": sum(segment_durations),
-                    "curve_id": rng.randint(0, 999_999),
-                },
-            ))
+        for pair_idx in range(num_pairs):
+            t_offset = base_t + pair_idx * 0.12
+            base_hue = rng.random() * 360
+            top_color = self._hue_to_rgb(base_hue, sat=0.85, val=0.95)
+            bot_color = self._hue_to_rgb(base_hue + 15, sat=0.85, val=0.90)
+            spawn_x, spawn_y = entry_p0
+            for side, color in (("top", top_color), ("bot", bot_color)):
+                is_leader = (side == "top")
+                ships.append(SpawnedShip(
+                    spawn_x=spawn_x,
+                    spawn_y=spawn_y,
+                    t_offset=t_offset,
+                    slot=pair_idx * 2 + (0 if side == "top" else 1),
+                    color=color,
+                    is_leader=is_leader,
+                    extra={
+                        "parallel_pair": pair,
+                        "side": side,
+                    },
+                ))
 
         return WavePatternResult(
             ships=ships,
             kind=self.kind,
             difficulty=self.difficulty,
-            duration_s=ships[0].extra["duration_s"] if ships else 6.0,
+            duration_s=total_duration,
             seed_used=rng.randint(0, 2**31 - 1),
         )
 
@@ -226,3 +229,31 @@ class BezierSweepPattern(WavePattern):
             rp, gp, bp = c, 0, x
         m = v - c
         return (int((rp + m) * 255), int((gp + m) * 255), int((bp + m) * 255))
+
+    # ------------------------------------------------------------------
+    # BLOQUE 58.13: HSV → RGB for pair colors
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _hue_to_rgb(hue: float, sat: float = 0.85, val: float = 0.95) -> tuple[int, int, int]:
+        """HSV to RGB. hue in [0, 360), sat/val in [0, 1]."""
+        h = hue / 60.0
+        c = val * sat
+        x = c * (1 - abs(h % 2 - 1))
+        m = val - c
+        if h < 1:
+            rp, gp, bp = c, x, 0
+        elif h < 2:
+            rp, gp, bp = x, c, 0
+        elif h < 3:
+            rp, gp, bp = 0, c, x
+        elif h < 4:
+            rp, gp, bp = 0, x, c
+        elif h < 5:
+            rp, gp, bp = x, 0, c
+        else:
+            rp, gp, bp = c, 0, x
+        return (
+            int((rp + m) * 255),
+            int((gp + m) * 255),
+            int((bp + m) * 255),
+        )
