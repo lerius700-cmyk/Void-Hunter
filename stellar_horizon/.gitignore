@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+build/
+dist/
+*.egg-info/
+releases/
+tools/playtest_out/
+assets/sprites/.wip/
