@@ -94,12 +94,16 @@ class TestLeaderMarking:
         for s in r.ships[1:]:
             assert s.is_leader is False
 
-    def test_bezier_sweep_marks_slot_0(self):
+    def test_bezier_sweep_marks_one_leader_per_pair(self):
+        """BLOQUE 58.13: each pair has 1 leader (the top ship)."""
         rng = random.Random(42)
-        r = BezierSweepPattern().generate(rng, level=1)
-        assert r.ships[0].is_leader is True
-        for s in r.ships[1:]:
-            assert s.is_leader is False
+        r = BezierSweepPattern().generate(rng, level=3)
+        # Ships [0,1] = pair 0, [2,3] = pair 1, [4,5] = pair 2
+        for i in range(0, len(r.ships), 2):
+            s_top = r.ships[i]
+            s_bot = r.ships[i + 1]
+            assert s_top.is_leader is True
+            assert s_bot.is_leader is False
 
     def test_dice_marks_center(self):
         rng = random.Random(42)

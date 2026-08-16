@@ -53,32 +53,38 @@ class TestBezierSweep:
         r2 = BezierSweepPattern().generate(rng2, level=10)
         assert len(r2.ships) >= len(r1.ships)
 
-    def test_capped_at_8_ships(self):
+    def test_has_5_pairs_at_level_5(self):
+        """BLOQUE 58.13: level 5+ produces 10 ships (5 pairs)."""
         from src.systems.wave_patterns import BezierSweepPattern
         rng = random.Random(42)
-        result = BezierSweepPattern().generate(rng, level=100)
-        assert len(result.ships) <= 8
+        result = BezierSweepPattern().generate(rng, level=5)
+        assert len(result.ships) == 10
 
-    def test_has_multi_segment_path(self):
-        """BLOQUE 58.12: BEZIER_SWEEP now uses a 3-segment compound bezier
-        (entry + main sweep + exit) for Star Fox 64 style choreography.
-        """
+    def test_has_parallel_pair(self):
+        """BLOQUE 58.13: each ship has parallel_pair in extra (not segments)."""
         from src.systems.wave_patterns import BezierSweepPattern
         rng = random.Random(42)
         result = BezierSweepPattern().generate(rng, level=3)
-        ship = result.ships[0]
-        assert "segments" in ship.extra
-        assert "segment_durations" in ship.extra
-        # 3 segments (entry, main, exit)
-        assert len(ship.extra["segments"]) == 3
-        assert len(ship.extra["segment_durations"]) == 3
+        for ship in result.ships:
+            assert "parallel_pair" in ship.extra
+            assert "side" in ship.extra
+            assert "segments" not in ship.extra
 
-    def test_ships_have_t_offset_stagger(self):
+    def test_pairs_share_t_offset(self):
+        """BLOQUE 58.13: consecutive ships (a pair) share t_offset;
+        pair index increments by 0.12s between pairs."""
         from src.systems.wave_patterns import BezierSweepPattern
         rng = random.Random(42)
         result = BezierSweepPattern().generate(rng, level=3)
-        for i in range(1, len(result.ships)):
-            assert result.ships[i].t_offset > result.ships[i - 1].t_offset
+        # Ships [0,1] = pair 0, [2,3] = pair 1, [4,5] = pair 2
+        # Within a pair: same t_offset
+        for i in range(0, len(result.ships), 2):
+            assert result.ships[i].t_offset == pytest.approx(
+                result.ships[i + 1].t_offset, abs=0.001
+            )
+        # Between pairs: later pair starts later
+        if len(result.ships) >= 4:
+            assert result.ships[2].t_offset > result.ships[0].t_offset
 
     def test_deterministic_same_seed(self):
         from src.systems.wave_patterns import BezierSweepPattern
@@ -98,19 +104,22 @@ class TestBezierSweep:
             assert len(s.color) == 3
 
     def test_entry_off_screen(self):
-        """BLOQUE 58.12: the first segment of the multi-segment path
-        should start off-screen (P0 of segment 0)."""
+        """BLOQUE 58.13: the parallel pair path starts off-screen
+        (first point of the top path's first segment)."""
         from src.systems.wave_patterns import BezierSweepPattern
         from src.core.settings import INTERNAL_W, INTERNAL_H
+        from src.movement.parallel_path import ParallelPathPair
         rng = random.Random(42)
         for _ in range(20):
-            result = BezierSweepPattern().generate(rng, level=3)
-            seg0_p0 = result.ships[0].extra["segments"][0][0]
-            # segment 0's P0 should be off-screen
+            result = BezierSweepPattern().generate(rng, level=2)
+            pair = result.ships[0].extra["parallel_pair"]
+            assert isinstance(pair, ParallelPathPair)
+            p0 = pair.get_top().position_at(0.0)
+            # first point of the top path should be off-screen
             assert (
-                seg0_p0[0] < 0 or seg0_p0[0] > INTERNAL_W
-                or seg0_p0[1] < 0 or seg0_p0[1] > INTERNAL_H
-            ), f"Entry not off-screen: {seg0_p0}"
+                p0.x < 0 or p0.x > INTERNAL_W
+                or p0.y < 0 or p0.y > INTERNAL_H
+            ), f"Entry not off-screen: ({p0.x}, {p0.y})"
 
     def test_duration_positive(self):
         from src.systems.wave_patterns import BezierSweepPattern
