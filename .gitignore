@@ -59,3 +59,10 @@ archive/
 
 # Release artifacts (generated on demand, not part of source)
 releases/*.zip
+
+.superpowers/
+
+# Generated sprite intermediates (1024x1024 source images before
+# post-processing into the final 16-bit pixel-art PNGs). The final
+# sprites in stellar_horizon/assets/sprites/*.png ARE tracked.
+stellar_horizon/assets/sprites/_gen_*.png

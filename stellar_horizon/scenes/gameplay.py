@@ -42,6 +42,11 @@ class GameplayScene(Scene):
         self.score: int = 0
         self._next: Scene | None = None
         self._keys = None
+        # Sprite cache (loaded once, reused for every draw).
+        # Keyed by logical name; the dict is filled in on_enter() so we
+        # don't depend on a display being available at construction time
+        # (tests construct the scene headless).
+        self._sprites: dict = {}
 
     def on_enter(self) -> None:
         screen_rect = pygame.Rect(0, 0, INTERNAL_W, INTERNAL_H)
@@ -53,6 +58,25 @@ class GameplayScene(Scene):
         self.hud.set_player(self.player)
         self.hud.set_wave(1, len(self.wave_manager.waves))
         self.hud.set_enemies_remaining(0, 0)
+        # Load sprites — done here (not in __init__) so headless tests
+        # that construct the scene without a display don't need files.
+        self._load_sprites()
+
+    def _load_sprites(self) -> None:
+        """Load 16-bit pixel-art sprites from assets/sprites/."""
+        sprite_dir = self.assets_dir / "sprites"
+        names = ["player", "scout", "cruiser", "heavy", "boss",
+                 "player_bullet", "enemy_bullet"]
+        self._sprites.clear()
+        for name in names:
+            path = sprite_dir / f"{name}.png"
+            try:
+                img = pygame.image.load(str(path)).convert_alpha()
+                self._sprites[name] = img
+            except (pygame.error, FileNotFoundError):
+                # Leave the slot missing; draw code will fall back to a
+                # simple shape so the game still runs if a sprite is gone.
+                self._sprites[name] = None
 
     def on_exit(self) -> None:
         self.midi_player.fadeout(400)
@@ -60,14 +84,13 @@ class GameplayScene(Scene):
     def update(self, dt: float, events: list) -> None:
         self._keys = pygame.key.get_pressed()
         self.player.firing = self._keys[pygame.K_SPACE]
-        # Player
-        new_player_bullets = []
+        # Player — pool is fixed-size; do NOT filter it (player.update
+        # spawns by finding a dead slot, and filtering would shrink
+        # the pool until no dead slot exists, blocking new shots).
         self.player.update(dt, self._keys, self.player_bullets)
         for b in self.player_bullets:
-            b.update(dt)
             if b.alive:
-                new_player_bullets.append(b)
-        self.player_bullets = new_player_bullets
+                b.update(dt)
         # Wave manager + enemies
         if self.wave_manager and not self.boss_active:
             self.wave_manager.update(dt)
@@ -126,18 +149,14 @@ class GameplayScene(Scene):
             if self.boss.alive and self.boss.hitbox().colliderect(self.player.hitbox()):
                 self.player.take_hit()
                 self.shake.add_trauma(0.30)
-        # Enemy bullets vs player
-        new_enemy_bullets = []
+        # Enemy bullets vs player — pool is fixed-size; do NOT filter.
         for b in self.enemy_bullets:
-            b.update(dt)
             if b.alive:
-                if b.hitbox().colliderect(self.player.hitbox()):
+                b.update(dt)
+                if b.alive and b.hitbox().colliderect(self.player.hitbox()):
                     self.player.take_hit()
                     b.alive = False
                     self.shake.add_trauma(0.15)
-                else:
-                    new_enemy_bullets.append(b)
-        self.enemy_bullets = new_enemy_bullets
         self.fx.update(dt)
         self.shake.update(dt)
         self.background.update(dt, scroll_speed=0.0)
@@ -170,19 +189,17 @@ class GameplayScene(Scene):
         if self.wave_manager:
             for e in self.wave_manager.spawned_enemies:
                 if e.alive:
-                    self._draw_placeholder_enemy(surface, e, ox, oy)
+                    self._draw_enemy_sprite(surface, e, ox, oy)
         if self.boss_active and self.boss and self.boss.alive:
-            self._draw_placeholder_boss(surface, self.boss, ox, oy)
+            self._draw_boss_sprite(surface, self.boss, ox, oy)
         if self.player.alive:
-            self._draw_placeholder_player(surface, self.player, ox, oy)
+            self._draw_player_sprite(surface, self.player, ox, oy)
         for b in self.player_bullets:
             if b.alive:
-                pygame.draw.rect(surface, (255, 240, 100),
-                                 (int(b.x - 6 + ox), int(b.y - 2 + oy), 12, 4))
+                self._draw_player_bullet_sprite(surface, b, ox, oy)
         for b in self.enemy_bullets:
             if b.alive:
-                pygame.draw.circle(surface, (240, 80, 100),
-                                   (int(b.x + ox), int(b.y + oy)), 4)
+                self._draw_enemy_bullet_sprite(surface, b, ox, oy)
         self.fx.draw(surface)
         self.hud.draw(surface)
 
@@ -194,31 +211,78 @@ class GameplayScene(Scene):
         self.boss_active = True
         self.hud.set_boss(self.boss)
 
-    def _draw_placeholder_player(self, surface, p, ox, oy) -> None:
-        cx, cy = int(p.x + ox), int(p.y + oy)
-        pygame.draw.polygon(surface, (90, 220, 120),
-                            [(cx - 6, cy - 5), (cx - 6, cy + 5), (cx + 6, cy)])
+    # ------------------------------------------------------------------
+    # Sprite blit helpers — each picks the right sprite from
+    # self._sprites and centers it on the entity's position. If a
+    # sprite failed to load, the helper falls back to a flat color shape
+    # so the game still runs.
+    # ------------------------------------------------------------------
 
-    def _draw_placeholder_enemy(self, surface, e, ox, oy) -> None:
-        cx, cy = int(e.x + ox), int(e.y + oy)
-        if e.kind == "scout":
-            color = (220, 60, 60)
-        elif e.kind == "cruiser":
-            color = (240, 130, 40)
-        else:
-            color = (180, 180, 200)
+    def _blit_centered(self, surface, sprite, cx: float, cy: float) -> None:
+        if sprite is None:
+            return
+        rect = sprite.get_rect(center=(int(cx), int(cy)))
+        surface.blit(sprite, rect)
+
+    def _draw_player_sprite(self, surface, p, ox, oy) -> None:
+        sprite = self._sprites.get("player")
+        if sprite is None:
+            cx, cy = int(p.x + ox), int(p.y + oy)
+            pygame.draw.polygon(surface, (90, 220, 120),
+                                [(cx - 6, cy - 5), (cx - 6, cy + 5), (cx + 6, cy)])
+            return
+        self._blit_centered(surface, sprite, p.x + ox, p.y + oy)
+
+    def _draw_enemy_sprite(self, surface, e, ox, oy) -> None:
+        sprite = self._sprites.get(e.kind)  # scout / cruiser / heavy
+        if sprite is None:
+            cx, cy = int(e.x + ox), int(e.y + oy)
+            color = (220, 60, 60) if e.kind == "scout" else \
+                    (240, 130, 40) if e.kind == "cruiser" else (180, 180, 200)
+            if e.telegraphing:
+                color = (255, 240, 100)
+            size = 10 if e.kind != "heavy" else 14
+            pygame.draw.rect(surface, color, (cx - size // 2, cy - size // 2, size, size))
+            return
+        self._blit_centered(surface, sprite, e.x + ox, e.y + oy)
+        # Telegraph flash: a soft yellow halo behind the sprite when
+        # the enemy is about to fire. Drawn AFTER the sprite so the
+        # halo frames the silhouette.
         if e.telegraphing:
-            color = (255, 240, 100)
-        size = 10 if e.kind != "heavy" else 14
-        pygame.draw.rect(surface, color, (cx - size // 2, cy - size // 2, size, size))
+            cx, cy = int(e.x + ox), int(e.y + oy)
+            radius = max(8, sprite.get_width() // 2 + 3)
+            halo = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+            pygame.draw.circle(halo, (255, 240, 100, 70), (radius, radius), radius)
+            surface.blit(halo, (cx - radius, cy - radius))
 
-    def _draw_placeholder_boss(self, surface, b, ox, oy) -> None:
-        cx, cy = int(b.x + ox), int(b.y + oy)
-        size = 48
-        pts = []
-        import math
-        for i in range(6):
-            a = 2 * math.pi * i / 6
-            pts.append((cx + int(math.cos(a) * size / 2), cy + int(math.sin(a) * size / 2)))
-        pygame.draw.polygon(surface, (160, 140, 110), pts)
-        pygame.draw.polygon(surface, (220, 100, 60), pts, 2)
+    def _draw_boss_sprite(self, surface, b, ox, oy) -> None:
+        sprite = self._sprites.get("boss")
+        if sprite is None:
+            cx, cy = int(b.x + ox), int(b.y + oy)
+            import math
+            pts = []
+            for i in range(6):
+                a = 2 * math.pi * i / 6
+                pts.append((cx + int(math.cos(a) * 24), cy + int(math.sin(a) * 24)))
+            pygame.draw.polygon(surface, (160, 140, 110), pts)
+            pygame.draw.polygon(surface, (220, 100, 60), pts, 2)
+            return
+        self._blit_centered(surface, sprite, b.x + ox, b.y + oy)
+
+    def _draw_player_bullet_sprite(self, surface, b, ox, oy) -> None:
+        sprite = self._sprites.get("player_bullet")
+        if sprite is None:
+            pygame.draw.rect(surface, (255, 240, 100),
+                             (int(b.x - 6 + ox), int(b.y - 2 + oy), 12, 4))
+            return
+        rect = sprite.get_rect(center=(int(b.x + ox), int(b.y + oy)))
+        surface.blit(sprite, rect)
+
+    def _draw_enemy_bullet_sprite(self, surface, b, ox, oy) -> None:
+        sprite = self._sprites.get("enemy_bullet")
+        if sprite is None:
+            pygame.draw.circle(surface, (240, 80, 100),
+                               (int(b.x + ox), int(b.y + oy)), 4)
+            return
+        rect = sprite.get_rect(center=(int(b.x + ox), int(b.y + oy)))
+        surface.blit(sprite, rect)
