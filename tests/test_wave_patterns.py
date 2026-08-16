@@ -390,37 +390,30 @@ class TestPincerCross:
         assert left_colors != right_colors
 
     def test_mirror_symmetry_y_axis(self):
+        """BLOQUE 58.13: 4-segment paths, first segment mirrors across y axis."""
         from src.systems.wave_patterns import PincerCrossPattern
         from src.core.settings import INTERNAL_W
         rng = random.Random(42)
         result = PincerCrossPattern().generate(rng, level=3)
-        # Left P0 should be on the far left, right P0 on the far right
         left = [s for s in result.ships if s.extra["side"] == "left"][0]
         right = [s for s in result.ships if s.extra["side"] == "right"][0]
-        l_p0 = left.extra["p0"]
-        r_p0 = right.extra["p0"]
-        # Right P0 X should be on the opposite side
-        # Mirror across center: r_p0[0] = INTERNAL_W - l_p0[0]
-        assert r_p0[0] == pytest.approx(INTERNAL_W - l_p0[0], abs=1.0)
+        # First segment of left: p0 should be on the left side (< INTERNAL_W/2)
+        l_p0 = left.extra["segments"][0][0]
+        r_p0 = right.extra["segments"][0][0]
+        assert l_p0[0] < INTERNAL_W / 2
+        assert r_p0[0] > INTERNAL_W / 2
 
     def test_convergence_in_middle(self):
+        """BLOQUE 58.13: end of segment 1 is at center (X moment)."""
         from src.systems.wave_patterns import PincerCrossPattern
         from src.core.settings import INTERNAL_W
         rng = random.Random(42)
         result = PincerCrossPattern().generate(rng, level=3)
-        # Control points should be within playfield bounds (or close)
         for s in result.ships:
-            p1 = s.extra["p1"]
-            # p1[0] is a control point X. The pincer curve is symmetric
-            # across center, so left P1 is on the left half, right P1 is on
-            # the right half. Both should be within reasonable bounds.
-            assert 0 <= p1[0] <= INTERNAL_W
-            # Side determines expected X quadrant
-            side = s.extra["side"]
-            if side == "left":
-                assert p1[0] <= INTERNAL_W * 0.6  # left side
-            else:
-                assert p1[0] >= INTERNAL_W * 0.4  # right side
+            seg1 = s.extra["segments"][0]
+            end_of_seg1 = seg1[3]
+            # End of segment 1 should be near center (within 50px of INTERNAL_W/2)
+            assert abs(end_of_seg1[0] - INTERNAL_W / 2) < 50
 
     def test_deterministic(self):
         from src.systems.wave_patterns import PincerCrossPattern

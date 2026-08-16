@@ -281,3 +281,39 @@ def test_leader_chain_inter_chain_offset():
     assert chain_b_leader.extra["side"] == "bot"
     diff = chain_b_leader.t_offset - chain_a_leader.t_offset
     assert abs(diff - 0.04) < 0.01 or abs(diff - (-0.04)) < 0.01
+
+
+# ----------------------------------------------------------------------
+# PINCER_CROSS X-cross tests (2)
+# ----------------------------------------------------------------------
+def test_pincer_cross_4_segments_per_group():
+    """Each ship has 4-segment path (entry + cross + cruise + exit)."""
+    import random
+    from src.systems.wave_patterns.pincer_cross import PincerCrossPattern
+    rng = random.Random(42)
+    pattern = PincerCrossPattern()
+    result = pattern.generate(rng, level=3)
+    for s in result.ships:
+        assert "segments" in s.extra
+        segments = s.extra["segments"]
+        assert len(segments) == 4, f"expected 4 segments, got {len(segments)}"
+        durs = s.extra["segment_durations"]
+        assert sum(durs) == pytest.approx(4.8, abs=0.01)
+
+
+def test_pincer_cross_groups_meet_at_t1_5():
+    """Both groups reach center x at end of segment 1 (X moment)."""
+    import random
+    from src.core.settings import INTERNAL_W
+    from src.systems.wave_patterns.pincer_cross import PincerCrossPattern
+    rng = random.Random(42)
+    pattern = PincerCrossPattern()
+    result = pattern.generate(rng, level=3)
+    left_ship = next(s for s in result.ships if s.extra.get("side") == "left")
+    right_ship = next(s for s in result.ships if s.extra.get("side") == "right")
+    left_seg1 = left_ship.extra["segments"][0]
+    left_p3 = left_seg1[3]
+    right_seg1 = right_ship.extra["segments"][0]
+    right_p3 = right_seg1[3]
+    assert abs(left_p3[0] - INTERNAL_W / 2) < 50, f"left ship x={left_p3[0]}"
+    assert abs(right_p3[0] - INTERNAL_W / 2) < 50, f"right ship x={right_p3[0]}"

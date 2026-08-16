@@ -32,66 +32,103 @@ class PincerCrossPattern(WavePattern):
         level: int,
         enemy_kind: str = "SCOUT",
     ) -> WavePatternResult:
-        # BLOQUE 58.11: 5-8 ships per side (10-16 total) for denser pincer.
-        per_side = min(8, 5 + level // 3)
+        """BLOQUE 58.13: X-Crossing Compound.
 
-        # Convergence point: somewhere in the middle 60% of the playfield
-        converge_x = INTERNAL_W * rng.uniform(0.3, 0.7)
-        converge_y = INTERNAL_H * rng.uniform(0.3, 0.6)
+        Two groups attack from opposite sides, meet at center in a
+        perfect X, then escape on the SWAPPED sides.
 
-        # Left group: enter from far left, sweep right, then continue past
-        # converge to far right
-        # Mirror: enter from far right, sweep left, then continue past to far left
-        # Control points: each side has 2 control points (P1, P2) that
-        # shape the curve. We make them symmetric across the y axis.
+        4 segments per ship:
+          1 (1.5s): entry — from edge to center
+          2 (0.8s): CROSS — center to OPPOSITE side
+          3 (1.0s): cruise — continue along opposite side
+          4 (1.5s): exit — off the far edge
+        """
+        per_side = min(7, 5 + level // 4)
 
-        # BLOQUE 58.11: bigger spread for more dramatic curve.
-        spread = 100.0 + rng.uniform(0, 60)
+        center_x = INTERNAL_W / 2
+        center_y = INTERNAL_H * rng.uniform(0.3, 0.5)
+        spread = 80.0 + rng.uniform(0, 40)
 
-        # Left side curve
-        l_p0 = (-20, rng.uniform(40, INTERNAL_H * 0.4))
-        l_p3 = (INTERNAL_W + 20, rng.uniform(INTERNAL_H * 0.6, INTERNAL_H - 40))
-        l_p1 = (converge_x - spread, converge_y - spread * 0.5)
-        l_p2 = (converge_x - spread * 0.3, converge_y + spread * 0.3)
+        s1_dur, s2_dur, s3_dur, s4_dur = 1.5, 0.8, 1.0, 1.5
+        total_dur = s1_dur + s2_dur + s3_dur + s4_dur  # 4.8s
 
-        # Right side curve (mirror of left)
-        r_p0 = (INTERNAL_W + 20, l_p0[1])
-        r_p3 = (-20, l_p3[1])
-        r_p1 = (converge_x + spread, l_p1[1])
-        r_p2 = (converge_x + spread * 0.3, l_p2[1])
+        l_s1 = (
+            (-20, center_y - spread * 0.3),
+            (center_x * 0.3, center_y - spread * 0.2),
+            (center_x * 0.7, center_y + spread * 0.1),
+            (center_x, center_y),
+        )
+        l_s2 = (
+            (center_x, center_y),
+            (center_x + spread * 0.3, center_y - spread * 0.2),
+            (INTERNAL_W - center_x * 0.3, center_y + spread * 0.2),
+            (INTERNAL_W + 20, center_y + spread * 0.3),
+        )
+        l_s3 = (
+            (INTERNAL_W + 20, center_y + spread * 0.3),
+            (INTERNAL_W - 30, center_y + spread * 0.4),
+            (INTERNAL_W - 60, center_y + spread * 0.5),
+            (INTERNAL_W + 20, center_y + spread * 0.6),
+        )
+        l_s4 = (
+            (INTERNAL_W + 20, center_y + spread * 0.6),
+            (INTERNAL_W + 30, center_y + spread * 0.7),
+            (INTERNAL_W + 40, center_y + spread * 0.8),
+            (INTERNAL_W + 60, center_y + spread * 0.9),
+        )
 
-        # Color: each side has its own color (red left, cyan right)
-        left_color = (255, 100, 100)   # red-ish
-        right_color = (100, 220, 255)  # cyan-ish
+        r_s1 = (
+            (INTERNAL_W + 20, center_y + spread * 0.3),
+            (INTERNAL_W - center_x * 0.3, center_y + spread * 0.2),
+            (center_x * 0.7, center_y - spread * 0.1),
+            (center_x, center_y),
+        )
+        r_s2 = (
+            (center_x, center_y),
+            (center_x - spread * 0.3, center_y + spread * 0.2),
+            (center_x * 0.3, center_y - spread * 0.2),
+            (-20, center_y - spread * 0.3),
+        )
+        r_s3 = (
+            (-20, center_y - spread * 0.3),
+            (30, center_y - spread * 0.4),
+            (60, center_y - spread * 0.5),
+            (-20, center_y - spread * 0.6),
+        )
+        r_s4 = (
+            (-20, center_y - spread * 0.6),
+            (-30, center_y - spread * 0.7),
+            (-40, center_y - spread * 0.8),
+            (-60, center_y - spread * 0.9),
+        )
+
+        left_color = (255, 100, 100)
+        right_color = (100, 220, 255)
 
         ships: list[SpawnedShip] = []
-        # Left group
         for slot in range(per_side):
-            # Stagger so they don't all enter at the same time
             t_offset = slot * 0.04
-            x, y = self._bezier_point(0.0, l_p0, l_p1, l_p2, l_p3)
             ships.append(SpawnedShip(
-                spawn_x=x, spawn_y=y,
+                spawn_x=l_s1[0][0], spawn_y=l_s1[0][1],
                 t_offset=t_offset, slot=slot, color=left_color,
-                is_leader=(slot == 0),  # BLOQUE 58.10: front of pincer
+                is_leader=(slot == 0),
                 extra={
-                    "p0": l_p0, "p1": l_p1, "p2": l_p2, "p3": l_p3,
+                    "segments": [l_s1, l_s2, l_s3, l_s4],
+                    "segment_durations": [s1_dur, s2_dur, s3_dur, s4_dur],
                     "side": "left", "side_idx": slot,
-                    "duration_s": 6.0 + rng.uniform(-0.5, 1.0),
+                    "duration_s": total_dur,
                 },
             ))
-        # Right group
-        for slot in range(per_side):
-            t_offset = slot * 0.04
-            x, y = self._bezier_point(0.0, r_p0, r_p1, r_p2, r_p3)
             ships.append(SpawnedShip(
-                spawn_x=x, spawn_y=y,
-                t_offset=t_offset, slot=slot, color=right_color,
-                is_leader=(slot == 0),  # BLOQUE 58.10: front of pincer
+                spawn_x=r_s1[0][0], spawn_y=r_s1[0][1],
+                t_offset=t_offset,
+                slot=per_side + slot, color=right_color,
+                is_leader=(slot == 0),
                 extra={
-                    "p0": r_p0, "p1": r_p1, "p2": r_p2, "p3": r_p3,
+                    "segments": [r_s1, r_s2, r_s3, r_s4],
+                    "segment_durations": [s1_dur, s2_dur, s3_dur, s4_dur],
                     "side": "right", "side_idx": slot,
-                    "duration_s": 6.0 + rng.uniform(-0.5, 1.0),
+                    "duration_s": total_dur,
                 },
             ))
 
@@ -99,7 +136,7 @@ class PincerCrossPattern(WavePattern):
             ships=ships,
             kind=self.kind,
             difficulty=self.difficulty,
-            duration_s=ships[0].extra["duration_s"],
+            duration_s=total_dur,
             seed_used=rng.randint(0, 2**31 - 1),
         )
 
