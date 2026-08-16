@@ -35,15 +35,18 @@ class LeaderFollowerChainPattern(WavePattern):
         level: int,
         enemy_kind: str = "SCOUT",
     ) -> WavePatternResult:
-        # 1. Generate leader's bezier control points
-        # The leader enters from one side and curves through the playfield.
-        # Frequency parameter: how curvy the path is. The user clarified
-        # "serpentine" referred to frequency, not amplitude. We control
-        # frequency by varying the control point spread.
-        frequency = 0.4 + (level * 0.05)  # 0.4 (calm) to ~1.4 (serpentine)
-        amplitude = 60.0 + rng.uniform(-15, 25)  # px swing
+        """BLOQUE 58.13: 2 Parallel Snake Chains.
 
-        # Entry from left or right
+        2 INDEPENDENT chains on a single ParallelPathPair. Each chain:
+        1 leader + 4 followers. The leader traces a sharp bezier curve
+        (frequency 0.7-1.1, was 0.4-0.7), and followers copy the
+        leader's recent positions (history-queue follow).
+        """
+        from src.movement.parallel_path import ParallelPathPair
+
+        frequency = 0.7 + (level * 0.05)
+        amplitude = 60.0 + rng.uniform(-15, 25)
+
         if rng.random() < 0.5:
             p0 = (-20, rng.uniform(60, INTERNAL_H * 0.4))
             p3 = (INTERNAL_W + 20, rng.uniform(INTERNAL_H * 0.6, INTERNAL_H - 60))
@@ -51,50 +54,53 @@ class LeaderFollowerChainPattern(WavePattern):
             p0 = (INTERNAL_W + 20, rng.uniform(60, INTERNAL_H * 0.4))
             p3 = (-20, rng.uniform(INTERNAL_H * 0.6, INTERNAL_H - 60))
 
-        # Control points create the curve. Frequency controls how much
-        # the curve oscillates in the middle.
         cx1 = INTERNAL_W * 0.3
         cx2 = INTERNAL_W * 0.7
         cy_center = INTERNAL_H / 2
-        # Higher frequency = more swing in control points
         p1 = (cx1, cy_center - amplitude * frequency)
         p2 = (cx2, cy_center + amplitude * frequency)
 
-        # 2. BLOQUE 58.11: bigger chain. leader + 4-7 followers.
-        ship_count = min(8, 5 + level // 4)
+        segments = [(p0, p1, p2, p3)]
+        pair = ParallelPathPair(segments, [6.0], gap_px=14)
+        duration_s = 6.0
 
-        # 3. BLOQUE 58.11: tighter history for a smoother, more graceful chain.
-        # Each follower's t_offset is N frames back in the history queue.
-        delay_per_follower = 0.08  # 0.08s = ~5 frames at 60fps (was 0.10s)
+        chain_count = 2
+        followers_per_chain = 4
+        delay_per_follower = 0.06
+        inter_chain_offset = 0.04
 
         base_color = self._random_color(rng)
         ships: list[SpawnedShip] = []
-        for slot in range(ship_count):
-            t_offset = slot * delay_per_follower
-            # Leader starts at the bezier position at t=0
-            x, y = self._bezier_point(0.0, p0, p1, p2, p3)
-            ships.append(SpawnedShip(
-                spawn_x=x,
-                spawn_y=y,
-                t_offset=t_offset,
-                slot=slot,
-                color=base_color,
-                is_leader=(slot == 0),  # BLOQUE 58.10: leader glow ring
-                extra={
-                    "p0": p0, "p1": p1, "p2": p2, "p3": p3,
-                    "frequency": frequency,
-                    "amplitude": amplitude,
-                    "delay_per_follower": delay_per_follower,
-                    "history_size": 60,
-                    "duration_s": 6.0 + rng.uniform(-0.5, 1.0),
-                },
-            ))
+        for chain_idx in range(chain_count):
+            side = "top" if chain_idx == 0 else "bot"
+            for slot in range(followers_per_chain + 1):
+                t_offset = (chain_idx * inter_chain_offset
+                            + slot * delay_per_follower)
+                x, y = self._bezier_point(0.0, p0, p1, p2, p3)
+                is_leader = (slot == 0)
+                ships.append(SpawnedShip(
+                    spawn_x=x,
+                    spawn_y=y,
+                    t_offset=t_offset,
+                    slot=chain_idx * (followers_per_chain + 1) + slot,
+                    color=base_color,
+                    is_leader=is_leader,
+                    extra={
+                        "parallel_pair": pair,
+                        "side": side,
+                        "frequency": frequency,
+                        "amplitude": amplitude,
+                        "delay_per_follower": delay_per_follower,
+                        "history_size": 60,
+                        "duration_s": duration_s,
+                    },
+                ))
 
         return WavePatternResult(
             ships=ships,
             kind=self.kind,
             difficulty=self.difficulty,
-            duration_s=ships[0].extra["duration_s"],
+            duration_s=duration_s,
             seed_used=rng.randint(0, 2**31 - 1),
         )
 

@@ -237,3 +237,47 @@ def test_butterfly_center_in_middle_60_percent():
     cy = (min_y + max_y) / 2
     assert 0.2 * INTERNAL_W <= cx <= 0.8 * INTERNAL_W
     assert 0.2 * INTERNAL_H <= cy <= 0.8 * INTERNAL_H
+
+
+# ----------------------------------------------------------------------
+# LEADER_FOLLOWER_CHAIN parallel tests (3)
+# ----------------------------------------------------------------------
+def test_leader_chain_2_independent_chains():
+    """10 ships, 2 chains (5 ships each)."""
+    import random
+    from src.systems.wave_patterns.leader_chain import LeaderFollowerChainPattern
+    rng = random.Random(42)
+    pattern = LeaderFollowerChainPattern()
+    result = pattern.generate(rng, level=4)
+    assert len(result.ships) == 10
+    leader_count = sum(1 for s in result.ships if s.is_leader)
+    assert leader_count == 2
+
+
+def test_leader_chain_higher_frequency():
+    """frequency >= 0.7."""
+    import random
+    from src.systems.wave_patterns.leader_chain import LeaderFollowerChainPattern
+    rng = random.Random(42)
+    pattern = LeaderFollowerChainPattern()
+    for level in (1, 3, 5):
+        result = pattern.generate(rng, level=level)
+        freq = result.ships[0].extra.get("frequency")
+        assert freq is not None
+        assert freq >= 0.7, f"frequency {freq} at level {level} should be >= 0.7"
+
+
+def test_leader_chain_inter_chain_offset():
+    """chain B starts 0.04s after chain A."""
+    import random
+    from src.systems.wave_patterns.leader_chain import LeaderFollowerChainPattern
+    rng = random.Random(42)
+    pattern = LeaderFollowerChainPattern()
+    result = pattern.generate(rng, level=3)
+    chain_a_leader = result.ships[0]
+    chain_b_leader = result.ships[5]
+    assert chain_a_leader.extra["parallel_pair"] is chain_b_leader.extra["parallel_pair"]
+    assert chain_a_leader.extra["side"] == "top"
+    assert chain_b_leader.extra["side"] == "bot"
+    diff = chain_b_leader.t_offset - chain_a_leader.t_offset
+    assert abs(diff - 0.04) < 0.01 or abs(diff - (-0.04)) < 0.01

@@ -217,21 +217,29 @@ class TestLeaderFollowerChain:
         from src.systems.wave_patterns.base import WavePatternKind
         assert LeaderFollowerChainPattern.kind == WavePatternKind.LEADER_FOLLOWER_CHAIN
 
-    def test_has_leader(self):
+    def test_has_two_leaders(self):
+        """BLOQUE 58.13: 2 leaders (one per chain)."""
         from src.systems.wave_patterns import LeaderFollowerChainPattern
         rng = random.Random(42)
         result = LeaderFollowerChainPattern().generate(rng, level=3)
-        # BLOQUE 58.10: is_leader is now a SpawnedShip field, not in extra
+        # ship 0 = chain A leader, ship 5 = chain B leader
         assert result.ships[0].is_leader is True
-        for s in result.ships[1:]:
-            assert s.is_leader is False
+        assert result.ships[5].is_leader is True
+        # Other ships are followers
+        non_leader_indices = [i for i in range(len(result.ships))
+                              if i not in (0, 5)]
+        for i in non_leader_indices:
+            assert result.ships[i].is_leader is False
 
-    def test_followers_have_increasing_delay(self):
+    def test_chains_have_increasing_delay_within_chain(self):
+        """BLOQUE 58.13: t_offsets are non-decreasing within each chain."""
         from src.systems.wave_patterns import LeaderFollowerChainPattern
         rng = random.Random(42)
         result = LeaderFollowerChainPattern().generate(rng, level=3)
-        for i in range(1, len(result.ships)):
-            assert result.ships[i].t_offset > result.ships[i - 1].t_offset
+        # Chain A = ships 0..4, Chain B = ships 5..9
+        for chain_start in (0, 5):
+            for i in range(chain_start + 1, chain_start + 5):
+                assert result.ships[i].t_offset >= result.ships[i - 1].t_offset
 
     def test_frequency_param(self):
         from src.systems.wave_patterns import LeaderFollowerChainPattern
@@ -246,15 +254,14 @@ class TestLeaderFollowerChain:
         rb = LeaderFollowerChainPattern().generate(random.Random(42), level=10)
         assert rb.ships[0].extra["frequency"] >= ra.ships[0].extra["frequency"]
 
-    def test_all_share_bezier_path(self):
+    def test_all_share_parallel_pair(self):
+        """BLOQUE 58.13: all ships share a single ParallelPathPair."""
         from src.systems.wave_patterns import LeaderFollowerChainPattern
         rng = random.Random(42)
         result = LeaderFollowerChainPattern().generate(rng, level=3)
-        leader_path = (result.ships[0].extra["p0"], result.ships[0].extra["p1"],
-                       result.ships[0].extra["p2"], result.ships[0].extra["p3"])
+        pair = result.ships[0].extra["parallel_pair"]
         for s in result.ships[1:]:
-            follower_path = (s.extra["p0"], s.extra["p1"], s.extra["p2"], s.extra["p3"])
-            assert follower_path == leader_path
+            assert s.extra["parallel_pair"] is pair
 
     def test_all_share_color(self):
         from src.systems.wave_patterns import LeaderFollowerChainPattern
@@ -276,12 +283,12 @@ class TestLeaderFollowerChain:
         result = LeaderFollowerChainPattern().generate(rng, level=1)
         assert len(result.ships) >= 4
 
-    def test_maximum_8_ships(self):
-        """BLOQUE 58.11: bigger chain (was 6, now 8)."""
+    def test_has_10_ships(self):
+        """BLOQUE 58.13: 2 chains × 5 ships = 10 ships at level 4+."""
         from src.systems.wave_patterns import LeaderFollowerChainPattern
         rng = random.Random(42)
-        result = LeaderFollowerChainPattern().generate(rng, level=100)
-        assert len(result.ships) <= 8
+        result = LeaderFollowerChainPattern().generate(rng, level=4)
+        assert len(result.ships) == 10
 
     def test_amplitude_in_range(self):
         from src.systems.wave_patterns import LeaderFollowerChainPattern

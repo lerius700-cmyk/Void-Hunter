@@ -87,12 +87,13 @@ class TestLeaderMarking:
         for s in r.ships[1:]:
             assert s.is_leader is False
 
-    def test_leader_chain_marks_slot_0(self):
+    def test_leader_chain_marks_two_leaders(self):
+        """BLOQUE 58.13: 2 leaders (one per chain)."""
         rng = random.Random(42)
-        r = LeaderFollowerChainPattern().generate(rng, level=1)
-        assert r.ships[0].is_leader is True
-        for s in r.ships[1:]:
-            assert s.is_leader is False
+        r = LeaderFollowerChainPattern().generate(rng, level=3)
+        # 1 leader per chain × 2 chains = 2 leaders
+        leaders = [s for s in r.ships if s.is_leader]
+        assert len(leaders) == 2
 
     def test_bezier_sweep_marks_one_leader_per_pair(self):
         """BLOQUE 58.13: each pair has 1 leader (the top ship)."""
