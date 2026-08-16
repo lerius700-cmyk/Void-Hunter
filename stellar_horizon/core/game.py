@@ -73,15 +73,24 @@ class Game:
         crash_log.parent.mkdir(parents=True, exist_ok=True)
         try:
             while self._running:
+                # Read `now` at the START of the frame so `last` represents
+                # the previous frame's start. Otherwise the post-tick_delay
+                # gap collapses frame_time to ~0 and the accumulator never
+                # reaches FIXED_DT (no events ever processed).
+                now = pygame.time.get_ticks() / 1000.0
                 self._tick_frame(last)
-                last = pygame.time.get_ticks() / 1000.0
+                last = now
         except KeyboardInterrupt:
             pass
         finally:
             pygame.quit()
 
     def _tick_frame(self, last: float | None = None) -> None:
-        """One frame: events, fixed-timestep updates, render, present."""
+        """One frame: events, fixed-timestep updates, render, present.
+
+        `last` is the time at the START of the PREVIOUS frame. `frame_time`
+        is the wall-clock duration of the previous frame (clamped to DT_CLAMP).
+        """
         if last is None:
             last = pygame.time.get_ticks() / 1000.0
         now = pygame.time.get_ticks() / 1000.0
@@ -92,6 +101,14 @@ class Game:
                 self._running = False
                 return
         self._accumulator += frame_time
+        # Always run at least one update per frame so input events
+        # are processed even when the very first frame hasn't yet
+        # accumulated FIXED_DT. Subsequent updates drain the
+        # accumulator for accurate fixed-timestep physics.
+        self.scenes.update(FIXED_DT, events)
+        self._accumulator -= FIXED_DT
+        if self._accumulator < 0.0:
+            self._accumulator = 0.0
         while self._accumulator >= FIXED_DT:
             self.scenes.update(FIXED_DT, events)
             self._accumulator -= FIXED_DT

@@ -29,8 +29,11 @@ def main(argv: list[str] | None = None) -> int:
         last = pygame.time.get_ticks() / 1000.0 if pygame.get_init() else 0.0
         import pygame as _pygame
         while g._running and (time.perf_counter() - start) < args.duration:
+            # Read `now` BEFORE tick_frame so `last` is the start of the
+            # previous frame (same fix as Game.run).
+            now = _pygame.time.get_ticks() / 1000.0
             g._tick_frame(last)
-            last = _pygame.time.get_ticks() / 1000.0
+            last = now
         _pygame.quit()
     else:
         g.run()
