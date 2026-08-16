@@ -18,6 +18,13 @@ from src.movement.hybrid import HybridPath
 class PathFollower:
     """Stateful follower that walks a HybridPath over time.
 
+    Args:
+        path: the HybridPath to follow
+        t_offset: initial time offset in seconds (default 0). The follower
+            starts at t = t_offset / path.total_duration_s. Use this for
+            staggered entries (e.g., 5 ships entering a 6s path at 0s, 1s,
+            2s, 3s, 4s).
+
     Usage:
         follower = PathFollower(some_hybrid_path)
         for dt in frame_deltas:
@@ -25,12 +32,18 @@ class PathFollower:
             entity.x, entity.y = x, y
     """
 
-    __slots__ = ("path", "_t", "_complete")
+    __slots__ = ("path", "_t", "_complete", "_t_offset_s")
 
-    def __init__(self, path: HybridPath) -> None:
+    def __init__(self, path: HybridPath, t_offset: float = 0.0) -> None:
         self.path: HybridPath = path
-        self._t: float = 0.0
+        self._t_offset_s: float = t_offset
+        self._t: float = self._t_at_offset()
         self._complete: bool = False
+
+    def _t_at_offset(self) -> float:
+        if self.path.total_duration_s <= 0:
+            return 0.0
+        return min(1.0, max(0.0, self._t_offset_s / self.path.total_duration_s))
 
     @property
     def t(self) -> float:
@@ -42,7 +55,7 @@ class PathFollower:
         return self._complete
 
     def reset(self) -> None:
-        self._t = 0.0
+        self._t = self._t_at_offset()
         self._complete = False
 
     def update(self, dt: float) -> tuple[Point, Point]:

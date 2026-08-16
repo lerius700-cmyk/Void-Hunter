@@ -109,10 +109,8 @@ def attach_bezier_path(
     # Wrap in HybridPath. Duration controls how long the path takes
     # to traverse.
     path = HybridPath([bezier], segment_durations=[duration_s])
-    follower = PathFollower(path)
-    # t_offset becomes a slot_dy so the enemy enters the curve later
-    # (negative dy means "start the path later in time")
-    enemy.attach_path(follower, slot_dx=0.0, slot_dy=-t_offset * 100.0)
+    follower = PathFollower(path, t_offset=t_offset)
+    enemy.attach_path(follower, slot_dx=0.0, slot_dy=0.0)
 
 
 def attach_multi_segment_path(
@@ -144,8 +142,8 @@ def attach_multi_segment_path(
             p3=Point(p3[0], p3[1]),
         ))
     path = HybridPath(beziers, segment_durations=segment_durations)
-    follower = PathFollower(path)
-    enemy.attach_path(follower, slot_dx=0.0, slot_dy=-t_offset * 100.0)
+    follower = PathFollower(path, t_offset=t_offset)
+    enemy.attach_path(follower, slot_dx=0.0, slot_dy=0.0)
 
 
 def attach_parallel_pair_path(
@@ -165,8 +163,8 @@ def attach_parallel_pair_path(
         path = pair.get_bot()
     else:
         raise ValueError(f"side must be 'top' or 'bot', got {side!r}")
-    follower = PathFollower(path)
-    enemy.attach_path(follower, slot_dx=0.0, slot_dy=-t_offset * 100.0)
+    follower = PathFollower(path, t_offset=t_offset)
+    enemy.attach_path(follower, slot_dx=0.0, slot_dy=0.0)
 
 
 def attach_orbital_path(
@@ -179,8 +177,8 @@ def attach_orbital_path(
     Used by OSCILLATING_BUTTERFLY. The ship orbits the center with the
     given phase offset.
     """
-    follower = PathFollower(orbital.get_path())
-    enemy.attach_path(follower, slot_dx=0.0, slot_dy=-t_offset * 100.0)
+    follower = PathFollower(orbital.get_path(), t_offset=t_offset)
+    enemy.attach_path(follower, slot_dx=0.0, slot_dy=0.0)
 
 
 def apply_color_tint(enemy: Enemy, color: Optional[tuple[int, int, int]]) -> None:
