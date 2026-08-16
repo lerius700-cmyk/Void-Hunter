@@ -30,6 +30,8 @@ from src.entities.enemies.enemy import Enemy, EnemyKind, EnemyPool
 from src.movement.bezier import BezierPath, Point
 from src.movement.waypoint import WaypointPath
 from src.movement.follower import PathFollower
+from src.movement.parallel_path import ParallelPathPair
+from src.movement.orbital_path import OrbitalPath
 from src.systems.wave_patterns.base import (
     WavePatternResult,
     SpawnedShip,
@@ -146,6 +148,41 @@ def attach_multi_segment_path(
     enemy.attach_path(follower, slot_dx=0.0, slot_dy=-t_offset * 100.0)
 
 
+def attach_parallel_pair_path(
+    enemy: Enemy,
+    pair: ParallelPathPair,
+    side: str,
+    t_offset: float = 0.0,
+) -> None:
+    """BLOQUE 58.13: attach one of the two parallel paths to an enemy.
+
+    Used by BEZIER_SWEEP and LEADER_FOLLOWER_CHAIN for SF64 pair dance.
+    The ship follows either the top or the bottom path of the pair.
+    """
+    if side == "top":
+        path = pair.get_top()
+    elif side == "bot":
+        path = pair.get_bot()
+    else:
+        raise ValueError(f"side must be 'top' or 'bot', got {side!r}")
+    follower = PathFollower(path)
+    enemy.attach_path(follower, slot_dx=0.0, slot_dy=-t_offset * 100.0)
+
+
+def attach_orbital_path(
+    enemy: Enemy,
+    orbital: OrbitalPath,
+    t_offset: float = 0.0,
+) -> None:
+    """BLOQUE 58.13: attach an orbital path to an enemy.
+
+    Used by OSCILLATING_BUTTERFLY. The ship orbits the center with the
+    given phase offset.
+    """
+    follower = PathFollower(orbital.get_path())
+    enemy.attach_path(follower, slot_dx=0.0, slot_dy=-t_offset * 100.0)
+
+
 def apply_color_tint(enemy: Enemy, color: Optional[tuple[int, int, int]]) -> None:
     """Apply a color tint to the enemy (used for the engine trail).
 
@@ -217,6 +254,23 @@ def spawn_pattern_wave(
             seg_durs = spawned.extra.get("segment_durations", [3.0] * len(segments))
             attach_multi_segment_path(
                 e, segments, seg_durs, t_offset=spawned.t_offset,
+            )
+        elif "parallel_pair" in spawned.extra:
+            # BLOQUE 58.13: parallel pair path (BEZIER_SWEEP, LEADER_CHAIN)
+            from src.systems.wave_patterns.runtime import attach_parallel_pair_path
+            attach_parallel_pair_path(
+                e,
+                spawned.extra["parallel_pair"],
+                spawned.extra.get("side", "top"),
+                t_offset=spawned.t_offset,
+            )
+        elif "orbital" in spawned.extra:
+            # BLOQUE 58.13: orbital path (OSCILLATING_BUTTERFLY)
+            from src.systems.wave_patterns.runtime import attach_orbital_path
+            attach_orbital_path(
+                e,
+                spawned.extra["orbital"],
+                t_offset=spawned.t_offset,
             )
 
         # Apply color tint

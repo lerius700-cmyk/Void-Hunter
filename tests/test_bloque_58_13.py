@@ -110,3 +110,36 @@ def test_orbital_path_rotation_offset():
     assert p0.y == pytest.approx(100, abs=1.0)
     assert p90.x == pytest.approx(100, abs=1.0)
     assert p90.y == pytest.approx(20, abs=1.0)
+
+
+# ----------------------------------------------------------------------
+# Runtime attach tests (2)
+# ----------------------------------------------------------------------
+def test_attach_parallel_pair_path_attaches_follower():
+    """attach_parallel_pair_path sets path_follower on the enemy."""
+    from src.entities.enemies.enemy import Enemy, EnemyKind, EnemyPool
+    from src.systems.wave_patterns.runtime import attach_parallel_pair_path
+    from src.movement.parallel_path import ParallelPathPair
+
+    pool = EnemyPool(capacity=2)
+    ppp = ParallelPathPair([((0, 100), (100, 100), (200, 100), (300, 100))], [1.0])
+    e = pool.spawn(EnemyKind.SCOUT, 0, 100)
+    assert e is not None
+    assert e.path_follower is None
+    attach_parallel_pair_path(e, ppp, "top", t_offset=0.0)
+    assert e.path_follower is not None
+
+
+def test_attach_orbital_path_attaches_follower():
+    """attach_orbital_path sets path_follower on the enemy."""
+    from src.entities.enemies.enemy import Enemy, EnemyKind, EnemyPool
+    from src.systems.wave_patterns.runtime import attach_orbital_path
+    from src.movement.orbital_path import OrbitalPath
+
+    pool = EnemyPool(capacity=2)
+    op = OrbitalPath(center=(160, 240), radius_x=80, radius_y=60, duration_s=4.0)
+    e = pool.spawn(EnemyKind.SCOUT, 160, 240)
+    assert e is not None
+    assert e.path_follower is None
+    attach_orbital_path(e, op, t_offset=0.0)
+    assert e.path_follower is not None
