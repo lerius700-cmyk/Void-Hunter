@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 from src.movement.parallel_path import ParallelPathPair
-# OrbitalPath import added in Task 2
+from src.movement.orbital_path import OrbitalPath
 
 
 # ----------------------------------------------------------------------
@@ -67,3 +67,46 @@ def test_parallel_pair_offset_signs():
     bot = ppp.get_bot().position_at(0.5)
     assert top.y == pytest.approx(93.0, abs=0.01)
     assert bot.y == pytest.approx(107.0, abs=0.01)
+
+
+# ----------------------------------------------------------------------
+# OrbitalPath tests (4)
+# ----------------------------------------------------------------------
+def test_orbital_path_returns_4_segments():
+    """4 segments (quarters of orbit)."""
+    op = OrbitalPath(center=(160, 240), radius_x=100, radius_y=80, duration_s=6.0)
+    path = op.get_path()
+    assert len(path.segments) == 4
+
+
+def test_orbital_path_segment_durations_sum_to_total():
+    """durations add up to duration_s."""
+    op = OrbitalPath(center=(160, 240), radius_x=100, radius_y=80, duration_s=4.8)
+    path = op.get_path()
+    assert sum(path.segment_durations) == pytest.approx(4.8, abs=0.001)
+
+
+def test_orbital_path_center_is_inside_quad():
+    """Midpoint of each segment is roughly on the orbital circle (within 20%)."""
+    op = OrbitalPath(center=(100, 100), radius_x=80, radius_y=60, duration_s=4.0)
+    path = op.get_path()
+    for i in range(4):
+        seg_dur = path.segment_durations[i]
+        global_t = (sum(path.segment_durations[:i]) + seg_dur * 0.5) / path.total_duration_s
+        pt = path.position_at(global_t)
+        assert abs(pt.x - 100) <= 80 * 1.1 + 1
+        assert abs(pt.y - 100) <= 60 * 1.1 + 1
+
+
+def test_orbital_path_rotation_offset():
+    """rotation_deg=90 rotates the orbit (start point moves)."""
+    op0 = OrbitalPath(center=(100, 100), radius_x=80, radius_y=80,
+                      duration_s=4.0, rotation_deg=0)
+    op90 = OrbitalPath(center=(100, 100), radius_x=80, radius_y=80,
+                       duration_s=4.0, rotation_deg=90)
+    p0 = op0.get_path().position_at(0.0)
+    p90 = op90.get_path().position_at(0.0)
+    assert p0.x == pytest.approx(180, abs=1.0)
+    assert p0.y == pytest.approx(100, abs=1.0)
+    assert p90.x == pytest.approx(100, abs=1.0)
+    assert p90.y == pytest.approx(20, abs=1.0)
