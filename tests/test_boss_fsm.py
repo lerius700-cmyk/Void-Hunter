@@ -233,9 +233,14 @@ def test_nemesis_p4_hitbox_shrinks_to_50_percent() -> None:
 # 7. Movement
 # ---------------------------------------------------------------------------
 def test_goliath_anchored_when_no_bezier_path() -> None:
-    """BLOQUE 58.59: bosses no longer sine-oscillate. With no bezier path
-    set, the boss sits at its anchor (straight-line position). Curved
-    motion is now opt-in via BezierPath, not the default."""
+    """BLOQUE 58.13.1: restored sin oscillation (BLOQUE 58.59 had broken it).
+
+    With no bezier path set, the boss sines around its anchor: x oscillates
+    within ±80px of anchor_x at angular velocity 0.5 rad/s. NEMESIS
+    (speed=0) still snaps to anchor because the elif is gated on
+    cfg.speed > 0.0.
+    """
+    import math
     b = Boss()
     b.id = BossId.GOLIATH
     b.max_hp = 800
@@ -243,20 +248,24 @@ def test_goliath_anchored_when_no_bezier_path() -> None:
     b.bezier_path = None  # explicit
     b.update(1.0)
     cfg = BOSS_CONFIGS[BossId.GOLIATH]
-    assert b.x == cfg.anchor_x  # snapped to anchor, no oscillation
+    # After 1.0s, sin(0.5 * 1.0) = 0.479 → x = anchor_x + 0.479*80 = 160 + 38.4 = 198.4
+    expected = cfg.anchor_x + math.sin(0.5) * 80.0
+    assert b.x == pytest.approx(expected, abs=0.01)
+    assert b.move_t == pytest.approx(1.0, abs=0.001)
 
 
 def test_nemesis_snap_to_anchor() -> None:
-    """BLOQUE 58.59: every boss snaps to its anchor on update when no path
-    is set. NEMESIS has speed=0 in the old code, so the test was trivial;
-    now every boss has the same behavior (anchor = straight line)."""
+    """BLOQUE 58.13.1: NEMESIS (speed=0) has no sine oscillation (gated on
+    speed>0) and no bezier path, so its x position is unchanged. The boss
+    stays at its initial position until something else moves it (e.g. a
+    future cinematic path or arena-shrink event)."""
     b = Boss()
     b.id = BossId.NEMESIS
     b.max_hp = 5000
     b.x = 120.0
     b.update(1.0)
-    cfg = BOSS_CONFIGS[BossId.NEMESIS]
-    assert b.x == cfg.anchor_x  # snapped to anchor
+    assert b.x == 120.0  # speed=0, no path, no motion
+    assert b.move_t == 0.0  # move_t never advanced
 
 
 # ---------------------------------------------------------------------------
