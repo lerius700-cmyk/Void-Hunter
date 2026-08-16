@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -19,10 +20,23 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  Internal: {INTERNAL_W}x{INTERNAL_H}")
         print(f"  FPS target: {FPS_TARGET}")
         return 0
-    # Defer to Task 15 for the real run loop. For now, just acknowledge.
-    print(f"STELLAR HORIZON: --duration {args.duration} (game loop wired in Task 15)")
+    from stellar_horizon.core.game import Game
+    g = Game()
+    if args.duration > 0:
+        import time
+        start = time.perf_counter()
+        g._running = True
+        last = pygame.time.get_ticks() / 1000.0 if pygame.get_init() else 0.0
+        import pygame as _pygame
+        while g._running and (time.perf_counter() - start) < args.duration:
+            g._tick_frame(last)
+            last = _pygame.time.get_ticks() / 1000.0
+        _pygame.quit()
+    else:
+        g.run()
     return 0
 
 
 if __name__ == "__main__":
+    import pygame
     sys.exit(main())
