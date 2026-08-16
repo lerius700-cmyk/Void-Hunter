@@ -63,7 +63,7 @@ def test_level1_wave_1_is_60_scout_diagonal() -> None:
     from src.systems.wave_manager import LEVEL1_WAVES
     w = LEVEL1_WAVES[0]
     assert w["enemies"] == ["SCOUT"] * 60
-    assert w["max_duration_s"] == 50.0
+    assert w["max_duration_s"] == 15.0  # BLOQUE 58.13.2: was 50.0 (testing shortcut)
     assert w["fire_allowed"] is False
 
 

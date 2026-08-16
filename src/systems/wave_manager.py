@@ -612,11 +612,17 @@ LEVEL1_WAVES: list[dict[str, Any]] = [
     #   TOTAL: 36+48+54+60+30 + 9 + 4.5 + 6 = 247.5s ≈ 4:07
     #   Wolfen entry: ~85s   GOLIATH entry: ~243s   gap: ~158s (2:38)
     #
+    # BLOQUE 58.13.2 (TESTING): temporarily reduced O1 and O2 max_duration_s
+    # from 50/60 to 15/15 so the sub-boss fires at ~30s instead of ~110s.
+    # This is a TESTING SHORTCUT to let the user verify the sub-boss
+    # appears visually. Revert to 50/60 (or 30/30 for testing balance)
+    # after verification.
+    #
     # O1 — intro/tutorial: 60 SCOUT diagonal, no fire. 2x of 30.
     {
         "enemies": ["SCOUT"] * 60,
         "spawn_cadence_s": 0.6,
-        "max_duration_s": 50.0,
+        "max_duration_s": 15.0,  # WAS 50.0 — BLOQUE 58.13.2 testing
         "formation": "diagonal",
         "fire_allowed": False,
         "path": {
@@ -629,7 +635,7 @@ LEVEL1_WAVES: list[dict[str, Any]] = [
     {
         "enemies": ["SCOUT"] * 50 + ["CRUISER"] * 30,
         "spawn_cadence_s": 0.6,
-        "max_duration_s": 60.0,
+        "max_duration_s": 15.0,  # WAS 60.0 — BLOQUE 58.13.2 testing
         "formation": "v",
         "fire_allowed": True,
         "sub_boss_after": True,
