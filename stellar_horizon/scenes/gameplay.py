@@ -17,6 +17,7 @@ from stellar_horizon.fx.screen_shake import ScreenShake
 from stellar_horizon.settings import (
     ENEMY_BULLET_POOL, INTERNAL_W, INTERNAL_H, PLAYER_BULLET_POOL,
 )
+from stellar_horizon.ui.animated_sprite import AnimatedSprite
 from stellar_horizon.ui.backgrounds import Background
 from stellar_horizon.ui.hud import Hud
 from stellar_horizon.ui.mountains import MountainLayer
@@ -79,11 +80,11 @@ class GameplayScene(Scene):
         self.score: int = 0
         self._next: Scene | None = None
         self._keys = None
-        # Sprite cache (loaded once, reused for every draw).
-        # Keyed by logical name; the dict is filled in on_enter() so we
-        # don't depend on a display being available at construction time
-        # (tests construct the scene headless).
-        self._sprites: dict = {}
+        # Animated sprite cache — one AnimatedSprite per logical name.
+        # Each one loads a horizontal frame strip and cycles through it
+        # at ~12 fps. Loaded in on_enter() so headless tests can
+        # construct the scene without a display.
+        self._animated: dict = {}
         # Per-kind counter used to cycle through enemy sprite variants
         # so consecutive spawns of the same kind look different.
         self._enemy_sprite_idx: dict = {}
@@ -106,34 +107,48 @@ class GameplayScene(Scene):
         self.hud.set_enemies_remaining(0, 0)
 
     def _load_sprites(self) -> None:
-        """Load 16-bit pixel-art sprites from assets/sprites/.
+        """Load animated sprite sheets from assets/sprites/*_sheet.png.
 
-        Loads the 7 active game assets plus the 20 enemy / 5 player /
-        10 laser variants. Each enemy kind cycles through its assigned
-        sprite list (see _ENEMY_SPRITE_CYCLE) so spawns look varied.
+        Each sheet has 6 frames in a horizontal strip. The active game
+        uses 7 sprites (player, scout, cruiser, heavy, boss,
+        player_bullet, enemy_bullet); the 35 variants
+        (20 enemy / 5 player / 10 laser) are also loaded so the wave
+        manager and bullet code can pick them by name.
         """
         sprite_dir = self.assets_dir / "sprites"
-        names = [
+        # All names to load, with their (frame_w, frame_h, frame_count).
+        # Active assets use the size matching the original sprite;
+        # variants inherit the size from their kind prefix.
+        all_names = {
             # Active game assets.
             "player", "scout", "cruiser", "heavy", "boss",
             "player_bullet", "enemy_bullet",
-            # 20 enemy variants (cycle per kind).
+            # 20 enemy variants.
             *[f"enemy_{i:02d}" for i in range(1, 21)],
             # 5 player variants.
             *[f"player_{i:02d}" for i in range(1, 6)],
             # 10 laser variants.
             *[f"laser_{i:02d}" for i in range(1, 11)],
-        ]
-        self._sprites.clear()
-        for name in names:
-            path = sprite_dir / f"{name}.png"
-            try:
-                img = pygame.image.load(str(path)).convert_alpha()
-                self._sprites[name] = img
-            except (pygame.error, FileNotFoundError):
-                # Leave the slot missing; draw code will fall back to a
-                # simple shape so the game still runs if a sprite is gone.
-                self._sprites[name] = None
+        }
+        # Per-name dimensions and frame count.
+        dims = {
+            "player": (16, 16), "scout": (16, 16), "cruiser": (16, 16),
+            "heavy": (16, 16), "boss": (48, 48),
+            "player_bullet": (8, 8), "enemy_bullet": (8, 8),
+        }
+        for n in (f"player_{i:02d}" for i in range(1, 6)):
+            dims[n] = (16, 16)
+        for n in (f"enemy_{i:02d}" for i in range(1, 21)):
+            dims[n] = (16, 16)
+        for n in (f"laser_{i:02d}" for i in range(1, 11)):
+            dims[n] = (8, 8)
+
+        self._animated.clear()
+        for name in all_names:
+            w, h = dims.get(name, (16, 16))
+            path = sprite_dir / f"{name}_sheet.png"
+            self._animated[name] = AnimatedSprite(str(path), w, h, 6,
+                                                  fps=12.0)
 
     def _pick_enemy_sprite(self, kind: str) -> str | None:
         """Return a sprite name for an enemy of the given kind.
@@ -147,8 +162,7 @@ class GameplayScene(Scene):
             return None
         idx = self._enemy_sprite_idx.get(kind, 0) % len(sprites)
         self._enemy_sprite_idx[kind] = idx + 1
-        name = sprites[idx]
-        return name if self._sprites.get(name) else None
+        return sprites[idx]
 
     def on_exit(self) -> None:
         self.midi_player.fadeout(400)
@@ -182,17 +196,23 @@ class GameplayScene(Scene):
                             slot._bomb = nb._bomb
                             slot.damage = nb.damage
                             break
-            # Bullet-vs-enemy collision
+            # Bullet-vs-enemy collision. Each hit emits a punchy spark
+            # burst (12 sparks + shrapnel + flash) so the impact reads
+            # even on a busy frame. Kills add a bigger explosion.
             for b in self.player_bullets:
                 if not b.alive:
                     continue
                 for e in self.wave_manager.spawned_enemies:
                     if e.alive and b.hitbox().colliderect(e.hitbox()):
+                        # Hit point = midpoint of the two hitboxes.
+                        hx = (b.x + e.x) * 0.5
+                        hy = (b.y + e.y) * 0.5
+                        self.fx.emit_impact(hx, hy, count=12,
+                                            color=(255, 240, 100))
                         e.take_damage(1)
                         b.alive = False
                         if not e.alive:
                             self.score += e.score_value()
-                            # Bigger boom + shake for bigger enemies.
                             scale = 1.0
                             trauma = 0.10
                             if e.kind in ("heavy", "bomber"):
@@ -202,16 +222,22 @@ class GameplayScene(Scene):
                                 scale = 2.0
                                 trauma = 0.30
                             self.fx.emit_explosion(e.x, e.y, scale=scale)
+                            self.fx.emit_impact(e.x, e.y, count=14,
+                                                color=(255, 200, 80))
                             self.shake.add_trauma(trauma)
                         break
             # Enemy-vs-player collision. Kamikaze deals 2 damage (its
-            # contact_damage); everything else deals 1.
+            # contact_damage); everything else deals 1. Every contact
+            # also gets a spark burst.
             for e in self.wave_manager.spawned_enemies:
                 if e.alive and e.hitbox().colliderect(self.player.hitbox()):
                     for _ in range(e.contact_damage):
                         self.player.take_hit()
                     self.shake.add_trauma(0.30 if e.kind == "kamikaze" else 0.20)
                     self.fx.emit_explosion(e.x, e.y, scale=1.4 if e.kind == "kamikaze" else 0.6)
+                    self.fx.emit_impact(self.player.x, self.player.y,
+                                        count=14,
+                                        color=(255, 100, 100))
                     e.alive = False
             if self.wave_manager.wave_complete:
                 if not self.wave_manager.next_wave():
@@ -240,6 +266,9 @@ class GameplayScene(Scene):
                 self.player.take_hit()
                 self.shake.add_trauma(0.30)
         # Enemy bullets vs player — pool is fixed-size; do NOT filter.
+        # Bombs (gravity projectiles) detonate with a bigger impact
+        # burst on contact; regular aimed bullets get the standard
+        # 10-spark hit feedback.
         for b in self.enemy_bullets:
             if b.alive:
                 b.update(dt)
@@ -247,6 +276,12 @@ class GameplayScene(Scene):
                     self.player.take_hit()
                     b.alive = False
                     self.shake.add_trauma(0.15)
+                    if b._bomb:
+                        self.fx.emit_impact(self.player.x, self.player.y,
+                                            count=16, color=(255, 140, 40))
+                    else:
+                        self.fx.emit_impact(self.player.x, self.player.y,
+                                            count=10, color=(255, 80, 100))
         self.fx.update(dt)
         self.shake.update(dt)
         self.background.update(dt, scroll_speed=0.0)
@@ -277,33 +312,24 @@ class GameplayScene(Scene):
         for m in self._mountains:
             m.update(dt)
         self._dust.update(dt)
-        self._emit_thruster(dt)
+        # Animation tick: every animated sprite advances one frame.
+        # The thruster is now baked into the player sprite sheet, so
+        # the old P_FIRE/P_WAKE particle emit is gone — animation
+        # alone sells the thrust.
+        for sprite in self._animated.values():
+            sprite.update(dt)
 
     def _emit_thruster(self, dt: float) -> None:
-        """Spawn a tiny flame + wake behind the player when thrusting.
+        """No-op kept for backward compatibility.
 
-        Throttled to ~30 particles/sec so the trail reads as a soft
-        plume, not a solid cone. P_FIRE (kind 5) is a fast-fading
-        warm-color particle; P_WAKE (kind 18) is a delayed orange
-        afterglow that gives the trail a real sense of motion.
+        The thruster is now baked into the player sprite sheet (one
+        of the 6 frames per animation cycle is a bigger flame), so
+        no per-frame particle emit is needed. The sheet cycles on
+        its own regardless of whether the player is thrusting — the
+        flame just looks a bit different in each frame, which is the
+        standard 16-bit shmup look.
         """
-        if not self.player or not self.player.alive or not self.player.thrusting:
-            self._thrust_timer = 0.0
-            return
-        # Spawn one P_FIRE + one P_WAKE per ~33ms.
-        self._thrust_timer += dt
-        interval = 1.0 / 30.0
-        while self._thrust_timer >= interval:
-            self._thrust_timer -= interval
-            # Emit from the back of the player ship (player.x is near
-            # the front of the sprite; the engine is a bit behind).
-            ex = self.player.x - 4.0
-            ey = self.player.y + 1.0
-            # Slight upward bias so the plume doesn't cross the ship.
-            self.fx.engine.emit(5, ex, ey, vx=-30.0, vy=-12.0,
-                                color=(255, 180, 80))
-            self.fx.engine.emit(18, ex, ey, vx=-12.0, vy=-4.0,
-                                color=(255, 140, 60), delay_s=0.0)
+        return
 
     def draw(self, surface: pygame.Surface) -> None:
         ox, oy = self.shake.offset()
@@ -344,10 +370,12 @@ class GameplayScene(Scene):
         self.hud.set_boss(self.boss)
 
     # ------------------------------------------------------------------
-    # Sprite blit helpers — each picks the right sprite from
-    # self._sprites and centers it on the entity's position. If a
-    # sprite failed to load, the helper falls back to a flat color shape
-    # so the game still runs.
+    # Sprite blit helpers — each picks the right animated sprite from
+    # self._animated and blits the current frame centered on the
+    # entity's position. AnimatedSprite.get_current_surface() returns
+    # the frame for the current animation tick. If a sheet failed to
+    # load, the helper falls back to a flat color shape so the game
+    # still runs.
     # ------------------------------------------------------------------
 
     def _blit_centered(self, surface, sprite, cx: float, cy: float) -> None:
@@ -357,22 +385,24 @@ class GameplayScene(Scene):
         surface.blit(sprite, rect)
 
     def _draw_player_sprite(self, surface, p, ox, oy) -> None:
-        sprite = self._sprites.get("player")
-        if sprite is None:
+        sprite = self._animated.get("player")
+        if sprite is None or not sprite.loaded:
             cx, cy = int(p.x + ox), int(p.y + oy)
             pygame.draw.polygon(surface, (90, 220, 120),
                                 [(cx - 6, cy - 5), (cx - 6, cy + 5), (cx + 6, cy)])
             return
-        self._blit_centered(surface, sprite, p.x + ox, p.y + oy)
+        self._blit_centered(surface, sprite.get_current_surface(),
+                            p.x + ox, p.y + oy)
 
     def _draw_enemy_sprite(self, surface, e, ox, oy) -> None:
         # Prefer the per-spawn sprite variant (assigned by the wave
-        # manager), fall back to the kind's default sprite if missing.
-        sprite = None
+        # manager), fall back to the kind's default animated sprite.
+        anim = None
         if e.sprite_name:
-            sprite = self._sprites.get(e.sprite_name)
-        if sprite is None:
-            sprite = self._sprites.get(e.kind)
+            anim = self._animated.get(e.sprite_name)
+        if anim is None:
+            anim = self._animated.get(e.kind)
+        sprite = anim.get_current_surface() if anim is not None else None
         if sprite is None:
             cx, cy = int(e.x + ox), int(e.y + oy)
             color = (220, 60, 60) if e.kind == "scout" else \
@@ -408,7 +438,8 @@ class GameplayScene(Scene):
                 surface.blit(halo, (cx - radius, cy - radius))
 
     def _draw_boss_sprite(self, surface, b, ox, oy) -> None:
-        sprite = self._sprites.get("boss")
+        anim = self._animated.get("boss")
+        sprite = anim.get_current_surface() if anim is not None else None
         if sprite is None:
             cx, cy = int(b.x + ox), int(b.y + oy)
             import math
@@ -422,7 +453,8 @@ class GameplayScene(Scene):
         self._blit_centered(surface, sprite, b.x + ox, b.y + oy)
 
     def _draw_player_bullet_sprite(self, surface, b, ox, oy) -> None:
-        sprite = self._sprites.get("player_bullet")
+        anim = self._animated.get("player_bullet")
+        sprite = anim.get_current_surface() if anim is not None else None
         if sprite is None:
             pygame.draw.rect(surface, (255, 240, 100),
                              (int(b.x - 6 + ox), int(b.y - 2 + oy), 12, 4))
@@ -437,12 +469,12 @@ class GameplayScene(Scene):
             cx, cy = int(b.x + ox), int(b.y + oy)
             pygame.draw.circle(surface, (60, 20, 20), (cx, cy), 5)
             pygame.draw.circle(surface, (255, 140, 40), (cx, cy), 5, 1)
-            # Small fuse spark above the bomb.
             spark_y = cy - 5
             pygame.draw.line(surface, (255, 200, 80), (cx, cy - 3),
                              (cx + ((-1) ** (cy // 4)), spark_y), 1)
             return
-        sprite = self._sprites.get("enemy_bullet")
+        anim = self._animated.get("enemy_bullet")
+        sprite = anim.get_current_surface() if anim is not None else None
         if sprite is None:
             pygame.draw.circle(surface, (240, 80, 100),
                                (int(b.x + ox), int(b.y + oy)), 4)

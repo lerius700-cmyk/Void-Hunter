@@ -31,6 +31,29 @@ def _suppress_pygame_renderer_warning():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _ensure_mixer_ready():
+    """Re-init pygame.mixer if a previous test called mixer.quit().
+
+    Some tests (e.g. test_midi_player, test_scenes_gameplay) tear
+    down the mixer in their own teardown. Without this fixture the
+    next test that constructs a MidiPlayer (which calls
+    pygame.mixer.music.set_volume) crashes with "mixer not
+    initialized". We just re-init at the start of every test if the
+    mixer happens to be down.
+    """
+    if not pygame.get_init():
+        pygame.init()
+    if not pygame.mixer.get_init():
+        try:
+            pygame.mixer.init()
+        except pygame.error:
+            # No audio device available (e.g. CI); tests that need
+            # the mixer will fail explicitly when they call into it.
+            pass
+    yield
+
+
 if not pygame.get_init():
     pygame.init()
 if not pygame.font.get_init():

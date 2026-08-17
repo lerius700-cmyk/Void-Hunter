@@ -121,8 +121,11 @@ def test_gameplay_scene_has_scenery():
     assert speeds == sorted(speeds), f"mountains not parallax-sorted: {speeds}"
 
 
-def test_thruster_emit_when_player_thrusting():
-    """Quick smoke: after thrusting for 0.2s the engine pool grew."""
+def test_thruster_emit_is_now_noop():
+    """After the sprite-sheet refactor the thruster is baked into
+    the player animation, so _emit_thruster is a no-op. Verify it
+    does NOT spawn P_FIRE/P_WAKE particles (those came from the old
+    implementation and were removed)."""
     from pathlib import Path
     from stellar_horizon.audio.midi_player import MidiPlayer
     from stellar_horizon.scenes.gameplay import GameplayScene
@@ -137,4 +140,6 @@ def test_thruster_emit_when_player_thrusting():
     for _ in range(30):  # ~0.25s at 120fps
         s._emit_thruster(1 / 120)
     post = s.fx.engine._pool.active_count
-    assert post > pre, f"thruster did not emit particles (pre={pre}, post={post})"
+    assert post == pre, (
+        f"thruster emit should be a no-op now (pre={pre}, post={post})"
+    )
