@@ -283,3 +283,179 @@ def shutdown() -> None:
             pygame.mixer.quit()
     except pygame.error:
         pass
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 58.14: pause-screen lowpass BGM
+# ---------------------------------------------------------------------------
+# When the player pauses, we want the gameplay BGM to KEEP playing but
+# sound "muffled" (as if heard through a wall — "music in the next room").
+#
+# Pygame's mixer.music (streamed) does not support runtime filter effects.
+# The cleanest way to do this is:
+#   1. Pre-generate a lowpass-filtered copy of the BGM (numpy IIR filter)
+#   2. On pause: stop the stream, play the filtered copy
+#   3. On unpause: stop the filtered, resume the original
+#
+# The filtered copy is generated LAZILY on the first pause. We cache the
+# file path so subsequent pauses are instant. The user pays the
+# computation cost once (a few seconds) and gets instant filter switching
+# thereafter. The user can override the cutoff via VOID_HUNTER_LP_HZ env
+# var (default 600 Hz — bass + low-mids only, "behind a wall" feel).
+import tempfile
+import os
+
+_pause_filter_cache: dict[str, object] = {
+    "enabled": True,
+    "cutoff_hz": 600.0,
+    "filtered_path": None,     # str | None
+    "pause_pos_ms": 0,         # playback position at pause time
+    "paused": False,
+}
+
+
+def get_lowpass_cutoff_hz() -> float:
+    """Return the current lowpass cutoff Hz (overridable via env var)."""
+    override = os.environ.get("VOID_HUNTER_LP_HZ", "").strip()
+    if override:
+        try:
+            return float(override)
+        except ValueError:
+            pass
+    return _pause_filter_cache["cutoff_hz"]  # type: ignore[return-value]
+
+
+def set_lowpass_cutoff_hz(hz: float) -> None:
+    """Set the lowpass cutoff Hz. Affects the NEXT pause."""
+    _pause_filter_cache["cutoff_hz"] = max(80.0, min(8000.0, hz))
+    # Invalidate cached file (different cutoff = different file)
+    _pause_filter_cache["filtered_path"] = None
+
+
+def _ensure_filtered_bgm() -> Optional[str]:
+    """Generate (or load cached) lowpass-filtered version of the gameplay BGM.
+
+    Returns the path to the filtered WAV, or None on failure.
+    """
+    if not _pause_filter_cache["enabled"]:
+        return None
+    cached = _pause_filter_cache.get("filtered_path")
+    if isinstance(cached, str) and os.path.exists(cached):
+        return cached
+    src_path = _find_track(GAMEPLAY_TRACK)
+    if src_path is None:
+        return None
+    # Output to a stable cache path next to the source (so it survives
+    # restarts within the same install — only generated once per cutoff).
+    src_dir = os.path.dirname(str(src_path))
+    cutoff = get_lowpass_cutoff_hz()
+    suffix = f"_lp{int(cutoff)}.wav"
+    out_path = os.path.join(src_dir, "keep kept - Lerius - soundtrack gameplay" + suffix)
+    # Already exists from a previous run? Use it.
+    if os.path.exists(out_path):
+        _pause_filter_cache["filtered_path"] = out_path
+        return out_path
+    # Generate. Log start/finish to logs/_audio_status.log so the user
+    # sees the progress (this takes a few seconds for a 165 MB file).
+    try:
+        import time
+        log_path = os.path.join(os.getcwd(), "logs", "_audio_status.log")
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        t0 = time.time()
+        with open(log_path, "a", encoding="utf-8") as _f:
+            _f.write(f"[lowpass] generating filtered BGM at {cutoff:.0f}Hz...\n")
+        from src.audio.synth import apply_lowpass_to_wav
+        ok = apply_lowpass_to_wav(str(src_path), out_path, cutoff_hz=cutoff)
+        dt = time.time() - t0
+        with open(log_path, "a", encoding="utf-8") as _f:
+            _f.write(f"[lowpass] done ({dt:.1f}s) -> {out_path} ok={ok}\n")
+        if not ok:
+            return None
+    except Exception as exc:
+        try:
+            with open(log_path, "a", encoding="utf-8") as _f:
+                _f.write(f"[lowpass] FAILED: {exc}\n")
+        except Exception:
+            pass
+        return None
+    _pause_filter_cache["filtered_path"] = out_path
+    return out_path
+
+
+def enter_pause_lowpass() -> bool:
+    """Switch from the live BGM stream to a lowpass-filtered copy.
+
+    Records the current playback position so exit_pause_lowpass() can
+    resume from where the user paused. Returns True if the filter was
+    applied (filtered BGM is now playing), False if it fell back to
+    no-filter mode (e.g., numpy not available or BGM not playing).
+    """
+    global _current_track
+    if not _ensure_mixer():
+        return False
+    if get_current_track() != "gameplay":
+        # Not in gameplay mode (e.g., already on title) — no-op.
+        return False
+    if not pygame.mixer.music.get_busy():
+        return False
+    # Record the current playback position so we can resume later.
+    try:
+        pos_ms = pygame.mixer.music.get_pos()
+    except pygame.error:
+        pos_ms = 0
+    if pos_ms < 0:
+        pos_ms = 0
+    _pause_filter_cache["pause_pos_ms"] = pos_ms
+    # Generate (or load cached) the filtered file.
+    filtered_path = _ensure_filtered_bgm()
+    if filtered_path is None:
+        return False
+    # Swap: stop original, play filtered.
+    try:
+        pygame.mixer.music.stop()
+        pygame.mixer.music.load(filtered_path)
+        # Slightly quieter (room-next-door).
+        pygame.mixer.music.set_volume(_music_volume * 0.85)
+        pygame.mixer.music.play(loops=-1)
+        # Seek to the same position the original was at. If the file
+        # is already in the "filtered" state, this is a no-op.
+        try:
+            pygame.mixer.music.set_pos(pos_ms / 1000.0)
+        except pygame.error:
+            pass
+    except pygame.error:
+        return False
+    _pause_filter_cache["paused"] = True
+    _current_track = "gameplay_filtered"
+    return True
+
+
+def exit_pause_lowpass() -> bool:
+    """Switch back from the filtered BGM to the original gameplay BGM.
+
+    Resumes the original at the position where the user paused. Returns
+    True if the swap succeeded, False otherwise.
+    """
+    global _current_track
+    if not _ensure_mixer():
+        return False
+    if not _pause_filter_cache.get("paused"):
+        return False
+    pos_ms = _pause_filter_cache.get("pause_pos_ms", 0) or 0
+    src_path = _find_track(GAMEPLAY_TRACK)
+    if src_path is None:
+        return False
+    try:
+        pygame.mixer.music.stop()
+        pygame.mixer.music.load(str(src_path))
+        pygame.mixer.music.set_volume(_music_volume)
+        pygame.mixer.music.play(loops=-1)
+        try:
+            pygame.mixer.music.set_pos(pos_ms / 1000.0)
+        except pygame.error:
+            pass
+    except pygame.error:
+        return False
+    _current_track = "gameplay"
+    _pause_filter_cache["paused"] = False
+    return True

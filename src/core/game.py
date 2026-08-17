@@ -294,7 +294,28 @@ class Game:
         self.scenes.register_scene(GameState.CREDITS, CreditsScene(transition_to))
         # BLOQUE 50: sub-boss mid-wave warning (yellow)
         self.scenes.register_scene(GameState.SUB_BOSS_INTRO, SubBossIntroScene(transition_to, audio=self.audio))
-        self.scenes.register_scene(GameState.PAUSE, PauseScene(transition_to))
+        # BLOQUE 58.14: PauseScene reads live player stats from whichever
+        # scene was running underneath (gameplay or boss). The callback
+        # dispatches to the right scene and returns an empty dict if the
+        # underlying scene doesn't expose stats (e.g. pause from title).
+        def _get_pause_stats() -> dict:
+            try:
+                underlying = self.scenes.scenes.get(self.scenes.current_state)
+            except Exception:
+                return {}
+            if underlying is None:
+                return {}
+            fn = getattr(underlying, "get_pause_stats", None)
+            if not callable(fn):
+                return {}
+            try:
+                return fn() or {}
+            except Exception:
+                return {}
+        self.scenes.register_scene(
+            GameState.PAUSE,
+            PauseScene(transition_to, get_pause_stats=_get_pause_stats),
+        )
 
     def run(self) -> int:
         """Main loop with fixed-timestep accumulator (120 FPS)."""

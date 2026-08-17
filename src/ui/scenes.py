@@ -777,6 +777,10 @@ class GameplayScene(Scene):
     def draw(self, target: pygame.Surface) -> None:
         self._rt.draw(target)
 
+    def get_pause_stats(self) -> dict:
+        """BLOQUE 58.14: forward to the runtime so PauseScene can read live stats."""
+        return self._rt.get_pause_stats()
+
     def enable_procedural_patterns(
         self, seed: int = 42, floor: int = 1, spawn_interval: float = 4.0,
     ) -> None:
@@ -1130,6 +1134,10 @@ class BossFightScene(Scene):
     def draw(self, target: pygame.Surface) -> None:
         self._rt.draw(target)
 
+    def get_pause_stats(self) -> dict:
+        """BLOQUE 58.14: forward to the runtime so PauseScene can read live stats."""
+        return self._rt.get_pause_stats()
+
 
 class ActClearedScene(Scene):
     """ACT_CLEARED — act boss defeated, +25000 pts, act transition."""
@@ -1297,32 +1305,83 @@ class CreditsScene(Scene):
 class PauseScene(Scene):
     """BLOQUE 58.41: PAUSE overlay with interactive control reference.
 
+    BLOQUE 58.14: now also shows
+      - 8-frame rotating player ship sprite (left side, spinning)
+      - Player stats panel (right side): HP bar, lives, bombs, dash heat,
+        gold rings, score.
+
     Layout (centered on screen):
       - "PAUSED" header at top
-      - Control reference panel below (categorized):
-        * MOVEMENT   WASD / arrows
-        * AIM        mouse
-        * SHOOTING   LMB charge, RMB rapid, B missile
-        * MOVEMENT2  SHIFT dash/propulsion, ESC pause
+      - Ship + stats row (BLOQUE 58.14)
+      - Control reference panel below (categorized)
       - "ESC to resume" footer
     """
 
-    def __init__(self, transition_to: TransitionFn) -> None:
+    # 8-frame rotating ship sprite filenames (BLOQUE 58.14). AI-generated
+    # PNGs, 16x16 each, transparent BG. Full turntable (0..315 deg / 45 deg
+    # steps). Loaded once into `_player_rotation_frames` on first draw.
+    PLAYER_ROTATION_FRAMES = (
+        "frame_00.png", "frame_01.png", "frame_02.png", "frame_03.png",
+        "frame_04.png", "frame_05.png", "frame_06.png", "frame_07.png",
+    )
+    PLAYER_ROTATION_DIR = "player_rotation"
+    PLAYER_ROTATION_FPS = 6.0   # one full turn every ~1.33s
+
+    def __init__(self, transition_to: TransitionFn,
+                 get_pause_stats: Optional[Callable[[], dict]] = None) -> None:
         self._transition_to = transition_to
         self._t: float = 0.0
         self._selected: int = 0  # for future interactive nav (BLOQUE 58.42)
+        # BLOQUE 58.14: optional callback to read live player stats. May be
+        # None (e.g. pause opened from non-gameplay scene) — we fall back
+        # to an empty dict so the panel renders without error.
+        self._get_pause_stats: Optional[Callable[[], dict]] = get_pause_stats
+        # Cached rotation frames (loaded lazily on first draw)
+        self._player_rotation_frames: list[pygame.Surface] = []
+        self._player_rotation_dir: Optional[Path] = None
+
+    def _ensure_player_rotation_loaded(self) -> None:
+        """BLOQUE 58.14: load the 8 rotating-ship frames once."""
+        if self._player_rotation_frames:
+            return
+        sprites_dir = _find_sprites_dir()
+        if sprites_dir is None:
+            return
+        rot_dir = sprites_dir / self.PLAYER_ROTATION_DIR
+        if not rot_dir.is_dir():
+            return
+        self._player_rotation_dir = rot_dir
+        for name in self.PLAYER_ROTATION_FRAMES:
+            path = rot_dir / name
+            if not path.is_file():
+                continue
+            try:
+                surf = pygame.image.load(str(path)).convert_alpha()
+                self._player_rotation_frames.append(surf)
+            except pygame.error:
+                pass
 
     def on_enter(self) -> None:
         self._t = 0.0
-        # BLOQUE 58.45: pause = switch back to the title-screen track
-        # (so the gameplay music isn't playing while the player is paused).
+        # BLOQUE 58.14: keep the gameplay BGM playing but LOWPASS-FILTERED
+        # (sounds like "music in the next room" — muffled through a wall).
+        # The filtered file is generated lazily on first pause; subsequent
+        # pauses swap instantly via the cached file.
         from src.audio import music
-        music.play_title_music()
+        ok = music.enter_pause_lowpass()
+        if not ok:
+            # Fallback: if lowpass unavailable (numpy missing, no BGM, etc.)
+            # just keep the original BGM playing as a graceful degradation.
+            pass
 
     def on_exit(self) -> None:
-        # BLOQUE 58.45: leaving pause = switch back to the gameplay track.
+        # BLOQUE 58.14: leaving pause = swap back to the unfiltered BGM at
+        # the saved position (no audible gap, no restart from 0).
         from src.audio import music
-        music.play_gameplay_music()
+        ok = music.exit_pause_lowpass()
+        if not ok:
+            # Fallback: reload the gameplay track from the top.
+            music.play_gameplay_music(force=True)
 
     def update(self, dt: float) -> None:
         self._t += dt
@@ -1344,67 +1403,259 @@ class PauseScene(Scene):
         font = pygame.font.Font(None, 36)
         text = font.render("PAUSED", True, (255, 240, 100))
         _center_blit(target, text, 16)
-        # Control reference panel
+        # BLOQUE 58.14: rotating ship on the left, stats panel on the right
+        self._draw_rotating_ship_and_stats(target)
+        # Control reference panel (kept below the new ship/stats row)
         self._draw_controls_panel(target)
         # Footer
         font2 = pygame.font.Font(None, 12)
         footer = font2.render("ESC: resume  |  C: credits", True, (160, 160, 180))
         _center_blit(target, footer, INTERNAL_H - 16)
 
+    def _draw_rotating_ship_and_stats(self, target: pygame.Surface) -> None:
+        """BLOQUE 58.14: rotating player sprite (left) + stats panel (right)."""
+        # Lazy-load the rotation frames
+        self._ensure_player_rotation_loaded()
+        # Decide which frame based on time (6 FPS turntable)
+        frame_idx = int(self._t * self.PLAYER_ROTATION_FPS) % 8
+        # Left column: rotating ship, scaled up so it's clearly visible
+        ship_w, ship_h = 64, 64
+        ship_x = 24
+        ship_y = 70
+        # Soft glow box behind the ship
+        glow = pygame.Surface((ship_w + 12, ship_h + 12), pygame.SRCALPHA)
+        pygame.draw.rect(glow, (30, 40, 80, 180), (0, 0, ship_w + 12, ship_h + 12),
+                          border_radius=4)
+        pygame.draw.rect(glow, (80, 100, 160, 200), (0, 0, ship_w + 12, ship_h + 12),
+                          1, border_radius=4)
+        target.blit(glow, (ship_x - 6, ship_y - 6))
+        # Blit the current rotation frame, scaled up to fit 64x64
+        if self._player_rotation_frames:
+            sprite = self._player_rotation_frames[frame_idx]
+            scaled = pygame.transform.scale(sprite, (ship_w, ship_h))
+            target.blit(scaled, (ship_x, ship_y))
+        else:
+            # Fallback: draw a placeholder ship polygon (when PNGs missing)
+            cx, cy = ship_x + ship_w // 2, ship_y + ship_h // 2
+            pygame.draw.polygon(target, (210, 230, 250), [
+                (cx, cy - 20), (cx + 14, cy + 14), (cx, cy + 6), (cx - 14, cy + 14),
+            ])
+            pygame.draw.polygon(target, (255, 220, 140), [
+                (cx, cy - 12), (cx + 6, cy - 4), (cx, cy + 4), (cx - 6, cy - 4),
+            ])
+        # Caption under the ship
+        cap_font = pygame.font.Font(None, 10)
+        cap = cap_font.render("ROTATING", True, (140, 160, 200))
+        target.blit(cap, (ship_x + (ship_w - cap.get_width()) // 2,
+                          ship_y + ship_h + 4))
+        # Right column: stats panel
+        stats_x = 100
+        stats_y = 70
+        stats_w = INTERNAL_W - stats_x - 8
+        # Read live stats (fallback to empty dict if no callback)
+        stats: dict = {}
+        if self._get_pause_stats is not None:
+            try:
+                stats = self._get_pause_stats() or {}
+            except Exception:
+                stats = {}
+        self._draw_stats_panel(target, stats_x, stats_y, stats_w, 130, stats)
+
+    def _draw_stats_panel(self, target: pygame.Surface,
+                           x: int, y: int, w: int, h: int,
+                           stats: dict) -> None:
+        """BLOQUE 58.14: render the player's live stats as a 2-column grid.
+
+        Left column (narrow): HP bar + dash heat bar + ring stack.
+        Right column (narrow): lives, bombs, score (text only).
+        The columns are placed side-by-side without overlap.
+        """
+        # Panel background
+        panel = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.rect(panel, (15, 15, 30, 180), (0, 0, w, h), border_radius=4)
+        pygame.draw.rect(panel, (60, 60, 100, 200), (0, 0, w, h), 1, border_radius=4)
+        target.blit(panel, (x, y))
+        # Header
+        head_font = pygame.font.Font(None, 12)
+        head = head_font.render("SHIP STATUS", True, (180, 200, 240))
+        target.blit(head, (x + 4, y + 4))
+        pygame.draw.line(target, (100, 130, 180),
+                          (x + 4, y + 4 + head.get_height() + 1),
+                          (x + 4 + head.get_width(), y + 4 + head.get_height() + 1),
+                          1)
+        body_font = pygame.font.Font(None, 11)
+        label_font = pygame.font.Font(None, 10)
+        # Two columns, each ~half the panel width. Right column starts
+        # at the midpoint and the left column is constrained to fit the
+        # bars without spilling into the right column.
+        col_w = (w - 12) // 2
+        col_left_x = x + 4
+        col_right_x = x + 4 + col_w + 4
+        # Helper: render a label + value on a row
+        def row(rx: int, ry: int, label: str, value: str,
+                value_color: tuple[int, int, int] = (220, 220, 240)) -> None:
+            ls = label_font.render(label, True, (160, 170, 200))
+            vs = body_font.render(value, True, value_color)
+            target.blit(ls, (rx, ry))
+            target.blit(vs, (rx + ls.get_width() + 4, ry - 1))
+        # ---- LEFT COLUMN: HP bar + HEAT bar + RINGS ----
+        bar_x = col_left_x + 28
+        bar_w = col_w - 32
+        row_y = y + 22
+        hp = int(stats.get("hp", 0))
+        hp_max = max(1, int(stats.get("hp_max", 1)))
+        hp_color = (100, 255, 140) if hp > hp_max * 0.5 else (
+            (255, 200, 80) if hp > hp_max * 0.25 else (255, 90, 90))
+        row(col_left_x, row_y, "HP", f"{hp}/{hp_max}", hp_color)
+        self._draw_bar(target, bar_x, row_y, bar_w, 5,
+                         hp / hp_max, hp_color)
+        row_y += 14
+        dh = float(stats.get("dash_heat", 0.0))
+        dh_max = max(1.0, float(stats.get("dash_heat_max", 1.0)))
+        dh_color = (255, 240, 100) if dh < dh_max * 0.75 else (255, 100, 80)
+        row(col_left_x, row_y, "HEAT", f"{int(dh)}", dh_color)
+        self._draw_bar(target, bar_x, row_y, bar_w, 5,
+                         min(1.0, dh / dh_max), dh_color)
+        row_y += 14
+        # RINGS (gold ring stack) — drawn as 3 small circles (Star Fox style)
+        rings = int(stats.get("gold_rings", 0))
+        rings_color = (255, 220, 100)
+        row(col_left_x, row_y, "RINGS", f"{rings}", rings_color)
+        for i in range(3):
+            cx = bar_x + i * 9
+            cy = row_y + 4
+            filled = i < min(rings, 3)
+            color = (255, 220, 100) if filled else (60, 60, 90)
+            pygame.draw.circle(target, color, (cx, cy), 3)
+            if not filled:
+                pygame.draw.circle(target, (60, 60, 90), (cx, cy), 3, 1)
+        row_y += 14
+        # HP doubled badge
+        if stats.get("hp_doubled"):
+            tag = label_font.render("HP 2x", True, (255, 200, 80))
+            target.blit(tag, (col_left_x, row_y))
+        # ---- RIGHT COLUMN: lives, bombs, score ----
+        rr_y = y + 22
+        lives = int(stats.get("lives", 0))
+        lives_max = int(stats.get("lives_max", 0))
+        lives_color = (140, 220, 255) if lives > 0 else (255, 90, 90)
+        row(col_right_x, rr_y, "VIDA", f"{lives}/{lives_max}", lives_color)
+        for i in range(min(lives, 3)):
+            sx = col_right_x + 32 + i * 8
+            pygame.draw.polygon(target, (140, 220, 255), [
+                (sx, rr_y), (sx + 4, rr_y + 6), (sx, rr_y + 4), (sx - 4, rr_y + 6),
+            ])
+        rr_y += 14
+        bombs = int(stats.get("bombs", 0))
+        bombs_max = int(stats.get("bombs_max", 0))
+        bombs_color = (255, 180, 100) if bombs > 0 else (120, 120, 140)
+        row(col_right_x, rr_y, "BOMB", f"{bombs}/{bombs_max}", bombs_color)
+        for i in range(min(bombs, 4)):
+            bx = col_right_x + 40 + i * 6
+            pygame.draw.circle(target, (255, 180, 100), (bx, rr_y + 4), 2)
+        rr_y += 14
+        score = int(stats.get("score", 0))
+        score_str = f"{score:06d}"
+        row(col_right_x, rr_y, "PTS", score_str, (255, 240, 140))
+
+    def _draw_bar(self, target: pygame.Surface, x: int, y: int,
+                   w: int, h: int, fill: float, color: tuple[int, int, int]) -> None:
+        """Draw a thin progress bar. fill is 0..1."""
+        fill = max(0.0, min(1.0, fill))
+        # Background
+        pygame.draw.rect(target, (40, 40, 60), (x, y, w, h))
+        # Fill
+        if fill > 0:
+            fw = max(1, int(w * fill))
+            pygame.draw.rect(target, color, (x, y, fw, h))
+        # Border
+        pygame.draw.rect(target, (90, 100, 140), (x, y, w, h), 1)
+
     def _draw_controls_panel(self, target: pygame.Surface) -> None:
-        """Draw the categorized control reference panel."""
-        # 4 categories, each with its own row
+        """Draw the categorized control reference panel (compact, 2-col)."""
+        # 4 categories — split across 2 columns so each has 2 cats
         categories = [
             ("MOVEMENT", [
-                ("WASD / Arrows", "move"),
-            ]),
-            ("AIM", [
+                ("WASD", "move"),
                 ("Mouse", "aim"),
             ]),
             ("SHOOTING", [
-                ("LMB (hold)", "charge shot"),
-                ("RMB (hold)", "rapid fire"),
-                ("B", "homing missile"),
+                ("LMB", "charge"),
+                ("RMB", "rapid"),
+                ("B", "missile"),
             ]),
             ("TACTICAL", [
-                ("Shift", "dash / propulsion"),
+                ("Shift", "dash"),
+            ]),
+            ("SYSTEM", [
                 ("ESC", "pause"),
+                ("C", "credits"),
             ]),
         ]
-        # Panel area: starts at y=70, each category is ~20 px tall
+        # BLOQUE 58.14: pushed down to make room for the new ship/stats row
+        # above. 2x2 grid (2 categories per column) is more compact than
+        # the previous single-column-per-category layout.
         panel_x = 12
-        panel_y = 70
+        panel_y = 210
         panel_w = INTERNAL_W - 24
+        panel_h = INTERNAL_H - panel_y - 24  # leave room for footer
         # Panel background (subtle)
-        panel = pygame.Surface((panel_w, 130), pygame.SRCALPHA)
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         pygame.draw.rect(panel, (15, 15, 30, 180),
-                          (0, 0, panel_w, 130), border_radius=4)
+                          (0, 0, panel_w, panel_h), border_radius=4)
         pygame.draw.rect(panel, (60, 60, 100, 200),
-                          (0, 0, panel_w, 130), 1, border_radius=4)
+                          (0, 0, panel_w, panel_h), 1, border_radius=4)
         target.blit(panel, (panel_x, panel_y))
-        # Column headers
+        # 2x2 grid: pair up categories (0,1) in col 0; (2,3) in col 1
         font_header = pygame.font.Font(None, 12)
-        font_key = pygame.font.Font(None, 12)
-        font_desc = pygame.font.Font(None, 12)
-        # Layout: 2 columns
+        font_key = pygame.font.Font(None, 11)
+        font_desc = pygame.font.Font(None, 11)
         col_w = panel_w // 2
-        for col_idx, (cat_name, items) in enumerate(categories):
-            col_x = panel_x + 4 + col_idx * col_w
-            # Category header
-            header_surf = font_header.render(cat_name, True, (180, 200, 240))
-            target.blit(header_surf, (col_x, panel_y + 6))
-            # Underline
-            pygame.draw.line(target, (100, 130, 180),
-                              (col_x, panel_y + 6 + header_surf.get_height() + 1),
-                              (col_x + header_surf.get_width(),
-                               panel_y + 6 + header_surf.get_height() + 1), 1)
-            # Items
-            for i, (key, desc) in enumerate(items):
-                item_y = panel_y + 24 + i * 24
-                # Key (highlighted, bold-looking)
-                key_surf = font_key.render(key, True, (255, 220, 100))
-                target.blit(key_surf, (col_x, item_y))
-                # Description (dimmer)
-                desc_surf = font_desc.render(desc, True, (200, 200, 220))
-                target.blit(desc_surf,
-                            (col_x + key_surf.get_width() + 6, item_y + 1))
+        col_x_left = panel_x + 4
+        col_x_right = panel_x + 4 + col_w
+        # Each column gets a 2-cat stack; each cat is ~14 (header) + items*12
+        max_items_per_cat = max(len(items) for _, items in categories)
+        cat_h = (panel_h - 8) // 2  # split column in half
+        for col_idx in range(2):
+            col_x = col_x_left if col_idx == 0 else col_x_right
+            # Two categories per column
+            cat_a = categories[col_idx * 2]
+            cat_b = categories[col_idx * 2 + 1]
+            for cat_idx, (cat_name, items) in enumerate([cat_a, cat_b]):
+                cat_y = panel_y + 4 + cat_idx * cat_h
+                # Header
+                header_surf = font_header.render(cat_name, True, (180, 200, 240))
+                target.blit(header_surf, (col_x, cat_y))
+                pygame.draw.line(target, (100, 130, 180),
+                                  (col_x, cat_y + header_surf.get_height() + 1),
+                                  (col_x + header_surf.get_width(),
+                                   cat_y + header_surf.get_height() + 1), 1)
+                # Items
+                row_h = (cat_h - 16) // max(max_items_per_cat, 1)
+                row_h = max(10, min(14, row_h))
+                for i, (key, desc) in enumerate(items):
+                    item_y = cat_y + 16 + i * row_h
+                    if item_y + row_h > panel_y + panel_h - 2:
+                        break  # don't spill past panel bottom
+                    key_surf = font_key.render(key, True, (255, 220, 100))
+                    target.blit(key_surf, (col_x, item_y))
+                    desc_surf = font_desc.render(desc, True, (200, 200, 220))
+                    target.blit(desc_surf,
+                                (col_x + key_surf.get_width() + 4, item_y))
+
+
+# BLOQUE 58.14: tiny ship icon used in the "VIDA" (lives) row of the
+# pause screen. Built once on import and cached.
+_MINI_SHIP_SURF: Optional[pygame.Surface] = None
+
+
+def _mini_ship_surf(font: pygame.font.Font) -> pygame.Surface:
+    """Return a small 8x8 cyan arrow used as a life icon. Cached."""
+    global _MINI_SHIP_SURF
+    if _MINI_SHIP_SURF is None:
+        s = pygame.Surface((8, 8), pygame.SRCALPHA)
+        pygame.draw.polygon(s, (140, 220, 255), [
+            (4, 0), (7, 7), (4, 5), (1, 7),
+        ])
+        _MINI_SHIP_SURF = s
+    return _MINI_SHIP_SURF

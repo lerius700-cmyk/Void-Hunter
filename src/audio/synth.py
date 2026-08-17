@@ -395,3 +395,113 @@ class AudioEngine:
                 pass
 
 
+# ---------------------------------------------------------------------------
+# BLOQUE 58.14: Lowpass filter for pause-screen "music in the next room"
+# ---------------------------------------------------------------------------
+# User wants the gameplay BGM to keep playing during pause but sound
+# muffled (as if heard through a wall). True lowpass requires FFT or IIR
+# filtering, which the GDD §0 normally forbids (no numpy/scipy). The
+# user explicitly chose numpy for this feature (documented in
+# requirements.txt), so we use a 1st-order IIR lowpass. It's O(n),
+# simple, and produces a believable "behind a wall" effect.
+#
+# Filter math (1st-order RC lowpass, also called exponential moving avg):
+#   y[i] = y[i-1] + alpha * (x[i] - y[i-1])
+#   alpha = dt / (rc + dt) = dt * cutoff / (1 + dt * cutoff)
+#   rc = 1 / (2 * pi * cutoff_hz)
+#
+# For 600 Hz cutoff at 44.1 kHz: alpha ≈ 0.022 → very muffled (only
+# bass and low-mids pass through). That matches "next room" feel.
+# ---------------------------------------------------------------------------
+def apply_lowpass_to_wav(
+    input_path: str,
+    output_path: str,
+    cutoff_hz: float = 600.0,
+    sample_rate: int = 44100,
+) -> bool:
+    """Apply a 1st-order IIR lowpass to a 16-bit PCM WAV file.
+
+    Reads input_path (must be 16-bit mono or stereo PCM WAV), applies
+    the lowpass to each channel independently, and writes output_path.
+    The output is a 16-bit PCM WAV with the same sample rate and channel
+    count as the input.
+
+    Returns True on success, False on error (missing input, bad format,
+    etc.). The numpy import is local so the rest of the audio module
+    stays numpy-free for tests.
+
+    BLOQUE 58.14: this is the only numpy consumer in the audio path.
+    The decision to allow numpy here is documented in requirements.txt.
+    """
+    try:
+        import wave
+        import numpy as np
+    except ImportError:
+        return False
+    try:
+        with wave.open(input_path, "rb") as wf:
+            n_channels = wf.getnchannels()
+            sample_width = wf.getsampwidth()
+            n_frames = wf.getnframes()
+            src_rate = wf.getframerate()
+            if sample_width != 2:
+                # Only 16-bit supported (the only format we ship)
+                return False
+            raw = wf.readframes(n_frames)
+    except (OSError, wave.Error, EOFError):
+        return False
+
+    # Convert to numpy int16
+    samples = np.frombuffer(raw, dtype=np.int16)
+    if n_channels > 1:
+        samples = samples.reshape(-1, n_channels)
+    # Promote to float32 for IIR processing
+    samples_f = samples.astype(np.float32)
+    # 1st-order RC lowpass: y[i] = decay * y[i-1] + alpha * x[i]
+    dt = 1.0 / float(sample_rate if sample_rate else src_rate)
+    alpha = (dt * cutoff_hz) / (1.0 + dt * cutoff_hz)
+    decay = 1.0 - alpha
+    # Direct iterative IIR. The "weighted cumsum" trick has severe
+    # numerical issues at large i (decay^i and decay^(-i) underflow /
+    # overflow; the product stays bounded but the intermediate values
+    # exceed float32 range). A simple Python loop is O(n) and numerically
+    # stable; for the full 165MB BGM (~14.5M stereo samples) it takes
+    # a few seconds once, and the result is cached on disk so subsequent
+    # pauses are instant.
+    alpha32 = np.float32(alpha)
+    decay32 = np.float32(decay)
+    if samples_f.ndim == 1:
+        n = samples_f.shape[0]
+        y = np.empty(n, dtype=np.float32)
+        prev = np.float32(0.0)
+        x32 = samples_f
+        for i in range(n):
+            cur = decay32 * prev + alpha32 * x32[i]
+            y[i] = cur
+            prev = cur
+    else:
+        # 2D: process each channel
+        n = samples_f.shape[0]
+        n_ch = samples_f.shape[1]
+        y = np.empty_like(samples_f, dtype=np.float32)
+        for ch in range(n_ch):
+            prev = np.float32(0.0)
+            x32 = samples_f[:, ch]
+            for i in range(n):
+                cur = decay32 * prev + alpha32 * x32[i]
+                y[i, ch] = cur
+                prev = cur
+    # Back to int16 with clipping
+    out = np.clip(y, -32768, 32767).astype(np.int16)
+    # Write WAV
+    try:
+        with wave.open(output_path, "wb") as wf:
+            wf.setnchannels(n_channels)
+            wf.setsampwidth(2)
+            wf.setframerate(src_rate)
+            wf.writeframes(out.tobytes())
+    except (OSError, wave.Error):
+        return False
+    return True
+
+

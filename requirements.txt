@@ -1,4 +1,10 @@
 # VOID HUNTER — runtime dependencies
 # BLOQUE 0 baseline. Política: cero deps externas (numpy/scipy prohibidos por spec §0).
-# Stack cerrado: solo pygame (2.6+) + stdlib.
+# BLOQUE 58.14: exception — numpy is required for the pause-screen lowpass
+# filter (muffles the gameplay BGM when paused, simulates "music in the next
+# room"). This is a USER-EXPLICIT decision (the user wants a real LP, not a
+# fake volume-only "muffled" approximation). The pause feature is the only
+# numpy consumer; everything else is still stdlib + pygame.
+# Stack cerrado: solo pygame (2.6+) + stdlib + numpy (audio only).
 pygame>=2.6.0
+numpy>=1.26.0  # BLOQUE 58.14: pause-screen audio lowpass only

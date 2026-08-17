@@ -525,6 +525,45 @@ class GameplayRuntime:
         self._stop_bgm()
 
     # ------------------------------------------------------------------
+    # BLOQUE 58.14: pause-screen stats snapshot
+    # ------------------------------------------------------------------
+    def get_pause_stats(self) -> dict:
+        """Return a dict with the player's current stats for the pause overlay.
+
+        Keys (stable contract — tests depend on these):
+          - hp:           int   current HP
+          - hp_max:       int   max HP (post tech upgrades, post gold-ring 2x)
+          - hp_doubled:   bool  whether the gold-ring 2x has fired
+          - lives:        int   lives remaining (>=0)
+          - lives_max:    int   starting lives (PLAYER_LIVES, for reference)
+          - bombs:        int   bombs remaining
+          - bombs_max:    int   max bombs (PLAYER_BOMBS_MAX)
+          - dash_heat:    float 0..PLAYER_DASH_HEAT_MAX
+          - dash_heat_max: float PLAYER_DASH_HEAT_MAX
+          - gold_rings:   int   0..GOLD_RING_DRAW_LIFE (Star Fox rings)
+          - score:        int   current session score
+        """
+        from src.core.settings import (
+            PLAYER_DASH_HEAT_MAX, PLAYER_LIVES, PLAYER_BOMBS_MAX,
+            GOLD_RING_DRAW_LIFE,
+        )
+        p = self._player
+        return {
+            "hp": int(p.hp),
+            "hp_max": int(p.hp_max),
+            "hp_doubled": bool(getattr(p, "hp_doubled", False)),
+            "lives": int(p.lives),
+            "lives_max": int(PLAYER_LIVES),
+            "bombs": int(p.bombs),
+            "bombs_max": int(PLAYER_BOMBS_MAX),
+            "dash_heat": float(p.dash_heat),
+            "dash_heat_max": float(PLAYER_DASH_HEAT_MAX),
+            "gold_rings": int(getattr(p, "gold_rings", 0)),
+            "gold_rings_max": int(GOLD_RING_DRAW_LIFE),
+            "score": int(self._scoring.score),
+        }
+
+    # ------------------------------------------------------------------
     # Input
     # ------------------------------------------------------------------
     def _read_input(self) -> None:
