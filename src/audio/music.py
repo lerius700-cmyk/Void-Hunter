@@ -180,77 +180,90 @@ def play_title_music(loops: int = -1) -> bool:
 def play_gameplay_music(loops: int = -1, force: bool = False) -> bool:
     """Play the gameplay soundtrack on loop. Returns True on success.
 
+    BLOQUE 58.14 v2: BOTH the original and the lowpass-filtered copy
+    are loaded and played in parallel on separate channels, started
+    at the same time so they stay in sync. The pause effect is just
+    a volume swap (original → 0, filtered → 0.85) — the BGM never
+    stops or restarts. At second 50 of pause, the user is still at
+    second 50 of the song.
+
     BLOQUE 58.53: when `force=False` (default), the music is NOT
     restarted if the gameplay track is already the current track and
-    the channel is still playing. This keeps the music playing
-    continuously through scene transitions (sub-boss, boss intro) and
-    through the pause overlay.
-
-    BLOQUE 58.14: pause/resume uses Channel.pause()/unpause() to preserve
-    the EXACT playback position. So the user's "music restarts on resume"
-    bug is fixed at the source.
+    the channel is still playing.
     """
-    global _current_track, _bgm_channel, _original_sound
+    global _current_track, _bgm_channel, _original_sound, _filtered_sound
+    global _filtered_channel
     if not _ensure_mixer():
         return False
     if not force and _current_track in ("gameplay", "gameplay_filtered"):
-        if _bgm_channel is not None and not _is_paused:
+        if _bgm_channel is not None and _bgm_channel.get_busy():
             # Already playing and not paused — keep going.
+            # But ensure the filtered is also playing (for the next pause)
+            if (_filtered_sound is not None
+                    and _filtered_channel is not None
+                    and not _filtered_channel.get_busy()):
+                _filtered_channel.play(_filtered_sound, loops=-1)
             return True
-    path = _find_track(GAMEPLAY_TRACK)
-    if path is None:
-        print(f"[music] WARN: '{GAMEPLAY_TRACK}' not found in Assets/")
+    # Load BOTH sounds (original + filtered)
+    if not _load_both_sounds():
         return False
-    # Allocate the BGM channel
+    # Allocate channels
     if _bgm_channel is None:
         _bgm_channel = pygame.mixer.Channel(2)  # 2 = BGM
+    if _filtered_channel is None:
+        _filtered_channel = pygame.mixer.Channel(3)  # 3 = filtered
+    # Start BOTH at position 0, looping forever
+    # Stop whatever was on those channels first
     try:
         _bgm_channel.stop()
     except pygame.error:
         pass
-    # Cache the Sound so we don't reload the 165MB WAV on every call.
-    if _original_sound is None or getattr(_original_sound, "_path", None) != str(path):
-        sound = _load_sound(path)
-        if sound is None:
-            return False
-        _original_sound = sound
-        try:
-            _original_sound._path = str(path)  # type: ignore[attr-defined]
-        except Exception:
-            pass
-    ok = _play_on_channel(_original_sound, _bgm_channel, loops=loops, volume=_music_volume)
-    if ok:
+    try:
+        _filtered_channel.stop()
+    except pygame.error:
+        pass
+    # Start original at full volume
+    ok1 = _play_on_channel(_original_sound, _bgm_channel, loops=loops, volume=_music_volume)
+    # Start filtered at 0 volume (will be unmuted on pause)
+    ok2 = _play_on_channel(_filtered_sound, _filtered_channel, loops=loops, volume=0.0)
+    if ok1 and ok2:
         _current_track = "gameplay"
         _is_paused = False
-        _diag_log(f"play_gameplay_music: started (force={force})")
-    return ok
+        _diag_log(f"play_gameplay_music: started BOTH (force={force}, "
+                  f"orig_vol={_music_volume}, filt_vol=0.0)")
+        return True
+    _diag_log(f"play_gameplay_music: FAILED (orig={ok1}, filt={ok2})")
+    return False
 
 
 # ---------------------------------------------------------------------------
-# BLOQUE 58.14: pause-screen lowpass BGM
+# BLOQUE 58.14: pause-screen lowpass BGM (v2 - continuous playback)
 # ---------------------------------------------------------------------------
-# On pause, the BGM keeps playing but the user hears a lowpass-filtered
-# version (muffled, "music in the next room" feel). On resume, the
-# filter stops and the original BGM unpauses from the exact saved
-# position.
+# BOTH the original BGM and a pre-generated lowpass-filtered copy are
+# loaded into RAM as Sound objects and played on SEPARATE channels
+# (BGM channel 2 + filtered channel 3), started at the same time so
+# they stay in sync (they have the same length and loop together).
 #
-# Implementation:
-#   1. We PAUSE the original BGM channel (preserves position).
-#   2. We play the filtered WAV on a SEPARATE channel at low volume.
-#      The filtered file is pre-generated lazily on first pause and
-#      cached on disk.
-#   3. On resume, we stop the filtered channel and unpause the original.
+# On pause: we just SWAP the channel volumes — original → 0.0, filtered
+#   → 0.85. The BGM never stops, never restarts. At second 50 of pause
+#   the user is still at second 50, just hearing it through the wall.
+# On resume: reverse the swap.
 #
-# Key property: the original BGM position is preserved via Channel.pause()
-# which (unlike pygame.mixer.music.set_pos) works for ANY format, including
-# the 165MB WAV the user has.
+# Memory cost: original (~165 MB RAM) + filtered (~64 MB) = ~229 MB
+# always loaded. Acceptable for a PC game.
+#
+# This is the SECOND attempt — the v1 attempt (Channel.pause/unpause)
+# was technically correct but had subtle issues; the user reported the
+# BGM "stopping and starting" because the filtered copy started from 0
+# (out of sync with the original). The continuous approach keeps both
+# sounds in sync at all times.
 import tempfile
 
 _pause_filter_cache: dict[str, object] = {
     "enabled": True,
     "cutoff_hz": 600.0,
     "filtered_path": None,     # str | None
-    "paused": False,
+    "is_paused": False,
 }
 
 
@@ -266,13 +279,21 @@ def get_lowpass_cutoff_hz() -> float:
 
 
 def set_lowpass_cutoff_hz(hz: float) -> None:
-    """Set the lowpass cutoff Hz. Affects the NEXT pause."""
+    """Set the lowpass cutoff Hz. Affects the NEXT time we load the
+    filtered sound (or generate it if the cutoff changes)."""
     _pause_filter_cache["cutoff_hz"] = max(80.0, min(8000.0, hz))
     # Invalidate cached file (different cutoff = different file)
     _pause_filter_cache["filtered_path"] = None
-    # Also drop the cached Sound so the next pause regenerates it
+    # Also drop the cached Sound so the next play regenerates it
     global _filtered_sound
     _filtered_sound = None
+    # If the filtered channel is currently playing, stop it (the cached
+    # Sound will be regenerated the next time the user pauses).
+    if _filtered_channel is not None and _filtered_channel.get_busy():
+        try:
+            _filtered_channel.stop()
+        except pygame.error:
+            pass
 
 
 def _ensure_filtered_bgm() -> Optional[str]:
@@ -288,7 +309,6 @@ def _ensure_filtered_bgm() -> Optional[str]:
     src_path = _find_track(GAMEPLAY_TRACK)
     if src_path is None:
         return None
-    # Output to a stable cache path next to the source.
     src_dir = os.path.dirname(str(src_path))
     cutoff = get_lowpass_cutoff_hz()
     suffix = f"_lp{int(cutoff)}.wav"
@@ -322,93 +342,125 @@ def _ensure_filtered_bgm() -> Optional[str]:
     return out_path
 
 
-def enter_pause_lowpass() -> bool:
-    """Switch from the live BGM to a lowpass-filtered copy.
-
-    Implementation:
-      1. PAUSE the original BGM channel (preserves position).
-      2. Play the filtered WAV on a separate channel at low volume.
-    Returns True if the filter was applied, False otherwise.
-    """
-    global _current_track, _filtered_channel, _filtered_sound, _is_paused
-    if not _ensure_mixer():
-        _diag_log("enter_pause_lowpass: _ensure_mixer FAILED")
+def _load_both_sounds() -> bool:
+    """Load BOTH the original and the filtered BGM as Sound objects.
+    Both are needed so we can play them in parallel and stay in sync.
+    Returns True on success."""
+    global _original_sound, _filtered_sound
+    src_path = _find_track(GAMEPLAY_TRACK)
+    if src_path is None:
         return False
-    if get_current_track() != "gameplay":
-        # Not in gameplay mode (e.g., already on title) — no-op.
-        _diag_log("enter_pause_lowpass: not in gameplay mode, no-op")
-        return False
-    if _bgm_channel is None or not _bgm_channel.get_busy():
-        _diag_log("enter_pause_lowpass: BGM channel not busy, no-op")
-        return False
-    # Generate (or load cached) the filtered file.
+    # Load original
+    if _original_sound is None or getattr(_original_sound, "_path", None) != str(src_path):
+        _original_sound = _load_sound(src_path)
+        if _original_sound is None:
+            return False
+        try:
+            _original_sound._path = str(src_path)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+    # Load filtered (generate if missing)
     filtered_path = _ensure_filtered_bgm()
     if filtered_path is None:
-        _diag_log("enter_pause_lowpass: no filtered file available, falling back")
         return False
-    # Allocate the filtered channel if needed
-    if _filtered_channel is None:
-        _filtered_channel = pygame.mixer.Channel(3)  # 3 = filtered overlay
-    # Load the filtered Sound if not already cached
     if _filtered_sound is None or getattr(_filtered_sound, "_path", None) != filtered_path:
         _filtered_sound = _load_sound(Path(filtered_path))
         if _filtered_sound is None:
-            _diag_log("enter_pause_lowpass: failed to load filtered Sound")
             return False
         try:
             _filtered_sound._path = filtered_path  # type: ignore[attr-defined]
         except Exception:
             pass
-    # PAUSE the original BGM (preserves position)
-    try:
-        _bgm_channel.pause()
-    except pygame.error as exc:
-        _diag_log(f"enter_pause_lowpass: pause() failed: {exc}")
+    return True
+
+
+def _start_both_channels() -> bool:
+    """Start BOTH the original and the filtered BGM on their channels
+    at the same time, in sync. Original is audible, filtered is silent."""
+    global _bgm_channel, _filtered_channel
+    if _original_sound is None or _filtered_sound is None:
         return False
-    # Play the filtered version at low volume (room-next-door)
-    try:
-        _filtered_channel.set_volume(_music_volume * 0.85)
-        _filtered_channel.play(_filtered_sound, loops=-1)
-    except pygame.error as exc:
-        # If filtered play failed, unpause the original so the user
-        # doesn't lose audio entirely.
+    # Allocate channels (2 = BGM, 3 = filtered)
+    if _bgm_channel is None:
+        _bgm_channel = pygame.mixer.Channel(2)
+    if _filtered_channel is None:
+        _filtered_channel = pygame.mixer.Channel(3)
+    # Stop whatever is currently on these channels
+    for ch in (_bgm_channel, _filtered_channel):
         try:
-            _bgm_channel.unpause()
+            ch.stop()
         except pygame.error:
             pass
-        _diag_log(f"enter_pause_lowpass: filtered play() failed: {exc}")
+    # Start both at position 0, looping forever
+    ok1 = _play_on_channel(_original_sound, _bgm_channel, loops=-1, volume=_music_volume)
+    ok2 = _play_on_channel(_filtered_sound, _filtered_channel, loops=-1, volume=0.0)
+    return ok1 and ok2
+
+
+def enter_pause_lowpass() -> bool:
+    """BLOQUE 58.14 v2: continuous-playback lowpass.
+
+    The BGM NEVER stops. We just swap volumes so the user hears the
+    filtered version. At second 50 of pause, the BGM is still at
+    second 50 of the song — just muffled.
+    """
+    global _current_track, _is_paused
+    _diag_log(f"enter_pause_lowpass: ENTER (track={_current_track}, paused={_is_paused}, "
+              f"bgm_ch_busy={_bgm_channel.get_busy() if _bgm_channel else 'None'})")
+    if not _ensure_mixer():
+        _diag_log("enter_pause_lowpass: _ensure_mixer FAILED")
+        return False
+    if get_current_track() != "gameplay":
+        _diag_log("enter_pause_lowpass: not in gameplay mode, no-op")
+        return False
+    if _bgm_channel is None or not _bgm_channel.get_busy():
+        _diag_log("enter_pause_lowpass: BGM channel not busy, no-op")
+        return False
+    if _filtered_channel is None:
+        _diag_log("enter_pause_lowpass: filtered channel not initialized, no-op")
+        return False
+    # Just swap the volumes. The filtered is already playing in sync
+    # (started at the same time as the original), so we just unmute it
+    # and mute the original.
+    try:
+        _bgm_channel.set_volume(0.0)
+        _filtered_channel.set_volume(_music_volume * 0.85)
+    except pygame.error as exc:
+        _diag_log(f"enter_pause_lowpass: set_volume failed: {exc}")
         return False
     _is_paused = True
     _current_track = "gameplay_filtered"
-    _pause_filter_cache["paused"] = True
-    _diag_log("enter_pause_lowpass: OK (paused original, playing filtered)")
+    _pause_filter_cache["is_paused"] = True
+    _diag_log("enter_pause_lowpass: OK (swapped volumes: orig=0, filt=0.85)")
     return True
 
 
 def exit_pause_lowpass() -> bool:
-    """Stop the filtered overlay and unpause the original BGM (preserving position)."""
+    """BLOQUE 58.14 v2: continuous-playback lowpass resume.
+
+    Inverse of enter: filtered → 0, original → 1.0. BGM continues
+    from the EXACT same position because both sounds were always
+    playing — we never stopped or restarted anything.
+    """
     global _current_track, _is_paused
+    _diag_log(f"exit_pause_lowpass: ENTER (track={_current_track}, paused={_is_paused})")
     if not _ensure_mixer():
         return False
     if not _is_paused:
+        _diag_log("exit_pause_lowpass: not paused, no-op")
         return False
-    # Stop the filtered overlay
-    if _filtered_channel is not None:
-        try:
-            _filtered_channel.stop()
-        except pygame.error:
-            pass
-    # Unpause the original BGM (preserves the position it was at when we paused)
-    if _bgm_channel is not None:
-        try:
-            _bgm_channel.unpause()
-        except pygame.error as exc:
-            _diag_log(f"exit_pause_lowpass: unpause() failed: {exc}")
-            return False
+    try:
+        if _filtered_channel is not None:
+            _filtered_channel.set_volume(0.0)
+        if _bgm_channel is not None:
+            _bgm_channel.set_volume(_music_volume)
+    except pygame.error as exc:
+        _diag_log(f"exit_pause_lowpass: set_volume failed: {exc}")
+        return False
     _is_paused = False
     _current_track = "gameplay"
-    _pause_filter_cache["paused"] = False
-    _diag_log("exit_pause_lowpass: OK (stopped filtered, unpaused original)")
+    _pause_filter_cache["is_paused"] = False
+    _diag_log("exit_pause_lowpass: OK (swapped volumes: orig=1.0, filt=0)")
     return True
 
 

@@ -55,13 +55,23 @@ class Star:
 
 @dataclass
 class Nebula:
-    """Single nebula cloud."""
+    """Single nebula cloud.
+
+    BLOQUE 58.14.1: each nebula pre-renders a noise-based cloud surface
+    on init (see `_render_nebula_surface`). The cached Surface is blit
+    each frame, so the cloud looks like a real procedural nebula
+    (variable density, wisps, multiple soft puffs blended) instead of
+    a single solid circle.
+    """
     x: float
     y: float
     radius: float
     color: tuple[int, int, int]
     vx: float = 0.0
     vy: float = 8.0  # drift down with parallax
+    # Cached pre-rendered surface (set by _render_nebula_surface after
+    # init). Holds the procedural cloud pixels with alpha.
+    surface: Optional[pygame.Surface] = None
 
 
 @dataclass
@@ -131,10 +141,12 @@ class ParallaxBackground:
         """Re-tint stars and nebula for a new theme. Called on act transition."""
         self._theme_name = name
         theme = get_theme(name)
-        # Re-tint nebula colors
+        # Re-tint nebula colors and re-render their surfaces
         nebula_swatches = theme["nebula"]
         for i, n in enumerate(self._nebula):
             n.color = nebula_swatches[i % len(nebula_swatches)]
+            # Re-render the cloud surface with the new color
+            n.surface = self._render_nebula_surface(n)
 
     @property
     def active_count(self) -> int:
@@ -174,14 +186,27 @@ class ParallaxBackground:
     def draw(self, target: pygame.Surface) -> None:
         """Render: nebula → stars → planet. No blits() batch (parallax
         uses 3 distinct surface types with different alpha, single-call
-        per layer is OK per spec)."""
-        # 1. Nebula
+        per layer is OK per spec).
+
+        BLOQUE 58.14.1: nebulas are blitted from their pre-rendered
+        procedural cloud surfaces (see `_render_nebula_surface`), so the
+        per-frame cost is just one blit per nebula.
+        """
+        # 1. Nebula (blit cached procedural cloud surface)
         for n in self._nebula:
-            surf = pygame.Surface((n.radius * 2, n.radius * 2), pygame.SRCALPHA)
-            for r in range(int(n.radius), 0, -2):
-                a = int(20 * (r / n.radius))
-                pygame.draw.circle(surf, (*n.color, a), (n.radius, n.radius), r)
-            target.blit(surf, (int(n.x - n.radius), int(n.y - n.radius)))
+            if n.surface is not None:
+                target.blit(n.surface,
+                            (int(n.x - n.radius), int(n.y - n.radius)),
+                            special_flags=pygame.BLEND_PREMULTIPLIED)
+            else:
+                # Fallback (shouldn't happen since _init_nebula always
+                # pre-renders). Draw a soft circle.
+                surf = pygame.Surface((n.radius * 2, n.radius * 2), pygame.SRCALPHA)
+                for r in range(int(n.radius), 0, -2):
+                    a = int(20 * (r / n.radius))
+                    pygame.draw.circle(surf, (*n.color, a),
+                                       (n.radius, n.radius), r)
+                target.blit(surf, (int(n.x - n.radius), int(n.y - n.radius)))
         # 2. Stars (5 layers, 1 blit per star = NUM_LAYERS * STARS_PER_LAYER
         #    blits. Acceptable since these are tiny 1x1 surfaces; could be
         #    batched in BLOQUE 11 optimization pass if needed.)
@@ -224,6 +249,11 @@ class ParallaxBackground:
         the bottom-right quadrant (off-center, away from ship spawn paths
         and the sub-boss entry point at y=20). It uses nebula_radius_min /
         nebula_radius_max so the user can request a large dramatic cloud.
+
+        BLOQUE 58.14.1: each nebula pre-renders a noise-based cloud surface
+        (multiple soft puffs blended with value noise). The cached
+        Surface is blit in `draw()` instead of drawing concentric
+        circles per frame.
         """
         self._nebula = []
         if self._nebula_count == 0:
@@ -233,10 +263,6 @@ class ParallaxBackground:
         for i in range(self._nebula_count):
             if self._nebula_count == 1:
                 # BLOQUE 58.13.3: single nebula → off-center bottom-right.
-                # Outside the central play column where ships + player move.
-                # Drifts down (vy=8) so it scrolls naturally with parallax.
-                # Initial y is below the visible area; it enters from the
-                # top edge as it drifts down (and wraps when off-bottom).
                 x = self._w * 0.70
                 y = self._h * 0.85
                 radius = self._rng.uniform(
@@ -249,12 +275,134 @@ class ParallaxBackground:
                 radius = self._rng.uniform(
                     self._nebula_radius_min, self._nebula_radius_max
                 )
-            self._nebula.append(Nebula(
+            n = Nebula(
                 x=x,
                 y=y,
                 radius=radius,
                 color=nebula_swatches[i % len(nebula_swatches)],
-            ))
+            )
+            n.surface = self._render_nebula_surface(n)
+            self._nebula.append(n)
+
+    def _render_nebula_surface(self, n: Nebula) -> pygame.Surface:
+        """BLOQUE 58.14.1: procedurally generate a cloud-like surface
+        using value noise + multiple soft puffs blended together.
+
+        Output: a square Surface (size 2*radius × 2*radius) with
+        per-pixel alpha. Denser in the center, wispy at the edges,
+        with 6-8 soft "puff" hotspots that create depth.
+
+        Pure-stdlib (math + random) so we don't pull in numpy just
+        for nebulas. The base is a low-resolution value noise grid
+        upsampled to the surface size.
+        """
+        size = int(n.radius * 2)
+        if size <= 0:
+            return pygame.Surface((1, 1), pygame.SRCALPHA)
+        # 1. Low-resolution value noise grid (6x6 random, then bilinear
+        #    upsample to surface size). Higher res grid = more cloud detail.
+        grid = 6
+        cell = size / grid
+        corners = [[self._rng.random() for _ in range(grid + 1)]
+                   for _ in range(grid + 1)]
+        # 2. Add 8 "puff" hotspots (Gaussian blobs at random positions
+        #    within the nebula). This breaks the regularity of the
+        #    noise field and gives it cloud-like depth + wisps.
+        puffs = []
+        for _ in range(8):
+            puff_cx = self._rng.uniform(0.15, 0.85) * size
+            puff_cy = self._rng.uniform(0.15, 0.85) * size
+            puff_r = self._rng.uniform(0.20, 0.45) * size
+            puff_strength = self._rng.uniform(0.30, 0.65)
+            puffs.append((puff_cx, puff_cy, puff_r, puff_strength))
+        # 3. Build the alpha mask: noise * radial_falloff + puffs.
+        cx = cy = size / 2.0
+        max_r = n.radius
+        max_alpha = 195  # dense, visible cloud
+        r2_max = max_r * max_r
+        # Pre-compute noise per pixel (bilinear)
+        def sample_noise(px: int, py: int) -> float:
+            gx = min(int(px / cell), grid - 1)
+            gy = min(int(py / cell), grid - 1)
+            tx = (px / cell) - gx
+            ty = (py / cell) - gy
+            tx = tx * tx * (3.0 - 2.0 * tx)
+            ty = ty * ty * (3.0 - 2.0 * ty)
+            c00 = corners[gy][gx]
+            c10 = corners[gy][gx + 1]
+            c01 = corners[gy + 1][gx]
+            c11 = corners[gy + 1][gx + 1]
+            a = c00 + (c10 - c00) * tx
+            b = c01 + (c11 - c01) * tx
+            return a + (b - a) * ty
+        # Build alpha array
+        for py in range(size):
+            dy = py - cy
+            dy2 = dy * dy
+            for px in range(size):
+                dx = px - cx
+                r2 = dx * dx + dy2
+                if r2 > r2_max:
+                    continue
+                # Radial falloff: 1.0 at center, 0.0 at edge, smoothstep
+                t = 1.0 - (r2 / r2_max)
+                radial = t * t * (3.0 - 2.0 * t)
+                # Get noise value (cloudy background)
+                n_val = sample_noise(px, py)
+                # Add puff contributions (overrides noise where puffs are)
+                puff_total = 0.0
+                for (pcx, pcy, pr, ps) in puffs:
+                    ddx = px - pcx
+                    ddy = py - pcy
+                    d2 = ddx * ddx + ddy * ddy
+                    if d2 < pr * pr:
+                        pt = 1.0 - (d2 / (pr * pr))
+                        # Smoothstep
+                        pt = pt * pt * (3.0 - 2.0 * pt)
+                        puff_total = max(puff_total, ps * pt)
+                # Combine: max of (noise * 0.6, puff) * radial
+                a = max(n_val * 0.7, puff_total) * radial
+                a = min(1.0, a)
+                if a > 0.01:
+                    alpha = int(a * max_alpha)
+                    # set_at on a Surface is per-pixel
+        # 4. Rasterize to a Surface (use per-pixel set_at for transparency)
+        surf = pygame.Surface((size, size), pygame.SRCALPHA)
+        for py in range(size):
+            dy = py - cy
+            dy2 = dy * dy
+            for px in range(size):
+                dx = px - cx
+                r2 = dx * dx + dy2
+                if r2 > r2_max:
+                    continue
+                t = 1.0 - (r2 / r2_max)
+                radial = t * t * (3.0 - 2.0 * t)
+                n_val = sample_noise(px, py)
+                puff_total = 0.0
+                for (pcx, pcy, pr, ps) in puffs:
+                    ddx = px - pcx
+                    ddy = py - pcy
+                    d2 = ddx * ddx + ddy * ddy
+                    if d2 < pr * pr:
+                        pt = 1.0 - (d2 / (pr * pr))
+                        pt = pt * pt * (3.0 - 2.0 * pt)
+                        puff_total = max(puff_total, ps * pt)
+                a = max(n_val * 0.7, puff_total) * radial
+                a = min(1.0, a)
+                if a > 0.01:
+                    alpha = int(a * max_alpha)
+                    # Slight color variation per puff for depth
+                    cr = n.color[0]
+                    cg = n.color[1]
+                    cb = n.color[2]
+                    if puff_total > n_val * 0.7:
+                        # Inside a puff — brighten slightly
+                        cr = min(255, cr + 20)
+                        cg = min(255, cg + 20)
+                        cb = min(255, cb + 20)
+                    surf.set_at((px, py), (cr, cg, cb, alpha))
+        return surf
 
     def _spawn_planet(self) -> None:
         theme = get_theme(self._theme_name)

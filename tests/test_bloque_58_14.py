@@ -174,55 +174,53 @@ def test_enter_pause_lowpass_not_in_gameplay_returns_false() -> None:
 
 
 def test_enter_and_exit_pause_lowpass_swap_track() -> None:
-    """Happy path: gameplay → filtered on enter, filtered → gameplay on exit.
+    """BLOQUE 58.14 v2: continuous-playback pause/resume.
 
-    We mock the BGM channel + filtered channel so we don't need audio
-    hardware. The key behavior we test:
-      - On enter: BGM channel is PAUSED (not stopped), filtered channel plays
-      - On exit: filtered channel stops, BGM channel UNPAUSES
-      - The unpause preserves the position (no .play() call on the original)
+    The BGM never stops. The original and filtered play in parallel
+    on separate channels, and pause just swaps their volumes. So
+    on enter: BGM channel.set_volume(0), filtered.set_volume(0.85).
+    On exit: BGM channel.set_volume(1.0), filtered.set_volume(0).
+    Neither channel is ever paused/stopped/restarted, so the playback
+    position is preserved at the second level.
     """
     from src.audio import music
     fake_bgm_ch = mock.MagicMock()
     fake_bgm_ch.get_busy.return_value = True
     fake_filtered_ch = mock.MagicMock()
-    fake_sound = mock.MagicMock()
-    # Also patch pygame.mixer.Channel so the function can allocate the
-    # filtered channel without needing a real mixer.
     with mock.patch.object(music, "_ensure_mixer", return_value=True), \
-         mock.patch.object(music, "get_current_track", return_value="gameplay"), \
-         mock.patch.object(music, "_ensure_filtered_bgm",
-                            return_value="/tmp/fake_filtered.wav"), \
-         mock.patch.object(music, "_load_sound", return_value=fake_sound), \
-         mock.patch.object(music.pygame.mixer, "Channel",
-                            return_value=fake_filtered_ch, create=True):
+         mock.patch.object(music, "get_current_track", return_value="gameplay"):
+        # Pre-condition: both channels exist and are playing
         music._bgm_channel = fake_bgm_ch
-        music._filtered_channel = None
-        music._filtered_sound = None
+        music._filtered_channel = fake_filtered_ch
         music._is_paused = False
         # ENTER
         ok_in = music.enter_pause_lowpass()
         assert ok_in is True, "enter_pause_lowpass should succeed"
-        # BGM channel should be PAUSED (preserves position)
-        assert fake_bgm_ch.pause.called, (
-            "BGM channel should be pause()'d to preserve position"
+        # BGM channel volume should be 0 (muted, not paused)
+        bgm_volume_call = fake_bgm_ch.set_volume.call_args_list[0]
+        assert bgm_volume_call[0][0] == 0.0, (
+            f"BGM channel should be muted (vol=0), got {bgm_volume_call}"
         )
-        # BGM channel should NOT have stop() called (that would lose position)
-        assert not fake_bgm_ch.stop.called, (
-            "BGM channel must NOT be stop()'d (that would lose playback position)"
+        # Filtered channel should be audible (vol ~ 0.85)
+        filt_volume_call = fake_filtered_ch.set_volume.call_args_list[0]
+        assert filt_volume_call[0][0] > 0.5, (
+            f"Filtered channel should be audible (vol > 0.5), got {filt_volume_call}"
         )
-        # Filtered channel should have play() called with the sound
-        assert fake_filtered_ch.play.called, "filtered channel should play"
+        # BGM channel should NEVER be paused or stopped (we just swap volumes)
+        assert not fake_bgm_ch.pause.called, "BGM channel must NOT be paused"
+        assert not fake_bgm_ch.stop.called, "BGM channel must NOT be stopped"
+        assert not fake_bgm_ch.play.called, "BGM channel must NOT be played again"
         # EXIT
         ok_out = music.exit_pause_lowpass()
         assert ok_out is True, "exit_pause_lowpass should succeed"
-        # Filtered channel should be stop()'d
-        assert fake_filtered_ch.stop.called, "filtered channel should stop"
-        # BGM channel should be unpause()'d (NOT play()'d)
-        assert fake_bgm_ch.unpause.called, "BGM channel should unpause()"
-        # The BGM channel should NEVER have play() called (that would restart)
-        assert not fake_bgm_ch.play.called, (
-            "BGM channel must NOT be play()'d on resume (would restart from 0)"
+        # Filtered channel volume should be 0 (muted)
+        assert fake_filtered_ch.set_volume.call_args_list[1][0][0] == 0.0, (
+            "filtered channel should be muted on exit"
+        )
+        # BGM channel volume should be back to 1.0
+        assert fake_bgm_ch.set_volume.call_args_list[1][0][0] == 1.0, (
+            f"BGM channel should be back to vol=1.0, got "
+            f"{fake_bgm_ch.set_volume.call_args_list[1]}"
         )
 
 
@@ -380,15 +378,31 @@ def test_pause_scene_on_exit_calls_exit_pause_lowpass() -> None:
         m.assert_called_once()
 
 
-def test_pause_scene_falls_back_to_gameplay_music_when_lowpass_fails() -> None:
-    """If exit_pause_lowpass returns False, play_gameplay_music(force=True)
-    is the fallback (so the user never hears silence on resume)."""
+def test_pause_scene_does_NOT_restart_music_on_resume() -> None:
+    """If exit_pause_lowpass returns False (e.g. enter was never called
+    because the track was not 'gameplay'), the PauseScene.on_exit must
+    NOT call play_gameplay_music(force=True) — that would restart the
+    music from 0 and frustrate the user. Instead it should leave the
+    BGM channel alone (best effort)."""
     from src.ui.scenes import PauseScene
     scene = PauseScene(transition_to=lambda s: None)
     with mock.patch("src.audio.music.exit_pause_lowpass", return_value=False), \
-         mock.patch("src.audio.music.play_gameplay_music", return_value=True) as m:
+         mock.patch("src.audio.music.play_gameplay_music") as m_play, \
+         mock.patch.object(
+             __import__("src.audio.music", fromlist=["_filtered_channel"]),
+             "_filtered_channel", new=mock.MagicMock(), create=True,
+         ) as _fc, \
+         mock.patch.object(
+             __import__("src.audio.music", fromlist=["_bgm_channel"]),
+             "_bgm_channel", new=None, create=True,
+         ), \
+         mock.patch.object(
+             __import__("src.audio.music", fromlist=["_is_paused"]),
+             "_is_paused", new=False, create=True,
+         ):
+        # Should NOT raise, and should NOT call play_gameplay_music
         scene.on_exit()
-        m.assert_called_once_with(force=True)
+        m_play.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
