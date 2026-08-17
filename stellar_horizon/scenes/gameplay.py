@@ -11,6 +11,7 @@ from stellar_horizon.entities.boss import Boss
 from stellar_horizon.entities.bullet import EnemyBullet, PlayerBullet
 from stellar_horizon.entities.enemy import Enemy
 from stellar_horizon.entities.player import Player
+from stellar_horizon.fx.dust import DustStream
 from stellar_horizon.fx.particles import FxLayer
 from stellar_horizon.fx.screen_shake import ScreenShake
 from stellar_horizon.settings import (
@@ -18,6 +19,7 @@ from stellar_horizon.settings import (
 )
 from stellar_horizon.ui.backgrounds import Background
 from stellar_horizon.ui.hud import Hud
+from stellar_horizon.ui.mountains import MountainLayer
 from stellar_horizon.waves.wave_manager import WaveManager
 
 
@@ -51,6 +53,27 @@ class GameplayScene(Scene):
         self.hud = Hud()
         self.fx = FxLayer()
         self.shake = ScreenShake()
+        # Procedural mountain layers — drawn back to front to fake
+        # depth. Each layer scrolls at its own speed (faster = closer).
+        # Horizons sit around y=180-210 of the 270-tall playfield so
+        # the bottom 60-90 px read as "planet surface below the ship".
+        self._mountains: list[MountainLayer] = [
+            # Background: low silhouette, slowest scroll, lightest color.
+            MountainLayer(horizon_y=200, max_height=32, color=(110, 78, 70),
+                          scroll_speed=22.0, seed=11),
+            # Midground: medium silhouette + speed.
+            MountainLayer(horizon_y=215, max_height=44, color=(78, 50, 50),
+                          scroll_speed=40.0, seed=37),
+            # Foreground: tallest, fastest, darkest (sits at the bottom).
+            MountainLayer(horizon_y=235, max_height=60, color=(45, 28, 35),
+                          scroll_speed=62.0, seed=73),
+        ]
+        # Endless right-to-left dust stream — sells the forward motion.
+        self._dust = DustStream(screen_w=INTERNAL_W, screen_h=INTERNAL_H,
+                                pool_size=80, spawn_rate=30.0,
+                                min_speed=70.0, max_speed=200.0)
+        # Throttle for the player thruster particle emit.
+        self._thrust_timer: float = 0.0
         self.player_bullets: list[PlayerBullet] = [PlayerBullet() for _ in range(PLAYER_BULLET_POOL)]
         self.enemy_bullets: list[EnemyBullet] = [EnemyBullet() for _ in range(ENEMY_BULLET_POOL)]
         self.score: int = 0
@@ -248,11 +271,53 @@ class GameplayScene(Scene):
             from stellar_horizon.scenes.game_over import GameOverScene
             self._next = GameOverScene(self.midi_player, score=self.score, victory=True)
 
+        # Scenery tick: mountains scroll + dust drifts + thruster
+        # exhaust. Done AFTER game logic so the offsets reflect the
+        # physics state of this frame.
+        for m in self._mountains:
+            m.update(dt)
+        self._dust.update(dt)
+        self._emit_thruster(dt)
+
+    def _emit_thruster(self, dt: float) -> None:
+        """Spawn a tiny flame + wake behind the player when thrusting.
+
+        Throttled to ~30 particles/sec so the trail reads as a soft
+        plume, not a solid cone. P_FIRE (kind 5) is a fast-fading
+        warm-color particle; P_WAKE (kind 18) is a delayed orange
+        afterglow that gives the trail a real sense of motion.
+        """
+        if not self.player or not self.player.alive or not self.player.thrusting:
+            self._thrust_timer = 0.0
+            return
+        # Spawn one P_FIRE + one P_WAKE per ~33ms.
+        self._thrust_timer += dt
+        interval = 1.0 / 30.0
+        while self._thrust_timer >= interval:
+            self._thrust_timer -= interval
+            # Emit from the back of the player ship (player.x is near
+            # the front of the sprite; the engine is a bit behind).
+            ex = self.player.x - 4.0
+            ey = self.player.y + 1.0
+            # Slight upward bias so the plume doesn't cross the ship.
+            self.fx.engine.emit(5, ex, ey, vx=-30.0, vy=-12.0,
+                                color=(255, 180, 80))
+            self.fx.engine.emit(18, ex, ey, vx=-12.0, vy=-4.0,
+                                color=(255, 140, 60), delay_s=0.0)
+
     def draw(self, surface: pygame.Surface) -> None:
         ox, oy = self.shake.offset()
         bg_surface = pygame.Surface((INTERNAL_W, INTERNAL_H))
         self.background.draw(bg_surface)
         surface.blit(bg_surface, (int(ox), int(oy)))
+        # Mountain layers (background -> foreground), drawn BEFORE
+        # entities so ships and enemies sit IN FRONT of the planet
+        # surface.
+        for m in self._mountains:
+            m.draw(surface, INTERNAL_W)
+        # Dust drifts in front of the mountains but behind the ships,
+        # so the player reads as the closest object on screen.
+        self._dust.draw(surface)
         if self.wave_manager:
             for e in self.wave_manager.spawned_enemies:
                 if e.alive:
