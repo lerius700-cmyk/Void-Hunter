@@ -23,6 +23,7 @@ SPRITES_DIR = "stellar_horizon/assets/sprites"
 
 # (source, target, target_w, target_h)
 JOBS = [
+    # --- Original 7 (game assets in active use) ---
     ("_gen_player.png",         "player.png",         16, 16),
     ("_gen_scout.png",          "scout.png",          12, 12),
     ("_gen_cruiser.png",        "cruiser.png",        16, 16),
@@ -30,6 +31,44 @@ JOBS = [
     ("_gen_boss.png",           "boss.png",           48, 48),
     ("_gen_player_bullet.png",  "player_bullet.png",  12,  4),
     ("_gen_enemy_bullet.png",   "enemy_bullet.png",    8,  8),
+    # --- 20 enemy variants (drop-in replacements / wave variety) ---
+    ("_gen_enemy_01.png",       "enemy_01.png",       16, 16),
+    ("_gen_enemy_02.png",       "enemy_02.png",       16, 16),
+    ("_gen_enemy_03.png",       "enemy_03.png",       16, 16),
+    ("_gen_enemy_04.png",       "enemy_04.png",       16, 16),
+    ("_gen_enemy_05.png",       "enemy_05.png",       16, 16),
+    ("_gen_enemy_06.png",       "enemy_06.png",       16, 16),
+    ("_gen_enemy_07.png",       "enemy_07.png",       16, 16),
+    ("_gen_enemy_08.png",       "enemy_08.png",       16, 16),
+    ("_gen_enemy_09.png",       "enemy_09.png",       16, 16),
+    ("_gen_enemy_10.png",       "enemy_10.png",       16, 16),
+    ("_gen_enemy_11.png",       "enemy_11.png",       16, 16),
+    ("_gen_enemy_12.png",       "enemy_12.png",       16, 16),
+    ("_gen_enemy_13.png",       "enemy_13.png",       16, 16),
+    ("_gen_enemy_14.png",       "enemy_14.png",       16, 16),
+    ("_gen_enemy_15.png",       "enemy_15.png",       16, 16),
+    ("_gen_enemy_16.png",       "enemy_16.png",       16, 16),
+    ("_gen_enemy_17.png",       "enemy_17.png",       16, 16),
+    ("_gen_enemy_18.png",       "enemy_18.png",       16, 16),
+    ("_gen_enemy_19.png",       "enemy_19.png",       16, 16),
+    ("_gen_enemy_20.png",       "enemy_20.png",       16, 16),
+    # --- 5 player variants (color/silhouette swaps) ---
+    ("_gen_player_01.png",      "player_01.png",      16, 16),
+    ("_gen_player_02.png",      "player_02.png",      16, 16),
+    ("_gen_player_03.png",      "player_03.png",      16, 16),
+    ("_gen_player_04.png",      "player_04.png",      16, 16),
+    ("_gen_player_05.png",      "player_05.png",      16, 16),
+    # --- 10 laser / projectile variants (varied sizes for visual interest) ---
+    ("_gen_laser_01.png",       "laser_01.png",       12,  4),  # yellow plasma
+    ("_gen_laser_02.png",       "laser_02.png",       12,  4),  # red pulse
+    ("_gen_laser_03.png",       "laser_03.png",       14,  2),  # blue ion (very thin)
+    ("_gen_laser_04.png",       "laser_04.png",        8,  8),  # green acid blob
+    ("_gen_laser_05.png",       "laser_05.png",       10, 10),  # purple void orb
+    ("_gen_laser_06.png",       "laser_06.png",       10, 10),  # orange fireball
+    ("_gen_laser_07.png",       "laser_07.png",       16,  2),  # white piercing (thin+long)
+    ("_gen_laser_08.png",       "laser_08.png",       10,  8),  # pink heart
+    ("_gen_laser_09.png",       "laser_09.png",        8,  8),  # cyan ice shard
+    ("_gen_laser_10.png",       "laser_10.png",       16,  4),  # rainbow streak
 ]
 
 
