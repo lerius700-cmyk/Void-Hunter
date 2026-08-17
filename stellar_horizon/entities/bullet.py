@@ -11,11 +11,17 @@ class PlayerBullet:
     SIZE = (12, 4)
     POOL_SIZE = 32
 
-    __slots__ = ("x", "y", "vx", "vy", "alive")
+    # `spawn_time` is the scene time at which this bullet was fired —
+    # the code-driven VFX (fx/bullet_vfx.py) reads it to compute
+    # alpha/scale/halo phase. `weapon` is which of the 10 weapons
+    # fired this bullet so the VFX knows which animation to apply.
+    __slots__ = ("x", "y", "vx", "vy", "alive", "spawn_time", "weapon")
 
     def __init__(self) -> None:
         self.x = self.y = self.vx = self.vy = 0.0
         self.alive = False
+        self.spawn_time: float = 0.0
+        self.weapon: int = 0
 
     def update(self, dt: float) -> None:
         if not self.alive:

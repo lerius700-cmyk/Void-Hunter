@@ -39,6 +39,18 @@ def test_player_bullet_hitbox_12x4():
     assert hb.height == 4
 
 
+def test_player_bullet_has_spawn_time_and_weapon_slots():
+    """The code-driven bullet VFX (fx/bullet_vfx.py) reads the
+    `spawn_time` and `weapon` attributes to compute the alpha/scale/
+    halo phase per bullet. Verify they exist and default to safe
+    values so legacy callers (and headless tests) don't crash."""
+    b = PlayerBullet()
+    assert hasattr(b, "spawn_time")
+    assert hasattr(b, "weapon")
+    assert b.spawn_time == 0.0
+    assert b.weapon == 0
+
+
 def test_enemy_bullet_spawn_aims_at_target():
     b = EnemyBullet()
     b.spawn(400, 100, 100, 100)

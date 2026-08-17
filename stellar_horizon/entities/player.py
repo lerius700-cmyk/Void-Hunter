@@ -17,9 +17,38 @@ class Player:
     BOUND_Y_MAX = 254
     START_X = 40.0
 
+    # Per-weapon tuning. `weapon` is an int 0..9 chosen by the
+    # gameplay scene via set_weapon(); the same index is used to
+    # pick a laser_NN sprite and a cooldown / muzzle velocity.
+    WEAPON_COOLDOWN_S = (
+        0.10,  # 0 yellow plasma
+        0.10,  # 1 red pulse
+        0.07,  # 2 blue ion (very fast)
+        0.18,  # 3 green acid (slow, heavy)
+        0.12,  # 4 purple void
+        0.14,  # 5 orange fireball
+        0.09,  # 6 white piercing (fast, long range)
+        0.11,  # 7 pink heart
+        0.13,  # 8 cyan ice
+        0.10,  # 9 rainbow streak
+    )
+    WEAPON_BULLET_SPEED = (
+        480.0,
+        460.0,
+        700.0,
+        380.0,
+        440.0,
+        400.0,
+        800.0,
+        460.0,
+        420.0,
+        600.0,
+    )
+
     __slots__ = (
         "x", "y", "vx", "vy", "lives", "shoot_cooldown",
         "invulnerable_frames", "alive", "firing", "thrusting", "bullets",
+        "weapon", "_now",
     )
 
     def __init__(self, screen_rect: pygame.Rect) -> None:
@@ -34,12 +63,33 @@ class Player:
         self.firing: bool = False
         self.thrusting: bool = False
         self.bullets: list = []
+        self.weapon: int = 0
+        # Scene time, written by update() so _spawn_bullet can stamp
+        # the new bullet with `spawn_time` for the VFX to use.
+        self._now: float = 0.0
 
-    def update(self, dt: float, keys, bullets_pool) -> None:
+    def set_weapon(self, weapon: int) -> None:
+        """Switch to a new weapon (0..9). No-op if already on it."""
+        if 0 <= weapon < len(self.WEAPON_COOLDOWN_S) and weapon != self.weapon:
+            self.weapon = weapon
+
+    def update(self, dt: float, keys, bullets_pool, now: float = 0.0) -> None:
         if not self.alive:
             return
-        dx = int(bool(keys[pygame.K_d] or keys[pygame.K_RIGHT])) - int(bool(keys[pygame.K_a] or keys[pygame.K_LEFT]))
-        dy = int(bool(keys[pygame.K_s] or keys[pygame.K_DOWN]))  - int(bool(keys[pygame.K_w] or keys[pygame.K_UP]))
+        # Cache the scene time so _spawn_bullet can stamp the bullet
+        # with the same value the VFX will read later.
+        self._now = now
+        # `keys` is normally a pygame ScancodeWrapper from
+        # pygame.key.get_pressed(). Tests sometimes pass a plain dict
+        # with only a few entries; use .get() with a False default so
+        # missing keys don't raise.
+        def _k(k: int) -> bool:
+            try:
+                return bool(keys[k])
+            except (KeyError, IndexError, TypeError):
+                return False
+        dx = int(_k(pygame.K_d) or _k(pygame.K_RIGHT)) - int(_k(pygame.K_a) or _k(pygame.K_LEFT))
+        dy = int(_k(pygame.K_s) or _k(pygame.K_DOWN))  - int(_k(pygame.K_w) or _k(pygame.K_UP))
         if dx and dy:
             inv = 0.7071067811865475
             self.vx = dx * self.SPEED * inv
@@ -57,7 +107,10 @@ class Player:
         self.shoot_cooldown = max(0.0, self.shoot_cooldown - dt)
         if self.firing and self.shoot_cooldown <= 0.0 and bullets_pool:
             self._spawn_bullet(bullets_pool)
-            self.shoot_cooldown = self.SHOOT_COOLDOWN_S
+            # Cooldown matches the currently equipped weapon so
+            # switching to a faster weapon (e.g. blue ion) immediately
+            # changes the cadence.
+            self.shoot_cooldown = self.WEAPON_COOLDOWN_S[self.weapon]
         if self.invulnerable_frames > 0:
             self.invulnerable_frames -= 1
 
@@ -79,7 +132,11 @@ class Player:
             if not b.alive:
                 b.x = self.x + self.BULLET_OFFSET_X
                 b.y = self.y
-                b.vx = 480.0
+                b.vx = self.WEAPON_BULLET_SPEED[self.weapon]
                 b.vy = 0.0
+                # Stamp spawn_time + weapon so fx/bullet_vfx.compute()
+                # can pick the right animation per bullet.
+                b.spawn_time = self._now
+                b.weapon = self.weapon
                 b.alive = True
                 return

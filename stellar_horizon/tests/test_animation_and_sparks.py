@@ -67,7 +67,16 @@ def test_animated_sprite_loaded_flag():
 
 # --- GameplayScene integration ----------------------------------------
 
-def test_gameplay_scene_loads_42_animated_sprites():
+def test_gameplay_scene_loads_sprites_split():
+    """Lasers were split out into single-frame static sprites so the
+    per-weapon VFX (alpha pulse, scale pulse, halo) can be applied
+    in code rather than baked into 6-frame strips that the model
+    rendered inconsistently.
+
+    Total: 32 animated (7 active + 20 enemy + 5 player) + 10 laser
+    single-frame = 42 sprites, same as before but split across two
+    caches.
+    """
     from stellar_horizon.audio.midi_player import MidiPlayer
     from stellar_horizon.scenes.gameplay import GameplayScene
 
@@ -75,20 +84,57 @@ def test_gameplay_scene_loads_42_animated_sprites():
                       Path("stellar_horizon/waves/waves_act1.json"),
                       Path("stellar_horizon/assets"))
     s._load_sprites()
-    # 7 active + 20 enemy variants + 5 player variants + 10 laser
-    # variants = 42 total.
-    assert len(s._animated) == 42
-    # Active assets are present.
+    # Animated cache: 7 active + 20 enemy + 5 player = 32.
+    assert len(s._animated) == 32
     for n in ("player", "scout", "cruiser", "heavy", "boss",
               "player_bullet", "enemy_bullet"):
         assert n in s._animated
-    # Variants are present.
     for n in (f"enemy_{i:02d}" for i in range(1, 21)):
         assert n in s._animated
     for n in (f"player_{i:02d}" for i in range(1, 6)):
         assert n in s._animated
+    # Lasers MUST NOT be in the animated cache anymore.
     for n in (f"laser_{i:02d}" for i in range(1, 11)):
-        assert n in s._animated
+        assert n not in s._animated
+    # Single-frame laser cache: 10 sprites.
+    assert len(s._laser_sprites) == 10
+    for n in (f"laser_{i:02d}" for i in range(1, 11)):
+        assert n in s._laser_sprites
+        surf = s._laser_sprites[n]
+        # Each sprite is a real Surface (not the magenta 1x1 fallback).
+        assert surf.get_width() >= 1
+        assert surf.get_height() >= 1
+
+
+def test_laser_sprites_have_per_weapon_sizes():
+    """Per-weapon sprites have distinct sizes (12x4 bolts, 10x10 orbs,
+    14x2 / 16x2 thin needles, 12x10 heart). The HUD and bullet draw
+    code rely on these sizes to center the VFX halo correctly."""
+    from stellar_horizon.audio.midi_player import MidiPlayer
+    from stellar_horizon.scenes.gameplay import GameplayScene
+
+    s = GameplayScene(MidiPlayer(),
+                      Path("stellar_horizon/waves/waves_act1.json"),
+                      Path("stellar_horizon/assets"))
+    s._load_sprites()
+    expected = {
+        "laser_01": (12, 4), "laser_02": (12, 4),
+        "laser_03": (14, 2),
+        "laser_04": (10, 10), "laser_05": (10, 10),
+        "laser_06": (10, 10),
+        "laser_07": (16, 2),
+        "laser_08": (12, 10),
+        "laser_09": (10, 10),
+        "laser_10": (16, 4),
+    }
+    for name, (w, h) in expected.items():
+        surf = s._laser_sprites[name]
+        assert surf.get_width() == w, (
+            f"{name} width {surf.get_width()} != {w}"
+        )
+        assert surf.get_height() == h, (
+            f"{name} height {surf.get_height()} != {h}"
+        )
 
 
 def test_animated_sprites_advance_on_update():
@@ -144,3 +190,52 @@ def test_emit_impact_positions_match_xy():
             # position was within a few pixels of (123, 234).
             assert abs(p.x - 123.0) < 5.0
             assert abs(p.y - 234.0) < 5.0
+
+
+# --- Scene clock + bullet VFX wiring --------------------------------
+
+def test_gameplay_scene_tracks_elapsed_time():
+    """GameplayScene must accumulate scene time so the bullet VFX
+    (alpha pulse, scale pulse, halo) can phase off of it."""
+    from stellar_horizon.audio.midi_player import MidiPlayer
+    from stellar_horizon.scenes.gameplay import GameplayScene
+
+    s = GameplayScene(MidiPlayer(),
+                      Path("stellar_horizon/waves/waves_act1.json"),
+                      Path("stellar_horizon/assets"))
+    s.on_enter()
+    assert s._elapsed == 0.0
+    s.update(1 / 120, [])
+    assert abs(s._elapsed - (1 / 120)) < 1e-6
+    s.update(1 / 60, [])
+    assert abs(s._elapsed - (1 / 120 + 1 / 60)) < 1e-6
+
+
+def test_spawned_bullet_has_consistent_spawn_time():
+    """After a few frames, a fired bullet should have spawn_time
+    close to the scene's _elapsed at the moment it was spawned."""
+    from stellar_horizon.audio.midi_player import MidiPlayer
+    from stellar_horizon.scenes.gameplay import GameplayScene
+
+    s = GameplayScene(MidiPlayer(),
+                      Path("stellar_horizon/waves/waves_act1.json"),
+                      Path("stellar_horizon/assets"))
+    s.on_enter()
+    # Run 10 frames to let _elapsed accumulate.
+    for _ in range(10):
+        s.update(1 / 120, [])
+    assert s._elapsed > 0.0
+    # Drive player.update() directly with a keys dict so the SPACE
+    # key fires (scene.update reads pygame.key.get_pressed() which
+    # returns all False in headless mode and would override our
+    # manual firing flag).
+    s.player.firing = True
+    s.player.shoot_cooldown = 0.0
+    s.player.update(1 / 120, {pygame.K_SPACE: True},
+                    s.player_bullets, now=s._elapsed)
+    alive = [b for b in s.player_bullets if b.alive]
+    assert len(alive) == 1
+    # The bullet was spawned with now=s._elapsed, so its
+    # spawn_time should match exactly.
+    assert alive[0].spawn_time == s._elapsed
+    assert alive[0].weapon == 0

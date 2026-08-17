@@ -11,6 +11,7 @@ from stellar_horizon.entities.boss import Boss
 from stellar_horizon.entities.bullet import EnemyBullet, PlayerBullet
 from stellar_horizon.entities.enemy import Enemy
 from stellar_horizon.entities.player import Player
+from stellar_horizon.fx.bullet_vfx import compute as compute_bullet_vfx
 from stellar_horizon.fx.dust import DustStream
 from stellar_horizon.fx.particles import FxLayer
 from stellar_horizon.fx.screen_shake import ScreenShake
@@ -84,10 +85,22 @@ class GameplayScene(Scene):
         # Each one loads a horizontal frame strip and cycles through it
         # at ~12 fps. Loaded in on_enter() so headless tests can
         # construct the scene without a display.
+        # Lasers are NOT here — they're loaded as single-frame static
+        # sprites in self._laser_sprites and animated via code in
+        # fx/bullet_vfx.py. See the comment in _load_sprites.
         self._animated: dict = {}
+        # Single-frame laser sprites keyed by laser_NN. The draw
+        # code (and the HUD selector strip) blits these directly
+        # and applies a per-weapon VFX on top (alpha pulse, scale
+        # pulse, soft halo).
+        self._laser_sprites: dict = {}
         # Per-kind counter used to cycle through enemy sprite variants
         # so consecutive spawns of the same kind look different.
         self._enemy_sprite_idx: dict = {}
+        # Scene-time accumulator (seconds since on_enter). Used to
+        # drive code-driven VFX (bullet pulses, halo phase) so they
+        # stay in sync with the rest of the scene.
+        self._elapsed: float = 0.0
 
     def on_enter(self) -> None:
         # Load sprites FIRST so the wave manager can pick variants
@@ -105,21 +118,32 @@ class GameplayScene(Scene):
         self.hud.set_player(self.player)
         self.hud.set_wave(1, len(self.wave_manager.waves))
         self.hud.set_enemies_remaining(0, 0)
+        # Give the HUD access to the single-frame laser sprites so it
+        # can render the weapon selector strip + current-weapon icon.
+        # The bullets and the HUD both pull from this same dict.
+        self.hud.set_weapon_catalog(self._laser_sprites,
+                                    self._WEAPON_NAMES,
+                                    self.player.weapon)
+        # Reset the scene clock so VFX phases start fresh.
+        self._elapsed = 0.0
 
     def _load_sprites(self) -> None:
-        """Load animated sprite sheets from assets/sprites/*_sheet.png.
+        """Load animated sprite sheets from assets/sprites/*_sheet.png
+        AND single-frame laser sprites from assets/sprites/laser_NN.png.
 
-        Each sheet has 6 frames in a horizontal strip. The active game
-        uses 7 sprites (player, scout, cruiser, heavy, boss,
-        player_bullet, enemy_bullet); the 35 variants
-        (20 enemy / 5 player / 10 laser) are also loaded so the wave
-        manager and bullet code can pick them by name.
+        Animated sheets (player, enemies, boss, bullets) hold 6 frames
+        and cycle at 12 fps for the standard 16-bit look. Lasers are
+        loaded as single-frame static sprites because:
+        - 6-frame strips for round/heart shapes were inconsistent (the
+          model shifted them between frames).
+        - The per-weapon VFX (alpha pulse, scale pulse, halo) is more
+          controllable in code than baked into frames.
+        The result: 32 animated sprites (7 active + 20 enemy + 5
+        player) + 10 single-frame laser sprites = 42 total.
         """
         sprite_dir = self.assets_dir / "sprites"
-        # All names to load, with their (frame_w, frame_h, frame_count).
-        # Active assets use the size matching the original sprite;
-        # variants inherit the size from their kind prefix.
-        all_names = {
+        # All names to load as animated sheets (no laser_NN here).
+        animated_names = {
             # Active game assets.
             "player", "scout", "cruiser", "heavy", "boss",
             "player_bullet", "enemy_bullet",
@@ -127,28 +151,48 @@ class GameplayScene(Scene):
             *[f"enemy_{i:02d}" for i in range(1, 21)],
             # 5 player variants.
             *[f"player_{i:02d}" for i in range(1, 6)],
-            # 10 laser variants.
-            *[f"laser_{i:02d}" for i in range(1, 11)],
         }
-        # Per-name dimensions and frame count.
-        dims = {
+        # Per-name dimensions for animated sheets.
+        anim_dims = {
             "player": (16, 16), "scout": (16, 16), "cruiser": (16, 16),
             "heavy": (16, 16), "boss": (48, 48),
             "player_bullet": (8, 8), "enemy_bullet": (8, 8),
         }
         for n in (f"player_{i:02d}" for i in range(1, 6)):
-            dims[n] = (16, 16)
+            anim_dims[n] = (16, 16)
         for n in (f"enemy_{i:02d}" for i in range(1, 21)):
-            dims[n] = (16, 16)
-        for n in (f"laser_{i:02d}" for i in range(1, 11)):
-            dims[n] = (8, 8)
+            anim_dims[n] = (16, 16)
 
         self._animated.clear()
-        for name in all_names:
-            w, h = dims.get(name, (16, 16))
+        for name in animated_names:
+            w, h = anim_dims.get(name, (16, 16))
             path = sprite_dir / f"{name}_sheet.png"
             self._animated[name] = AnimatedSprite(str(path), w, h, 6,
                                                   fps=12.0)
+        # Single-frame laser sprites — loaded as plain pygame.Surface
+        # (no animation). Animation comes from fx/bullet_vfx.compute()
+        # at draw time.
+        self._laser_sprites.clear()
+        for i in range(1, 11):
+            name = f"laser_{i:02d}"
+            path = sprite_dir / f"{name}.png"
+            try:
+                # NOTE: convert_alpha() needs a display mode, which
+                # isn't set during some headless tests. We try it
+                # first (fast, native alpha) and fall back to the
+                # raw loaded surface (still has alpha from the PNG
+                # but in source format) if no display is up.
+                raw = pygame.image.load(str(path))
+                try:
+                    surf = raw.convert_alpha()
+                except pygame.error:
+                    surf = raw
+            except (pygame.error, FileNotFoundError):
+                # Fall back to a 1x1 magenta surface so the bug is
+                # visible at a glance.
+                surf = pygame.Surface((1, 1), pygame.SRCALPHA)
+                surf.fill((255, 0, 255, 255))
+            self._laser_sprites[name] = surf
 
     def _pick_enemy_sprite(self, kind: str) -> str | None:
         """Return a sprite name for an enemy of the given kind.
@@ -167,13 +211,56 @@ class GameplayScene(Scene):
     def on_exit(self) -> None:
         self.midi_player.fadeout(400)
 
+    # Number keys 1-9 and 0 in that order map to weapon indices 0..9
+    # so the player can cycle through all 10 laser variants without
+    # leaving the home row. The order matches the WEAPON_COOLDOWN_S
+    # table in the Player class (1 = yellow plasma, 0 = rainbow).
+    _WEAPON_KEYS = (
+        pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5,
+        pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9, pygame.K_0,
+    )
+    _WEAPON_NAMES = (
+        "YELLOW PLASMA",
+        "RED PULSE",
+        "BLUE ION",
+        "GREEN ACID",
+        "PURPLE VOID",
+        "ORANGE FIRE",
+        "WHITE PIERCE",
+        "PINK HEART",
+        "CYAN ICE",
+        "RAINBOW",
+    )
+
     def update(self, dt: float, events: list) -> None:
         self._keys = pygame.key.get_pressed()
         self.player.firing = self._keys[pygame.K_SPACE]
+        # Advance the scene clock FIRST so any bullets spawned this
+        # frame get a spawn_time that's already past `self._elapsed`
+        # at the moment they're drawn.
+        self._elapsed += dt
+
+        # Number-key weapon switch. KEYDOWN events come from the
+        # scene_manager; we walk the events once and pick the LAST
+        # matching key (so if the user holds two, the latest wins).
+        for ev in events:
+            if ev.type == pygame.KEYDOWN and ev.key in self._WEAPON_KEYS:
+                new_weapon = self._WEAPON_KEYS.index(ev.key)
+                if new_weapon != self.player.weapon:
+                    self.player.set_weapon(new_weapon)
+                    # Tell the HUD the current weapon changed so the
+                    # selector strip re-highlights.
+                    self.hud.set_current_weapon(new_weapon)
+                    # Small FX: sparks at the player's nose so the
+                    # switch has some visible punch.
+                    self.fx.emit_impact(self.player.x + 4,
+                                        self.player.y, count=6,
+                                        color=(255, 220, 100))
         # Player — pool is fixed-size; do NOT filter it (player.update
         # spawns by finding a dead slot, and filtering would shrink
         # the pool until no dead slot exists, blocking new shots).
-        self.player.update(dt, self._keys, self.player_bullets)
+        self.player.update(dt, self._keys, self.player_bullets,
+                           now=self._elapsed)
         for b in self.player_bullets:
             if b.alive:
                 b.update(dt)
@@ -453,14 +540,45 @@ class GameplayScene(Scene):
         self._blit_centered(surface, sprite, b.x + ox, b.y + oy)
 
     def _draw_player_bullet_sprite(self, surface, b, ox, oy) -> None:
-        anim = self._animated.get("player_bullet")
-        sprite = anim.get_current_surface() if anim is not None else None
+        # Use the weapon that fired this bullet (so mid-flight
+        # weapon switches don't repaint already-spawned bullets) —
+        # fall back to the player's current weapon for legacy bullets.
+        weapon_idx = getattr(b, "weapon", self.player.weapon)
+        weapon_name = f"laser_{weapon_idx + 1:02d}"
+        sprite = self._laser_sprites.get(weapon_name)
+        if sprite is None:
+            sprite = self._laser_sprites.get("laser_01")
         if sprite is None:
             pygame.draw.rect(surface, (255, 240, 100),
                              (int(b.x - 6 + ox), int(b.y - 2 + oy), 12, 4))
             return
-        rect = sprite.get_rect(center=(int(b.x + ox), int(b.y + oy)))
-        surface.blit(sprite, rect)
+        # Code-driven VFX: alpha pulse, scale pulse, soft halo.
+        vfx = compute_bullet_vfx(b, self._elapsed)
+        cx, cy = int(b.x + ox), int(b.y + oy)
+        # Halo first (behind the sprite). Drawn as a soft circle on a
+        # per-pixel alpha surface so it blends with the background.
+        if vfx.halo_color is not None and vfx.halo_size > 0 \
+                and vfx.halo_alpha > 0:
+            rad = vfx.halo_size
+            halo = pygame.Surface((rad * 2, rad * 2), pygame.SRCALPHA)
+            pygame.draw.circle(halo, (*vfx.halo_color, vfx.halo_alpha),
+                               (rad, rad), rad)
+            surface.blit(halo, (cx - rad, cy - rad))
+        # Sprite with alpha (and optional scale).
+        if vfx.scale != 1.0:
+            sw, sh = sprite.get_width(), sprite.get_height()
+            nw, nh = max(1, int(round(sw * vfx.scale))), \
+                     max(1, int(round(sh * vfx.scale)))
+            scaled = pygame.transform.scale(sprite, (nw, nh))
+            rect = scaled.get_rect(center=(cx, cy))
+            if vfx.alpha < 255:
+                scaled.set_alpha(vfx.alpha)
+            surface.blit(scaled, rect)
+        else:
+            rect = sprite.get_rect(center=(cx, cy))
+            if vfx.alpha < 255:
+                sprite.set_alpha(vfx.alpha)
+            surface.blit(sprite, rect)
 
     def _draw_enemy_bullet_sprite(self, surface, b, ox, oy) -> None:
         # Bomber gravity bombs get a distinct look: a dark red filled
