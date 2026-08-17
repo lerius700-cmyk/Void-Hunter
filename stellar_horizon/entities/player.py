@@ -128,6 +128,11 @@ class Player:
 
     def _spawn_bullet(self, bullets_pool) -> None:
         from stellar_horizon.entities.bullet import PlayerBullet
+        # Map weapons to one of 2 SFX so the audio has variety without
+        # 10 distinct shoot sounds. Light weapons use "shoot" (short
+        # high-freq blip), heavy weapons use "shoot_charged" (longer
+        # mid-freq thump).
+        sfx_name = "shoot_charged" if self.weapon in (3, 5, 7) else "shoot"
         for b in bullets_pool:
             if not b.alive:
                 b.x = self.x + self.BULLET_OFFSET_X
@@ -139,4 +144,7 @@ class Player:
                 b.spawn_time = self._now
                 b.weapon = self.weapon
                 b.alive = True
+                # Fire SFX (best-effort: no-op if audio is down).
+                from stellar_horizon.audio import sfx
+                sfx.play_event(sfx_name)
                 return

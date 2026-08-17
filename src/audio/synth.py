@@ -147,6 +147,19 @@ SFX_CATALOG: dict[str, _SfxSpec] = {
     "missile_lock":           _SfxSpec("missile_lock", Voice.SQUARE, 2000, 0, 0.005, 0.05, 0.0, 0.05, 0.10, "Homing lock-on", 0.4),
     "missile_fire":           _SfxSpec("missile_fire", Voice.SAW, 400, -200, 0.005, 0.10, 0.0, 0.10, 0.20, "Homing missile launch", 0.5),
     "screen_shake_thump":     _SfxSpec("screen_shake_thump", Voice.NOISE, 60, 0, 0.002, 0.08, 0.0, 0.10, 0.18, "Trauma shake thump", 0.5),
+    # BLOQUE_STELLAR_HORIZON_AUDIO: per-ship thruster loops.
+    # Each ship (player + 6 enemy kinds) gets a unique continuous
+    # loop that loops forever while alive. The ThrusterManager applies
+    # dynamic compression so N ships don't add up to Nx volume.
+    # Designed for `loops=-1` playback on a dedicated mixer channel.
+    # 0.55s buffer (loop seam is at zero crossings so it's inaudible).
+    "thruster_player":         _SfxSpec("thruster_player", Voice.SAW, 110, 8, 0.020, 0.03, 0.78, 0.05, 0.08, "Player engine hum", 0.32),
+    "thruster_scout":          _SfxSpec("thruster_scout", Voice.SQUARE, 360, -20, 0.005, 0.02, 0.82, 0.05, 0.06, "Scout dart whine", 0.30),
+    "thruster_cruiser":        _SfxSpec("thruster_cruiser", Voice.SAW, 165, 5, 0.020, 0.04, 0.80, 0.05, 0.08, "Cruiser mid hum", 0.32),
+    "thruster_heavy":          _SfxSpec("thruster_heavy", Voice.SQUARE, 55, 3, 0.020, 0.05, 0.85, 0.06, 0.10, "Heavy rumble", 0.40),
+    "thruster_bomber":         _SfxSpec("thruster_bomber", Voice.SAW, 95, 0, 0.020, 0.04, 0.78, 0.10, 0.12, "Bomber pulse drone", 0.36),
+    "thruster_ufo":            _SfxSpec("thruster_ufo", Voice.TRIANGLE, 220, 14, 0.005, 0.03, 0.80, 0.04, 0.06, "UFO warble", 0.30),
+    "thruster_kamikaze":       _SfxSpec("thruster_kamikaze", Voice.SQUARE, 480, 28, 0.005, 0.02, 0.80, 0.04, 0.06, "Kamikaze rising whine", 0.32),
 }
 
 SFX_NAMES: tuple[str, ...] = tuple(SFX_CATALOG.keys())
@@ -364,6 +377,48 @@ class AudioEngine:
         sound.set_volume(volume * self.master_volume)
         sound.play()
         return True
+
+    def play_loop(self, name: str, channel_id: int,
+                  volume: float = 1.0) -> bool:
+        """Play a SFX on a specific mixer channel as a continuous loop.
+
+        Used by ThrusterManager: each ship gets a dedicated channel
+        and the loop runs forever until stop_loop() is called.
+        `volume` is applied to the sound's internal volume (separate
+        from `master_volume`).
+        """
+        if not self.mixer_available or name not in self.sfx_sounds:
+            return False
+        try:
+            channel = pygame.mixer.Channel(channel_id)
+        except (pygame.error, IndexError):
+            return False
+        sound = self.sfx_sounds[name]
+        sound.set_volume(volume * self.master_volume)
+        channel.play(sound, loops=-1)
+        return True
+
+    def stop_loop(self, channel_id: int) -> None:
+        """Stop the loop on a specific mixer channel. Safe if no
+        sound is playing on the channel."""
+        if not self.mixer_available:
+            return
+        try:
+            channel = pygame.mixer.Channel(channel_id)
+            channel.stop()
+        except (pygame.error, IndexError):
+            pass
+
+    def set_channel_volume(self, channel_id: int, volume: float) -> None:
+        """Set the volume of a specific mixer channel (0.0 to 1.0).
+        Used by ThrusterManager for the dynamic compressor."""
+        if not self.mixer_available:
+            return
+        try:
+            channel = pygame.mixer.Channel(channel_id)
+            channel.set_volume(max(0.0, min(1.0, volume)) * self.master_volume)
+        except (pygame.error, IndexError):
+            pass
 
     def play_bgm(self, name: str, loops: int = -1) -> bool:
         """Play BGM (loops by default). Returns True if dispatched."""

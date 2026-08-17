@@ -6,6 +6,8 @@ from pathlib import Path
 import pygame
 
 from stellar_horizon.audio.midi_player import MidiPlayer
+from stellar_horizon.audio import sfx
+from stellar_horizon.audio.thrusters import ThrusterManager
 from stellar_horizon.core.scene_manager import Scene, SceneName
 from stellar_horizon.entities.boss import Boss
 from stellar_horizon.entities.bullet import EnemyBullet, PlayerBullet
@@ -74,6 +76,11 @@ class GameplayScene(Scene):
         self._dust = DustStream(screen_w=INTERNAL_W, screen_h=INTERNAL_H,
                                 pool_size=80, spawn_rate=30.0,
                                 min_speed=70.0, max_speed=200.0)
+        # Per-ship thruster loops (player + 6 enemy kinds) with
+        # dynamic compression. The audio engine is lazy-initialized
+        # by sfx.engine() so headless tests can run without pygame.mixer.
+        self.audio = sfx.engine()
+        self.thrusters = ThrusterManager(self.audio)
         # Throttle for the player thruster particle emit.
         self._thrust_timer: float = 0.0
         self.player_bullets: list[PlayerBullet] = [PlayerBullet() for _ in range(PLAYER_BULLET_POOL)]
@@ -97,6 +104,10 @@ class GameplayScene(Scene):
         # Per-kind counter used to cycle through enemy sprite variants
         # so consecutive spawns of the same kind look different.
         self._enemy_sprite_idx: dict = {}
+        # Set of id(enemy) for enemies whose thruster is currently
+        # active. Used by _sync_thrusters() to add/remove thrusters
+        # as enemies spawn and die.
+        self._managed_enemies: set[int] = set()
         # Scene-time accumulator (seconds since on_enter). Used to
         # drive code-driven VFX (bullet pulses, halo phase) so they
         # stay in sync with the rest of the scene.
@@ -126,6 +137,9 @@ class GameplayScene(Scene):
                                     self.player.weapon)
         # Reset the scene clock so VFX phases start fresh.
         self._elapsed = 0.0
+        # Start the player thruster loop on channel 0. The
+        # ThrusterManager handles per-enemy loops in update().
+        self.thrusters.set_player("player")
 
     def _load_sprites(self) -> None:
         """Load animated sprite sheets from assets/sprites/*_sheet.png
@@ -208,8 +222,41 @@ class GameplayScene(Scene):
         self._enemy_sprite_idx[kind] = idx + 1
         return sprites[idx]
 
+    def _sync_thrusters(self) -> None:
+        """Add thrusters for newly-spawned enemies, remove for dead
+        ones, and apply the dynamic compressor to the active set.
+
+        Called once per frame from update(). Cheap: O(N enemies) with
+        no pygame.mixer calls per enemy (the compressor only touches
+        the channel whose volume actually changed).
+        """
+        if self.wave_manager is None:
+            return
+        spawned = self.wave_manager.spawned_enemies
+        # 1. Add thrusters for NEW enemies (alive=True, not managed).
+        for e in spawned:
+            if e.alive and id(e) not in self._managed_enemies:
+                if self.thrusters.add_enemy(e):
+                    self._managed_enemies.add(id(e))
+        # 2. Remove thrusters for DEAD/MISSING enemies.
+        live_ids = {id(e) for e in spawned if e.alive}
+        dead = self._managed_enemies - live_ids
+        for eid in dead:
+            # Find the enemy object (still in spawned_enemies even
+            # if not alive, but maybe already removed by wave_manager).
+            target = next((e for e in spawned if id(e) == eid), None)
+            if target is not None:
+                self.thrusters.remove_enemy(target)
+            self._managed_enemies.discard(eid)
+        # 3. Apply the dynamic compressor (1/sqrt(N) per active).
+        self.thrusters.update()
+
     def on_exit(self) -> None:
         self.midi_player.fadeout(400)
+        # Stop the player thruster + any enemy thrusters. Without
+        # this, channels stay reserved and the next scene's mixer
+        # usage is wrong.
+        self.thrusters.clear_player()
 
     # Number keys 1-9 and 0 in that order map to weapon indices 0..9
     # so the player can cycle through all 10 laser variants without
@@ -298,20 +345,25 @@ class GameplayScene(Scene):
                                             color=(255, 240, 100))
                         e.take_damage(1)
                         b.alive = False
+                        sfx.play_event("hit")
                         if not e.alive:
                             self.score += e.score_value()
                             scale = 1.0
                             trauma = 0.10
+                            kill_sfx = "explode_small"
                             if e.kind in ("heavy", "bomber"):
                                 scale = 1.6
                                 trauma = 0.22
+                                kill_sfx = "explode_medium"
                             if e.kind == "kamikaze":
                                 scale = 2.0
                                 trauma = 0.30
+                                kill_sfx = "explode_medium"
                             self.fx.emit_explosion(e.x, e.y, scale=scale)
                             self.fx.emit_impact(e.x, e.y, count=14,
                                                 color=(255, 200, 80))
                             self.shake.add_trauma(trauma)
+                            sfx.play_event(kill_sfx)
                         break
             # Enemy-vs-player collision. Kamikaze deals 2 damage (its
             # contact_damage); everything else deals 1. Every contact
@@ -325,6 +377,8 @@ class GameplayScene(Scene):
                     self.fx.emit_impact(self.player.x, self.player.y,
                                         count=14,
                                         color=(255, 100, 100))
+                    sfx.play_event("explode_small" if e.kind != "kamikaze"
+                                   else "explode_medium")
                     e.alive = False
             if self.wave_manager.wave_complete:
                 if not self.wave_manager.next_wave():
@@ -345,13 +399,16 @@ class GameplayScene(Scene):
                 if self.boss.alive and b.hitbox().colliderect(self.boss.hitbox()):
                     self.boss.take_damage(1)
                     b.alive = False
+                    sfx.play_event("hit")
                     if not self.boss.alive:
                         self.score += self.boss.score_value()
                         self.fx.emit_explosion(self.boss.x, self.boss.y, scale=3.0)
                         self.shake.add_trauma(0.50)
+                        sfx.play_event("explode_boss")
             if self.boss.alive and self.boss.hitbox().colliderect(self.player.hitbox()):
                 self.player.take_hit()
                 self.shake.add_trauma(0.30)
+                sfx.play_event("hit")
         # Enemy bullets vs player — pool is fixed-size; do NOT filter.
         # Bombs (gravity projectiles) detonate with a bigger impact
         # burst on contact; regular aimed bullets get the standard
@@ -366,12 +423,18 @@ class GameplayScene(Scene):
                     if b._bomb:
                         self.fx.emit_impact(self.player.x, self.player.y,
                                             count=16, color=(255, 140, 40))
+                        sfx.play_event("bomb")
                     else:
                         self.fx.emit_impact(self.player.x, self.player.y,
                                             count=10, color=(255, 80, 100))
+                        sfx.play_event("hit")
         self.fx.update(dt)
         self.shake.update(dt)
         self.background.update(dt, scroll_speed=0.0)
+        # Add/remove per-ship thruster loops and apply the dynamic
+        # compressor. Must run AFTER enemy spawns/deaths so the
+        # managed set is in sync with the live set.
+        self._sync_thrusters()
         # HUD
         self.hud.set_score(self.score)
         if self.boss_active and self.boss is not None:
@@ -455,6 +518,8 @@ class GameplayScene(Scene):
         self.boss = Boss()
         self.boss_active = True
         self.hud.set_boss(self.boss)
+        # Boss intro stinger so the player knows the boss is here.
+        sfx.play_event("boss_warning")
 
     # ------------------------------------------------------------------
     # Sprite blit helpers — each picks the right animated sprite from
