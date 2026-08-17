@@ -61,3 +61,34 @@ def path_boss_entry() -> BezierPath:
         p2=Point(380, 200),
         p3=Point(350, 135),
     )
+
+
+def path_ufo_entry(y_offset: float = 0.0) -> HybridPath:
+    """Gentle arc into the play area, then the UFO takes over with its
+    own sinuous oscillation (handled in Enemy.update)."""
+    return HybridPath.from_segments([
+        BezierPath(
+            p0=Point(500, 60 + y_offset),
+            p1=Point(420, 80 + y_offset),
+            p2=Point(360, 110 + y_offset),
+            p3=Point(340, 130 + y_offset),
+        ),
+        # 0.6s of waypoint drift so the UFO "settles" before oscillating.
+        WaypointPath(
+            [Point(340, 130 + y_offset), Point(330, 130 + y_offset)],
+            speed_px_s=40.0,
+        ),
+    ])
+
+
+def path_kamikaze_dive(y_offset: float = 0.0) -> BezierPath:
+    """Fast straight-ish entry from off-screen right, slightly angled
+    down. The enemy then switches to player-homing behavior in
+    Enemy._update_kamikaze.
+    """
+    return BezierPath(
+        p0=Point(500, 80 + y_offset),
+        p1=Point(420, 95 + y_offset),
+        p2=Point(360, 115 + y_offset),
+        p3=Point(310, 140 + y_offset),
+    )

@@ -11,8 +11,8 @@
   },
   "waves": [
     {
-      "id": "w1_intro",
-      "duration_s": 12.0,
+      "id": "w1_intro_scouts",
+      "duration_s": 10.0,
       "spawns": [
         {
           "delay_s": 0.5,
@@ -25,66 +25,213 @@
       ]
     },
     {
-      "id": "w2_layered",
-      "duration_s": 18.0,
-      "spawns": [
-        {
-          "delay_s": 0.0,
-          "formation": "line_horizontal",
-          "formation_count": 6,
-          "enemy_kind": "cruiser",
-          "path": "s_right_to_left",
-          "path_y_offset": 60
-        },
-        {
-          "delay_s": 6.0,
-          "formation": "v_pointing_left",
-          "formation_count": 3,
-          "enemy_kind": "scout",
-          "path": "top_dive",
-          "path_side": "right"
-        }
-      ]
-    },
-    {
-      "id": "w3_mixed",
-      "duration_s": 22.0,
-      "spawns": [
-        {
-          "delay_s": 0.0,
-          "formation": "diamond_pointing_left",
-          "formation_count": 5,
-          "enemy_kind": "heavy",
-          "path": "s_right_to_left",
-          "path_y_offset": 100
-        },
-        {
-          "delay_s": 8.0,
-          "formation": "v_pointing_left",
-          "formation_count": 4,
-          "enemy_kind": "scout",
-          "path": "zigzag_exit_top"
-        }
-      ]
-    },
-    {
-      "id": "w4_boss_rush",
+      "id": "w2_scouts_and_cruisers",
       "duration_s": 14.0,
       "spawns": [
         {
           "delay_s": 0.0,
           "formation": "line_horizontal",
-          "formation_count": 8,
+          "formation_count": 5,
+          "enemy_kind": "cruiser",
+          "path": "s_right_to_left",
+          "path_y_offset": 50
+        },
+        {
+          "delay_s": 3.0,
+          "formation": "v_pointing_left",
+          "formation_count": 4,
+          "enemy_kind": "scout",
+          "path": "top_dive",
+          "path_side": "right"
+        },
+        {
+          "delay_s": 7.0,
+          "formation": "line_horizontal",
+          "formation_count": 4,
           "enemy_kind": "scout",
           "path": "s_right_to_left",
-          "path_y_offset": 0
+          "path_y_offset": -40
+        }
+      ]
+    },
+    {
+      "id": "w3_heavies_join",
+      "duration_s": 16.0,
+      "spawns": [
+        {
+          "delay_s": 0.0,
+          "formation": "diamond_pointing_left",
+          "formation_count": 3,
+          "enemy_kind": "heavy",
+          "path": "s_right_to_left",
+          "path_y_offset": 80
+        },
+        {
+          "delay_s": 4.0,
+          "formation": "v_pointing_left",
+          "formation_count": 3,
+          "enemy_kind": "scout",
+          "path": "zigzag_exit_top"
+        },
+        {
+          "delay_s": 8.0,
+          "formation": "wedge_pointing_left",
+          "formation_count": 5,
+          "enemy_kind": "cruiser",
+          "path": "s_right_to_left",
+          "path_y_offset": -20
+        },
+        {
+          "delay_s": 11.0,
+          "formation": "diamond_pointing_left",
+          "formation_count": 3,
+          "enemy_kind": "heavy",
+          "path": "s_right_to_left",
+          "path_y_offset": -60
+        }
+      ]
+    },
+    {
+      "id": "w4_bombers_introduced",
+      "duration_s": 16.0,
+      "spawns": [
+        {
+          "delay_s": 0.0,
+          "formation": "line_horizontal",
+          "formation_count": 3,
+          "enemy_kind": "bomber",
+          "path": "s_right_to_left",
+          "path_y_offset": 30
+        },
+        {
+          "delay_s": 2.0,
+          "formation": "v_pointing_left",
+          "formation_count": 4,
+          "enemy_kind": "scout",
+          "path": "top_dive",
+          "path_side": "right"
+        },
+        {
+          "delay_s": 7.0,
+          "formation": "line_horizontal",
+          "formation_count": 2,
+          "enemy_kind": "bomber",
+          "path": "s_right_to_left",
+          "path_y_offset": -50
+        },
+        {
+          "delay_s": 10.0,
+          "formation": "diamond_pointing_left",
+          "formation_count": 3,
+          "enemy_kind": "heavy",
+          "path": "s_right_to_left",
+          "path_y_offset": 80
+        }
+      ]
+    },
+    {
+      "id": "w5_ufo_and_kamikaze",
+      "duration_s": 18.0,
+      "spawns": [
+        {
+          "delay_s": 0.0,
+          "formation": "line_horizontal",
+          "formation_count": 3,
+          "enemy_kind": "ufo",
+          "path": "ufo_entry",
+          "path_y_offset": -30
+        },
+        {
+          "delay_s": 3.0,
+          "formation": "v_pointing_left",
+          "formation_count": 5,
+          "enemy_kind": "kamikaze",
+          "path": "kamikaze_dive",
+          "path_y_offset": 40
+        },
+        {
+          "delay_s": 7.0,
+          "formation": "line_horizontal",
+          "formation_count": 2,
+          "enemy_kind": "bomber",
+          "path": "s_right_to_left",
+          "path_y_offset": -70
+        },
+        {
+          "delay_s": 11.0,
+          "formation": "line_horizontal",
+          "formation_count": 2,
+          "enemy_kind": "ufo",
+          "path": "ufo_entry",
+          "path_y_offset": 60
+        },
+        {
+          "delay_s": 14.0,
+          "formation": "v_pointing_left",
+          "formation_count": 4,
+          "enemy_kind": "kamikaze",
+          "path": "kamikaze_dive",
+          "path_y_offset": -30
+        }
+      ]
+    },
+    {
+      "id": "w6_final_onslaught",
+      "duration_s": 20.0,
+      "spawns": [
+        {
+          "delay_s": 0.0,
+          "formation": "diamond_pointing_left",
+          "formation_count": 3,
+          "enemy_kind": "heavy",
+          "path": "s_right_to_left",
+          "path_y_offset": 90
         },
         {
           "delay_s": 2.0,
           "formation": "line_horizontal",
+          "formation_count": 3,
+          "enemy_kind": "ufo",
+          "path": "ufo_entry",
+          "path_y_offset": -60
+        },
+        {
+          "delay_s": 5.0,
+          "formation": "v_pointing_left",
+          "formation_count": 5,
+          "enemy_kind": "scout",
+          "path": "zigzag_exit_top"
+        },
+        {
+          "delay_s": 8.0,
+          "formation": "line_horizontal",
+          "formation_count": 3,
+          "enemy_kind": "bomber",
+          "path": "s_right_to_left",
+          "path_y_offset": 0
+        },
+        {
+          "delay_s": 11.0,
+          "formation": "v_pointing_left",
           "formation_count": 6,
+          "enemy_kind": "kamikaze",
+          "path": "kamikaze_dive",
+          "path_y_offset": 20
+        },
+        {
+          "delay_s": 14.0,
+          "formation": "wedge_pointing_left",
+          "formation_count": 5,
           "enemy_kind": "cruiser",
           "path": "s_right_to_left",
+          "path_y_offset": -40
+        },
+        {
+          "delay_s": 17.0,
+          "formation": "line_horizontal",
+          "formation_count": 2,
+          "enemy_kind": "ufo",
+          "path": "ufo_entry",
           "path_y_offset": 60
         }
       ]
