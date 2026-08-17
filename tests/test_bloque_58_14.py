@@ -176,37 +176,54 @@ def test_enter_pause_lowpass_not_in_gameplay_returns_false() -> None:
 def test_enter_and_exit_pause_lowpass_swap_track() -> None:
     """Happy path: gameplay → filtered on enter, filtered → gameplay on exit.
 
-    We mock pygame.mixer.music so we don't actually need audio hardware.
+    We mock the BGM channel + filtered channel so we don't need audio
+    hardware. The key behavior we test:
+      - On enter: BGM channel is PAUSED (not stopped), filtered channel plays
+      - On exit: filtered channel stops, BGM channel UNPAUSES
+      - The unpause preserves the position (no .play() call on the original)
     """
     from src.audio import music
-    fake_music = mock.MagicMock()
-    fake_music.get_busy.return_value = True
-    fake_music.get_pos.return_value = 12345  # ms
-    # Patch BOTH the module reference music uses AND find a source track
+    fake_bgm_ch = mock.MagicMock()
+    fake_bgm_ch.get_busy.return_value = True
+    fake_filtered_ch = mock.MagicMock()
+    fake_sound = mock.MagicMock()
+    # Also patch pygame.mixer.Channel so the function can allocate the
+    # filtered channel without needing a real mixer.
     with mock.patch.object(music, "_ensure_mixer", return_value=True), \
          mock.patch.object(music, "get_current_track", return_value="gameplay"), \
          mock.patch.object(music, "_ensure_filtered_bgm",
                             return_value="/tmp/fake_filtered.wav"), \
-         mock.patch.object(music, "_find_track",
-                            return_value=Path("/tmp/fake_gameplay.wav")):
-        # Patch pygame.mixer.music in the music module
-        with mock.patch.object(music.pygame.mixer, "music", fake_music):
-            # ENTER
-            ok_in = music.enter_pause_lowpass()
-            assert ok_in is True, "enter_pause_lowpass should succeed"
-            # Should have stopped, loaded filtered, and set volume
-            assert fake_music.stop.called, "should call pygame.mixer.music.stop()"
-            assert fake_music.load.called, "should call pygame.mixer.music.load()"
-            loaded_path = fake_music.load.call_args_list[0][0][0]
-            assert loaded_path == "/tmp/fake_filtered.wav"
-            # EXIT
-            ok_out = music.exit_pause_lowpass()
-            assert ok_out is True, "exit_pause_lowpass should succeed"
-            # Second load() should be the original
-            loaded_paths = [c[0][0] for c in fake_music.load.call_args_list]
-            assert any("gameplay" in str(p) for p in loaded_paths), (
-                f"expected original gameplay track reload, got: {loaded_paths}"
-            )
+         mock.patch.object(music, "_load_sound", return_value=fake_sound), \
+         mock.patch.object(music.pygame.mixer, "Channel",
+                            return_value=fake_filtered_ch, create=True):
+        music._bgm_channel = fake_bgm_ch
+        music._filtered_channel = None
+        music._filtered_sound = None
+        music._is_paused = False
+        # ENTER
+        ok_in = music.enter_pause_lowpass()
+        assert ok_in is True, "enter_pause_lowpass should succeed"
+        # BGM channel should be PAUSED (preserves position)
+        assert fake_bgm_ch.pause.called, (
+            "BGM channel should be pause()'d to preserve position"
+        )
+        # BGM channel should NOT have stop() called (that would lose position)
+        assert not fake_bgm_ch.stop.called, (
+            "BGM channel must NOT be stop()'d (that would lose playback position)"
+        )
+        # Filtered channel should have play() called with the sound
+        assert fake_filtered_ch.play.called, "filtered channel should play"
+        # EXIT
+        ok_out = music.exit_pause_lowpass()
+        assert ok_out is True, "exit_pause_lowpass should succeed"
+        # Filtered channel should be stop()'d
+        assert fake_filtered_ch.stop.called, "filtered channel should stop"
+        # BGM channel should be unpause()'d (NOT play()'d)
+        assert fake_bgm_ch.unpause.called, "BGM channel should unpause()"
+        # The BGM channel should NEVER have play() called (that would restart)
+        assert not fake_bgm_ch.play.called, (
+            "BGM channel must NOT be play()'d on resume (would restart from 0)"
+        )
 
 
 # ---------------------------------------------------------------------------

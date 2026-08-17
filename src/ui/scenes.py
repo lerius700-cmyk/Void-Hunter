@@ -1327,6 +1327,16 @@ class PauseScene(Scene):
     PLAYER_ROTATION_DIR = "player_rotation"
     PLAYER_ROTATION_FPS = 6.0   # one full turn every ~1.33s
 
+    # BLOQUE 58.14: 5 selectable player ships, each with 5 animations
+    # × 8 frames. Assets/sprites/player_ships/ship_NN/{anim}/frame_NN.png.
+    PLAYER_SHIP_IDS: tuple = (1, 2, 3, 4, 5)
+    PLAYER_SHIP_ANIMATIONS: tuple = (
+        "rotating", "idle", "propulsion", "charging", "damage",
+    )
+    # Default ship + animation shown in the pause screen
+    DEFAULT_SHIP_ID: int = 1
+    DEFAULT_SHIP_ANIMATION: str = "rotating"
+
     def __init__(self, transition_to: TransitionFn,
                  get_pause_stats: Optional[Callable[[], dict]] = None) -> None:
         self._transition_to = transition_to
@@ -1339,9 +1349,15 @@ class PauseScene(Scene):
         # Cached rotation frames (loaded lazily on first draw)
         self._player_rotation_frames: list[pygame.Surface] = []
         self._player_rotation_dir: Optional[Path] = None
+        # BLOQUE 58.14: ship selector (1..5) and animation selector.
+        # Updated via LEFT/RIGHT (ship) and UP/DOWN (anim) during pause.
+        self._ship_id: int = self.DEFAULT_SHIP_ID
+        self._ship_anim: str = self.DEFAULT_SHIP_ANIMATION
+        # Cached ship frames: dict[anim] -> list[8 surfaces]
+        self._ship_frames: dict[str, list[pygame.Surface]] = {}
 
     def _ensure_player_rotation_loaded(self) -> None:
-        """BLOQUE 58.14: load the 8 rotating-ship frames once."""
+        """BLOQUE 58.14: load the 8 rotating-ship frames (legacy, single ship)."""
         if self._player_rotation_frames:
             return
         sprites_dir = _find_sprites_dir()
@@ -1360,6 +1376,34 @@ class PauseScene(Scene):
                 self._player_rotation_frames.append(surf)
             except pygame.error:
                 pass
+
+    def _ensure_ship_frames_loaded(self) -> None:
+        """BLOQUE 58.14: load the 5x8 frames for the current ship."""
+        cache_key = f"ship_0{self._ship_id}"
+        if cache_key in self._ship_frames:
+            return
+        sprites_dir = _find_sprites_dir()
+        if sprites_dir is None:
+            return
+        ship_dir = sprites_dir / "player_ships" / cache_key
+        if not ship_dir.is_dir():
+            return
+        frames: dict[str, list[pygame.Surface]] = {}
+        for anim in self.PLAYER_SHIP_ANIMATIONS:
+            anim_dir = ship_dir / anim
+            anim_frames: list[pygame.Surface] = []
+            if anim_dir.is_dir():
+                for i in range(8):
+                    p = anim_dir / f"frame_{i:02d}.png"
+                    if p.is_file():
+                        try:
+                            anim_frames.append(
+                                pygame.image.load(str(p)).convert_alpha()
+                            )
+                        except pygame.error:
+                            pass
+            frames[anim] = anim_frames
+        self._ship_frames[cache_key] = frames
 
     def on_enter(self) -> None:
         self._t = 0.0
@@ -1393,11 +1437,39 @@ class PauseScene(Scene):
             if event.key == pygame.K_c:
                 self._transition_to(GameState.CREDITS)
                 return
+            # BLOQUE 58.14: ship selector (LEFT/RIGHT) and animation
+            # selector (UP/DOWN). LEFT/RIGHT cycle through 5 ships.
+            if event.key == pygame.K_RIGHT:
+                idx = self.PLAYER_SHIP_IDS.index(self._ship_id)
+                self._ship_id = self.PLAYER_SHIP_IDS[
+                    (idx + 1) % len(self.PLAYER_SHIP_IDS)
+                ]
+                # Invalidate cache for this ship so it loads fresh
+                self._ship_frames.pop(f"ship_0{self._ship_id}", None)
+            elif event.key == pygame.K_LEFT:
+                idx = self.PLAYER_SHIP_IDS.index(self._ship_id)
+                self._ship_id = self.PLAYER_SHIP_IDS[
+                    (idx - 1) % len(self.PLAYER_SHIP_IDS)
+                ]
+                self._ship_frames.pop(f"ship_0{self._ship_id}", None)
+            # UP/DOWN cycle through the 5 animations
+            elif event.key == pygame.K_UP:
+                idx = self.PLAYER_SHIP_ANIMATIONS.index(self._ship_anim)
+                self._ship_anim = self.PLAYER_SHIP_ANIMATIONS[
+                    (idx - 1) % len(self.PLAYER_SHIP_ANIMATIONS)
+                ]
+            elif event.key == pygame.K_DOWN:
+                idx = self.PLAYER_SHIP_ANIMATIONS.index(self._ship_anim)
+                self._ship_anim = self.PLAYER_SHIP_ANIMATIONS[
+                    (idx + 1) % len(self.PLAYER_SHIP_ANIMATIONS)
+                ]
 
     def draw(self, target: pygame.Surface) -> None:
-        # Dim overlay (slightly darker than before for contrast)
+        # BLOQUE 58.14: full-opacity dim so the gameplay underneath is
+        # hidden (otherwise the player's ship + bullets show through the
+        # controls panel and look like they belong to the pause UI).
         dim = pygame.Surface(target.get_size(), pygame.SRCALPHA)
-        dim.fill((0, 0, 0, 160))
+        dim.fill((0, 0, 0, 230))
         target.blit(dim, (0, 0))
         # PAUSED header
         font = pygame.font.Font(None, 36)
@@ -1413,12 +1485,16 @@ class PauseScene(Scene):
         _center_blit(target, footer, INTERNAL_H - 16)
 
     def _draw_rotating_ship_and_stats(self, target: pygame.Surface) -> None:
-        """BLOQUE 58.14: rotating player sprite (left) + stats panel (right)."""
-        # Lazy-load the rotation frames
-        self._ensure_player_rotation_loaded()
-        # Decide which frame based on time (6 FPS turntable)
-        frame_idx = int(self._t * self.PLAYER_ROTATION_FPS) % 8
-        # Left column: rotating ship, scaled up so it's clearly visible
+        """BLOQUE 58.14: rotating player sprite (left) + stats panel (right).
+
+        Uses the 5-ship sprite sheet system. LEFT/RIGHT cycles ships
+        1..5, UP/DOWN cycles through the 5 animations (rotating/idle/
+        propulsion/charging/damage).
+        """
+        # Lazy-load the ship frames for the current selection
+        self._ensure_ship_frames_loaded()
+        # Decide which frame based on time (8 FPS for all animations)
+        frame_idx = int(self._t * 8.0) % 8
         ship_w, ship_h = 64, 64
         ship_x = 24
         ship_y = 70
@@ -1429,13 +1505,15 @@ class PauseScene(Scene):
         pygame.draw.rect(glow, (80, 100, 160, 200), (0, 0, ship_w + 12, ship_h + 12),
                           1, border_radius=4)
         target.blit(glow, (ship_x - 6, ship_y - 6))
-        # Blit the current rotation frame, scaled up to fit 64x64
-        if self._player_rotation_frames:
-            sprite = self._player_rotation_frames[frame_idx]
+        # Get the current frame from the 5x8 sheet
+        cache_key = f"ship_0{self._ship_id}"
+        frames_for_anim = self._ship_frames.get(cache_key, {}).get(self._ship_anim, [])
+        if frames_for_anim:
+            sprite = frames_for_anim[frame_idx]
             scaled = pygame.transform.scale(sprite, (ship_w, ship_h))
             target.blit(scaled, (ship_x, ship_y))
         else:
-            # Fallback: draw a placeholder ship polygon (when PNGs missing)
+            # Fallback: draw a placeholder ship polygon
             cx, cy = ship_x + ship_w // 2, ship_y + ship_h // 2
             pygame.draw.polygon(target, (210, 230, 250), [
                 (cx, cy - 20), (cx + 14, cy + 14), (cx, cy + 6), (cx - 14, cy + 14),
@@ -1443,11 +1521,15 @@ class PauseScene(Scene):
             pygame.draw.polygon(target, (255, 220, 140), [
                 (cx, cy - 12), (cx + 6, cy - 4), (cx, cy + 4), (cx - 6, cy - 4),
             ])
-        # Caption under the ship
+        # Caption: "SHIP 03 — ROTATING" + LEFT/RIGHT/UP/DOWN hint
         cap_font = pygame.font.Font(None, 10)
-        cap = cap_font.render("ROTATING", True, (140, 160, 200))
+        cap_str = f"SHIP {self._ship_id:02d}  {self._ship_anim.upper()}"
+        cap = cap_font.render(cap_str, True, (140, 160, 200))
         target.blit(cap, (ship_x + (ship_w - cap.get_width()) // 2,
                           ship_y + ship_h + 4))
+        hint = cap_font.render("</> ship  ^v anim", True, (100, 120, 160))
+        target.blit(hint, (ship_x + (ship_w - hint.get_width()) // 2,
+                            ship_y + ship_h + 16))
         # Right column: stats panel
         stats_x = 100
         stats_y = 70
@@ -1517,18 +1599,25 @@ class PauseScene(Scene):
         self._draw_bar(target, bar_x, row_y, bar_w, 5,
                          min(1.0, dh / dh_max), dh_color)
         row_y += 14
-        # RINGS (gold ring stack) — drawn as 3 small circles (Star Fox style)
+        # RINGS (gold ring stack) — drawn as 3 small RING SHAPES
+        # (outer circle + inner cutout) so empty rings are visibly empty
+        # rings, not just solid dots.
         rings = int(stats.get("gold_rings", 0))
         rings_color = (255, 220, 100)
-        row(col_left_x, row_y, "RINGS", f"{rings}", rings_color)
+        ring_label = label_font.render("RINGS", True, (160, 170, 200))
+        ring_value = body_font.render(f"{rings}", True, rings_color)
+        target.blit(ring_label, (col_left_x, row_y))
+        target.blit(ring_value, (col_left_x + ring_label.get_width() + 4, row_y - 1))
         for i in range(3):
             cx = bar_x + i * 9
             cy = row_y + 4
             filled = i < min(rings, 3)
-            color = (255, 220, 100) if filled else (60, 60, 90)
-            pygame.draw.circle(target, color, (cx, cy), 3)
-            if not filled:
-                pygame.draw.circle(target, (60, 60, 90), (cx, cy), 3, 1)
+            if filled:
+                # Filled ring: solid gold circle
+                pygame.draw.circle(target, (255, 220, 100), (cx, cy), 3)
+            else:
+                # Empty ring: just an outline (no fill)
+                pygame.draw.circle(target, (140, 150, 180), (cx, cy), 3, 1)
         row_y += 14
         # HP doubled badge
         if stats.get("hp_doubled"):
@@ -1539,9 +1628,16 @@ class PauseScene(Scene):
         lives = int(stats.get("lives", 0))
         lives_max = int(stats.get("lives_max", 0))
         lives_color = (140, 220, 255) if lives > 0 else (255, 90, 90)
-        row(col_right_x, rr_y, "VIDA", f"{lives}/{lives_max}", lives_color)
+        # "VIDA 3/3" — value to the right of the label, ship icons go
+        # BELOW the value so they don't overlap with the "3/3" text.
+        label_surf = label_font.render("VIDA", True, (160, 170, 200))
+        value_str = f"{lives}/{lives_max}"
+        value_surf = body_font.render(value_str, True, lives_color)
+        target.blit(label_surf, (col_right_x, rr_y))
+        target.blit(value_surf, (col_right_x + label_surf.get_width() + 4, rr_y - 1))
+        # Tiny ship icons for the lives count (right side, NOT overlapping)
         for i in range(min(lives, 3)):
-            sx = col_right_x + 32 + i * 8
+            sx = col_right_x + col_w - 30 + i * 8
             pygame.draw.polygon(target, (140, 220, 255), [
                 (sx, rr_y), (sx + 4, rr_y + 6), (sx, rr_y + 4), (sx - 4, rr_y + 6),
             ])
@@ -1549,10 +1645,16 @@ class PauseScene(Scene):
         bombs = int(stats.get("bombs", 0))
         bombs_max = int(stats.get("bombs_max", 0))
         bombs_color = (255, 180, 100) if bombs > 0 else (120, 120, 140)
-        row(col_right_x, rr_y, "BOMB", f"{bombs}/{bombs_max}", bombs_color)
+        label_surf = label_font.render("BOMB", True, (160, 170, 200))
+        value_str = f"{bombs}/{bombs_max}"
+        value_surf = body_font.render(value_str, True, bombs_color)
+        target.blit(label_surf, (col_right_x, rr_y))
+        target.blit(value_surf, (col_right_x + label_surf.get_width() + 4, rr_y - 1))
+        # Bomb dots — small, evenly spaced, on the right side
         for i in range(min(bombs, 4)):
-            bx = col_right_x + 40 + i * 6
+            bx = col_right_x + col_w - 32 + i * 6
             pygame.draw.circle(target, (255, 180, 100), (bx, rr_y + 4), 2)
+            pygame.draw.circle(target, (180, 100, 40), (bx, rr_y + 4), 2, 1)
         rr_y += 14
         score = int(stats.get("score", 0))
         score_str = f"{score:06d}"

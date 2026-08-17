@@ -52,6 +52,10 @@ def main() -> int:
         get_pause_stats=fake_stats,
     )
     scene.on_enter()
+    # Cycle to ship 3 (X-wing) + charging animation for visual variety
+    scene._ship_id = 3
+    scene._ship_anim = "charging"
+    scene._ship_frames.clear()  # force reload
     # Tick the scene a bit so the rotating ship frame is mid-spin.
     for _ in range(8):
         scene.update(0.1)
