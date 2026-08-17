@@ -1,23 +1,24 @@
 {
   "synapse_version": "2.2.0",
-  "last_verification_utc": "2026-08-17T20:37:08Z",
+  "last_verification_utc": "2026-08-17T20:54:23Z",
   "system_status": "healthy",
   "active_bridges": {},
   "short_term_memory": {
-    "current_objective": "BLOQUE 58.14.4 done: HD galaxy sprites + 2-large gameplay bg. Now: sf-sm-doctor remediation pass (Lite perfil, 1/7 → target 7/7).",
-    "last_successful_action": "sf-sm-doctor Fase 1-5: Tree Integrity fixed, CLAUDE.md + CONTEXT.md + 7 silos + .synapse creados.",
-    "active_context_pointers": ["CLAUDE.md", "CONTEXT.md", "docs/arch/CONTEXT.md"],
+    "current_objective": "BLOQUE 58.14.4 (galaxy sprites + 2-large bg) y sf-sm-doctor (Lite 7/7 + deep audit) cerrados. Listo para próximo BLOQUE.",
+    "last_successful_action": "Deep audit fix: 6 docs/*.md/.txt movidos a subcarpetas silo. CLAUDE.md métricas regeneradas (22,981 LOC, 75 files en src/). sre-protocol + synapse-deep agregados a L1.",
+    "active_context_pointers": ["CLAUDE.md", "CONTEXT.md", "docs/arch/CONTEXT.md", "docs/changelog/CONTEXT.md"],
     "critical_blockers": "ninguno"
   },
   "neural_load": {
-    "token_efficiency_gain": "Lite perfil → CONTEXT.md reduce overhead vs leer docs/ completo. ~70% de archivos en R (REFERENCE) se cargan solo bajo demanda.",
-    "session_drift_index": 0.05
+    "token_efficiency_gain": "Lite perfil → CONTEXT.md reduce overhead. ~70% de archivos en R (REFERENCE) se cargan solo bajo demanda. Archivos físicos ahora coinciden con paths declarados en silos.",
+    "session_drift_index": 0.0
   },
   "synaptic_shortcuts": {
-    "navegar_a_bloque_n": "git log --oneline | grep 'BLOQUE N' | head -1 → leer commit message → CHANGELOG_v1.x.md",
+    "navegar_a_bloque_n": "git log --oneline | grep 'BLOQUE N' | head -1 → leer commit message → docs/changelog/CHANGELOG_v1.x.md",
     "regenerar_nebula_sprites": "python tools/process_galaxy_sprites_v2.py",
     "verificar_pause_music": "python tools/test_music_continuous_lowpass.py",
     "correr_tests": "python -m pytest tests/ -q",
-    "auditar_sf_sm": "python \"D:\\AI\\Hermes SKills\\skills\\devops\\sf-sm-doctor\\scripts\\audit_sf_sm.py\" \"D:\\AI\\void-hunter\" --perfil=lite"
+    "auditar_sf_sm": "python \"D:\\AI\\Hermes SKills\\skills\\devops\\sf-sm-doctor\\scripts\\audit_sf_sm.py\" \"D:\\AI\\void-hunter\" --perfil=lite",
+    "mover_archivos_a_silo": "python tools/apply_sf_sm_deep_fix.py (idempotente — chequea si ya están movidos)"
   }
 }

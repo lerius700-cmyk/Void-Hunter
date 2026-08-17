@@ -154,6 +154,8 @@ void-hunter/
 |-----------|-------------|------------|
 | **sf-sm-doctor** (System Folder + Synapse Method) | Auditar / remediar estructura del proyecto | `D:\AI\Hermes SKills\skills\devops\sf-sm-doctor\` |
 | **synapse-compact** (Consolidación de sesión) | Fin de sesión, capturar objetivo + última acción | Mavis skill |
+| **synapse-deep** (Actualización documental) | Cuando hubo cambios de arquitectura / reglas / conceptos | Mavis skill |
+| **sre-protocol** (SRE Protocol / Puente Roto) | Diagnosticar y reparar bridges runtime caídos (5 pasos: Symptom → Map Bridge → Execution → Verify → Document). Soporta HTTP, DB, GPU, Storage. | Mavis skill |
 | **breach_autorizado** (Breach Autorizado) | Acceso cross-silo explícito (5 pasos: Declaration → Min Action → Closure → Validation → Registration) | Mavis skill |
 | **test-driven-development** (TDD) | Antes de implementar feature nueva | Mavis skill |
 | **systematic-debugging** (Debugging) | Ante bug, test failure, o comportamiento inesperado | Mavis skill |
@@ -182,15 +184,21 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 
 | Métrica | Valor | Fuente (Truth Anchor) |
 |---------|-------|------------------------|
-| Líneas de código (src/) | 28,066 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
-| Archivos Python (src/) | 118 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
+| Líneas de código (src/) | 22,981 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
+| Archivos Python (src/) | 75 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
 | Tests (tests/) | 1,171 / 1,171 pass | `python -m pytest tests/ -q` (exit 0) |
+| LOC tests/ (helper) | 14,485 | `pytest --collect-only -q` (test count) |
 | Silos SF+SM | 7 (Lite) | `audit_sf_sm.py` |
-| Compliance SF | target 7/7 | `audit_sf_sm.py --perfil=lite` |
-| Versión | v1.2.4 | `git log --oneline -1` |
+| Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
+| Versión | v1.2.4 (BLOQUE 58.14.4) | `git log --oneline -1` |
 | Rama | master | `git branch --show-current` |
 | Remote | github.com/lerius700-cmyk/Void-Hunter | `git remote -v` |
 | Build .exe | `dist/void-hunter/void-hunter.exe` ~4.85 MB | `Get-Item dist/void-hunter/void-hunter.exe` |
+
+> **Nota:** los valores 22,981 LOC y 75 files en `src/` son el conteo actual
+> (regenerados 2026-08-17). El valor histórico 28,066 LOC / 118 files que
+> estaba en `docs/arch/ARCHITECTURE.md` (updated 2026-08-15) ya no aplica
+> tras el BLOQUE SF+SM (consolidación de archivos sueltos a silos).
 
 > **Regla:** si una métrica cambia, regenerar este bloque con el comando de la columna "Fuente". NUNCA editar a mano.
 
@@ -198,4 +206,8 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 
 ## Historial de cambios estructurales (post-SF+SM)
 
-- 2026-08-17 — sf-sm-doctor primera pasada: 1/7 → target 7/7. Tree Integrity fixed (CHANGELOG.md movido a `docs/changelog/`), 7 silos creados, Token Budget L/S/R presente, `.synapse` schema 2.2.0 en root.
+- **2026-08-17 (remediación inicial)** — sf-sm-doctor primera pasada: 1/7 → 7/7. Tree Integrity fixed (CHANGELOG.md movido a `docs/changelog/`), 7 silos creados, Token Budget L/S/R presente, `.synapse` schema 2.2.0 en root.
+- **2026-08-17 (deep audit + fix)** — sf-sm-doctor deep audit reveló drift entre documentos y realidad. Fixes aplicados:
+  - C-1: 6 archivos físicos movidos de `docs/` raíz a subcarpetas silo (`docs/arch/`, `docs/bloques/`, `docs/session-reports/`, `docs/changelog/`).
+  - C-2: STATUS:GENERATED regenerado con métricas reales (22,981 LOC, 75 files en `src/`, 14,485 LOC en `tests/`).
+  - C-3: `sre-protocol` + `synapse-deep` agregados a la tabla de protocolos en L1.
