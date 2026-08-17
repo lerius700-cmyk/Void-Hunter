@@ -444,15 +444,37 @@ def apply_lowpass_to_wav(
             sample_width = wf.getsampwidth()
             n_frames = wf.getnframes()
             src_rate = wf.getframerate()
-            if sample_width != 2:
-                # Only 16-bit supported (the only format we ship)
+            if sample_width not in (2, 3, 4):
+                # 8-bit, 24-bit, 32-bit; 16-bit + 32-bit float not supported
                 return False
             raw = wf.readframes(n_frames)
     except (OSError, wave.Error, EOFError):
         return False
 
-    # Convert to numpy int16
-    samples = np.frombuffer(raw, dtype=np.int16)
+    # Decode the sample width to a numpy int array, then convert to int16
+    # (the math is identical — we just need to normalize to the [-1, 1]
+    # float range for the IIR filter).
+    if sample_width == 2:
+        # 16-bit PCM, little-endian, signed. Direct int16 cast.
+        samples = np.frombuffer(raw, dtype="<i2").astype(np.int16)
+    elif sample_width == 3:
+        # 24-bit PCM, little-endian, signed. Each sample is 3 bytes;
+        # convert to int32 first, then downscale to int16.
+        raw24 = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 3)
+        as_i32 = (raw24[:, 0].astype(np.int32)
+                  | (raw24[:, 1].astype(np.int32) << 8)
+                  | (raw24[:, 2].astype(np.int32) << 16))
+        # Sign-extend (top bit of byte 2 = bit 23 of the int)
+        as_i32[as_i32 >= 0x800000] -= 0x1000000
+        # Downscale 24-bit -> 16-bit (right-shift by 8)
+        samples = (as_i32 >> 8).astype(np.int16)
+    elif sample_width == 4:
+        # 32-bit PCM, little-endian, signed. Downscale by right-shift 16.
+        as_i32 = np.frombuffer(raw, dtype="<i4")
+        samples = (as_i32 >> 16).astype(np.int16)
+    else:
+        return False
+
     if n_channels > 1:
         samples = samples.reshape(-1, n_channels)
     # Promote to float32 for IIR processing

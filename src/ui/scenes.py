@@ -1424,8 +1424,28 @@ class PauseScene(Scene):
         from src.audio import music
         ok = music.exit_pause_lowpass()
         if not ok:
-            # Fallback: reload the gameplay track from the top.
-            music.play_gameplay_music(force=True)
+            # Fallback: if exit_pause_lowpass failed (e.g. enter was never
+            # called, or the BGM channel was stolen), DO NOT restart the
+            # music — just leave whatever is currently playing alone. The
+            # user would rather hear the filtered version end abruptly
+            # than have the song restart from 0.
+            try:
+                with open("logs/_audio_status.log", "a", encoding="utf-8") as _f:
+                    _f.write("PauseScene.on_exit: exit_pause_lowpass returned False; NOT restarting music\n")
+            except Exception:
+                pass
+            # Last resort: make sure the BGM channel isn't playing the
+            # filtered overlay anymore. We just stop the filtered channel
+            # if it's still around — the BGM channel will resume on its
+            # own if it was paused, or stay playing if it wasn't.
+            try:
+                if music._filtered_channel is not None:
+                    music._filtered_channel.stop()
+                if music._bgm_channel is not None and music._is_paused:
+                    music._bgm_channel.unpause()
+                    music._is_paused = False
+            except Exception:
+                pass
 
     def update(self, dt: float) -> None:
         self._t += dt
