@@ -1,25 +1,52 @@
-"""Parallax background — 5 star layers + 6 nebula types + planets.
+"""Parallax background — 5 star layers + 6 nebula (AI sprites) + planets.
 
 Per GDD §4 ParallaxBackground: 5 layers con velocidades [20, 50, 100, 180,
-280] px/s. 6 nebula types procedurales. Planets con atmosphere + rings
-animados. Theme change reapplies tints.
+280] px/s. 6 nebula types cargadas como sprites AI pre-generados.
+Planets con atmosphere + rings animados. Theme change reaplica tints
+a las estrellas (las nebulosas conservan sus colores baked-in).
 
 Description: the background scrolls top→bottom (the player moves up the
              play field against incoming waves). Stars tile vertically;
              nebula drifts; planets spawn on a timer and slowly rotate.
 Dependencies: pygame, settings, palette, easing.
+
+BLOQUE 58.14.3: replaced the procedural spiral-arm renderer
+(_render_nebula_surface used to compute arm distance + dust lane +
+embedded stars per pixel — slow, and visually weak: it looked like
+"a solid blue blob with a few soft puffs", not a galaxy). Now each
+nebula picks one of 4 AI-generated spiral galaxy sprites
+(Assets/background/galaxy_sprite_*.png) and smoothscales it to fit
+the nebula's radius. Same per-frame cost (one blit), DRAMATICALLY
+better look — real spiral arms, bright core, embedded stars.
 """
 from __future__ import annotations
 
 import math
 import random
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 import pygame
 
 from src.core.settings import INTERNAL_H, INTERNAL_W
 from src.utils.palette import THEMES, get_theme
+
+
+# BLOQUE 58.14.3: 4 AI-generated spiral galaxy sprites in blue/purple
+# palette. Generated with image_synthesize, processed by
+# tools/process_galaxy_sprites.py (remove dark bg, square-pad, LANCZOS
+# resize to 280x280 to fit nebula_radius_max=140 with some bleed).
+# Path is resolved relative to this file so it works regardless of cwd.
+_THIS_DIR = Path(__file__).resolve().parent
+_GALAXY_SPRITE_PATHS: tuple[Path, ...] = tuple(
+    _THIS_DIR.parent.parent
+    / "Assets" / "background" / f"galaxy_sprite_{i:02d}.png"
+    for i in range(1, 5)
+)
+# Fallback size when a sprite is missing — used for the soft-circle
+# fallback path so nebulas still have something on screen.
+_GALAXY_FALLBACK_RADIUS_PX = 60
 
 
 # Star layer scroll speeds (px/s). Layer 0 = farthest, slowest.
@@ -57,11 +84,15 @@ class Star:
 class Nebula:
     """Single nebula cloud.
 
-    BLOQUE 58.14.1: each nebula pre-renders a noise-based cloud surface
-    on init (see `_render_nebula_surface`). The cached Surface is blit
-    each frame, so the cloud looks like a real procedural nebula
-    (variable density, wisps, multiple soft puffs blended) instead of
-    a single solid circle.
+    BLOQUE 58.14.3: each nebula picks one of 4 AI-generated spiral
+    galaxy sprites and smoothscales it to fit `radius` (see
+    `_render_nebula_surface`). The cached Surface is blit each
+    frame, so the cloud looks like a REAL spiral galaxy (proper
+    arms, bright core, embedded stars) instead of a procedural
+    approximation. The `color` field is kept for backward compat
+    (some tests assert on it after `set_theme`) but it's no
+    longer used for rendering — the sprite already has the right
+    palette baked in.
     """
     x: float
     y: float
@@ -70,8 +101,10 @@ class Nebula:
     vx: float = 0.0
     vy: float = 8.0  # drift down with parallax
     # Cached pre-rendered surface (set by _render_nebula_surface after
-    # init). Holds the procedural cloud pixels with alpha.
+    # init). Holds the AI sprite scaled to (radius*2, radius*2).
     surface: Optional[pygame.Surface] = None
+    # Index into the loaded galaxy sprite list (for debugging only).
+    sprite_variant: int = 0
 
 
 @dataclass
@@ -127,6 +160,9 @@ class ParallaxBackground:
         self._nebula: list[Nebula] = []
         self._planet: Optional[Planet] = None
         self._planet_timer: float = PLANET_SPAWN_MIN_S
+        # BLOQUE 58.14.3: lazy-loaded AI galaxy sprite cache. Filled
+        # on first nebula render, shared across all nebulas.
+        self._galaxy_sprites: Optional[list[pygame.Surface]] = None
         self._t: float = 0.0
         self._theme_name: str = "blue_void"
         self._stars_per_layer = stars_per_layer
@@ -138,15 +174,20 @@ class ParallaxBackground:
         self._init_nebula()
 
     def set_theme(self, name: str) -> None:
-        """Re-tint stars and nebula for a new theme. Called on act transition."""
+        """Re-tint stars for a new theme. Called on act transition.
+
+        BLOQUE 58.14.3: nebula surfaces are NOT re-rendered on theme
+        change — they use AI sprites with baked-in colors (which
+        already match the blue/purple default palette). The `color`
+        field on each nebula is still updated for backward compat
+        with code/tests that read it, but the rendered surface
+        stays the same.
+        """
         self._theme_name = name
         theme = get_theme(name)
-        # Re-tint nebula colors and re-render their surfaces
         nebula_swatches = theme["nebula"]
         for i, n in enumerate(self._nebula):
             n.color = nebula_swatches[i % len(nebula_swatches)]
-            # Re-render the cloud surface with the new color
-            n.surface = self._render_nebula_surface(n)
 
     @property
     def active_count(self) -> int:
@@ -285,123 +326,72 @@ class ParallaxBackground:
             self._nebula.append(n)
 
     def _render_nebula_surface(self, n: Nebula) -> pygame.Surface:
-        """BLOQUE 58.14.1: procedurally generate a cloud-like surface
-        using value noise + multiple soft puffs blended together.
+        """BLOQUE 58.14.3: build the nebula surface from an AI sprite.
 
-        Output: a square Surface (size 2*radius × 2*radius) with
-        per-pixel alpha. Denser in the center, wispy at the edges,
-        with 6-8 soft "puff" hotspots that create depth.
+        Replaces the procedural spiral-arm renderer (BLOQUE 58.14.2)
+        which produced a weak "solid blue blob" look. Now we pick
+        one of 4 AI-generated spiral galaxy sprites and smoothscale
+        it to fit `n.radius`. Result: real spiral arms, bright core,
+        embedded stars, proper soft edges.
 
-        Pure-stdlib (math + random) so we don't pull in numpy just
-        for nebulas. The base is a low-resolution value noise grid
-        upsampled to the surface size.
+        If no AI sprite is found on disk, falls back to a simple
+        gradient circle so the game still has something on screen.
         """
-        size = int(n.radius * 2)
-        if size <= 0:
-            return pygame.Surface((1, 1), pygame.SRCALPHA)
-        # 1. Low-resolution value noise grid (6x6 random, then bilinear
-        #    upsample to surface size). Higher res grid = more cloud detail.
-        grid = 6
-        cell = size / grid
-        corners = [[self._rng.random() for _ in range(grid + 1)]
-                   for _ in range(grid + 1)]
-        # 2. Add 8 "puff" hotspots (Gaussian blobs at random positions
-        #    within the nebula). This breaks the regularity of the
-        #    noise field and gives it cloud-like depth + wisps.
-        puffs = []
-        for _ in range(8):
-            puff_cx = self._rng.uniform(0.15, 0.85) * size
-            puff_cy = self._rng.uniform(0.15, 0.85) * size
-            puff_r = self._rng.uniform(0.20, 0.45) * size
-            puff_strength = self._rng.uniform(0.30, 0.65)
-            puffs.append((puff_cx, puff_cy, puff_r, puff_strength))
-        # 3. Build the alpha mask: noise * radial_falloff + puffs.
-        cx = cy = size / 2.0
-        max_r = n.radius
-        max_alpha = 195  # dense, visible cloud
-        r2_max = max_r * max_r
-        # Pre-compute noise per pixel (bilinear)
-        def sample_noise(px: int, py: int) -> float:
-            gx = min(int(px / cell), grid - 1)
-            gy = min(int(py / cell), grid - 1)
-            tx = (px / cell) - gx
-            ty = (py / cell) - gy
-            tx = tx * tx * (3.0 - 2.0 * tx)
-            ty = ty * ty * (3.0 - 2.0 * ty)
-            c00 = corners[gy][gx]
-            c10 = corners[gy][gx + 1]
-            c01 = corners[gy + 1][gx]
-            c11 = corners[gy + 1][gx + 1]
-            a = c00 + (c10 - c00) * tx
-            b = c01 + (c11 - c01) * tx
-            return a + (b - a) * ty
-        # Build alpha array
-        for py in range(size):
-            dy = py - cy
-            dy2 = dy * dy
-            for px in range(size):
-                dx = px - cx
-                r2 = dx * dx + dy2
-                if r2 > r2_max:
-                    continue
-                # Radial falloff: 1.0 at center, 0.0 at edge, smoothstep
-                t = 1.0 - (r2 / r2_max)
-                radial = t * t * (3.0 - 2.0 * t)
-                # Get noise value (cloudy background)
-                n_val = sample_noise(px, py)
-                # Add puff contributions (overrides noise where puffs are)
-                puff_total = 0.0
-                for (pcx, pcy, pr, ps) in puffs:
-                    ddx = px - pcx
-                    ddy = py - pcy
-                    d2 = ddx * ddx + ddy * ddy
-                    if d2 < pr * pr:
-                        pt = 1.0 - (d2 / (pr * pr))
-                        # Smoothstep
-                        pt = pt * pt * (3.0 - 2.0 * pt)
-                        puff_total = max(puff_total, ps * pt)
-                # Combine: max of (noise * 0.6, puff) * radial
-                a = max(n_val * 0.7, puff_total) * radial
-                a = min(1.0, a)
-                if a > 0.01:
-                    alpha = int(a * max_alpha)
-                    # set_at on a Surface is per-pixel
-        # 4. Rasterize to a Surface (use per-pixel set_at for transparency)
+        sprites = self._load_galaxy_sprites()
+        size = max(8, int(n.radius * 2))
+        if sprites:
+            # Pick a variant (random per nebula so consecutive nebulas
+            # look different). The variant is recorded on the nebula
+            # for debugging / future deterministic-replay support.
+            variant = self._rng.randrange(len(sprites))
+            n.sprite_variant = variant
+            src = sprites[variant]
+            return pygame.transform.smoothscale(src, (size, size))
+        # Fallback: soft gradient circle.
+        return self._fallback_nebula_surface(n, size)
+
+    def _load_galaxy_sprites(self) -> list[pygame.Surface]:
+        """Lazy-load the 4 AI-generated galaxy sprites from disk.
+
+        Cached on first call so the file I/O happens once per
+        ParallaxBackground lifetime. Returns an empty list if no
+        sprite is found, signaling the fallback path.
+        """
+        if self._galaxy_sprites is not None:
+            return self._galaxy_sprites
+        loaded: list[pygame.Surface] = []
+        for path in _GALAXY_SPRITE_PATHS:
+            try:
+                # convert_alpha() needs a display, but in test mode
+                # there's no display. Fall back to raw load (still
+                # has alpha from the PNG).
+                raw = pygame.image.load(str(path))
+                try:
+                    surf = raw.convert_alpha()
+                except pygame.error:
+                    surf = raw
+                loaded.append(surf)
+            except (pygame.error, FileNotFoundError, OSError):
+                continue
+        self._galaxy_sprites = loaded
+        return loaded
+
+    def _fallback_nebula_surface(self, n: Nebula, size: int) -> pygame.Surface:
+        """Soft gradient circle for when AI sprites are missing.
+
+        Concentric circles with decreasing alpha give a "fuzzy ball"
+        look. Not a galaxy, but at least the player can see the
+        nebula exists and the gameplay still works.
+        """
         surf = pygame.Surface((size, size), pygame.SRCALPHA)
-        for py in range(size):
-            dy = py - cy
-            dy2 = dy * dy
-            for px in range(size):
-                dx = px - cx
-                r2 = dx * dx + dy2
-                if r2 > r2_max:
-                    continue
-                t = 1.0 - (r2 / r2_max)
-                radial = t * t * (3.0 - 2.0 * t)
-                n_val = sample_noise(px, py)
-                puff_total = 0.0
-                for (pcx, pcy, pr, ps) in puffs:
-                    ddx = px - pcx
-                    ddy = py - pcy
-                    d2 = ddx * ddx + ddy * ddy
-                    if d2 < pr * pr:
-                        pt = 1.0 - (d2 / (pr * pr))
-                        pt = pt * pt * (3.0 - 2.0 * pt)
-                        puff_total = max(puff_total, ps * pt)
-                a = max(n_val * 0.7, puff_total) * radial
-                a = min(1.0, a)
-                if a > 0.01:
-                    alpha = int(a * max_alpha)
-                    # Slight color variation per puff for depth
-                    cr = n.color[0]
-                    cg = n.color[1]
-                    cb = n.color[2]
-                    if puff_total > n_val * 0.7:
-                        # Inside a puff — brighten slightly
-                        cr = min(255, cr + 20)
-                        cg = min(255, cg + 20)
-                        cb = min(255, cb + 20)
-                    surf.set_at((px, py), (cr, cg, cb, alpha))
+        r_max = size // 2
+        if r_max <= 0:
+            return surf
+        for r in range(r_max, 0, -1):
+            t = r / r_max
+            a = int(40 * t)  # softer than the full nebula
+            pygame.draw.circle(surf, (*n.color, a),
+                               (r_max, r_max), r)
         return surf
 
     def _spawn_planet(self) -> None:

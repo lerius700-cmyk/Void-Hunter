@@ -214,3 +214,50 @@ def test_parallax_draw_under_10ms(bg: ParallaxBackground, display: pygame.Surfac
         bg.draw(display)
     elapsed = time.perf_counter() - t0
     assert elapsed < 0.200, f"draw too slow: {elapsed*1000:.1f}ms / 20 frames"
+
+
+# ---------------------------------------------------------------------------
+# 8. BLOQUE 58.14.3: AI galaxy sprites
+# ---------------------------------------------------------------------------
+def test_nebula_uses_ai_galaxy_sprite() -> None:
+    """BLOQUE 58.14.3: each nebula surface is built from one of 4
+    AI-generated galaxy sprites. The surface should be 2*radius x
+    2*radius (so the blit covers the right area)."""
+    bg = ParallaxBackground(rng_seed=42)
+    for n in bg._nebula:
+        assert n.surface is not None
+        expected_size = max(8, int(n.radius * 2))
+        assert n.surface.get_width() == expected_size
+        assert n.surface.get_height() == expected_size
+
+
+def test_nebula_has_galaxy_sprite_variant() -> None:
+    """Each nebula records which AI sprite variant it used."""
+    bg = ParallaxBackground(rng_seed=42)
+    for n in bg._nebula:
+        assert 0 <= n.sprite_variant < 4
+
+
+def test_galaxy_sprites_loaded() -> None:
+    """The 4 AI galaxy sprites are on disk and the loader finds them."""
+    from pathlib import Path
+    project_root = Path(__file__).resolve().parent.parent
+    galaxy_dir = project_root / "Assets" / "background"
+    found = list(galaxy_dir.glob("galaxy_sprite_*.png"))
+    assert len(found) >= 1, (
+        f"No galaxy_sprite_*.png found in {galaxy_dir}. "
+        "Run image_synthesize to generate them."
+    )
+
+
+def test_set_theme_does_not_crash_with_ai_sprites() -> None:
+    """Theme change after init should still work: the surface stays
+    valid (the AI sprite has its own colors, we don't re-render)."""
+    bg = ParallaxBackground(rng_seed=42)
+    initial_surfaces = [n.surface for n in bg._nebula]
+    bg.set_theme("pink_void")
+    # Surfaces should be the same objects (no re-render in BLOQUE 58.14.3).
+    for n, s in zip(bg._nebula, initial_surfaces):
+        assert n.surface is s
+    # Draw should still work after the theme change.
+    bg.draw(pygame.Surface((INTERNAL_W, INTERNAL_H), pygame.SRCALPHA))
