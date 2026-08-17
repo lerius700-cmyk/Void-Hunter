@@ -183,14 +183,20 @@ class GameplayRuntime:
         # 0 planets). Used as the PRIMARY gameplay background for that
         # "vast empty space" feel (~80% black). The galaxy_strip can
         # still be loaded as a deeper background layer.
+        # BLOQUE 58.14.4: changed nebula_count from 1 to 2 (large) and
+        # reduced radius — the user said the boss scene's 2 visible
+        # large spiral galaxies look great, but the gameplay's 4-5
+        # visible ones (legacy 6 + parallax 1) "don't make sense".
+        # The new config gives gameplay the SAME look as the boss scene:
+        # 2 large beautiful galaxies, sparse stars, no clutter.
         from src.systems.parallax import ParallaxBackground
         self._parallax_bg: "ParallaxBackground" = ParallaxBackground(
             width=INTERNAL_W, height=INTERNAL_H,
             rng_seed=0xC0FFEE58,
             stars_per_layer=8,   # sparse (was 50)
-            nebula_count=1,      # BLOQUE 58.13.3: 1 large off-center nebula
-            nebula_radius_min=100, # large (was 40)
-            nebula_radius_max=140, # large (was 80)
+            nebula_count=2,      # 2 large spiral galaxies (was 1)
+            nebula_radius_min=80, # large (was 100)
+            nebula_radius_max=110, # large (was 140)
             spawn_planets=False, # no planets
         )
         # Keep the old TilingImage as a fallback (in case the galaxy
@@ -199,7 +205,15 @@ class GameplayRuntime:
         self._tiling_bg: Optional["TilingImage"] = TilingImage(
             width=INTERNAL_W, height=INTERNAL_H, scroll_speed_px_per_s=12.0,
         )
-        self._bg = ParallaxBackground(rng_seed=42 if not is_boss else 77)
+        # BLOQUE 58.14.4: skip the legacy 6-small-nebula background in
+        # gameplay. The boss scene uses rng_seed=77 which gives 2-3
+        # visible large galaxies (with the new 500x500 HD sprites). In
+        # gameplay the legacy bg + parallax 1-large = 4-5 visible, which
+        # "no tiene logica" per the user. The parallax 2-large replaces
+        # both: cleaner look, same galaxy density as the boss scene.
+        self._bg: Optional["ParallaxBackground"] = None
+        if is_boss:
+            self._bg = ParallaxBackground(rng_seed=77)
 
         # Combat systems
         self._bullets = ProjectilePool(capacity=400)
@@ -2940,6 +2954,10 @@ class GameplayRuntime:
             # Boss fight: pixel art TilingImage
             if self._tiling_bg is not None:
                 self._tiling_bg.update(effective_dt)
+            # BLOQUE 58.14.4: legacy parallax (2 visible large galaxies)
+            # still needs update() to animate its nebulas + stars.
+            if self._bg is not None:
+                self._bg.update(effective_dt)
         else:
             # Waves + sub-boss: galaxy scroll (with tiling fallback)
             if self._galaxy_bg is not None and self._galaxy_bg.is_ready:
@@ -3471,14 +3489,14 @@ class GameplayRuntime:
             if self._tiling_bg is not None and self._tiling_bg.is_ready:
                 self._tiling_bg.draw(target)
             else:
-                self._bg.draw(target)
+                if self._bg is not None:
+                    self._bg.draw(target)
         else:
-            # BLOQUE 58.12: gameplay uses the SPARSE parallax as the
-            # primary background (the user wants ~80% black, not the
-            # dense galaxy strip). The galaxy_strip is too busy.
-            # The parallax is drawn below enemies and provides the
-            # top-to-bottom dust motion.
-            self._bg.draw(target)  # base black background
+            # BLOQUE 58.14.4: gameplay SKIPS the legacy 6-small-nebula
+            # background (self._bg is None now). The parallax 2-large
+            # below is the primary background. The user said the
+            # previous 4-5 visible nebulas "no tienen logica".
+            pass  # black is the default target fill
         # BLOQUE 58.12: sparse parallax stars drawn ON TOP of black.
         # This is the primary "moving" background — its stars drift
         # top→bottom at varying speeds, giving a sense of forward motion.
