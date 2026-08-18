@@ -8,7 +8,6 @@ class Player:
     SPEED = 165.0
     SHOOT_COOLDOWN_S = 0.10
     BULLET_OFFSET_X = 12
-    MAX_LIVES = 3
     IFRAMES_FRAMES = 30
     INVULN_FRAMES_PER_HIT = 30
     BOUND_X_MIN = 8
@@ -45,10 +44,19 @@ class Player:
         600.0,
     )
 
+    # Max-lives constants. `MAX_LIVES` is the starting cap (3).
+    # Gold rings can push it up to `MAX_LIVES_ABSOLUTE` (9) in two
+    # +3 stacks: 3 -> 6 -> 9. `max_lives` is the runtime cap.
+    MAX_LIVES = 3
+    MAX_LIVES_ABSOLUTE = 9
+    # Gold ring count needed per stack gain.
+    GOLD_RINGS_PER_STACK = 3
+
     __slots__ = (
-        "x", "y", "vx", "vy", "lives", "shoot_cooldown",
+        "x", "y", "vx", "vy", "lives", "max_lives", "shoot_cooldown",
         "invulnerable_frames", "alive", "firing", "thrusting", "bullets",
         "weapon", "_now",
+        "gold_stacks", "gold_rings_collected",
     )
 
     def __init__(self, screen_rect: pygame.Rect) -> None:
@@ -57,6 +65,9 @@ class Player:
         self.vx: float = 0.0
         self.vy: float = 0.0
         self.lives: int = self.MAX_LIVES
+        # Runtime cap. Grows by 3 each time the player collects 3
+        # gold rings (up to MAX_LIVES_ABSOLUTE).
+        self.max_lives: int = self.MAX_LIVES
         self.shoot_cooldown: float = 0.0
         self.invulnerable_frames: int = 0
         self.alive: bool = True
@@ -67,6 +78,11 @@ class Player:
         # Scene time, written by update() so _spawn_bullet can stamp
         # the new bullet with `spawn_time` for the VFX to use.
         self._now: float = 0.0
+        # Gold ring stack tracking. `gold_rings_collected` counts
+        # total gold rings (used to decide when to bump `max_lives`).
+        # `gold_stacks` is the derived count (0, 1, or 2).
+        self.gold_rings_collected: int = 0
+        self.gold_stacks: int = 0
 
     def set_weapon(self, weapon: int) -> None:
         """Switch to a new weapon (0..9). No-op if already on it."""
@@ -114,14 +130,52 @@ class Player:
         if self.invulnerable_frames > 0:
             self.invulnerable_frames -= 1
 
-    def take_hit(self) -> None:
+    def take_hit(self, amount: int = 1) -> None:
+        """Apply `amount` damage from a single hit.
+
+        Boss damage is 2 (contact AND bullets) so the player has to
+        manage their life budget carefully. Enemy bullets are 1,
+        kamikaze contact is 2 (already handled by the caller calling
+        take_hit() once per damage point).
+        """
         if not self.alive or self.invulnerable_frames > 0:
             return
-        self.lives -= 1
+        self.lives -= amount
         if self.lives <= 0:
+            self.lives = 0
             self.alive = False
         else:
             self.invulnerable_frames = self.INVULN_FRAMES_PER_HIT
+
+    def heal(self, amount: int) -> int:
+        """Restore up to `amount` lives, capped at max_lives.
+
+        Returns the actual amount healed (0 if already full).
+        """
+        if not self.alive:
+            return 0
+        before = self.lives
+        self.lives = min(self.max_lives, self.lives + amount)
+        return self.lives - before
+
+    def collect_gold_ring(self) -> bool:
+        """Register a gold ring pickup. Returns True if this pickup
+        bumped the max_lives cap (i.e. just completed a stack).
+        """
+        self.gold_rings_collected += 1
+        stacks_earned = self.gold_rings_collected // self.GOLD_RINGS_PER_STACK
+        new_stacks = min(stacks_earned, 2)  # cap at 2 stacks
+        if new_stacks > self.gold_stacks:
+            self.gold_stacks = new_stacks
+            # Each stack adds 3 lives to the cap (3 -> 6 -> 9).
+            self.max_lives = min(self.MAX_LIVES_ABSOLUTE,
+                                 self.MAX_LIVES + 3 * self.gold_stacks)
+            return True
+        return False
+
+    def collect_silver_ring(self) -> None:
+        """Silver ring: heal 1, no stack progress."""
+        self.heal(1)
 
     def hitbox(self) -> pygame.Rect:
         return pygame.Rect(int(self.x - 4), int(self.y - 4), 8, 8)

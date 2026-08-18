@@ -62,7 +62,7 @@ def run() -> tuple[int, int, list[tuple[str, bool, str]]]:
         from stellar_horizon.entities.boss import Boss, BossPhase
         b = Boss()
         assert b.phase == BossPhase.ENTERING
-        assert b.hp == 60
+        assert b.hp == 600
         return f"hp={b.hp}"
 
     def g08_wave_manager_loads():

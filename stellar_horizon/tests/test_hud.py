@@ -59,3 +59,26 @@ def test_hud_lives_display(hud, screen):
     p.lives = 2
     hud.set_player(p)
     hud.draw(screen)
+
+
+def test_hud_with_player_gold_stacks(hud, screen):
+    """HUD must render correctly with 1 and 2 gold stacks (max 6/9 lives)."""
+    p = Player(pygame.Rect(0, 0, INTERNAL_W, INTERNAL_H))
+    p.lives = 4
+    p.max_lives = 6
+    p.gold_stacks = 1
+    hud.set_player(p)
+    hud.draw(screen)
+    p.lives = 7
+    p.max_lives = 9
+    p.gold_stacks = 2
+    hud.draw(screen)
+
+
+def test_hud_with_player_no_gold_yet(hud, screen):
+    """HUD must render with gold_stacks=0 (only the hearts row)."""
+    p = Player(pygame.Rect(0, 0, INTERNAL_W, INTERNAL_H))
+    p.lives = 3
+    p.gold_stacks = 0
+    hud.set_player(p)
+    hud.draw(screen)

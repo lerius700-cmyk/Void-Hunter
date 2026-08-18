@@ -9,10 +9,11 @@ from stellar_horizon.audio.midi_player import MidiPlayer
 from stellar_horizon.audio import sfx
 from stellar_horizon.audio.thrusters import ThrusterManager
 from stellar_horizon.core.scene_manager import Scene, SceneName
-from stellar_horizon.entities.boss import Boss
+from stellar_horizon.entities.boss import Boss, BossPhase
 from stellar_horizon.entities.bullet import EnemyBullet, PlayerBullet
 from stellar_horizon.entities.enemy import Enemy
 from stellar_horizon.entities.player import Player
+from stellar_horizon.entities.powerup import PowerUp, PowerUpKind, roll_enemy_drop
 from stellar_horizon.fx.bullet_vfx import compute as compute_bullet_vfx
 from stellar_horizon.fx.dust import DustStream
 from stellar_horizon.fx.particles import FxLayer
@@ -85,6 +86,9 @@ class GameplayScene(Scene):
         self._thrust_timer: float = 0.0
         self.player_bullets: list[PlayerBullet] = [PlayerBullet() for _ in range(PLAYER_BULLET_POOL)]
         self.enemy_bullets: list[EnemyBullet] = [EnemyBullet() for _ in range(ENEMY_BULLET_POOL)]
+        # Power-up rings spawned by enemy kills and (rarely) by the
+        # boss. Updated + drawn alongside the other entities.
+        self.powerups: list[PowerUp] = []
         self.score: int = 0
         self._next: Scene | None = None
         self._keys = None
@@ -364,6 +368,10 @@ class GameplayScene(Scene):
                                                 color=(255, 200, 80))
                             self.shake.add_trauma(trauma)
                             sfx.play_event(kill_sfx)
+                            # Power-up drop roll (silver 10%, gold 5%).
+                            drop_kind = roll_enemy_drop()
+                            if drop_kind is not None:
+                                self._spawn_powerup(e.x, e.y, drop_kind)
                         break
             # Enemy-vs-player collision. Kamikaze deals 2 damage (its
             # contact_damage); everything else deals 1. Every contact
@@ -406,9 +414,13 @@ class GameplayScene(Scene):
                         self.shake.add_trauma(0.50)
                         sfx.play_event("explode_boss")
             if self.boss.alive and self.boss.hitbox().colliderect(self.player.hitbox()):
-                self.player.take_hit()
+                # Boss contact damage = 2 (all boss damage is 2).
+                self.player.take_hit(amount=self.boss.DAMAGE_TO_PLAYER)
                 self.shake.add_trauma(0.30)
                 sfx.play_event("hit")
+                # Reset the boss hit-streak — player took damage from
+                # the boss, so the 20-in-7 ring drop window is over.
+                self.boss.on_player_damaged()
         # Enemy bullets vs player — pool is fixed-size; do NOT filter.
         # Bombs (gravity projectiles) detonate with a bigger impact
         # burst on contact; regular aimed bullets get the standard
@@ -417,7 +429,9 @@ class GameplayScene(Scene):
             if b.alive:
                 b.update(dt)
                 if b.alive and b.hitbox().colliderect(self.player.hitbox()):
-                    self.player.take_hit()
+                    # Use the bullet's damage value (boss bullets = 2,
+                    # regular enemy bullets = 1).
+                    self.player.take_hit(amount=b.damage)
                     b.alive = False
                     self.shake.add_trauma(0.15)
                     if b._bomb:
@@ -428,6 +442,27 @@ class GameplayScene(Scene):
                         self.fx.emit_impact(self.player.x, self.player.y,
                                             count=10, color=(255, 80, 100))
                         sfx.play_event("hit")
+                    # If the bullet came from the boss, also tell the
+                    # boss the streak is over.
+                    if self.boss_active and self.boss is not None \
+                            and b.damage >= 2 and not b._bomb:
+                        self.boss.on_player_damaged()
+        # Power-up rings: update, apply pickup, prune dead.
+        for p in self.powerups:
+            if p.update(dt, self.player, self._elapsed):
+                self._on_powerup_pickup(p)
+        self.powerups = [p for p in self.powerups if p.alive]
+        # Boss ring drop check (silver, 50% on 20 hits in 7s). Only
+        # triggers while the boss is alive in PHASE_1/PHASE_2.
+        if (self.boss_active and self.boss is not None
+                and self.boss.alive
+                and self.boss.phase in (BossPhase.PHASE_1, BossPhase.PHASE_2)):
+            if self.boss.consume_ring_drop():
+                self._spawn_powerup(self.boss.x, self.boss.y,
+                                    PowerUpKind.SILVER)
+                self.fx.emit_impact(self.boss.x, self.boss.y,
+                                    count=20, color=(220, 230, 255))
+                sfx.play_event("explode_small")
         self.fx.update(dt)
         self.shake.update(dt)
         self.background.update(dt, scroll_speed=0.0)
@@ -508,6 +543,10 @@ class GameplayScene(Scene):
         for b in self.enemy_bullets:
             if b.alive:
                 self._draw_enemy_bullet_sprite(surface, b, ox, oy)
+        # Power-up rings — drawn after bullets so the magneto pickup
+        # effect (sparkle) reads on top of any nearby bullet.
+        for p in self.powerups:
+            p.draw(surface, self._elapsed)
         self.fx.draw(surface)
         self.hud.draw(surface)
 
@@ -520,6 +559,35 @@ class GameplayScene(Scene):
         self.hud.set_boss(self.boss)
         # Boss intro stinger so the player knows the boss is here.
         sfx.play_event("boss_warning")
+
+    def _spawn_powerup(self, x: float, y: float, kind: str) -> None:
+        """Add a new power-up ring to the live list."""
+        p = PowerUp()
+        p.spawn(x, y, kind, self._elapsed)
+        self.powerups.append(p)
+
+    def _on_powerup_pickup(self, p: PowerUp) -> None:
+        """Apply the picked-up ring's effect to the player and emit
+        the appropriate sparkle / SFX.
+        """
+        if p.kind == PowerUpKind.GOLD:
+            stacked = self.player.collect_gold_ring()
+            # Heal +2 (or +1 if already at max lives on the current
+            # cap; the heal() method caps at max_lives).
+            self.player.heal(2)
+            # Sparkle: gold burst.
+            self.fx.emit_impact(p.x, p.y, count=18, color=(255, 220, 110))
+            self.shake.add_trauma(0.08)
+            sfx.play_event("hit")  # fallback if no "ring" SFX exists
+            if stacked:
+                # Extra punch when the cap just grew.
+                self.fx.emit_impact(self.player.x, self.player.y,
+                                    count=24, color=(255, 240, 180))
+                self.shake.add_trauma(0.20)
+        else:
+            self.player.collect_silver_ring()
+            self.fx.emit_impact(p.x, p.y, count=12, color=(220, 230, 255))
+            sfx.play_event("hit")
 
     # ------------------------------------------------------------------
     # Sprite blit helpers — each picks the right animated sprite from
@@ -590,6 +658,15 @@ class GameplayScene(Scene):
                 surface.blit(halo, (cx - radius, cy - radius))
 
     def _draw_boss_sprite(self, surface, b, ox, oy) -> None:
+        # Draw the telegraph line BEHIND the boss so the boss sprite
+        # sits on top of it (it must read as a warning, not a hitbox).
+        if b.action == "telegraph":
+            self._draw_boss_telegraph(surface, b, ox, oy)
+        # Thruster particles during CHARGE — drawn first so they sit
+        # behind the boss sprite, suggesting the boss is moving
+        # forward and leaving the trail behind.
+        if b.action == "charge":
+            self._draw_boss_thruster(surface, b, ox, oy)
         anim = self._animated.get("boss")
         sprite = anim.get_current_surface() if anim is not None else None
         if sprite is None:
@@ -603,6 +680,59 @@ class GameplayScene(Scene):
             pygame.draw.polygon(surface, (220, 100, 60), pts, 2)
             return
         self._blit_centered(surface, sprite, b.x + ox, b.y + oy)
+
+    def _draw_boss_telegraph(self, surface, b, ox, oy) -> None:
+        """Bright pulsing horizontal line from boss center to the
+        player's current position. Pulses with a 0.6s period.
+        """
+        import math
+        cx1, cy1 = int(b.x + ox), int(b.y + oy)
+        cx2, cy2 = int(self.player.x + ox), int(self.player.y + oy)
+        # Pulse: 0.3 -> 0.9 alpha over 0.6s. Use scene elapsed time.
+        phase = (self._elapsed * 1.6) % 1.0
+        alpha = int(76 + 178 * abs(math.sin(phase * math.pi)))
+        # Three nested lines for a glow effect.
+        for thickness, dim in ((5, 0.35), (3, 0.6), (1, 1.0)):
+            line = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+            r, g, bl = (255, 90, 60)
+            a = int(alpha * dim)
+            pygame.draw.line(line, (r, g, bl, a), (cx1, cy1), (cx2, cy2), thickness)
+            surface.blit(line, (0, 0))
+
+    def _draw_boss_thruster(self, surface, b, ox, oy) -> None:
+        """Trail of bright particles behind the boss during CHARGE.
+
+        The trail is a few ellipses on a per-pixel alpha surface so
+        they blend with whatever is behind (mountains, dust, bg).
+        Offsets start BEYOND the boss's edge (24 px half-width) so
+        the trail is visible past the boss sprite.
+        """
+        import math
+        # Direction: from boss TOWARD the player (charge direction).
+        # Trail particles fly in the OPPOSITE direction so the boss
+        # appears to be pushing them backward.
+        dx = self.player.x - b.x
+        dy = self.player.y - b.y
+        d = math.hypot(dx, dy) or 1.0
+        ux, uy = dx / d, dy / d
+        # Offsets start past the boss's 24px half-width (so the trail
+        # is clearly outside the sprite) and extend further out.
+        for i, offset in enumerate((28, 36, 44, 54, 66)):
+            px = b.x - ux * offset + ox
+            py = b.y - uy * offset + oy
+            # Radius shrinks with distance. Alpha also fades.
+            radius = int(7 - i)
+            alpha = int(240 - i * 42)
+            if radius < 2 or alpha < 20:
+                continue
+            halo = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+            # Bright yellow core.
+            pygame.draw.circle(halo, (255, 220, 130, alpha),
+                               (radius, radius), radius)
+            # Orange rim.
+            pygame.draw.circle(halo, (255, 100, 40, min(255, alpha + 20)),
+                               (radius, radius), radius, 1)
+            surface.blit(halo, (int(px - radius), int(py - radius)))
 
     def _draw_player_bullet_sprite(self, surface, b, ox, oy) -> None:
         # Use the weapon that fired this bullet (so mid-flight

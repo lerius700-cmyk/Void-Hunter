@@ -116,13 +116,53 @@ class Hud:
             self._draw_boss_hp(surface)
 
     def _draw_lives(self, surface: pygame.Surface) -> None:
-        # Heart icons (small filled circles in a row).
-        for i in range(self.player.lives):
-            cx = 5 + i * 9
-            cy = self.TOP_BAR_H // 2
-            # Soft glow ring.
-            pygame.draw.circle(surface, (255, 100, 120), (cx, cy), 4)
-            pygame.draw.circle(surface, self.COLOR_HEART, (cx, cy), 3)
+        """Hearts + gold ring stacks. The player has up to 9 lives
+        (3 base + 6 from 2 gold-ring stacks). We render 9 small
+        hearts in a row; filled = current life, hollow = unused cap.
+        After the hearts we render 2 gold ring slots showing how
+        many gold stacks the player has earned.
+        """
+        max_lives = getattr(self.player, "max_lives", 3)
+        current_lives = self.player.lives
+        gold_stacks = getattr(self.player, "gold_stacks", 0)
+        # Hearts: 9 slots, each 3 px wide with 2 px gap.
+        heart_radius = 2
+        heart_gap = 2
+        heart_first_x = 6
+        heart_y = self.TOP_BAR_H // 2
+        for i in range(self.player.MAX_LIVES_ABSOLUTE):  # always 9 slots
+            cx = heart_first_x + i * (heart_radius * 2 + heart_gap)
+            if i < current_lives:
+                # Filled heart — bright red with a tiny glow.
+                pygame.draw.circle(surface, (255, 100, 120),
+                                   (cx, heart_y), heart_radius + 1)
+                pygame.draw.circle(surface, self.COLOR_HEART,
+                                   (cx, heart_y), heart_radius)
+            elif i < max_lives:
+                # Unused cap — dim outline so the player can see how
+                # much room they have to heal back up.
+                pygame.draw.circle(surface, (90, 50, 60),
+                                   (cx, heart_y), heart_radius, 1)
+            else:
+                # Slot is locked (only reachable before a gold stack
+                # expands max_lives). Render nothing.
+                pass
+        # Gold ring stack indicator: 2 slots, right after the hearts.
+        gold_x0 = (heart_first_x
+                   + self.player.MAX_LIVES_ABSOLUTE * (heart_radius * 2 + heart_gap)
+                   + 6)
+        for i in range(2):
+            cx = gold_x0 + i * 7
+            if i < gold_stacks:
+                # Earned — bright gold ring.
+                pygame.draw.circle(surface, (255, 200, 80),
+                                   (cx, heart_y), 3, 1)
+                pygame.draw.circle(surface, (255, 240, 160),
+                                   (cx, heart_y), 2)
+            else:
+                # Not yet earned — dim outline.
+                pygame.draw.circle(surface, (90, 80, 50),
+                                   (cx, heart_y), 3, 1)
 
     def _draw_score(self, surface: pygame.Surface) -> None:
         # "PTS 000000" centered. Slightly larger font + dim "PTS" label.
