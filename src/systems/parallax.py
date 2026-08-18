@@ -326,28 +326,174 @@ class ParallaxBackground:
             self._nebula.append(n)
 
     def _render_nebula_surface(self, n: Nebula) -> pygame.Surface:
-        """BLOQUE 58.14.3: build the nebula surface from an AI sprite.
+        """BLOQUE 58.14.6: AI-sprite nebula with circular alpha mask.
 
-        Replaces the procedural spiral-arm renderer (BLOQUE 58.14.2)
-        which produced a weak "solid blue blob" look. Now we pick
-        one of 4 AI-generated spiral galaxy sprites and smoothscale
-        it to fit `n.radius`. Result: real spiral arms, bright core,
-        embedded stars, proper soft edges.
+        Uses the user's `galaxy_sprite_*.png` references (BLOQUE
+        58.14.3) but applies a circular alpha mask so the sprite's
+        hard square bounding box is gone. The result has real
+        spiral arms, bright core, and embedded stars — but fades
+        to alpha=0 at the boundary (no rectangle visible).
 
-        If no AI sprite is found on disk, falls back to a simple
-        gradient circle so the game still has something on screen.
+        Falls back to procedural when no sprite is on disk.
+        """
+        sprites = self._load_galaxy_sprites()
+        if sprites:
+            return self._render_nebula_sprite_masked(n, sprites)
+        size = max(8, int(n.radius * 2))
+        return self._render_procedural_nebula_surface(n, size)
+
+    def _render_nebula_sprite_masked(
+        self, n: Nebula, sprites: list[pygame.Surface],
+    ) -> pygame.Surface:
+        """AI sprite + circular radial-falloff alpha mask.
+
+        1. Pick a random galaxy sprite variant.
+        2. Smoothscale to (size, size).
+        3. Apply a soft circular mask: alpha = 0 outside ~0.95
+           of the radius, smooth quadratic falloff inside.
+        """
+        variant = self._rng.randrange(len(sprites))
+        n.sprite_variant = variant
+        src = sprites[variant]
+        size = max(8, int(n.radius * 2))
+        scaled = pygame.transform.smoothscale(src, (size, size))
+
+        # Build circular alpha mask (per-pixel; size up to 220x220).
+        cx, cy = size / 2.0, size / 2.0
+        mask = pygame.Surface((size, size), pygame.SRCALPHA)
+        edge_r = n.radius * 0.95
+        edge_r2 = edge_r * edge_r
+        for y in range(size):
+            for x in range(size):
+                dx = x - cx
+                dy = y - cy
+                d2 = dx * dx + dy * dy
+                if d2 >= edge_r2:
+                    continue
+                t = (d2 / edge_r2) ** 0.5  # 0 at center, 1 at edge
+                # Smooth quadratic: 1 at center -> 0 at edge.
+                fall = 1.0 - t * t
+                mask.set_at((x, y), (255, 255, 255, int(fall * 255)))
+        # Multiply sprite alpha by the mask.
+        scaled.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        return scaled
+
+    def _render_procedural_nebula_surface(
+        self, n: Nebula, size: int,
+    ) -> pygame.Surface:
+        """Soft circular cloud. No hard edges. Per-pixel alpha."""
+        surf = pygame.Surface((size, size), pygame.SRCALPHA)
+        cx, cy = size / 2.0, size / 2.0
+        # Seed from nebula position so each cloud is unique.
+        seed_val = (
+            int(n.x * 1000 + n.y * 100 + self._t * 10) & 0xFFFFFFFF
+        )
+        rng = random.Random(seed_val)
+
+        # 5x5 value noise grid (bilinearly interpolated).
+        grid_n = 5
+        noise_grid = [[rng.random() for _ in range(grid_n)]
+                      for _ in range(grid_n)]
+
+        # 4 Gaussian puff hotspots (cloud detail).
+        num_puffs = 4
+        puffs: list[tuple[float, float, float, float]] = []
+        for _ in range(num_puffs):
+            p_cx = rng.uniform(cx - n.radius * 0.3, cx + n.radius * 0.3)
+            p_cy = rng.uniform(cy - n.radius * 0.3, cy + n.radius * 0.3)
+            p_sigma = rng.uniform(n.radius * 0.15, n.radius * 0.4)
+            p_intensity = rng.uniform(0.4, 1.0)
+            puffs.append((p_cx, p_cy, p_sigma, p_intensity))
+
+        # Theme base color + hot core tint.
+        base_color = n.color
+        hot_color = (
+            min(255, int(base_color[0] * 1.4 + 60)),
+            min(255, int(base_color[1] * 1.4 + 60)),
+            min(255, int(base_color[2] * 1.4 + 60)),
+        )
+
+        for y in range(size):
+            for x in range(size):
+                # Radial mask: skip pixels outside the circle.
+                dx = x - cx
+                dy = y - cy
+                dist = (dx * dx + dy * dy) ** 0.5
+                if dist > n.radius:
+                    continue
+
+                # Smooth radial falloff (1 at center, 0 at edge).
+                t_radial = dist / n.radius
+                radial_falloff = 1.0 - t_radial * t_radial
+
+                # Bilinear value noise.
+                gx = (x / size) * (grid_n - 1)
+                gy = (y / size) * (grid_n - 1)
+                ix = int(gx)
+                iy = int(gy)
+                fx = gx - ix
+                fy = gy - iy
+                ix1 = min(ix + 1, grid_n - 1)
+                iy1 = min(iy + 1, grid_n - 1)
+                v00 = noise_grid[iy][ix]
+                v10 = noise_grid[iy][ix1]
+                v01 = noise_grid[iy1][ix]
+                v11 = noise_grid[iy1][ix1]
+                v0 = v00 * (1 - fx) + v10 * fx
+                v1 = v01 * (1 - fx) + v11 * fx
+                noise_val = v0 * (1 - fy) + v1 * fy
+
+                # Gaussian puffs (max wins).
+                puff_val = 0.0
+                for p_cx, p_cy, p_sigma, p_intensity in puffs:
+                    ddx = (x - p_cx) / p_sigma
+                    ddy = (y - p_cy) / p_sigma
+                    dd2 = ddx * ddx + ddy * ddy
+                    if dd2 < 16:
+                        g = p_intensity * math.exp(-dd2 / 2.0)
+                        if g > puff_val:
+                            puff_val = g
+
+                # Combine: noise + puffs, then apply radial mask.
+                density = max(noise_val * 0.4, puff_val) * radial_falloff
+
+                # Smoothstep edges.
+                lo, hi = 0.2, 0.6
+                if density < lo:
+                    density = 0.0
+                elif density > hi:
+                    density = 1.0
+                else:
+                    t = (density - lo) / (hi - lo)
+                    density = t * t * (3 - 2 * t)
+
+                if density <= 0.0:
+                    continue
+
+                # Color blend.
+                t_color = min(1.0, density)
+                r = int(base_color[0] * (1 - t_color) + hot_color[0] * t_color)
+                g = int(base_color[1] * (1 - t_color) + hot_color[1] * t_color)
+                b = int(base_color[2] * (1 - t_color) + hot_color[2] * t_color)
+                alpha = int(density * 180)
+
+                surf.set_at((x, y), (r, g, b, alpha))
+
+        return surf
+
+    def _render_nebula_surface_sprite(self, n: Nebula) -> pygame.Surface:
+        """BLOQUE 58.14.3 (legacy): AI-sprite-based nebula.
+
+        Kept for the option to switch back. The AI sprites give
+        better spiral structure but have visible rectangular edges.
         """
         sprites = self._load_galaxy_sprites()
         size = max(8, int(n.radius * 2))
         if sprites:
-            # Pick a variant (random per nebula so consecutive nebulas
-            # look different). The variant is recorded on the nebula
-            # for debugging / future deterministic-replay support.
             variant = self._rng.randrange(len(sprites))
             n.sprite_variant = variant
             src = sprites[variant]
             return pygame.transform.smoothscale(src, (size, size))
-        # Fallback: soft gradient circle.
         return self._fallback_nebula_surface(n, size)
 
     def _load_galaxy_sprites(self) -> list[pygame.Surface]:

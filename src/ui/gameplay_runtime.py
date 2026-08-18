@@ -48,6 +48,7 @@ from src.systems.slowmo import SlowMo
 from src.systems.tron_trail import TronTrail
 from src.systems.weapon_system import WeaponLevel, WeaponPath, WeaponSystem
 from src.ui.hud import HUD
+from src.fx.bomb_burst import BombBurst
 
 if TYPE_CHECKING:
     from src.audio.synth import AudioEngine
@@ -326,6 +327,8 @@ class GameplayRuntime:
         self._boss_shield_laser_duration: float = 1.0
         self._boss_shield_laser_damage_cooldown: dict[int, float] = {}
         self._shockwaves: list[Shockwave] = []  # expanding ring effects
+        # BLOQUE 58.14.7: orange/yellow bomb burst (procedural soft circles)
+        self._bomb_bursts: list[BombBurst] = []
         self._screen_flash: float = 0.0  # 0..1 alpha of white overlay (bomb)
         self._boss_entry_t: float = 0.0  # boss slides in on first 1.5s of fight
         self._dash_consumed: bool = False  # SFX dedup
@@ -701,6 +704,10 @@ class GameplayRuntime:
             self._scoring.on_bomb()
             self._spawn_homing_missile()
             self._play_sfx("bomb", volume=0.6)
+            # BLOQUE 58.14.7: trigger orange/yellow burst at the player
+            self._bomb_bursts.append(
+                BombBurst(self._player.x, self._player.y)
+            )
             self._player.wants_to_bomb = False
         # Charge SFX: rising pitch as charge level increases
         if current_charge > self._last_charge_level:
@@ -2901,6 +2908,15 @@ class GameplayRuntime:
         self._update_shockwaves(effective_dt)
         _section("shockwaves", _section_t0)
         _section_t0 = _time.perf_counter()
+        # BLOQUE 58.14.7: tick bomb bursts (orange/yellow procedural circles)
+        alive_bursts: list[BombBurst] = []
+        for b in self._bomb_bursts:
+            b.update(effective_dt)
+            if b.is_alive:
+                alive_bursts.append(b)
+        self._bomb_bursts = alive_bursts
+        _section("bomb_bursts", _section_t0)
+        _section_t0 = _time.perf_counter()
         # BLOQUE 52: tick GOLIATH spear state machine + spear projectiles
         self._update_boss_spears(effective_dt)
         _section("boss_spears", _section_t0)
@@ -3597,6 +3613,12 @@ class GameplayRuntime:
             pygame.draw.circle(ring_surf, (255, 255, 255, alpha),
                                (int(r) + 2, int(r) + 2), int(r), 2)
             target.blit(ring_surf, (sx - int(r) - 2, sy - int(r) - 2))
+        # BLOQUE 58.14.7: bomb bursts (orange/yellow procedural circles)
+        for b in self._bomb_bursts:
+            # Apply screen shake offset
+            shifted = pygame.Surface(target.get_size(), pygame.SRCALPHA)
+            b.draw(shifted)
+            target.blit(shifted, (shx, shy))
         # Bullets (with glow halo)
         self._draw_bullets_with_glow(target, shx, shy)
         # BLOQUE 39: homing missiles (drawn after bullets, before player)
