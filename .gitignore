@@ -58,7 +58,12 @@ dist/
 archive/
 
 # Release artifacts (generated on demand, not part of source)
+# - releases/ is the historical pattern (plural)
+# - release/  is the current pattern (singular, used for v1.0.0+)
 releases/*.zip
+release/
+release/*.zip
+release/_backup_old_releases/
 
 .superpowers/
 

@@ -3,6 +3,22 @@
 > Vertical shmup. 8-bit pixel art with Metal Slug-grade juice.
 > Star Fox 64 inspired. **120 FPS lock. Windowed 320×480 portrait.**
 
+## 🎮 ¿Quieres JUGAR?
+
+<div align="center">
+
+### 👉 [⬇️ Descargar VoidHunter v1.0.0 para Windows (256 MB)](https://github.com/lerius700-cmyk/Void-Hunter/releases/download/v1.0.0/VoidHunter-v1.0.0-win64.zip) 👈
+
+</div>
+
+**Pasos:** descarga el ZIP → extrae en cualquier carpeta → doble click a `void-hunter.exe`  
+**Si Windows SmartScreen pregunta:** *More info* → *Run anyway* (no tenemos cert de firma todavía)  
+**Controles:** `WASD` / flechas = mover · `Click` / `Espacio` = disparar · `P` = pausa · `ESC` = salir
+
+📜 [Todos los releases + notas de versión](https://github.com/lerius700-cmyk/Void-Hunter/releases) · [Notas de v1.0.0](https://github.com/lerius700-cmyk/Void-Hunter/releases/tag/v1.0.0)
+
+---
+
 A 5-minute arcade run through Act 1, fighting 8 enemy archetypes, 4 bosses
 with multi-phase patterns, a sub-boss dart, 3 weapon paths, 9 flight
 formations, bezier-curve flight paths, leader-follower squadrons, a
@@ -10,10 +26,10 @@ roguelike mode with seed/RNG/level-gen, 24 procedural SFX, 2 streaming
 BGM tracks, and 25+ visual juice systems. Built in Pygame 2.6, zero
 heavy dependencies (no numpy, no scipy — stdlib math only).
 
-**Status:** 🚧 **In-progress product.** v1.0 (bootstrap) and v1.1
-(consolidated release) are the current versions. Currently polishing
-visuals (galaxy scroll, sub-boss visibility, HUD layout, neon
-propulsion). See [ROADMAP.md](./ROADMAP.md).
+**Status:** 🚧 **In-progress product.** **v1.0.0** es el último release
+público (→ [Releases](https://github.com/lerius700-cmyk/Void-Hunter/releases)).
+Polishing en curso (galaxy scroll, sub-boss visibility, HUD layout, neon
+propulsion). Ver [ROADMAP.md](./ROADMAP.md).
 
 ---
 
@@ -175,4 +191,4 @@ See [docs/ROADMAP.md](./docs/ROADMAP.md). TL;DR:
 
 ---
 
-*Last updated: 2026-08-15*
+*Last updated: 2026-08-17*
