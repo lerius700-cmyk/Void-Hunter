@@ -12,6 +12,7 @@ __pycache__/
 venv/
 env/
 ENV/
+.build-venv/   # BLOQUE 58.14.7: uv venv for pyinstaller + pygame rebuild
 
 # Test / coverage
 .pytest_cache/
