@@ -56,6 +56,7 @@ _WEIGHTED_POOL: dict[int, list[tuple[WavePatternKind, int]]] = {
         (WavePatternKind.BEZIER_SWEEP, 16),
         (WavePatternKind.PINCER_CROSS, 12),
         (WavePatternKind.OSCILLATING_BUTTERFLY, 18),
+        (WavePatternKind.COMPOSED, 20),  # BLOQUE 58.14.7: 50 choreographed
     ],
     2: [
         (WavePatternKind.V_FORMATION, 16),
@@ -64,6 +65,7 @@ _WEIGHTED_POOL: dict[int, list[tuple[WavePatternKind, int]]] = {
         (WavePatternKind.BEZIER_SWEEP, 16),
         (WavePatternKind.PINCER_CROSS, 16),
         (WavePatternKind.OSCILLATING_BUTTERFLY, 20),
+        (WavePatternKind.COMPOSED, 24),  # BLOQUE 58.14.7
     ],
 }
 # Floor 3+ = roughly equal weight, with OSCILLATING_BUTTERFLY slightly preferred
@@ -74,6 +76,7 @@ _EQUAL_WEIGHT = [
     (WavePatternKind.BEZIER_SWEEP, 16),
     (WavePatternKind.PINCER_CROSS, 16),
     (WavePatternKind.OSCILLATING_BUTTERFLY, 20),
+    (WavePatternKind.COMPOSED, 28),  # BLOQUE 58.14.7
 ]
 
 
@@ -100,6 +103,11 @@ class ProceduralWaveManager:
         self._rng = random.Random(seed)
         # History to avoid immediate repeats (anti-stuck)
         self._last_kind: Optional[WavePatternKind] = None
+        # BLOQUE 58.14.7: pool of 50 ComposedPatterns. Populated by
+        # register_composed_patterns() — until that is called, the
+        # manager gracefully falls back to BEZIER_SWEEP when kind=COMPOSED
+        # is rolled.
+        self._composed_patterns: list[WavePattern] = []
         # Log
         self._log_path = log_path
         if log_path is None:
@@ -132,6 +140,12 @@ class ProceduralWaveManager:
 
         BLOQUE 58.10: Uses weighted random choice from full pool of 5
         patterns (BEFORE: hard pool that gated patterns by floor).
+
+        BLOQUE 58.14.7: Adds COMPOSED to the pool. When kind=COMPOSED is
+        rolled, a specific ComposedPattern instance is picked at random
+        from the registered pool (see register_composed_patterns()).
+        If the pool is empty, falls back to BEZIER_SWEEP so the game
+        keeps running.
         """
         weighted_pool = _pool_for_floor(self._floor)
         # Filter out the previous kind (avoid immediate repeats)
@@ -144,13 +158,43 @@ class ProceduralWaveManager:
         kind = self._rng.choice(flat)
         self._last_kind = kind
 
+        # BLOQUE 58.14.7: COMPOSED picks a specific instance, not a fresh
+        # one. Each ComposedPattern carries its own (formation, path,
+        # follow, count) so we want the registered instance to be the
+        # one whose generate() runs.
+        if kind == WavePatternKind.COMPOSED:
+            if self._composed_patterns:
+                pattern = self._rng.choice(self._composed_patterns)
+            else:
+                # Graceful fallback: pool not registered yet.
+                pattern = BezierSweepPattern()
+                kind = WavePatternKind.BEZIER_SWEEP
+        else:
+            pattern = self._make_pattern(kind)
+
         # Instantiate the pattern
-        pattern = self._make_pattern(kind)
         result = pattern.generate(self._rng, level, enemy_kind)
 
         # Log
         self._log_pick(kind, result)
         return result
+
+    def register_composed_patterns(self) -> int:
+        """BLOQUE 58.14.7: populate the COMPOSED pool with the 50
+        pre-defined choreographed patterns. Call once after constructing
+        the manager. Returns the count registered (50 on success).
+
+        Idempotent: calling twice will register 100 entries. If you want
+        to re-seed, recreate the manager.
+        """
+        from src.systems.wave_patterns.composed import COMPOSED_PATTERNS
+        for p in COMPOSED_PATTERNS:
+            self._composed_patterns.append(p)
+        return len(COMPOSED_PATTERNS)
+
+    def composed_pool_size(self) -> int:
+        """BLOQUE 58.14.7: how many ComposedPatterns are registered."""
+        return len(self._composed_patterns)
 
     @staticmethod
     def _make_pattern(kind: WavePatternKind) -> WavePattern:

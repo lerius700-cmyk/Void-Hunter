@@ -2560,8 +2560,13 @@ class GameplayRuntime:
         5 different patterns (BEZIER_SWEEP, V_FORMATION, etc.) instead
         of the hardcoded WaveChain. The active pattern is shown as a
         banner at the top of the screen.
+
+        BLOQUE 58.14.7: also registers the 50 ComposedPatterns with the
+        manager (so COMPOSED kind can be picked) and starts a
+        SoloEnemySpawner (1 red ship every 5s) for variety.
         """
         from src.systems.wave_patterns import ProceduralWaveManager
+        from src.systems.wave_patterns.composed import SoloEnemySpawner
         from src.systems.wave_patterns.runtime import (
             get_pattern_hud_label, spawn_pattern_wave, update_pattern_runtime,
         )
@@ -2570,6 +2575,11 @@ class GameplayRuntime:
             seed=seed, floor=floor,
             log_path=os.path.join(os.getcwd(), "logs", "patterns.log"),
         )
+        # BLOQUE 58.14.7: register the 50 ComposedPatterns so the manager
+        # can pick kind=COMPOSED. Returns 50 on success.
+        self._proc_mgr.register_composed_patterns()
+        # Solo spawner: 1 red enemy every 5s, independent of patterns.
+        self._solo_spawner = SoloEnemySpawner(interval_s=5.0)
         self._proc_floor = floor
         self._pattern_spawn_interval = spawn_interval
         self._pattern_spawn_timer = 0.0
@@ -2630,6 +2640,16 @@ class GameplayRuntime:
                     self._enemies, result
                 )
                 self._active_pattern_kind_label = get_pattern_hud_label(result.kind)
+        # BLOQUE 58.14.7: tick the SoloEnemySpawner (1 red ship every 5s).
+        # Ambient variety — independent of pattern timing. The solo rng is
+        # fresh per spawn (unseeded) so the timing isn't deterministic,
+        # which matches the "straggler" feel.
+        if hasattr(self, "_solo_spawner") and self._solo_spawner is not None:
+            from src.systems.wave_patterns.runtime import spawn_solo_ship
+            import random as _random
+            solo_rng = _random.Random()
+            for ship in self._solo_spawner.update(dt, solo_rng):
+                spawn_solo_ship(self._enemies, ship)
 
     def get_active_pattern_label(self) -> str:
         """For HUD: returns the active pattern name or empty string."""

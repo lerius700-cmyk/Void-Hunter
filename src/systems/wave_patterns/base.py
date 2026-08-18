@@ -23,6 +23,10 @@ class WavePatternKind(Enum):
     BLOQUE 58.11: added OSCILLATING_BUTTERFLY (sinusoidal dancing motion).
     Each pattern produces visually distinctive motion so the player can
     learn to read the wave and predict where to fire.
+
+    BLOQUE 58.14.7: added COMPOSED — the manager picks kind=COMPOSED and
+    then a specific ComposedPattern instance (one of 50 pre-defined
+    formation × path × follow combinations) carries the actual data.
     """
     BEZIER_SWEEP = "bezier_sweep"           # curve sweep, all ships
     V_FORMATION = "v_formation"             # rigid V, fixed offsets
@@ -30,6 +34,7 @@ class WavePatternKind(Enum):
     DICE_FIVE_GRID = "dice_five_grid"       # 5 ships in dice-5
     PINCER_CROSS = "pincer_cross"           # two mirror bezier curves
     OSCILLATING_BUTTERFLY = "oscillating_butterfly"  # sinusoidal dancing
+    COMPOSED = "composed"                   # BLOQUE 58.14.7: 50 choreographed patterns
 
 
 class PatternDifficulty(Enum):

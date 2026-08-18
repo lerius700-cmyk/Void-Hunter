@@ -280,6 +280,38 @@ def spawn_pattern_wave(
     return runtime
 
 
+def spawn_solo_ship(
+    pool: EnemyPool,
+    spawned: SpawnedShip,
+) -> Optional[Enemy]:
+    """BLOQUE 58.14.7: spawn a single enemy from a SoloEnemySpawner
+    SpawnedShip record. Returns the Enemy or None if the pool is full.
+
+    Unlike `spawn_pattern_wave`, this doesn't return a PatternRuntime
+    because solo ships are independent (no shared duration, no
+    pattern completion tracking). They're stragglers that just cross
+    the screen and exit.
+
+    The ship.extra dict is expected to carry `segments` and
+    `segment_durations` keys (same format as composed patterns).
+    """
+    kind = pattern_kind_to_enemy_kind(spawned)
+    e = pool.spawn(kind, spawned.spawn_x, spawned.spawn_y)
+    if e is None:
+        return None
+    # Attach path follower if segments are provided
+    if "segments" in spawned.extra:
+        segments = spawned.extra["segments"]
+        seg_durs = spawned.extra.get(
+            "segment_durations", [4.0] * len(segments)
+        )
+        attach_multi_segment_path(
+            e, segments, seg_durs, t_offset=spawned.t_offset,
+        )
+    apply_color_tint(e, spawned.color)
+    return e
+
+
 def update_pattern_runtime(
     runtime: PatternRuntime,
     dt: float,

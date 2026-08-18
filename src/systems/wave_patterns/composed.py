@@ -285,7 +285,15 @@ PATH_GENERATORS = {
 # ---- Composed pattern ----
 
 class ComposedPattern(WavePattern):
-    """One choreographed pattern = (formation, path, follow) tuple."""
+    """One choreographed pattern = (formation, path, follow) tuple.
+
+    BLOQUE 58.14.7: each instance is one of 50 pre-defined combinations.
+    When the manager picks kind=COMPOSED, it picks a specific instance
+    from its registered pool, and that instance's generate() is called
+    to produce the ships. The `extra` dict uses the same `segments` /
+    `segment_durations` format that runtime.py reads (BLOQUE 58.12),
+    so the path follower attaches the multi-segment bezier path.
+    """
 
     def __init__(
         self,
@@ -297,7 +305,7 @@ class ComposedPattern(WavePattern):
         difficulty: PatternDifficulty,
     ) -> None:
         self._name = name
-        self.kind = WavePatternKind.BEZIER_SWEEP  # generic; we add new kinds
+        self.kind = WavePatternKind.COMPOSED  # BLOQUE 58.14.7
         self.difficulty = difficulty
         self._formation = formation
         self._path = path
@@ -321,6 +329,27 @@ class ComposedPattern(WavePattern):
         entry_x = rng.uniform(48, INTERNAL_W - 48)
         entry_y = -20.0
         path_pts = path_fn((entry_x, entry_y), rng)
+
+        # Convert path_pts (list of points) into bezier segments.
+        # Each consecutive 4 points = 1 bezier segment (P0, P1, P2, P3).
+        # This is the format runtime.py reads via attach_multi_segment_path.
+        segments: list[tuple[tuple[float, float], ...]] = []
+        for i in range(0, len(path_pts) - 3):
+            p0 = path_pts[i]
+            p1 = path_pts[i + 1]
+            p2 = path_pts[i + 2]
+            p3 = path_pts[i + 3]
+            segments.append((p0, p1, p2, p3))
+        if not segments:
+            # Degenerate path (e.g. count=0 or all points coincident).
+            # Fall back to a trivial down segment so the ship still moves.
+            end = (entry_x, entry_y + 200)
+            segments = [((entry_x, entry_y), (entry_x, entry_y + 60),
+                          (entry_x, entry_y + 140), end)]
+        duration_s = 8.0
+        n_seg = len(segments)
+        seg_durs = [duration_s / n_seg] * n_seg
+
         ships: list[SpawnedShip] = []
         for i, (dx, dy) in enumerate(slots):
             is_leader = (i == 0) and (self._follow in ("leader", "chain"))
@@ -335,15 +364,16 @@ class ComposedPattern(WavePattern):
                 extra={
                     "formation": self._formation,
                     "path": self._path,
-                    "path_points": path_pts,
                     "follow": self._follow,
+                    "segments": segments,
+                    "segment_durations": seg_durs,
                 },
             ))
         return WavePatternResult(
             ships=ships,
-            kind=WavePatternKind.BEZIER_SWEEP,
+            kind=WavePatternKind.COMPOSED,
             difficulty=self.difficulty,
-            duration_s=8.0,
+            duration_s=duration_s,
             seed_used=rng.randrange(2**32),
         )
 
@@ -444,6 +474,11 @@ class SoloEnemySpawner:
         # Slight curve: 1 control point
         end = (x + rng.uniform(-40, 40), y + 220)
         cp1 = (x + rng.uniform(-60, 60), y + 80)
+        mid = (cp1[0] * 0.5 + end[0] * 0.5, cp1[1] * 0.5 + end[1] * 0.5)
+        # Single bezier segment (4 points) so runtime.attach_multi_segment_path
+        # can pick it up — uses the same 'segments' / 'segment_durations'
+        # format as the composed patterns.
+        segments = [((x, y), cp1, mid, end)]
         return SpawnedShip(
             spawn_x=x,
             spawn_y=y,
@@ -454,8 +489,34 @@ class SoloEnemySpawner:
             extra={
                 "formation": "solo",
                 "path": "solo_curve",
-                "path_points": [(x, y), cp1, (cp1[0] * 0.5 + end[0] * 0.5,
-                                            cp1[1] * 0.5 + end[1] * 0.5), end],
                 "follow": "solo",
+                "segments": segments,
+                "segment_durations": [4.0],  # solo ships cross the screen in 4s
             },
         )
+
+
+# ---- Manager registration helper ----
+# BLOQUE 58.14.7: this is the entry point that wires the 50 composed
+# patterns into a ProceduralWaveManager. Call once after constructing
+# the manager, before any pick_pattern() call.
+
+def register_composed_patterns(manager) -> int:
+    """Register all 50 ComposedPatterns with the given manager.
+
+    The manager must have a `_composed_patterns` list (or any attribute
+    that supports .append). Returns the count registered.
+
+    After this call, the manager's pick_pattern() can return COMPOSED
+    results, which carry a specific (formation, path, follow, count)
+    combination chosen at random from the 50-entry pool.
+
+    Usage:
+        mgr = ProceduralWaveManager(seed=42, floor=1)
+        register_composed_patterns(mgr)
+    """
+    count = 0
+    for p in COMPOSED_PATTERNS:
+        manager._composed_patterns.append(p)
+        count += 1
+    return count
