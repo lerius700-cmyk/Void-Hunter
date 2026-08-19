@@ -38,12 +38,19 @@ class TestFloor1AllPatterns:
     def test_floor_1_pool_has_all_5(self):
         mgr = ProceduralWaveManager(seed=42, floor=1)
         pool = mgr.preview_next_pool()
-        # BLOQUE 58.11: 6 patterns now (added OSCILLATING_BUTTERFLY)
-        assert len(pool) == 6, f"floor 1 should have all 6 patterns, got {pool}"
+        # BLOQUE 58.11: 6 patterns (added OSCILLATING_BUTTERFLY)
+        # BLOQUE 58.14.7: 7 patterns now (added COMPOSED)
+        assert len(pool) == 7, f"floor 1 should have all 7 patterns, got {pool}"
 
     def test_floor_1_eventually_picks_each_kind(self):
-        """BLOQUE 58.10: across many picks, all 5 kinds appear at floor 1."""
+        """BLOQUE 58.10: across many picks, all 5 kinds appear at floor 1.
+        BLOQUE 58.14.7: also includes COMPOSED (kind=composed).
+        """
         mgr = ProceduralWaveManager(seed=1234, floor=1)
+        # BLOQUE 58.14.7: register composed so COMPOSED is actually pickable
+        # (without this, the fallback returns BEZIER_SWEEP when kind=COMPOSED
+        # is rolled, so it never appears in the seen set).
+        mgr.register_composed_patterns()
         seen = set()
         for i in range(200):
             r = mgr.pick_pattern(level=1 + (i % 4))

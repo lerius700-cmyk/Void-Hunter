@@ -439,14 +439,16 @@ class TestProceduralWaveManager:
         from src.systems.wave_patterns import ProceduralWaveManager, WavePatternKind
         mgr = ProceduralWaveManager(seed=42, floor=1)
         pool = mgr.preview_next_pool()
-        # BLOQUE 58.11: 6 patterns now (added OSCILLATING_BUTTERFLY)
-        assert len(pool) == 6
+        # BLOQUE 58.11: 6 patterns (added OSCILLATING_BUTTERFLY)
+        # BLOQUE 58.14.7: 7 patterns now (added COMPOSED)
+        assert len(pool) == 7
         assert WavePatternKind.V_FORMATION.value in pool
         assert WavePatternKind.DICE_FIVE_GRID.value in pool
         assert WavePatternKind.LEADER_FOLLOWER_CHAIN.value in pool
         assert WavePatternKind.BEZIER_SWEEP.value in pool
         assert WavePatternKind.PINCER_CROSS.value in pool
         assert WavePatternKind.OSCILLATING_BUTTERFLY.value in pool
+        assert WavePatternKind.COMPOSED.value in pool
 
     def test_floor_5_includes_all(self):
         from src.systems.wave_patterns import ProceduralWaveManager
@@ -520,22 +522,27 @@ class TestProceduralWaveManager:
         from src.systems.wave_patterns import ProceduralWaveManager
         from src.systems.wave_patterns.base import WavePatternKind
         # BLOQUE 58.11: floor 4+ uses _EQUAL_WEIGHT (all 6 patterns)
+        # BLOQUE 58.14.7: now 7 patterns (added COMPOSED)
         mgr = ProceduralWaveManager(seed=42, floor=4)
         pool = mgr.preview_next_pool()
-        assert len(pool) == 6
+        assert len(pool) == 7
         assert WavePatternKind.PINCER_CROSS.value in pool
         assert WavePatternKind.BEZIER_SWEEP.value in pool
         assert WavePatternKind.LEADER_FOLLOWER_CHAIN.value in pool
         assert WavePatternKind.OSCILLATING_BUTTERFLY.value in pool
+        assert WavePatternKind.COMPOSED.value in pool
 
     def test_floor_1_sees_all_5_over_many_picks(self):
         """BLOQUE 58.10: floor 1 must eventually pick all 5 patterns
         (weights favor V_FORMATION but nothing is gated).
-        With 200 picks at floor 1, all 5 kinds should appear.
+        With 200 picks at floor 1, all kinds should appear.
+        BLOQUE 58.14.7: also includes COMPOSED in the seen set.
         """
         from src.systems.wave_patterns import ProceduralWaveManager
         from src.systems.wave_patterns.base import WavePatternKind
         mgr = ProceduralWaveManager(seed=1234, floor=1)
+        # BLOQUE 58.14.7: register so COMPOSED is actually pickable
+        mgr.register_composed_patterns()
         kinds_seen = set()
         for i in range(200):
             r = mgr.pick_pattern(level=1 + (i % 4))
