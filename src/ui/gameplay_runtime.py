@@ -195,9 +195,12 @@ class GameplayRuntime:
             width=INTERNAL_W, height=INTERNAL_H,
             rng_seed=0xC0FFEE58,
             stars_per_layer=8,   # sparse (was 50)
-            nebula_count=2,      # 2 large spiral galaxies (was 1)
-            nebula_radius_min=80, # large (was 100)
-            nebula_radius_max=110, # large (was 140)
+            # BLOQUE 58.14.8 follow-up: 4 pixel art galaxies (blue/red/cyan/violet)
+            # gives variety — each nebula picks one at random from the
+            # sprite pool. Was 2 (large).
+            nebula_count=4,
+            nebula_radius_min=60,
+            nebula_radius_max=90,
             spawn_planets=False, # no planets
         )
         # Keep the old TilingImage as a fallback (in case the galaxy
