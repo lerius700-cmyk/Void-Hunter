@@ -1,23 +1,26 @@
-"""Parallax background — 5 star layers + 6 nebula (AI sprites) + planets.
+"""Parallax background — 5 star layers + nebula + planets.
 
 Per GDD §4 ParallaxBackground: 5 layers con velocidades [20, 50, 100, 180,
-280] px/s. 6 nebula types cargadas como sprites AI pre-generados.
-Planets con atmosphere + rings animados. Theme change reaplica tints
-a las estrellas (las nebulosas conservan sus colores baked-in).
+280] px/s. Nebulas use the user's PIXEL ART galaxy sprite
+(Assets/background/galaxy_pixelart_sprite.png) — the same reference
+the user attached, with the white background stripped to transparent
+so the dark space shows through.
 
 Description: the background scrolls top→bottom (the player moves up the
              play field against incoming waves). Stars tile vertically;
              nebula drifts; planets spawn on a timer and slowly rotate.
 Dependencies: pygame, settings, palette, easing.
 
-BLOQUE 58.14.3: replaced the procedural spiral-arm renderer
-(_render_nebula_surface used to compute arm distance + dust lane +
-embedded stars per pixel — slow, and visually weak: it looked like
-"a solid blue blob with a few soft puffs", not a galaxy). Now each
-nebula picks one of 4 AI-generated spiral galaxy sprites
-(Assets/background/galaxy_sprite_*.png) and smoothscales it to fit
-the nebula's radius. Same per-frame cost (one blit), DRAMATICALLY
-better look — real spiral arms, bright core, embedded stars.
+BLOQUE 58.14.3: replaced the procedural spiral-arm renderer with
+AI-generated galaxy sprites (BLOQUE 58.14.3).
+BLOQUE 58.14.6: added circular alpha mask to hide the AI sprites'
+hard square bounding box.
+BLOQUE 58.14.8 follow-up: user wants PIXEL ART (not AI high-res).
+The user's reference (the wave intro card with "ACT 1 - WAVE 1/6
+[AI GALAXY NEBULA]" header + a chunky pixel-art galaxy in the
+bottom-right) is the new design. Replaced the 4 AI sprites with
+this single pixel art sprite. The pixel art's transparent
+background means we no longer need the circular mask.
 """
 from __future__ import annotations
 
@@ -33,16 +36,18 @@ from src.core.settings import INTERNAL_H, INTERNAL_W
 from src.utils.palette import THEMES, get_theme
 
 
-# BLOQUE 58.14.3: 4 AI-generated spiral galaxy sprites in blue/purple
-# palette. Generated with image_synthesize, processed by
-# tools/process_galaxy_sprites.py (remove dark bg, square-pad, LANCZOS
-# resize to 280x280 to fit nebula_radius_max=140 with some bleed).
-# Path is resolved relative to this file so it works regardless of cwd.
+# BLOQUE 58.14.8 follow-up: user's pixel art galaxy sprite. The user
+# wants the nebulae to be pixel art (not AI high-res). Their reference
+# image was the wave intro card with header "ACT 1 - WAVE 1/6 [AI
+# GALAXY NEBULA]"; the galaxy part of that image is the sprite we use.
+# The sprite has a transparent background so the dark space shows
+# through naturally.
 _THIS_DIR = Path(__file__).resolve().parent
-_GALAXY_SPRITE_PATHS: tuple[Path, ...] = tuple(
-    _THIS_DIR.parent.parent
-    / "Assets" / "background" / f"galaxy_sprite_{i:02d}.png"
-    for i in range(1, 5)
+_GALAXY_SPRITE_PATHS: tuple[Path, ...] = (
+    _THIS_DIR.parent.parent / "Assets" / "background" / "galaxy_pixelart_sprite.png",
+    # Fallback to the old AI sprite if the pixel art isn't found yet
+    # (build cache from a prior version of the project).
+    _THIS_DIR.parent.parent / "Assets" / "background" / "galaxy_sprite_01.png",
 )
 # Fallback size when a sprite is missing — used for the soft-circle
 # fallback path so nebulas still have something on screen.
@@ -345,38 +350,35 @@ class ParallaxBackground:
     def _render_nebula_sprite_masked(
         self, n: Nebula, sprites: list[pygame.Surface],
     ) -> pygame.Surface:
-        """AI sprite + circular radial-falloff alpha mask.
+        """Pixel art galaxy sprite (BLOQUE 58.14.8 follow-up).
 
-        1. Pick a random galaxy sprite variant.
-        2. Smoothscale to (size, size).
-        3. Apply a soft circular mask: alpha = 0 outside ~0.95
-           of the radius, smooth quadratic falloff inside.
+        The user's reference galaxy is pixel art with a transparent
+        background, so we just NEAREST-scale it to fit `radius`.
+        No circular mask (the sprite's transparent background handles
+        edge fading naturally), no smoothscale (that would blur the
+        pixel art aesthetic).
         """
         variant = self._rng.randrange(len(sprites))
         n.sprite_variant = variant
         src = sprites[variant]
+        # NEAREST preserves the chunky pixel art aesthetic.
+        # The sprite is naturally wider than tall (the galaxy is an
+        # oval), so we keep its aspect ratio instead of forcing square.
         size = max(8, int(n.radius * 2))
-        scaled = pygame.transform.smoothscale(src, (size, size))
-
-        # Build circular alpha mask (per-pixel; size up to 220x220).
-        cx, cy = size / 2.0, size / 2.0
-        mask = pygame.Surface((size, size), pygame.SRCALPHA)
-        edge_r = n.radius * 0.95
-        edge_r2 = edge_r * edge_r
-        for y in range(size):
-            for x in range(size):
-                dx = x - cx
-                dy = y - cy
-                d2 = dx * dx + dy * dy
-                if d2 >= edge_r2:
-                    continue
-                t = (d2 / edge_r2) ** 0.5  # 0 at center, 1 at edge
-                # Smooth quadratic: 1 at center -> 0 at edge.
-                fall = 1.0 - t * t
-                mask.set_at((x, y), (255, 255, 255, int(fall * 255)))
-        # Multiply sprite alpha by the mask.
-        scaled.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-        return scaled
+        # Compute target rect preserving aspect ratio
+        sw, sh = src.get_size()
+        if sw == 0 or sh == 0:
+            return src
+        scale = min(size / sw, size / sh)
+        new_w = max(1, int(sw * scale))
+        new_h = max(1, int(sh * scale))
+        scaled = pygame.transform.scale(src, (new_w, new_h))
+        # Center the scaled sprite on a (size, size) canvas with
+        # transparent padding so the blit in draw() lands at the
+        # nebula's center.
+        canvas = pygame.Surface((size, size), pygame.SRCALPHA)
+        canvas.blit(scaled, ((size - new_w) // 2, (size - new_h) // 2))
+        return canvas
 
     def _render_procedural_nebula_surface(
         self, n: Nebula, size: int,
