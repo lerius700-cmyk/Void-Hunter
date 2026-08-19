@@ -73,9 +73,10 @@ def test_gameplay_scene_loads_sprites_split():
     in code rather than baked into 6-frame strips that the model
     rendered inconsistently.
 
-    Total: 32 animated (7 active + 20 enemy + 5 player) + 10 laser
-    single-frame = 42 sprites, same as before but split across two
-    caches.
+    Total: 31 animated (6 active + 20 enemy + 5 player) — boss was
+    moved out of _animated into the 4-state _boss_anims dict
+    (IDLE / TELEGRAPH / CHARGE / DYING) + 10 laser single-frame = 45
+    sprites, up from 42.
     """
     from stellar_horizon.audio.midi_player import MidiPlayer
     from stellar_horizon.scenes.gameplay import GameplayScene
@@ -84,11 +85,15 @@ def test_gameplay_scene_loads_sprites_split():
                       Path("stellar_horizon/waves/waves_act1.json"),
                       Path("stellar_horizon/assets"))
     s._load_sprites()
-    # Animated cache: 7 active + 20 enemy + 5 player = 32.
-    assert len(s._animated) == 32
-    for n in ("player", "scout", "cruiser", "heavy", "boss",
+    # Animated cache: 6 active (player, scout, cruiser, heavy,
+    # player_bullet, enemy_bullet) + 20 enemy + 5 player = 31.
+    # Boss was split into 4 _boss_anims (see below).
+    assert len(s._animated) == 31
+    for n in ("player", "scout", "cruiser", "heavy",
               "player_bullet", "enemy_bullet"):
         assert n in s._animated
+    # Boss is no longer in _animated.
+    assert "boss" not in s._animated
     for n in (f"enemy_{i:02d}" for i in range(1, 21)):
         assert n in s._animated
     for n in (f"player_{i:02d}" for i in range(1, 6)):
@@ -104,6 +109,16 @@ def test_gameplay_scene_loads_sprites_split():
         # Each sprite is a real Surface (not the magenta 1x1 fallback).
         assert surf.get_width() >= 1
         assert surf.get_height() >= 1
+    # Boss animations: 4 states, each at 8 fps with 6 frames of 48x48.
+    assert len(s._boss_anims) == 4
+    for state in ("idle", "telegraph", "charge", "dying"):
+        assert state in s._boss_anims
+        anim = s._boss_anims[state]
+        assert anim.frame_w == 48
+        assert anim.frame_h == 48
+        assert anim.frame_count == 6
+        # 8 fps => 0.125s per frame.
+        assert abs(anim.frame_duration - 0.125) < 1e-6
 
 
 def test_laser_sprites_have_per_weapon_sizes():

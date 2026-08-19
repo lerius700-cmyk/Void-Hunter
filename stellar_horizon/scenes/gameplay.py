@@ -112,6 +112,11 @@ class GameplayScene(Scene):
         # active. Used by _sync_thrusters() to add/remove thrusters
         # as enemies spawn and die.
         self._managed_enemies: set[int] = set()
+        # Boss animation states. Loaded in _load_sprites() — one
+        # AnimatedSprite per state (IDLE, TELEGRAPH, CHARGE, DYING),
+        # each cycling at 8 fps with 6 frames. _draw_boss_sprite()
+        # picks the right one based on boss.phase + boss.action.
+        self._boss_anims: dict = {}
         # Scene-time accumulator (seconds since on_enter). Used to
         # drive code-driven VFX (bullet pulses, halo phase) so they
         # stay in sync with the rest of the scene.
@@ -184,9 +189,23 @@ class GameplayScene(Scene):
         self._animated.clear()
         for name in animated_names:
             w, h = anim_dims.get(name, (16, 16))
+            # Skip the legacy "boss" name — replaced by the 4-state
+            # boss animation set below.
+            if name == "boss":
+                continue
             path = sprite_dir / f"{name}_sheet.png"
             self._animated[name] = AnimatedSprite(str(path), w, h, 6,
                                                   fps=12.0)
+        # Boss has 4 animations (IDLE, TELEGRAPH, CHARGE, DYING) at
+        # 8 fps with 6 frames each. They replace the old single
+        # "boss" sheet so the boss now visibly changes pose across
+        # its state machine cycle.
+        self._boss_anims.clear()
+        for state in ("idle", "telegraph", "charge", "dying"):
+            path = sprite_dir / f"boss_{state}_sheet.png"
+            self._boss_anims[state] = AnimatedSprite(
+                str(path), 48, 48, 6, fps=8.0,
+            )
         # Single-frame laser sprites — loaded as plain pygame.Surface
         # (no animation). Animation comes from fx/bullet_vfx.compute()
         # at draw time.
@@ -503,6 +522,10 @@ class GameplayScene(Scene):
         # alone sells the thrust.
         for sprite in self._animated.values():
             sprite.update(dt)
+        # Boss animations tick at 8 fps (independent of the 12 fps
+        # the other entities use).
+        for boss_anim in self._boss_anims.values():
+            boss_anim.update(dt)
 
     def _emit_thruster(self, dt: float) -> None:
         """No-op kept for backward compatibility.
@@ -667,8 +690,16 @@ class GameplayScene(Scene):
         # forward and leaving the trail behind.
         if b.action == "charge":
             self._draw_boss_thruster(surface, b, ox, oy)
-        anim = self._animated.get("boss")
+        # Pick the right boss animation: 4 states mapped to
+        # BossPhase + BossAction.
+        state = self._pick_boss_animation(b)
+        anim = self._boss_anims.get(state)
         sprite = anim.get_current_surface() if anim is not None else None
+        if sprite is None:
+            # Fallback to the legacy 6-frame sprite (kept around in
+            # self._animated for backward compatibility).
+            anim = self._animated.get("boss")
+            sprite = anim.get_current_surface() if anim is not None else None
         if sprite is None:
             cx, cy = int(b.x + ox), int(b.y + oy)
             import math
@@ -680,6 +711,22 @@ class GameplayScene(Scene):
             pygame.draw.polygon(surface, (220, 100, 60), pts, 2)
             return
         self._blit_centered(surface, sprite, b.x + ox, b.y + oy)
+
+    def _pick_boss_animation(self, b) -> str:
+        """Map the boss's current state to one of the 4 animations.
+
+        IDLE/RETREAT/COOLDOWN share the idle sheet so the boss
+        doesn't need a unique sheet for every sub-state. CHARGE and
+        TELEGRAPH get their own. DYING (the boss's death phase)
+        overrides everything.
+        """
+        if b.phase == "dying":
+            return "dying"
+        if b.action == "charge":
+            return "charge"
+        if b.action == "telegraph":
+            return "telegraph"
+        return "idle"
 
     def _draw_boss_telegraph(self, surface, b, ox, oy) -> None:
         """Bright pulsing horizontal line from boss center to the
