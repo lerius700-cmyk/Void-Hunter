@@ -1,0 +1,45 @@
+name: tests
+
+# Run the full pytest suite on every push and pull_request to master.
+# Catches regressions before they reach master. The .build-venv pattern
+# (uv-managed) installs pygame + numpy from requirements.txt.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install pygame + numpy + pytest via system pip
+        # CI runs on Linux; we just need pygame + numpy. No PyInstaller
+        # in CI (it's a Windows-only build tool).
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install -r requirements-dev.txt
+
+      - name: Set SDL_VIDEODRIVER=dummy (headless)
+        # pygame needs a video driver even for headless tests; the dummy
+        # driver is part of the SDL2 package.
+        run: |
+          echo "SDL_VIDEODRIVER=dummy" >> $GITHUB_ENV
+          echo "SDL_AUDIODRIVER=dummy" >> $GITHUB_ENV
+
+      - name: Run pytest
+        run: |
+          python -m pytest -q --tb=short

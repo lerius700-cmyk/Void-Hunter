@@ -91,11 +91,13 @@ def test_adsr_release_phase() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 3. 26 SFX catalog (24 BLOQUE 13 + 2 BLOQUE 37)
+# 3. SFX catalog (24 BLOQUE 13 + 2 BLOQUE 37 + 7 BLOQUE 58.14 per-ship thruster)
 # ---------------------------------------------------------------------------
 def test_twenty_six_sfx_in_catalog() -> None:
-    assert len(SFX_CATALOG) == 26
-    assert len(SFX_NAMES) == 26
+    # BLOQUE 58.14: 7 per-ship thruster SFX added (bomber, cruiser, heavy,
+    # kamikaze, player, scout, ufo). 24 + 2 + 7 = 33.
+    assert len(SFX_CATALOG) == 33
+    assert len(SFX_NAMES) == 33
 
 
 def test_all_expected_sfx_present() -> None:
@@ -108,6 +110,11 @@ def test_all_expected_sfx_present() -> None:
         "screen_shake_thump",
         # BLOQUE 37: continuous L3 plasma laser (held "piiiiIIII" sound).
         "laser_continuous", "laser_end",
+        # BLOQUE 58.14: per-ship thruster loops (one per enemy kind +
+        # player). Continuous low-pass filtered noise.
+        "thruster_player", "thruster_scout", "thruster_cruiser",
+        "thruster_heavy", "thruster_bomber", "thruster_kamikaze",
+        "thruster_ufo",
     }
     assert set(SFX_NAMES) == expected
 
@@ -203,7 +210,8 @@ def test_audio_engine_init_does_not_crash() -> None:
 def test_audio_engine_sfx_count() -> None:
     engine = AudioEngine()
     if engine.mixer_available:
-        assert len(engine.sfx_sounds) == 26
+        # BLOQUE 58.14: 33 SFX (was 26).
+        assert len(engine.sfx_sounds) == 33
         assert len(engine.bgm_sounds) == 4
 
 

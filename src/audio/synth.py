@@ -547,27 +547,30 @@ def apply_lowpass_to_wav(
     # pauses are instant.
     alpha32 = np.float32(alpha)
     decay32 = np.float32(decay)
-    if samples_f.ndim == 1:
-        n = samples_f.shape[0]
-        y = np.empty(n, dtype=np.float32)
-        prev = np.float32(0.0)
-        x32 = samples_f
-        for i in range(n):
-            cur = decay32 * prev + alpha32 * x32[i]
-            y[i] = cur
-            prev = cur
-    else:
-        # 2D: process each channel
-        n = samples_f.shape[0]
-        n_ch = samples_f.shape[1]
-        y = np.empty_like(samples_f, dtype=np.float32)
-        for ch in range(n_ch):
+    try:
+        if samples_f.ndim == 1:
+            n = samples_f.shape[0]
+            y = np.empty(n, dtype=np.float32)
             prev = np.float32(0.0)
-            x32 = samples_f[:, ch]
+            x32 = samples_f
             for i in range(n):
                 cur = decay32 * prev + alpha32 * x32[i]
-                y[i, ch] = cur
+                y[i] = cur
                 prev = cur
+        else:
+            # 2D: process each channel
+            n = samples_f.shape[0]
+            n_ch = samples_f.shape[1]
+            y = np.empty_like(samples_f, dtype=np.float32)
+            for ch in range(n_ch):
+                prev = np.float32(0.0)
+                x32 = samples_f[:, ch]
+                for i in range(n):
+                    cur = decay32 * prev + alpha32 * x32[i]
+                    y[i, ch] = cur
+                    prev = cur
+    except (ValueError, TypeError, MemoryError):
+        return False
     # Back to int16 with clipping
     out = np.clip(y, -32768, 32767).astype(np.int16)
     # Write WAV
