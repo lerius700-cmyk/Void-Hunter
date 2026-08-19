@@ -107,6 +107,31 @@ Notable in-progress work:
   .exe does NOT include those features. **v1.1.0** is the next
   release that includes them.
 
-[Unreleased]: https://github.com/lerius700-cmyk/Void-Hunter/compare/v1.1.0...HEAD
+## [v1.1.1] — 2026-08-19
+
+> Patch release: rebuild .exe with `synth.py` fix + ship `docs/movement/`.
+
+### Fixed
+- `src/audio/synth.py::apply_lowpass_to_wav()` — the numpy IIR loop is
+  now wrapped in `try/except`. Before: if numpy failed, the game would
+  raise. After: returns `False` gracefully and the game keeps running.
+  The v1.1.0 `.exe` was built **before** this fix landed, so v1.1.1
+  re-bundles a `.exe` that includes it.
+
+### Added
+- `docs/movement/` — full documentation of the choreography system
+  (BezierPath, WaypointPath, HybridPath, FlightFormation, PathFollower,
+  6 base + 50 COMPOSED wave patterns, ParallelPathPair, OrbitalPath).
+  6 files, 1223 lines. The "soul of the game" finally written down
+  so future agents (human or AI) know what NOT to refactor.
+
+### Verified
+- Game launches with `VOID_HUNTER_PATTERNS_SEED=42`, fires
+  `PATTERN: COMPOSED` correctly, all 4 pixel art nebula tints
+  visible, solo red enemy spawning, bomb +1 power-up works.
+- 1171/1171 pytest pass.
+
+[Unreleased]: https://github.com/lerius700-cmyk/Void-Hunter/compare/v1.1.1...HEAD
+[v1.1.1]: https://github.com/lerius700-cmyk/Void-Hunter/compare/v1.1.0...v1.1.1
 [v1.1.0]: https://github.com/lerius700-cmyk/Void-Hunter/compare/v1.0.0...v1.1.0
 [v1.0.0]: https://github.com/lerius700-cmyk/Void-Hunter/releases/tag/v1.0.0
