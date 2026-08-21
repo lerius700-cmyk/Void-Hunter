@@ -27,7 +27,8 @@ class HybridPath:
     is its slice of the total path time.
     """
 
-    __slots__ = ("segments", "segment_durations", "_total_duration")
+    __slots__ = ("segments", "segment_durations", "_total_duration",
+                 "_arc_lengths", "_arc_cumulative", "_total_arc_length")
 
     def __init__(
         self,
@@ -49,6 +50,37 @@ class HybridPath:
         self.segments: list[Segment] = list(segments)
         self.segment_durations: list[float] = list(segment_durations)
         self._total_duration: float = sum(segment_durations)
+        # BLOQUE 58.next: pre-compute arc lengths per segment for distance-based motion.
+        self._build_arc_table()
+
+    def _segment_arc_length(self, seg: Segment) -> float:
+        """Total arc length of one segment."""
+        if isinstance(seg, BezierPath):
+            return seg.total_arc_length
+        if isinstance(seg, WaypointPath):
+            return seg.total_length
+        raise TypeError(f"unknown segment type: {type(seg).__name__}")
+
+    def _build_arc_table(self) -> None:
+        """Pre-compute per-segment arc length and cumulative offsets.
+
+        _arc_lengths[i]    = arc length of segment i
+        _arc_cumulative[i] = arc length at the START of segment i
+                            (cumulative sum, 0-indexed at start of seg 0)
+        _total_arc_length  = sum of all segment arc lengths
+        """
+        n = len(self.segments)
+        self._arc_lengths: list[float] = [self._segment_arc_length(s) for s in self.segments]
+        cum: list[float] = [0.0] * (n + 1)
+        for i in range(n):
+            cum[i + 1] = cum[i] + self._arc_lengths[i]
+        self._arc_cumulative: list[float] = cum
+        self._total_arc_length: float = cum[-1]
+
+    @property
+    def total_arc_length(self) -> float:
+        """Total arc length of the entire HybridPath (sum of segments)."""
+        return self._total_arc_length
 
     @staticmethod
     def _intrinsic_duration(seg: Segment) -> float:
@@ -85,6 +117,22 @@ class HybridPath:
             elapsed += dur
         return len(self.segments) - 1, 1.0, elapsed
 
+    def _segment_for_s(self, s: float) -> tuple[int, float]:
+        """BLOQUE 58.next: return (segment_index, local_distance_in_segment)
+        for the given global arc length s in [0, total_arc_length]."""
+        if s <= 0.0:
+            return 0, 0.0
+        if s >= self._total_arc_length:
+            last = len(self.segments) - 1
+            return last, self._arc_lengths[last]
+        for i in range(len(self.segments)):
+            seg_start = self._arc_cumulative[i]
+            seg_end = self._arc_cumulative[i + 1]
+            if s <= seg_end:
+                return i, s - seg_start
+        last = len(self.segments) - 1
+        return last, self._arc_lengths[last]
+
     def position_at(self, t: float) -> Point:
         idx, local_t, _ = self._segment_for_t(t)
         seg = self.segments[idx]
@@ -114,6 +162,52 @@ class HybridPath:
 
     def is_complete(self, t: float) -> bool:
         return t >= 1.0
+
+    # ------------------------------------------------------------------
+    # BLOQUE 58.next: distance-based API (constant speed in screen space)
+    # ------------------------------------------------------------------
+
+    def position_at_distance(self, s: float) -> Point:
+        """Return the point at global arc length s in [0, total_arc_length].
+
+        Dispatched per segment:
+          - BezierPath: uses its pre-computed arc table
+          - WaypointPath: walks the polyline by distance (already supported)
+        """
+        if s <= 0.0:
+            return self.position_at(0.0)
+        if s >= self._total_arc_length:
+            return self.position_at(1.0)
+        idx, local_s = self._segment_for_s(s)
+        seg = self.segments[idx]
+        if isinstance(seg, BezierPath):
+            return seg.position_at_distance(local_s)
+        if isinstance(seg, WaypointPath):
+            pt, _ = seg.position_at_distance(local_s)
+            return pt
+        raise TypeError(f"unknown segment type: {type(seg).__name__}")
+
+    def tangent_at_distance(self, s: float) -> Point:
+        """Return the unnormalized tangent at global arc length s.
+
+        Bezier: raw derivative at the local t corresponding to s.
+        Waypoint: unit vector along the current segment.
+        """
+        if s <= 0.0:
+            return self.tangent_at(0.0)
+        if s >= self._total_arc_length:
+            return self.tangent_at(1.0)
+        idx, local_s = self._segment_for_s(s)
+        seg = self.segments[idx]
+        if isinstance(seg, BezierPath):
+            return seg.tangent_at_distance(local_s)
+        if isinstance(seg, WaypointPath):
+            _, tan = seg.position_at_distance(local_s)
+            return tan
+        raise TypeError(f"unknown segment type: {type(seg).__name__}")
+
+    def is_complete_by_distance(self, s: float) -> bool:
+        return s >= self._total_arc_length
 
     @staticmethod
     def straighten(start: Point, end: Point, speed_px_s: float = 120.0) -> "HybridPath":

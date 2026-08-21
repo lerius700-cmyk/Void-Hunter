@@ -5,6 +5,8 @@ import math
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
@@ -65,6 +67,68 @@ def test_bezier_length_estimate_positive() -> None:
     # Straight line of length 200 should give 200; bezier is longer
     straight = BezierPath(Point(0, 0), Point(0, 0), Point(200, 0), Point(200, 0))
     assert abs(straight.length_estimate - 200.0) < 1.0
+
+
+# -----------------------------------------------------------------------
+# BLOQUE 58.next: arc-length parameterization
+# -----------------------------------------------------------------------
+def test_bezier_total_arc_length_matches_length_estimate() -> None:
+    """total_arc_length (64-sample table) should agree with length_estimate
+    (16-sample polyline) to within a small tolerance."""
+    from src.movement import BezierPath, Point
+
+    b = BezierPath(Point(0, 0), Point(50, 100), Point(150, 100), Point(200, 0))
+    assert abs(b.total_arc_length - b.length_estimate) < 1.0, (
+        f"arc={b.total_arc_length}, estimate={b.length_estimate}"
+    )
+
+
+def test_bezier_position_at_distance_endpoints() -> None:
+    """s=0 -> p0, s=total_arc_length -> p3."""
+    from src.movement import BezierPath, Point
+
+    b = BezierPath(Point(0, 0), Point(10, 50), Point(100, 50), Point(120, 0))
+    a = b.position_at_distance(0.0)
+    z = b.position_at_distance(b.total_arc_length)
+    assert a.x == 0 and a.y == 0
+    assert z.x == 120 and z.y == 0
+
+
+def test_bezier_position_at_distance_constant_speed() -> None:
+    """For a straight-line bezier, equal distance steps give equal
+    position steps. (The point of arc-length: t and distance differ
+    on curves, but agree on straight lines.)"""
+    from src.movement import BezierPath, Point
+
+    straight = BezierPath(Point(0, 0), Point(0, 0), Point(200, 0), Point(200, 0))
+    L = straight.total_arc_length
+    a = straight.position_at_distance(L * 0.25)
+    b = straight.position_at_distance(L * 0.50)
+    c = straight.position_at_distance(L * 0.75)
+    # Each step should be 50 px
+    assert a.x == pytest.approx(50, abs=0.5)
+    assert b.x == pytest.approx(100, abs=0.5)
+    assert c.x == pytest.approx(150, abs=0.5)
+
+
+def test_bezier_tangent_at_distance() -> None:
+    """At s=0 tangent is along (P1-P0); at s=total along (P3-P2)."""
+    from src.movement import BezierPath, Point
+
+    b = BezierPath(Point(0, 0), Point(10, 0), Point(20, 0), Point(30, 0))
+    t0 = b.tangent_at_distance(0.0)
+    tz = b.tangent_at_distance(b.total_arc_length)
+    assert t0.x == 10 and t0.y == 0
+    assert tz.x == 10 and tz.y == 0
+
+
+def test_bezier_position_at_distance_clamps() -> None:
+    """s < 0 returns p0; s > total returns p3."""
+    from src.movement import BezierPath, Point
+
+    b = BezierPath(Point(5, 5), Point(10, 10), Point(20, 20), Point(30, 30))
+    assert b.position_at_distance(-10.0) == Point(5, 5)
+    assert b.position_at_distance(99999.0) == Point(30, 30)
 
 
 # -----------------------------------------------------------------------
@@ -183,8 +247,82 @@ def test_follower_position_matches_path() -> None:
     pos, vel = f.update(0.5)  # t=0.5 -> midpoint (60, 20)
     assert pos.x == 60
     assert pos.y == 20
-    # Velocity should point in +x at 100 px/s
-    assert vel.x == 100 and vel.y == 0
+
+
+# -----------------------------------------------------------------------
+# BLOQUE 58.next: HybridPath + PathFollower distance-based behavior
+# -----------------------------------------------------------------------
+def test_hybrid_path_total_arc_length() -> None:
+    """HybridPath.total_arc_length = sum of per-segment arc lengths."""
+    from src.movement import HybridPath, WaypointPath, Point
+    from src.movement.bezier import BezierPath
+
+    # 2 segments: a straight 100px and a 200px bezier
+    seg1 = WaypointPath([Point(0, 0), Point(100, 0)], speed_px_s=100.0)
+    seg2 = BezierPath(Point(100, 0), Point(100, 100), Point(300, 100), Point(300, 0))
+    h = HybridPath([seg1, seg2])
+    expected = 100.0 + seg2.total_arc_length
+    assert h.total_arc_length == pytest.approx(expected, abs=0.5)
+
+
+def test_hybrid_path_position_at_distance() -> None:
+    """s=0 -> first segment start, s=total -> last segment end."""
+    from src.movement import HybridPath, WaypointPath, Point
+
+    h = HybridPath([
+        WaypointPath([Point(0, 0), Point(50, 0)], speed_px_s=100.0),
+        WaypointPath([Point(50, 0), Point(100, 0)], speed_px_s=100.0),
+    ])
+    start = h.position_at_distance(0.0)
+    end = h.position_at_distance(h.total_arc_length)
+    assert start.x == 0 and start.y == 0
+    assert end.x == 100 and end.y == 0
+
+
+def test_follower_constant_speed_in_pixels() -> None:
+    """BLOQUE 58.next: the follower's velocity is in px/s, constant in
+    screen space. For a straight path, two equal dt's should produce
+    equal pixel deltas (regardless of segment internals)."""
+    from src.movement import HybridPath, PathFollower, Point
+
+    h = HybridPath.straighten(Point(0, 0), Point(200, 0), speed_px_s=100.0)
+    f = PathFollower(h)
+    # 0.5s at 100 px/s = 50 px
+    pos_a, _ = f.update(0.5)
+    pos_b, _ = f.update(0.5)
+    assert pos_b.x - pos_a.x == pytest.approx(50, abs=0.5)
+
+
+def test_follower_s_property_reflects_arc_position() -> None:
+    """BLOQUE 58.next: follower.s gives the current arc length (px)."""
+    from src.movement import HybridPath, PathFollower, Point
+
+    h = HybridPath.straighten(Point(0, 0), Point(100, 0), speed_px_s=100.0)
+    f = PathFollower(h)
+    assert f.s == pytest.approx(0.0, abs=0.1)
+    f.update(0.3)  # 0.3s * 100 px/s = 30 px
+    assert f.s == pytest.approx(30.0, abs=0.5)
+    f.update(0.7)  # rest of the way
+    assert f.s == pytest.approx(100.0, abs=0.5)
+    assert f.is_complete
+
+
+def test_follower_t_offset_uses_arc_length() -> None:
+    """BLOQUE 58.next: t_offset (seconds) converts to arc length via the
+    first segment's speed. Two followers with different t_offsets start
+    at different positions along the same path."""
+    from src.movement import HybridPath, PathFollower, Point
+
+    h = HybridPath.straighten(Point(0, 0), Point(100, 0), speed_px_s=100.0)
+    f0 = PathFollower(h, t_offset=0.0)
+    f1 = PathFollower(h, t_offset=0.5)  # 0.5s ahead = 50 px
+    assert f0.s == pytest.approx(0.0, abs=0.1)
+    assert f1.s == pytest.approx(50.0, abs=0.5)
+    # Velocity of f0 should be in +x at 100 px/s (use a small dt so the
+    # follower's "complete + dt<=0 returns zero vel" branch doesn't fire).
+    _, vel0 = f0.update(0.001)
+    assert vel0.x == pytest.approx(100, abs=1.0)
+    assert vel0.y == pytest.approx(0, abs=1.0)
 
 
 def test_follower_reset() -> None:

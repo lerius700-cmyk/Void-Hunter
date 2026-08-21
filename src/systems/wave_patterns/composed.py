@@ -316,6 +316,82 @@ class ComposedPattern(WavePattern):
     def name(self) -> str:
         return self._name
 
+    # BLOQUE 58.next: per-instance jitter amounts. Applied uniformly
+    # across all path/formation/follow combinations. Bounded so the
+    # pattern stays recognizable (still a "V", still a "sweep"), just
+    # different in detail.
+    _JITTER_PATH_PERTURB_PX = 12.0   # control point perturbation (px)
+    _JITTER_SLOT_PERTURB_FRAC = 0.10  # ±10% of slot offset
+    _JITTER_COLOR_DELTA = 25         # ±25 channels per RGB
+    _JITTER_T_OFFSET_DELTA = 0.10     # ±0.10s on t_offset
+    _JITTER_DURATION_FRAC = 0.10      # ±10% on duration_s
+
+    def _apply_jitter(
+        self,
+        rng: random.Random,
+        segments: list[tuple[tuple[float, float], ...]],
+        slots: list[tuple[float, float]],
+        duration_s: float,
+        t_offsets: list[float],
+    ) -> tuple[
+        list[tuple[tuple[float, float], ...]],
+        list[tuple[float, float]],
+        float,
+        list[float],
+    ]:
+        """Return jittered copies of (segments, slots, duration, t_offsets).
+
+        BLOQUE 58.next: each call to generate() perturbs the canonical
+        (formation, path, follow) recipe so two COMPOSED picks of the
+        same pattern look different. The shape is preserved (still a V,
+        still a sweep); the exact coordinates and timing shift by small
+        bounded amounts.
+
+        Determinism: the jitter_rng is derived from the caller's rng
+        (rng.randrange(2**32) consumed), so given the same outer seed
+        and call order the perturbation is reproducible.
+        """
+        jrng = random.Random(rng.randrange(2**32))
+        # 1) Perturb path control points: shift each (x, y) by ±JITTER_PX
+        new_segments: list[tuple[tuple[float, float], ...]] = []
+        for seg in segments:
+            new_seg = tuple(
+                (p[0] + jrng.uniform(-self._JITTER_PATH_PERTURB_PX,
+                                     self._JITTER_PATH_PERTURB_PX),
+                 p[1] + jrng.uniform(-self._JITTER_PATH_PERTURB_PX,
+                                     self._JITTER_PATH_PERTURB_PX))
+                for p in seg
+            )
+            new_segments.append(new_seg)
+        # 2) Perturb slot offsets: ±JITTER_SLOT_PERTURB_FRAC of original
+        new_slots = [
+            (dx * (1.0 + jrng.uniform(-self._JITTER_SLOT_PERTURB_FRAC,
+                                       self._JITTER_SLOT_PERTURB_FRAC)),
+             dy * (1.0 + jrng.uniform(-self._JITTER_SLOT_PERTURB_FRAC,
+                                       self._JITTER_SLOT_PERTURB_FRAC)))
+            for (dx, dy) in slots
+        ]
+        # 3) Perturb duration
+        new_dur = duration_s * (1.0 + jrng.uniform(-self._JITTER_DURATION_FRAC,
+                                                    self._JITTER_DURATION_FRAC))
+        # 4) Perturb t_offsets
+        new_t = [
+            t + jrng.uniform(-self._JITTER_T_OFFSET_DELTA,
+                             self._JITTER_T_OFFSET_DELTA)
+            for t in t_offsets
+        ]
+        return new_segments, new_slots, new_dur, new_t
+
+    def _jitter_color(
+        self, base: tuple[int, int, int], jrng: random.Random,
+    ) -> tuple[int, int, int]:
+        """Perturb an RGB color by ±_JITTER_COLOR_DELTA channels, clamped."""
+        return tuple(
+            max(0, min(255, c + jrng.randint(-self._JITTER_COLOR_DELTA,
+                                              self._JITTER_COLOR_DELTA)))
+            for c in base
+        )
+
     def generate(
         self,
         rng: random.Random,
@@ -350,16 +426,34 @@ class ComposedPattern(WavePattern):
         n_seg = len(segments)
         seg_durs = [duration_s / n_seg] * n_seg
 
+        # Pre-compute t_offsets per ship (for the chain follow mode)
+        t_offsets = [i * 0.15 if self._follow == "chain" else 0.0
+                     for i in range(len(slots))]
+
+        # BLOQUE 58.next: per-instance jitter. Two COMPOSED picks of
+        # the same (formation, path, follow) recipe produce visually
+        # distinct waves. The shape is preserved; coordinates shift
+        # by bounded amounts (see _JITTER_* constants).
+        segments, slots, duration_s, t_offsets = self._apply_jitter(
+            rng, segments, slots, duration_s, t_offsets,
+        )
+        seg_durs = [duration_s / n_seg] * n_seg
+
+        # Color jitter needs its own rng (separate from the path jitter
+        # rng to keep determinism clean: same outer seed -> same colors
+        # and same coordinates in the same order).
+        color_rng = random.Random(rng.randrange(2**32))
+
         ships: list[SpawnedShip] = []
         for i, (dx, dy) in enumerate(slots):
             is_leader = (i == 0) and (self._follow in ("leader", "chain"))
-            t_off = i * 0.15 if self._follow == "chain" else 0.0
+            base_color = (255, 200, 80) if is_leader else (200, 160, 220)
             ships.append(SpawnedShip(
                 spawn_x=entry_x + dx,
                 spawn_y=entry_y + dy,
-                t_offset=t_off,
+                t_offset=t_offsets[i],
                 slot=i,
-                color=(255, 200, 80) if is_leader else (200, 160, 220),
+                color=self._jitter_color(base_color, color_rng),
                 is_leader=is_leader,
                 extra={
                     "formation": self._formation,
