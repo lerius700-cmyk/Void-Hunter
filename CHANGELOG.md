@@ -131,7 +131,53 @@ Notable in-progress work:
   visible, solo red enemy spawning, bomb +1 power-up works.
 - 1171/1171 pytest pass.
 
-[Unreleased]: https://github.com/lerius700-cmyk/Void-Hunter/compare/v1.1.1...HEAD
+## [v1.1.2] — 2026-08-20
+
+> Arc-length motion + per-instance jitter + parametrize 50 COMPOSED tests.
+
+### Added
+
+**BezierPath arc-length parameterization (BLOQUE 58.next)**
+- 64-sample `(t, distance)` table pre-computed in `__init__` (~0.01% error).
+- New API on `BezierPath`: `position_at_distance(s)`, `tangent_at_distance(s)`,
+  `total_arc_length`.
+- `HybridPath` propagates per-segment arc lengths; new
+  `position_at_distance(s)` / `tangent_at_distance(s)` for the whole path.
+- `PathFollower` now walks arc length `s` (in pixels) instead of
+  parameter `t`. Velocity is constant in screen space — no more
+  faster-in-straights / slower-in-curves.
+
+**Per-instance jitter in `ComposedPattern.generate()`**
+- Each pick perturbs: control points ±12 px, slot offsets ±10%, colors
+  ±25 channels (clamped 0-255), `duration_s` ±10%, `t_offset` ±0.10s.
+- Two picks of the same (formation, path, follow) recipe now look
+  different every time. Same outer seed stays deterministic.
+- Bounded so the shape is still recognizable (a V stays a V, a sweep
+  stays a sweep, just different in detail).
+
+**Tests (BLOQUE 58.next)**
+- `tests/test_composed_all_50.py`: 50 patterns × 7 assertions = 350 tests.
+- `tests/test_jitter_variety.py`: 30 tests for variety + bounds.
+- `tests/test_movement.py`: extended with arc-length API tests.
+- New `tools/capture_choreo.py` (PIL-based screenshot helper for the
+  running game window — replacement for the missing
+  `capture_always_on_top.ps1`).
+
+### Changed
+- `src/movement/follower.py` — internal state changed from `t` to `s`.
+  The `t` property is kept (computed) for backward compat.
+- `src/movement/hybrid.py` — `_segment_for_t` got a sibling
+  `_segment_for_s`; both work, `_segment_for_s` is used internally now.
+
+### Verified
+- 1609/1609 pytest pass (was 1171; +438 new from the 50-COMPOSED
+  parametrize and the arc-length / jitter tests).
+- In-game: COMPOSED pattern picked with seed 42 produces visibly
+  different waves on consecutive picks (verified in `logs/patterns.log`
+  — durations jitter around 8.0s as expected).
+
+[Unreleased]: https://github.com/lerius700-cmyk/Void-Hunter/compare/v1.1.2...HEAD
+[v1.1.2]: https://github.com/lerius700-cmyk/Void-Hunter/compare/v1.1.1...v1.1.2
 [v1.1.1]: https://github.com/lerius700-cmyk/Void-Hunter/compare/v1.1.0...v1.1.1
 [v1.1.0]: https://github.com/lerius700-cmyk/Void-Hunter/compare/v1.0.0...v1.1.0
 [v1.0.0]: https://github.com/lerius700-cmyk/Void-Hunter/releases/tag/v1.0.0
