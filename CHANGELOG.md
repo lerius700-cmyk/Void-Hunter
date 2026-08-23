@@ -176,7 +176,46 @@ Notable in-progress work:
   different waves on consecutive picks (verified in `logs/patterns.log`
   — durations jitter around 8.0s as expected).
 
-[Unreleased]: https://github.com/lerius700-cmyk/Void-Hunter/compare/v1.1.2...HEAD
+## [v1.1.3] — 2026-08-22
+
+> Gameplay background: 1 complete nebula + state machine fade/reposition.
+
+### Changed
+
+**Per-nebula state machine in `ParallaxBackground` (BLOQUE 58.next)**
+- Each nebula cycles: `visible` (hold 10-18s) -> `fading_out` (0.5s) ->
+  `hidden` (instant) -> `fading_in` (0.5s) with new `(x, y)` and new
+  sprite variant -> `visible`.
+- Position invariant: `radius <= x <= w - radius` and same for y.
+  The sprite is never clipped at any edge.
+- The fade transitions guarantee no partial visibility during a
+  reposition. The cached surface's alpha is mutated per frame and
+  restored after the blit, so the change doesn't accumulate.
+
+**Gameplay background config**
+- `nebula_count: 4 -> 1` (gameplay only; title screen keeps 6 for the
+  dense look).
+- Radius still `60-90 px` (the dramatic size).
+
+### Fixed
+- Gameplay nebulae are no longer clipped at the left or bottom edges
+  (the user reported the spiral arms were cut off).
+- Only 1 nebula is visible at a time during gameplay.
+- The position varies over time (every 10-18s the nebula fades out,
+  repositions to a new random valid spot, and fades back in).
+
+### Added
+- `tests/test_nebula_state_machine.py`: 12 new tests covering the
+  state machine, no-clip invariant, position-change behavior, and
+  fade alpha ramps.
+
+### Verified
+- 1621/1621 pytest pass (was 1609; +12 new).
+- In-game: nebula stays complete across the full cycle (no
+  edge-clipping at any point).
+
+[Unreleased]: https://github.com/lerius700-cmyk/Void-Hunter/compare/v1.1.3...HEAD
+[v1.1.3]: https://github.com/lerius700-cmyk/Void-Hunter/compare/v1.1.2...v1.1.3
 [v1.1.2]: https://github.com/lerius700-cmyk/Void-Hunter/compare/v1.1.1...v1.1.2
 [v1.1.1]: https://github.com/lerius700-cmyk/Void-Hunter/compare/v1.1.0...v1.1.1
 [v1.1.0]: https://github.com/lerius700-cmyk/Void-Hunter/compare/v1.0.0...v1.1.0
