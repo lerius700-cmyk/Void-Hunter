@@ -78,6 +78,15 @@ PLANET_RADIUS_MAX = 24
 # Backward-compat alias (used by some tests)
 STARS_PER_LAYER = STARS_PER_LAYER_DEFAULT
 
+# BLOQUE 58.next: nebula state machine timings.
+# Each nebula holds at its position for HOLD seconds (uniform random
+# in [HOLD_MIN_S, HOLD_MAX_S]), then fades out over FADE_S, picks a
+# new position + sprite variant, fades in over FADE_S. Total cycle
+# = HOLD + 2 * FADE_S. The fade is a smooth alpha ramp 0..255.
+NEBULA_HOLD_MIN_S = 10.0
+NEBULA_HOLD_MAX_S = 18.0
+NEBULA_FADE_S = 0.5  # half a second in, half a second out
+
 
 @dataclass
 class Star:
@@ -102,18 +111,41 @@ class Nebula:
     (some tests assert on it after `set_theme`) but it's no
     longer used for rendering — the sprite already has the right
     palette baked in.
+
+    BLOQUE 58.next: per-nebula state machine. Each nebula cycles
+    through:
+      visible  -> (hold_timer expires) -> fading_out
+      fading_out (alpha 255 -> 0)        -> hidden
+      hidden    (instant)                -> fading_in (with new x, y)
+      fading_in  (alpha 0 -> 255)        -> visible (reset hold_timer)
+
+    The position is always kept within the playfield (no clipping
+    at any edge). On reposition, a new (x, y) and a new sprite
+    variant are picked. The state machine is per-nebula, so a
+    multi-nebula parallax (title screen with 6) desyncs naturally.
     """
     x: float
     y: float
     radius: float
     color: tuple[int, int, int]
     vx: float = 0.0
-    vy: float = 8.0  # drift down with parallax
+    vy: float = 0.0  # BLOQUE 58.next: static (no drift); reposition handles movement
     # Cached pre-rendered surface (set by _render_nebula_surface after
     # init). Holds the AI sprite scaled to (radius*2, radius*2).
     surface: Optional[pygame.Surface] = None
     # Index into the loaded galaxy sprite list (for debugging only).
     sprite_variant: int = 0
+    # BLOQUE 58.next: fade state. alpha is multiplied into the blit
+    # so the nebula can fade in / out smoothly across the reposition.
+    alpha: float = 255.0
+    # Per-nebula state machine
+    state: str = "visible"  # visible | fading_out | hidden | fading_in
+    # Time until next transition (seconds). In 'visible' state, this
+    # counts down the hold period. In 'fading_*' states, it counts
+    # down the fade duration. In 'hidden', it's 0 (instant).
+    state_timer: float = 0.0
+    # Target alpha for the current fade
+    state_target: float = 255.0
 
 
 @dataclass
@@ -203,7 +235,15 @@ class ParallaxBackground:
         return len(self._stars) + len(self._nebula) + (1 if self._planet else 0)
 
     def update(self, dt: float) -> None:
-        """Advance parallax, twinkle, planet rotation, planet spawn timer."""
+        """Advance parallax, twinkle, planet rotation, planet spawn timer.
+
+        BLOQUE 58.next: nebula state machine. Each nebula cycles
+        through visible -> fading_out -> hidden -> fading_in -> visible
+        with a fade duration of NEBULA_FADE_S on each side and a hold
+        period of [NEBULA_HOLD_MIN_S, NEBULA_HOLD_MAX_S] seconds at
+        full opacity. On the hidden->fading_in transition, a new (x, y)
+        and sprite variant are picked so each cycle looks different.
+        """
         if dt <= 0.0:
             return
         self._t += dt
@@ -213,12 +253,9 @@ class ParallaxBackground:
             s.y += speed * dt
             if s.y > self._h:
                 s.y -= self._h
-        # Nebula: drift down
+        # Nebula: state machine (BLOQUE 58.next)
         for n in self._nebula:
-            n.y += n.vy * dt
-            if n.y - n.radius > self._h:
-                n.y = -n.radius
-                n.x = self._rng.uniform(0, self._w)
+            self._update_nebula_state(n, dt)
         # Planet: rotate ring, scroll slowly
         if self._planet is not None:
             self._planet.ring_angle = (self._planet.ring_angle + 8.0 * dt) % 360.0
@@ -233,6 +270,62 @@ class ParallaxBackground:
                 self._spawn_planet()
                 self._planet_timer = self._rng.uniform(PLANET_SPAWN_MIN_S, PLANET_SPAWN_MAX_S)
 
+    def _update_nebula_state(self, n: Nebula, dt: float) -> None:
+        """Drive one nebula through its state machine. Called per frame.
+
+        State transitions:
+          visible  + timer <= 0  -> fading_out, target=0, timer=FADE_S
+          fading_out + timer <= 0 -> hidden (alpha=0)
+          hidden                  -> _reposition_nebula + fading_in
+          fading_in  + timer <= 0 -> visible, timer=HOLD
+        """
+        n.state_timer -= dt
+        if n.state == "visible":
+            if n.state_timer <= 0.0:
+                # Start fading out
+                n.state = "fading_out"
+                n.state_target = 0.0
+                n.state_timer = NEBULA_FADE_S
+        elif n.state == "fading_out":
+            # Linear alpha ramp from current to target over FADE_S
+            progress = 1.0 - (n.state_timer / NEBULA_FADE_S)
+            progress = max(0.0, min(1.0, progress))
+            n.alpha = 255.0 * (1.0 - progress)
+            if n.state_timer <= 0.0:
+                n.state = "hidden"
+                n.alpha = 0.0
+        elif n.state == "hidden":
+            # Pick new position + sprite variant, then fade in
+            self._reposition_nebula(n)
+            n.state = "fading_in"
+            n.state_target = 255.0
+            n.state_timer = NEBULA_FADE_S
+            n.alpha = 0.0
+        elif n.state == "fading_in":
+            progress = 1.0 - (n.state_timer / NEBULA_FADE_S)
+            progress = max(0.0, min(1.0, progress))
+            n.alpha = 255.0 * progress
+            if n.state_timer <= 0.0:
+                n.state = "visible"
+                n.alpha = 255.0
+                n.state_target = 255.0
+                # New hold period for the next cycle
+                n.state_timer = self._rng.uniform(
+                    NEBULA_HOLD_MIN_S, NEBULA_HOLD_MAX_S
+                )
+
+    def _reposition_nebula(self, n: Nebula) -> None:
+        """Pick a new valid (x, y) + new sprite variant for this nebula.
+
+        The new position is uniform in the playfield with a radius
+        margin on all sides (so the sprite is never clipped). The
+        new sprite variant is uniform in [0, len(sprites)).
+        """
+        n.x = self._rng.uniform(n.radius, self._w - n.radius)
+        n.y = self._rng.uniform(n.radius, self._h - n.radius)
+        # Re-render to pick a new sprite variant (4 tints: blue/red/cyan/violet)
+        n.surface = self._render_nebula_surface(n)
+
     def draw(self, target: pygame.Surface) -> None:
         """Render: nebula → stars → planet. No blits() batch (parallax
         uses 3 distinct surface types with different alpha, single-call
@@ -241,22 +334,24 @@ class ParallaxBackground:
         BLOQUE 58.14.1: nebulas are blitted from their pre-rendered
         procedural cloud surfaces (see `_render_nebula_surface`), so the
         per-frame cost is just one blit per nebula.
+
+        BLOQUE 58.next: each nebula is blitted with a per-frame alpha
+        set on the cached surface (so the fade in/out shows). When
+        alpha is 0, the blit is a no-op visually.
         """
-        # 1. Nebula (blit cached procedural cloud surface)
+        # 1. Nebula (blit cached procedural cloud surface with fade alpha)
         for n in self._nebula:
-            if n.surface is not None:
-                target.blit(n.surface,
-                            (int(n.x - n.radius), int(n.y - n.radius)),
-                            special_flags=pygame.BLEND_PREMULTIPLIED)
-            else:
-                # Fallback (shouldn't happen since _init_nebula always
-                # pre-renders). Draw a soft circle.
-                surf = pygame.Surface((n.radius * 2, n.radius * 2), pygame.SRCALPHA)
-                for r in range(int(n.radius), 0, -2):
-                    a = int(20 * (r / n.radius))
-                    pygame.draw.circle(surf, (*n.color, a),
-                                       (n.radius, n.radius), r)
-                target.blit(surf, (int(n.x - n.radius), int(n.y - n.radius)))
+            if n.alpha <= 0.0 or n.surface is None:
+                continue
+            # Set the per-frame alpha. This mutates the cached surface
+            # in place, but since we restore it to 255 after the blit
+            # the change doesn't accumulate across frames.
+            prev_alpha = n.surface.get_alpha()
+            n.surface.set_alpha(int(n.alpha))
+            target.blit(n.surface,
+                        (int(n.x - n.radius), int(n.y - n.radius)),
+                        special_flags=pygame.BLEND_PREMULTIPLIED)
+            n.surface.set_alpha(prev_alpha if prev_alpha is not None else 255)
         # 2. Stars (5 layers, 1 blit per star = NUM_LAYERS * STARS_PER_LAYER
         #    blits. Acceptable since these are tiny 1x1 surfaces; could be
         #    batched in BLOQUE 11 optimization pass if needed.)
@@ -293,12 +388,12 @@ class ParallaxBackground:
                 ))
 
     def _init_nebula(self) -> None:
-        """BLOQUE 58.12: configurable nebula count. Default 6 (title), 0 (gameplay).
+        """BLOQUE 58.12: configurable nebula count. Default 6 (title), 1 (gameplay).
 
-        BLOQUE 58.13.3: when nebula_count == 1, place the single nebula in
-        the bottom-right quadrant (off-center, away from ship spawn paths
-        and the sub-boss entry point at y=20). It uses nebula_radius_min /
-        nebula_radius_max so the user can request a large dramatic cloud.
+        BLOQUE 58.next: each nebula's initial position is always within
+        the playfield (radius margin on all sides) so the sprite is
+        never clipped. Each nebula gets an independent hold timer
+        (random in [HOLD_MIN_S, HOLD_MAX_S]) so the cycles desync.
 
         BLOQUE 58.14.1: each nebula pre-renders a noise-based cloud surface
         (multiple soft puffs blended with value noise). The cached
@@ -311,20 +406,14 @@ class ParallaxBackground:
         theme = get_theme(self._theme_name)
         nebula_swatches = theme["nebula"]
         for i in range(self._nebula_count):
-            if self._nebula_count == 1:
-                # BLOQUE 58.13.3: single nebula → off-center bottom-right.
-                x = self._w * 0.70
-                y = self._h * 0.85
-                radius = self._rng.uniform(
-                    self._nebula_radius_min, self._nebula_radius_max
-                )
-            else:
-                # BLOQUE 58.12: dense mode (title screen) — random scatter
-                x = self._rng.uniform(0, self._w)
-                y = self._rng.uniform(-self._h, self._h * 2)
-                radius = self._rng.uniform(
-                    self._nebula_radius_min, self._nebula_radius_max
-                )
+            radius = self._rng.uniform(
+                self._nebula_radius_min, self._nebula_radius_max
+            )
+            # BLOQUE 58.next: valid position = radius margin on all sides
+            # (no clipping at any edge). For multi-nebula, pick anywhere
+            # in the playfield; the fade-in/fade-out handles the entry.
+            x = self._rng.uniform(radius, self._w - radius)
+            y = self._rng.uniform(radius, self._h - radius)
             n = Nebula(
                 x=x,
                 y=y,
@@ -332,6 +421,15 @@ class ParallaxBackground:
                 color=nebula_swatches[i % len(nebula_swatches)],
             )
             n.surface = self._render_nebula_surface(n)
+            # BLOQUE 58.next: initial state machine setup. Each nebula
+            # starts in 'visible' with a random hold timer so they
+            # desync naturally (no synchronized fading).
+            n.alpha = 255.0
+            n.state = "visible"
+            n.state_target = 255.0
+            n.state_timer = self._rng.uniform(
+                NEBULA_HOLD_MIN_S, NEBULA_HOLD_MAX_S
+            )
             self._nebula.append(n)
 
     def _render_nebula_surface(self, n: Nebula) -> pygame.Surface:

@@ -73,11 +73,23 @@ def test_star_wraps_at_bottom(bg: ParallaxBackground) -> None:
     assert s.y < INTERNAL_H
 
 
-def test_nebula_wraps_at_bottom(bg: ParallaxBackground) -> None:
+def test_nebula_never_clips_at_edges(bg: ParallaxBackground) -> None:
+    """BLOQUE 58.next: the nebula never wraps. Its position is always
+    within the playfield with a radius margin (no edge clipping)."""
     n = bg._nebula[0]
-    n.y = INTERNAL_H + 200
-    bg.update(0.001)
-    assert n.y < 0  # wrapped to top
+    # Force the nebula far below the screen and tick the state machine
+    # to completion of the cycle. After many ticks, the position must
+    # always be inside the playfield.
+    for _ in range(2000):
+        bg.update(0.1)
+        assert n.x - n.radius >= 0, f"nebula clipped at left: x={n.x}"
+        assert n.x + n.radius <= INTERNAL_W, (
+            f"nebula clipped at right: x={n.x}"
+        )
+        assert n.y - n.radius >= 0, f"nebula clipped at top: y={n.y}"
+        assert n.y + n.radius <= INTERNAL_H, (
+            f"nebula clipped at bottom: y={n.y}"
+        )
 
 
 def test_planet_spawn_timer_respected(bg: ParallaxBackground) -> None:

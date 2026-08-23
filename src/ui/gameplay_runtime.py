@@ -188,17 +188,19 @@ class GameplayRuntime:
         # reduced radius — the user said the boss scene's 2 visible
         # large spiral galaxies look great, but the gameplay's 4-5
         # visible ones (legacy 6 + parallax 1) "don't make sense".
-        # The new config gives gameplay the SAME look as the boss scene:
-        # 2 large beautiful galaxies, sparse stars, no clutter.
+        # BLOQUE 58.next: user wants ALWAYS exactly 1 nebula on screen
+        # (not 4), and it must be COMPLETE (not clipped at the edges),
+        # and its position must VARY over time (not always the same).
+        # The parallax state machine (visible → fading_out → hidden →
+        # fading_in with new position) handles all three.
         from src.systems.parallax import ParallaxBackground
         self._parallax_bg: "ParallaxBackground" = ParallaxBackground(
             width=INTERNAL_W, height=INTERNAL_H,
             rng_seed=0xC0FFEE58,
             stars_per_layer=8,   # sparse (was 50)
-            # BLOQUE 58.14.8 follow-up: 4 pixel art galaxies (blue/red/cyan/violet)
-            # gives variety — each nebula picks one at random from the
-            # sprite pool. Was 2 (large).
-            nebula_count=4,
+            # BLOQUE 58.next: exactly 1 nebula, large and complete,
+            # repick position every 10-18s with a fade transition.
+            nebula_count=1,
             nebula_radius_min=60,
             nebula_radius_max=90,
             spawn_planets=False, # no planets
