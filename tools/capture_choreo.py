@@ -11,7 +11,7 @@ import ctypes.wintypes as wt
 user32 = ctypes.windll.user32
 
 # Hardcoded handle - update if needed
-HWND = 133446
+HWND = 787862
 OUT_DIR = Path(r'D:\AI\void-hunter\release')
 
 rect = wt.RECT()
@@ -26,12 +26,12 @@ user32.SetWindowPos(HWND, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SW
 time.sleep(0.5)
 
 OUT_DIR.mkdir(parents=True, exist_ok=True)
-# Capture over ~40 seconds to catch at least 2 full cycles
-# (HOLD 10-18s + 2x FADE 0.5s = 11-19s per cycle)
-# 40s gives us ~2-3 cycles with the rng variation
-for i in range(20):
+# Capture the title screen with the new 6-nebula fade behavior.
+# 6 nebulae desync naturally (random hold timers), so over 25s we
+# should see at least some of them mid-fade.
+for i in range(8):
     img = ImageGrab.grab(bbox=(rect.left, rect.top, rect.right, rect.bottom))
-    out = OUT_DIR / f'nebula_long_{i:02d}.png'
+    out = OUT_DIR / f'verify_title_{i:02d}.png'
     img.save(out)
     print(f'Saved {out} {img.size[0]}x{img.size[1]}')
-    time.sleep(2.0)
+    time.sleep(3.0)
