@@ -1,6 +1,6 @@
 # 🏛️ Switch de Contexto — VOID HUNTER
 
-**Versión:** 1.0.0
+**Versión:** 1.2.0
 **Propósito:** Navegación entre silos del proyecto VOID HUNTER.
 **Perfil SF/SM:** Lite
 **Schema target:** `.synapse` 2.2.0 (acepta 2.1.0 legacy)
@@ -25,10 +25,10 @@ Regla: entrar por L1 → L1.5 → identificar silo → leer CONTEXT.md del silo 
 |------|------|-----------|-----------|
 | **L1** | `CLAUDE.md` | Identidad + reglas globales | Siempre (inducción) |
 | **L1.5** | `CONTEXT.md` | Switch de contexto | Antes de cualquier tarea |
-| **L2** | `src/` | Código fuente (28K LOC, 13 sistemas) | Implementar features |
-| **L2** | `tests/` | 1,171 tests pytest | TDD / regression |
-| **L2** | `Assets/` | Binarios (sprites, audio, galaxy panels) | Solo lectura, regenerar con `tools/` |
-| **L2** | `tools/` | Dev-only (captura, debug, generación) | Verificar visuales, generar assets |
+| **L2** | `src/` | Código fuente (24.7K LOC, 79 archivos, 14 sistemas) | Implementar features |
+| **L2** | `tests/` | 1,630 tests pytest (~24K LOC, 38 archivos) | TDD / regression |
+| **L2** | `Assets/` | Binarios (sprites, audio, galaxy panels, video) | Solo lectura, regenerar con `tools/` |
+| **L2** | `tools/` | Dev-only (captura, debug, generación, video_gen) | Verificar visuales, generar assets |
 | **L3** | `docs/arch/CONTEXT.md` | Arquitectura + roadmap + GDD | Decisiones de diseño |
 | **L3** | `docs/changelog/CONTEXT.md` | Changelog histórico | "¿qué se intentó antes?" |
 | **L3** | `docs/bloques/CONTEXT.md` | Checklists de BLOQUE (mega + user) | Tracking de features |
@@ -60,10 +60,15 @@ Regla: entrar por L1 → L1.5 → identificar silo → leer CONTEXT.md del silo 
 | `docs/ROADMAP.md` / `docs/MEGA_BLOQUE_58.8_CHECKLIST.md` | R (REFERENCE) | Roadmap + tracking |
 | `Assets/**/*.png` | R (REFERENCE) | Binarios (no editar a mano) |
 | `Assets/**/*.wav` | R (REFERENCE) | Audio assets |
+| `Assets/video/**/*.png` | R (REFERENCE) | Video frames cinemáticos (no editar) |
+| `Assets/sprites/player_ships/*_spritesheet.png` | R (REFERENCE) | Sprite sheets de naves |
+| `release/videos/*.mp4` | R (REFERENCE) | Videos standalone (share externos) |
 | `tools/**/*.py` | R (REFERENCE) | Dev tools (no productiva) |
 | `tools/playtest_out/**/*.png` | R (REFERENCE) | Visual proofs |
+| `tools/video_gen/**` | R (REFERENCE) | Pipeline de generación de video |
 | `*.log` | S (SKIP) | Logs de ejecución |
 | `dist/` / `build/` | S (SKIP) | Output PyInstaller |
+| `release/` (general) | S (SKIP) | Output deliverables (gitignored) |
 | `.git/` | S (SKIP) | Control de versiones |
 | `.mypy_cache/` / `.ruff_cache/` / `.pytest_cache/` | S (SKIP) | Caché de tools |
 | `__pycache__/` / `*.pyc` | S (SKIP) | Python bytecode |
@@ -92,6 +97,17 @@ Estos no son runtime bridges, son referencias a recursos externos que el agente 
 
 | Recurso | Comando | Uso |
 |---------|---------|-----|
+| Build .exe | `pyinstaller build.spec --clean -y` | Generar `dist/void-hunter/void-hunter.exe` |
+| Tests | `python -m pytest tests/ -q` | Validar regresiones |
+| Galaxy extraction | `python tools/process_galaxy_sprites_v2.py` | Regenerar sprites de nebula desde paneles |
+| Player ship sheets | `python tools/generate_player_ship_sheets.py` | Regenerar 5 naves × 5 anims × 8 frames |
+| Audio lowpass test | `python tools/test_music_continuous_lowpass.py` | Verificar pause/resume posicional |
+| Nebula render test | `python tools/test_nebula_render.py` | Verificar render de nebula headless |
+| Generate cinematic V1 (title) | `python tools/video_gen/gen_v1_title.py` | Generar 360 frames V1-G in-game + base para V1-S mp4 |
+| Generate cinematic V2 (zoom) | `python tools/video_gen/gen_v2_zoom.py` | Generar 300 frames V2-G in-game + base para V2-S mp4 |
+| Encode mp4 from frames | `python tools/video_gen/encode_mp4.py <frames_dir> <out.mp4> <w> <h> <fps>` | Generar mp4 standalone desde PNGs |
+| Build ship sprite sheets | `python tools/build_sprite_sheet.py [ship_id]` | Generar ship_NN_spritesheet.png (5 anims × 8 frames en un PNG) |
+| Video integration smoke test | `python tools/test_video_integration.py` | Headless smoke test del VideoPlayer + scenes |
 | Build .exe | `pyinstaller build.spec --clean -y` | Generar `dist/void-hunter/void-hunter.exe` |
 | Tests | `python -m pytest tests/ -q` | Validar regresiones |
 | Galaxy extraction | `python tools/process_galaxy_sprites_v2.py` | Regenerar sprites de nebula desde paneles |

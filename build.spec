@@ -55,6 +55,13 @@ a = Analysis(
         # BLOQUE 58.59: bundle the cinematic video PNG sequences
         # (V1-G title + V2-G zoom). ~5 MB total for 240x360 @ 30FPS.
         (str(PROJECT_ROOT / "Assets" / "video"), "Assets/video"),
+        # BLOQUE 58.60: ship sprite sheets (reference assets used by
+        # the in-game gallery: press S on the title screen to view).
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "player_ships" / "ship_01_spritesheet.png"), "Assets/sprites/player_ships"),
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "player_ships" / "ship_02_spritesheet.png"), "Assets/sprites/player_ships"),
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "player_ships" / "ship_03_spritesheet.png"), "Assets/sprites/player_ships"),
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "player_ships" / "ship_04_spritesheet.png"), "Assets/sprites/player_ships"),
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "player_ships" / "ship_05_spritesheet.png"), "Assets/sprites/player_ships"),
     ],
     hiddenimports=[
         # pygame submodules that PyInstaller's static analysis can miss.

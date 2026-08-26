@@ -1,12 +1,12 @@
 {
   "synapse_version": "2.2.0",
-  "last_verification_utc": "2026-08-17T20:54:23Z",
+  "last_verification_utc": "2026-08-25T23:30:00Z",
   "system_status": "healthy",
   "active_bridges": {},
   "short_term_memory": {
-    "current_objective": "BLOQUE 58.14.4 (galaxy sprites + 2-large bg) y sf-sm-doctor (Lite 7/7 + deep audit) cerrados. Listo para próximo BLOQUE.",
-    "last_successful_action": "Deep audit fix: 6 docs/*.md/.txt movidos a subcarpetas silo. CLAUDE.md métricas regeneradas (22,981 LOC, 75 files en src/). sre-protocol + synapse-deep agregados a L1.",
-    "active_context_pointers": ["CLAUDE.md", "CONTEXT.md", "docs/arch/CONTEXT.md", "docs/changelog/CONTEXT.md"],
+    "current_objective": "BLOQUE 58.59 (videos cinemáticos: V1-S/V2-S standalone mp4 + V1-G/V2-G in-game) + BLOQUE 58.60 (sprite sheet generator + in-game gallery con GALLERY_SPRITE/GALLERY_VIDEO states). Hotkeys S (ships) y V (videos) en TitleScene. 4 videos + 5 spritesheets entregados. Listo para próximo BLOQUE.",
+    "last_successful_action": "sf-sm-doctor manual (script no disponible — D:\\AI\\Hermes SKills removido): actualicé CLAUDE.md métricas (24,757 LOC / 79 files / 1,630 tests), CONTEXT.md (Bridges Externos con nuevos comandos video_gen + build_sprite_sheet), .synapse (BLOQUE 58.59 + 58.60).",
+    "active_context_pointers": ["CLAUDE.md", "CONTEXT.md", "docs/arch/CONTEXT.md", "docs/changelog/CONTEXT.md", "docs/superpowers/specs/2026-08-25-void-hunter-videos-design.md"],
     "critical_blockers": "ninguno"
   },
   "neural_load": {
@@ -18,7 +18,11 @@
     "regenerar_nebula_sprites": "python tools/process_galaxy_sprites_v2.py",
     "verificar_pause_music": "python tools/test_music_continuous_lowpass.py",
     "correr_tests": "python -m pytest tests/ -q",
-    "auditar_sf_sm": "python \"D:\\AI\\Hermes SKills\\skills\\devops\\sf-sm-doctor\\scripts\\audit_sf_sm.py\" \"D:\\AI\\void-hunter\" --perfil=lite",
-    "mover_archivos_a_silo": "python tools/apply_sf_sm_deep_fix.py (idempotente — chequea si ya están movidos)"
+    "auditar_sf_sm": "(script removido de D:\\AI\\Hermes SKills — restaurar o actualizar path) — alternativa manual: revisar CLAUDE.md STATUS:GENERATED, CONTEXT.md L/S/R, .synapse",
+    "mover_archivos_a_silo": "python tools/apply_sf_sm_deep_fix.py (idempotente — chequea si ya están movidos)",
+    "generar_video_title": "python tools/video_gen/gen_v1_title.py (output: output/frames/v1_draft* + release/videos/void_hunter_title_v1*.mp4)",
+    "generar_video_zoom": "python tools/video_gen/gen_v2_zoom.py (output: output/frames/v2_draft* + release/videos/void_hunter_zoom_v1*.mp4)",
+    "generar_spritesheet_nave": "python tools/build_sprite_sheet.py [1-5] (output: Assets/sprites/player_ships/ship_0N_spritesheet.png)",
+    "smoke_test_videos": "python tools/test_video_integration.py (headless, valida VideoPlayer + scenes)"
   }
 }

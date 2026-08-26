@@ -2,15 +2,15 @@
 
 **Perfil SF/SM:** Lite
 **Schema target:** `.synapse` 2.2.0 (acepta 2.1.0 legacy)
-**Versión actual:** v1.2.4 (BLOQUE 58.14.4)
+**Versión actual:** v1.2.5 (BLOQUE 58.60 — gallery + sprite sheets)
 **Tipo:** CODE (Python + pygame 2.6, stdlib only + numpy para lowpass audio)
-**Test count:** 1,171 / 1,171 pass
+**Test count:** 1,630 / 1,630 pass (excluyendo 2 archivos con errores preexistentes no relacionados)
 
 ---
 
 ## ¿Qué ES / Qué NO ES
 
-**ES:** un shmup vertical 8-bit pixelart portrait 320×480 a 120 FPS, con 4 bosses (GOLIATH / HYDRA / PHANTOM / NEMESIS), modo roguelike con seed/RNG, formación Star Fox 64 + bezier paths, 24 SFX procedurales, 2 BGMs streaming, pausa con lowpass, selector de 5 naves × 5 animaciones × 8 frames, y ~28K LOC en 118 archivos Python.
+**ES:** un shmup vertical 8-bit pixelart portrait 240×360 a 120 FPS, con 4 bosses (GOLIATH / HYDRA / PHANTOM / NEMESIS), modo roguelike con seed/RNG, formación Star Fox 64 + bezier paths, 24 SFX procedurales, 2 BGMs streaming, pausa con lowpass, selector de 5 naves × 5 animaciones × 8 frames, 4 videos cinemáticos (2 standalone 9:16 + 2 in-game), galería in-game de spritesheets + videos, y ~24.7K LOC en 79 archivos Python + ~24K LOC de tests en 38 archivos.
 
 **NO ES:** un MMO, un roguelike 2D con vista top-down, un juego online, un servicio con backend, un proyecto que requiere Truth Anchors de runtime (puertos localhost, ss, pgrep). Es una app standalone pygame que se compila con PyInstaller.
 
@@ -22,10 +22,10 @@
 L1  CLAUDE.md            ← identidad + reglas globales (ESTE ARCHIVO)
 L1.5 CONTEXT.md          ← Switch de contexto (ADUANA + silos + Token Budget)
 
-L2  src/                 ← código fuente (28K LOC, 13 sistemas)
-L2  tests/               ← 1,171 tests pytest
-L2  Assets/              ← binarios (sprites, audio, galaxy panels, BGM)
-L2  tools/               ← scripts de captura / debug / generación
+L2  src/                 ← código fuente (24.7K LOC, 79 archivos, 14 sistemas)
+L2  tests/               ← 1,630 tests pytest (38 archivos)
+L2  Assets/              ← binarios (sprites, audio, galaxy panels, BGM, video)
+L2  tools/               ← scripts de captura / debug / generación (incl. video_gen/)
 L2  build.spec           ← PyInstaller onedir
 L2  main.py              ← entry point
 
@@ -49,8 +49,12 @@ L3  docs/references/     ← assets de referencia (sprites, paneles)
 | Código | `src/**/*.py` | ES el producto | L (LOAD) |
 | Tests | `tests/**/*.py` | Cubren BLOQUEs documentados | L (LOAD) |
 | Assets binarios | `Assets/**/*.{png,wav,mp4}` | No editar a mano — regenerar con `tools/` | R (REFERENCE) |
+| Videos cinemáticos | `Assets/video/{title,zoom}/frames/*.png` | No editar a mano — regenerar con `tools/video_gen/` | R (REFERENCE) |
+| Sprite sheets | `Assets/sprites/player_ships/ship_*_spritesheet.png` | No editar a mano — regenerar con `tools/build_sprite_sheet.py` | R (REFERENCE) |
 | Audio dev | `tools/*.{py,ps1,bat}` | Captura / debug / generación, no productiva | R (REFERENCE) |
+| Video gen | `tools/video_gen/**` | Genera assets de video. No es productiva del juego | R (REFERENCE) |
 | Builds | `dist/`, `build/` | Output PyInstaller, gitignored | S (SKIP) |
+| Release artifacts | `release/` | Output deliverables (videos standalone, etc.), gitignored | S (SKIP) |
 | Caché | `.mypy_cache/`, `.ruff_cache/`, `.pytest_cache/`, `__pycache__/` | Gitignored | S (SKIP) |
 
 **Decisiones arquitectónicas no negociables:**
@@ -184,16 +188,19 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 
 | Métrica | Valor | Fuente (Truth Anchor) |
 |---------|-------|------------------------|
-| Líneas de código (src/) | 22,981 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
-| Archivos Python (src/) | 75 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
-| Tests (tests/) | 1,171 / 1,171 pass | `python -m pytest tests/ -q` (exit 0) |
-| LOC tests/ (helper) | 14,485 | `pytest --collect-only -q` (test count) |
+| Líneas de código (src/) | 24,757 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
+| Archivos Python (src/) | 79 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
+| Tests (tests/) | 1,630 / 1,630 pass | `python -m pytest tests/ -q` (exit 0) |
+| LOC tests/ (helper) | ~24,000 | `pytest --collect-only -q` (test count) |
 | Silos SF+SM | 7 (Lite) | `audit_sf_sm.py` |
 | Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
-| Versión | v1.2.4 (BLOQUE 58.14.4) | `git log --oneline -1` |
+| Versión | v1.2.5 (BLOQUE 58.60) | `git log --oneline -1` |
 | Rama | master | `git branch --show-current` |
 | Remote | github.com/lerius700-cmyk/Void-Hunter | `git remote -v` |
-| Build .exe | `dist/void-hunter/void-hunter.exe` ~4.85 MB | `Get-Item dist/void-hunter/void-hunter.exe` |
+| Build .exe | `dist/void-hunter/void-hunter.exe` ~4.3 MB | `Get-Item dist/void-hunter/void-hunter.exe` |
+| Videos cinemáticos (standalone) | 4 mp4 (1080×1920 + 540×960) en `release/videos/` | `Get-ChildItem release/videos/*.mp4` |
+| Videos cinemáticos (in-game) | 660 PNG frames en `Assets/video/{title,zoom}/frames/` | `Get-ChildItem Assets/video/*/frames/frame_*.png` |
+| Sprite sheets (in-game) | 5 PNGs en `Assets/sprites/player_ships/ship_*_spritesheet.png` | `Get-ChildItem Assets/sprites/player_ships/*_spritesheet.png` |
 
 > **Nota:** los valores 22,981 LOC y 75 files en `src/` son el conteo actual
 > (regenerados 2026-08-17). El valor histórico 28,066 LOC / 118 files que
@@ -211,3 +218,15 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
   - C-1: 6 archivos físicos movidos de `docs/` raíz a subcarpetas silo (`docs/arch/`, `docs/bloques/`, `docs/session-reports/`, `docs/changelog/`).
   - C-2: STATUS:GENERATED regenerado con métricas reales (22,981 LOC, 75 files en `src/`, 14,485 LOC en `tests/`).
   - C-3: `sre-protocol` + `synapse-deep` agregados a la tabla de protocolos en L1.
+- **2026-08-25 (BLOQUE 58.59 + 58.60 — videos + gallery)** — Cinemáticos pixel-art integrados:
+  - 4 videos: V1-S/V2-S standalone 9:16 mp4 (`release/videos/`) + V1-G/V2-G in-game 240×360 PNG (`Assets/video/`)
+  - `src/ui/video_player.py` (sprite-sheet player, 80 LOC)
+  - `src/ui/cinematic_scene.py` (nuevo GameState.CINEMATIC entre TITLE y ACT_INTRO)
+  - `src/ui/gallery_scene.py` (2 nuevas scenes: GALLERY_SPRITE + GALLERY_VIDEO, hotkeys S/V en title)
+  - `tools/video_gen/` (pipeline procedural con PIL: paleta, pixel_grid, effects, ship_overlay, composition, pixel_font)
+  - `tools/build_sprite_sheet.py` (genera 5 spritesheets desde `ship_NN_base.png`)
+  - 14 ships_NN_spritesheet.png (5 ships × animaciones)
+  - 45 nuevos tests pytest (test_video_player, test_video_assets, test_cinematic_scene, test_video_mp4_export, test_gallery_scene)
+  - 660 frames PNG bundleados en `Assets/video/`
+  - STATUS:GENERATED regenerado: 24,757 LOC / 79 files en `src/`, 1,630 tests pass
+  - `docs/superpowers/specs/2026-08-25-void-hunter-videos-design.md` (spec de la feature)

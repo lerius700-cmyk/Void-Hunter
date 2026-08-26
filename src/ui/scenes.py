@@ -310,6 +310,7 @@ class TitleScene(Scene):
         elif self._bg is not None:
             self._bg.update(dt)
         # "PRESS ANY KEY" or mouse click → start (BLOQUE 58.59: goes to CINEMATIC)
+        # BLOQUE 58.60: S = sprite sheet gallery, V = video gallery.
         for event in pygame.event.get(pygame.KEYDOWN):
             if event.key in (
                 pygame.K_LSHIFT, pygame.K_RSHIFT,
@@ -317,6 +318,12 @@ class TitleScene(Scene):
                 pygame.K_LALT, pygame.K_RALT,
             ):
                 continue
+            if event.key == pygame.K_s:
+                self._transition_to(GameState.GALLERY_SPRITE)
+                return
+            if event.key == pygame.K_v:
+                self._transition_to(GameState.GALLERY_VIDEO)
+                return
             self._transition_to(GameState.CINEMATIC)
             return
         for event in pygame.event.get(pygame.MOUSEBUTTONDOWN):
@@ -343,6 +350,9 @@ class TitleScene(Scene):
         credits = font2.render("C: CREDITS", True, (80, 80, 100))
         target.blit(credits, (INTERNAL_W - credits.get_width() - 4,
                               INTERNAL_H - credits.get_height() - 2))
+        # BLOQUE 58.60: gallery hotkey hints in the bottom-left
+        gallery = font2.render("S: SHIPS  V: VIDEOS", True, (110, 130, 160))
+        target.blit(gallery, (4, INTERNAL_H - gallery.get_height() - 2))
 
     def _draw_demo_ships(self, target: pygame.Surface) -> None:
         """BLOQUE 58.47: draw demo ships using the REAL ship sprites

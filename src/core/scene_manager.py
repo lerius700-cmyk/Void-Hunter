@@ -29,14 +29,20 @@ class GameState(Enum):
     CREDITS = "credits"
     # BLOQUE 50: mid-wave sub-boss intro scene (yellow WARNING)
     SUB_BOSS_INTRO = "sub_boss_intro"
+    # BLOQUE 58.60: gallery scenes (sprite sheets + videos)
+    GALLERY_SPRITE = "gallery_sprite"
+    GALLERY_VIDEO = "gallery_video"
     # Overlay state (not in main sequence, pushed onto stack)
     PAUSE = "pause"
 
 
 # Valid transitions: from_state -> set of allowed to_states
 VALID_TRANSITIONS: dict[GameState, set[GameState]] = {
-    GameState.TITLE: {GameState.CINEMATIC, GameState.ACT_INTRO, GameState.CREDITS},  # BLOQUE 58.59
-    GameState.CINEMATIC: {GameState.ACT_INTRO, GameState.TITLE},  # BLOQUE 58.59
+    GameState.TITLE: {GameState.CINEMATIC, GameState.ACT_INTRO, GameState.CREDITS,
+                      GameState.GALLERY_SPRITE, GameState.GALLERY_VIDEO},  # BLOQUE 58.59 + 58.60
+    GameState.CINEMATIC: {GameState.ACT_INTRO, GameState.TITLE},
+    GameState.GALLERY_SPRITE: {GameState.TITLE, GameState.GALLERY_VIDEO},  # BLOQUE 58.60
+    GameState.GALLERY_VIDEO: {GameState.TITLE, GameState.GALLERY_SPRITE},  # BLOQUE 58.60
     GameState.ACT_INTRO: {GameState.GAMEPLAY, GameState.TITLE},
     GameState.GAMEPLAY: {
         GameState.BOSS_INTRO,
