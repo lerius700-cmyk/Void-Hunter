@@ -180,29 +180,19 @@ class GameplayRuntime:
                 scroll_speed_px_per_s=30.0,  # BLOQUE 58.6w: slow parallax
             )
         )
-        # BLOQUE 58.12: SPARSE ParallaxBackground (8 stars/layer, 0 nebulas,
-        # 0 planets). Used as the PRIMARY gameplay background for that
-        # "vast empty space" feel (~80% black). The galaxy_strip can
-        # still be loaded as a deeper background layer.
-        # BLOQUE 58.14.4: changed nebula_count from 1 to 2 (large) and
-        # reduced radius — the user said the boss scene's 2 visible
-        # large spiral galaxies look great, but the gameplay's 4-5
-        # visible ones (legacy 6 + parallax 1) "don't make sense".
-        # BLOQUE 58.next: user wants ALWAYS exactly 1 nebula on screen
-        # (not 4), and it must be COMPLETE (not clipped at the edges),
-        # and its position must VARY over time (not always the same).
-        # The parallax state machine (visible → fading_out → hidden →
-        # fading_in with new position) handles all three.
+        # BLOQUE 58.12: SPARSE ParallaxBackground (8 stars/layer, 0 planets).
+        # Used as the PRIMARY gameplay background for that "vast empty
+        # space" feel (~80% black).
+        # BLOQUE 58.15: the nebula system (1+ clouds with state machine)
+        # is REPLACED by the scrolling galaxy strip. The strip is a single
+        # 480x1440 Surface with 3 large galaxies + 2 small + ~70 stars,
+        # one of 4 variants (blue/green/yellow/violet, one per act).
+        # The previous nebula_count / nebula_radius_* parameters are gone.
         from src.systems.parallax import ParallaxBackground
         self._parallax_bg: "ParallaxBackground" = ParallaxBackground(
             width=INTERNAL_W, height=INTERNAL_H,
             rng_seed=0xC0FFEE58,
             stars_per_layer=8,   # sparse (was 50)
-            # BLOQUE 58.next: exactly 1 nebula, large and complete,
-            # repick position every 10-18s with a fade transition.
-            nebula_count=1,
-            nebula_radius_min=60,
-            nebula_radius_max=90,
             spawn_planets=False, # no planets
         )
         # Keep the old TilingImage as a fallback (in case the galaxy
@@ -440,6 +430,13 @@ class GameplayRuntime:
     # Lifecycle
     # ------------------------------------------------------------------
     def on_enter(self) -> None:
+        # BLOQUE 58.15: pick the galaxy strip variant for this act.
+        # Act 1 -> blue, Act 2 -> green (teal), Act 3 -> yellow (gold_amber),
+        # Act 4 -> violet (purple_dusk). Clamp to last variant if the act
+        # exceeds the available variants.
+        if self._parallax_bg is not None and not self._is_boss:
+            _ACT_TO_VARIANT = {1: 0, 2: 1, 3: 2, 4: 3}
+            self._parallax_bg.set_strip_variant(_ACT_TO_VARIANT.get(self._act, 0))
         # BLOQUE 50: detect "resume from SUB_BOSS_INTRO" — when we return
         # to GAMEPLAY after the sub-boss warning, the chain has
         # _sub_boss_pending=True and current_wave_idx is post-O2. In that

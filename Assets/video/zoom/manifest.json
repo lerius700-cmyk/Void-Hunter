@@ -1,0 +1,23 @@
+{
+  "name": "void_hunter_zoom_v1",
+  "version": "1.0.0",
+  "bloque": "58.59",
+  "fps": 30,
+  "frame_count": 300,
+  "width": 240,
+  "height": 360,
+  "loop": false,
+  "duration_s": 10.0,
+  "format": "png_sequence",
+  "frames_pattern": "frames/frame_{:04d}.png",
+  "phases": {
+    "close_up": [0, 59],
+    "nebula_fade_in": [60, 104],
+    "asteroids_drift": [105, 149],
+    "planet_appears": [150, 194],
+    "dolly_back_continues": [195, 239],
+    "near_gameplay": [240, 284],
+    "final_ease_out": [285, 299]
+  },
+  "notes": "Cinematic video of the player ship dolly-back from close-up to gameplay position. Plays once between TitleScene and ActIntroScene. ESC skips to ActIntro."
+}

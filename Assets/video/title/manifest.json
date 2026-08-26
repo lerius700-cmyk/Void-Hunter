@@ -1,0 +1,21 @@
+{
+  "name": "void_hunter_title_v1",
+  "version": "1.0.0",
+  "bloque": "58.59",
+  "fps": 30,
+  "frame_count": 360,
+  "width": 240,
+  "height": 360,
+  "loop": true,
+  "loop_start_frame": 120,
+  "loop_end_frame": 359,
+  "duration_s": 12.0,
+  "format": "png_sequence",
+  "frames_pattern": "frames/frame_{:04d}.png",
+  "phases": {
+    "logo_reveal": [0, 119],
+    "ambient": [120, 224],
+    "demo": [225, 359]
+  },
+  "notes": "Title screen video for the Void Hunter TitleScene. Plays in loop. First 4s is the logo reveal (one-shot), then 8s ambient+demo loop."
+}
