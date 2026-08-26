@@ -54,6 +54,10 @@ if TYPE_CHECKING:
     from src.audio.synth import AudioEngine
     from src.systems.wave_manager import BossTrigger, WaveChain, WaveManager
     from src.ui.scenes import TransitionFn
+    from src.ui.scenes import _find_sprites_dir  # BLOQUE 58.60: player sprite sheet
+else:
+    # BLOQUE 58.60: also import at runtime for _load_player_spritesheet().
+    from src.ui.scenes import _find_sprites_dir  # type: ignore[no-redef]
 
 
 # Wave spawn intervals (seconds) — how often to drop a new enemy during a wave
@@ -4593,15 +4597,126 @@ class GameplayRuntime:
     # Assets/sprites/. We load them lazily and cache in a module-level
     # dict. Falls back to the procedural _draw_player / _draw_enemy if
     # the sprite file is missing.
+    #
+    # BLOQUE 58.60: prefer the new ship_01_spritesheet.png (the cyan
+    # Arwing from BLOQUE 58.60) over the legacy 28x26 player_idle.png /
+    # player_propulsion.png. The new sprite is 64x64 with the ship drawn
+    # in pixel-art detail (cyan body + red wing tips + yellow engines).
+    # We use a subsurface of cell (0, row) where row=1 (idle) or
+    # row=2 (propulsion). Falls back to the legacy sprites if the
+    # sprite sheet is missing.
     # ------------------------------------------------------------------
 
+    # Module-level cache so the sprite sheet loads ONCE per process,
+    # not once per frame. Shared across all GameplayRuntime instances.
+    _PLAYER_SPRITESHEET_CACHE: Optional[pygame.Surface] = None
+    _PLAYER_SPRITESHEET_LOADED: bool = False
+
+    @classmethod
+    def _load_player_spritesheet(cls) -> Optional[pygame.Surface]:
+        """Load and cache the ship_01_spritesheet.png (5 anims × 8 frames grid).
+
+        Returns the 680×386 surface or None if the file is missing.
+        """
+        if cls._PLAYER_SPRITESHEET_LOADED:
+            return cls._PLAYER_SPRITESHEET_CACHE
+        cls._PLAYER_SPRITESHEET_LOADED = True
+        sprites_dir = _find_sprites_dir()
+        if sprites_dir is None:
+            return None
+        path = sprites_dir / "player_ships" / "ship_01_spritesheet.png"
+        if not path.is_file():
+            return None
+        try:
+            cls._PLAYER_SPRITESHEET_CACHE = pygame.image.load(str(path)).convert_alpha()
+        except pygame.error:
+            cls._PLAYER_SPRITESHEET_CACHE = None
+        return cls._PLAYER_SPRITESHEET_CACHE
+
     def _get_player_sprite(self) -> "Optional[pygame.Surface]":
-        """Return the player ship PNG (state-aware: idle or propulsion)."""
-        from src.ui.scenes import _load_sprite
+        """Return the player ship PNG (state-aware: idle or propulsion).
+
+        BLOQUE 58.60: prefers the cyan Arwing from ship_01_spritesheet.png
+        (subsurface of cell (col=0, row=animation)). Falls back to the
+        legacy 28x26 PNGs, which in turn fall back to procedural drawing
+        in _draw_player_scaled().
+
+        The sprite sheet is generated WITHOUT the chroma key applied
+        (so artists can see the dark-gray checker background as a
+        reference). We apply the chroma key at runtime here, so the
+        game only sees the ship silhouette.
+        """
         from src.entities.player.player import PlayerState
-        if self._player.state == PlayerState.PROPULSION:
+        is_propulsion = (self._player.state == PlayerState.PROPULSION)
+        sheet = self._load_player_spritesheet()
+        if sheet is not None:
+            # Sprite sheet layout (from tools/build_sprite_sheet.py):
+            #   LABEL_WIDTH = 96px column on the left (we skip it)
+            #   PADDING = 8px between cells
+            #   FRAME_SIZE = 64px per cell
+            #   Row order: idle(0), rotating(1), propulsion(2),
+            #              charging(3), damage(4)
+            #   The sheet has a 18-px header at the top (label strip),
+            #   so cell (0, 0) is at (96+8, 18+8) = (104, 26).
+            # Layout constants must match tools/build_sprite_sheet.py:
+            LABEL_WIDTH = 96
+            PADDING = 8
+            FRAME_SIZE = 64
+            HEADER_HEIGHT = 18
+            # Pick the row by player state
+            row = 2 if is_propulsion else 0  # 0=idle, 2=propulsion
+            col = 0  # first frame of the animation
+            x0 = LABEL_WIDTH + PADDING + col * (FRAME_SIZE + PADDING)
+            y0 = HEADER_HEIGHT + PADDING + row * (FRAME_SIZE + PADDING)
+            try:
+                frame = sheet.subsurface(pygame.Rect(x0, y0, FRAME_SIZE, FRAME_SIZE)).copy()
+                return self._chroma_key_sprite(frame)
+            except (ValueError, pygame.error):
+                pass
+        # Fallback: legacy 28x26 PNG
+        from src.ui.scenes import _load_sprite
+        if is_propulsion:
             return _load_sprite("player_propulsion.png")
         return _load_sprite("player_idle.png")
+
+    @staticmethod
+    def _chroma_key_sprite(sprite: "pygame.Surface") -> "pygame.Surface":
+        """Make the dark-gray checker background of a ship sprite transparent.
+
+        The sprite sheet's ship frames are baked with a dark-gray checker
+        background (R==G==B, value < 80) so artists can see the silhouette
+        against a contrasting backdrop. In the game, we want the ship
+        silhouette against the playfield — so we key out the background.
+
+        Uses numpy for speed (this can run 60+ times per second).
+        """
+        import numpy as np
+        if sprite.get_masks()[3] == 0:
+            return sprite  # no alpha channel
+        # Read RGB and alpha as separate arrays
+        arr3d = pygame.surfarray.array3d(sprite)  # (W, H, 3)
+        alpha = pygame.surfarray.array_alpha(sprite)  # (W, H)
+        r, g, b = arr3d[..., 0], arr3d[..., 1], arr3d[..., 2]
+        is_gray = (r == g) & (g == b)
+        is_dark = r < 80
+        is_bg = is_gray & is_dark
+        new_alpha = np.where(is_bg, 0, alpha).astype(np.uint8)
+        # Write the updated alpha back to a new surface
+        new_surf = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
+        # Blit the RGB first
+        new_surf.blit(sprite, (0, 0))
+        # Then overwrite alpha via surfarray
+        try:
+            alpha_view = pygame.surfarray.pixels_alpha(new_surf)
+            alpha_view[:] = new_alpha
+            alpha_view = None  # release the view
+        except (ValueError, RuntimeError):
+            # Fallback: per-pixel
+            for y in range(sprite.get_height()):
+                for x in range(sprite.get_width()):
+                    if new_alpha[x, y] == 0:
+                        new_surf.set_at((x, y), (0, 0, 0, 0))
+        return new_surf
 
     def _get_enemy_sprite(self, e: "Enemy") -> "Optional[pygame.Surface]":
         """Return the enemy ship PNG by EnemyKind value, with optional

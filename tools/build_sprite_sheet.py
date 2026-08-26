@@ -110,8 +110,12 @@ def build_sheet(ship_id: int = 1) -> Path:
         # Resize to FRAME_SIZE for the cover
         if base_img.size != (FRAME_SIZE, FRAME_SIZE):
             base_img = base_img.resize((FRAME_SIZE, FRAME_SIZE), Image.Resampling.NEAREST)
-    # Create the sheet canvas
-    sheet = Image.new("RGBA", (SHEET_WIDTH, SHEET_HEIGHT), GRID_BG + (255,))
+    # Create the sheet canvas with a TRANSPARENT background. The cell
+    # backgrounds and the gaps between cells stay transparent so the
+    # chroma-keyed ship silhouettes are preserved when the sheet is
+    # used as a runtime asset. The label column and frame borders are
+    # drawn on top in opaque colors.
+    sheet = Image.new("RGBA", (SHEET_WIDTH, SHEET_HEIGHT), (0, 0, 0, 0))
     draw = ImageDraw.Draw(sheet)
     # Use a pixel font for the labels
     label_font = _load_font(11)
@@ -134,13 +138,10 @@ def build_sheet(ship_id: int = 1) -> Path:
         # Each frame in this row
         for col in range(COLUMNS):
             x0 = LABEL_WIDTH + PADDING + col * (FRAME_SIZE + PADDING)
-            # Frame cell background (slightly lighter than the grid)
-            cell_bg = (40, 34, 56, 255)
-            draw.rectangle(
-                [x0, y0, x0 + FRAME_SIZE, y0 + FRAME_SIZE],
-                fill=cell_bg,
-            )
-            # Frame border
+            # Frame border only (no opaque cell background — the cell stays
+            # transparent so the chroma-keyed ship can be blitted on top and
+            # remain see-through. This is what makes the sprite sheet usable
+            # as a RUNTIME asset, not just a documentation card.)
             draw.rectangle(
                 [x0, y0, x0 + FRAME_SIZE - 1, y0 + FRAME_SIZE - 1],
                 outline=FRAME_BORDER,
@@ -148,13 +149,14 @@ def build_sheet(ship_id: int = 1) -> Path:
             )
             # Load and paste the frame
             if col == 0 and base_img is not None:
-                # Use the base image for the first cell (the "source" preview)
-                frame = base_img.copy()
+                # Use the base image for the first cell (the "source" preview).
+                # Apply chroma key so the cell matches the rest of the row.
+                frame = _chroma_key(base_img.copy())
             else:
                 frame = _load_frame(ship_dir, anim, col)
+                if frame is not None:
+                    frame = _chroma_key(frame)
             if frame is not None:
-                # Apply chroma key to clean up the dark-gray background
-                frame = _chroma_key(frame)
                 sheet.alpha_composite(frame, (x0, y0))
             # Frame number label (small, in the corner)
             num_label = str(col)
@@ -175,8 +177,12 @@ def build_sheet(ship_id: int = 1) -> Path:
         fill=(140, 200, 255),
         font=label_font,
     )
-    # Composite the header at the top
-    final = Image.new("RGBA", (SHEET_WIDTH, SHEET_HEIGHT + 18), GRID_BG + (255,))
+    # Composite the header at the top. We start with a TRANSPARENT
+    # background so the sheet's own transparency (chroma-keyed ship
+    # frames) is preserved. The gaps between cells stay transparent,
+    # making the sheet usable as a runtime asset (blit on top of
+    # the playfield without an opaque card background).
+    final = Image.new("RGBA", (SHEET_WIDTH, SHEET_HEIGHT + 18), (0, 0, 0, 0))
     final.alpha_composite(header, (0, 0))
     final.alpha_composite(sheet, (0, 18))
     # Output path
