@@ -6,6 +6,48 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [v1.1.5] — 2026-08-26
+
+> Player ship scale fix (BLOQUE 58.61) + procedural patterns as default (BLOQUE 58.62).
+
+### Fixed
+
+**BLOQUE 58.61 — Player ship half-size + remove frame-border rectangle**
+- New ship sprite (ship_01_spritesheet) was 62x62 px and rendered at full
+  size (~65 px in the playfield), which was stupidly large vs the
+  enemy ships (~13-24 px) and the previous procedural ship (32x24).
+  - `self._player_sprite_scale: float = 0.55` — the sprite path now uses
+    its own scale (about half the previous size), so the new ship ends
+    up at ~34x34, matching the original 32x24 footprint.
+- A 1px `FRAME_BORDER` rectangle was visible around each sprite cell
+  (debug visualization leaked into runtime).
+  - `CELL_INSET = 1` — the gallery and sprite path now skip the
+    1px border on each side, so the ship renders without the rectangle.
+- Fixed NameError regression in the procedural fallback path: d3c2ec3
+  renamed `scale` to `sprite_scale` in the sprite branch but left the
+  fallback branch referencing the old name. Rebound to `proc_scale =
+  self._ship_scale_player` (1.05x, the original scale for the
+  procedural ship).
+
+**BLOQUE 58.62 — Procedural patterns as default mode**
+- `main.py`: when the user runs `void-hunter` with no flag, the game
+  now starts in procedural patterns mode (the same as `--patterns 42`).
+  This makes the Star Fox-inspired choreographies (BEZIER_SWEEP,
+  V_FORMATION, LEADER_FOLLOWER_CHAIN, DICE_FIVE_GRID, PINCER_CROSS,
+  OSCILLATING_BUTTERFLY, plus the 50 composed multi-segment patterns
+  from BLOQUE 58.14.7) the main experience.
+- `--roguelike [SEED]` and `--campaign` remain opt-in for the
+  roguelike flow and the 18 hand-tuned JSON waves, respectively.
+- The legacy roguelike default is preserved when `--roguelike` is passed.
+
+### Verified
+- 1667/1672 pytest pass (5 pre-existing test isolation flakes in
+  test_sub_boss_* that pass in isolation but fail in full suite).
+- Visual validation frame: `release/strip_variants/player_ship_v114_validate.png`
+  shows the player ship at the new half-size with no border rectangle.
+
+---
+
 ## [v1.1.4] — 2026-08-25
 
 > Scrolling galaxy strip + cinematic video intros (title + zoom).

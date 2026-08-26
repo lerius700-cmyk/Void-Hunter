@@ -4813,6 +4813,11 @@ class GameplayRuntime:
         # so the new ship sprite matches the original procedural size.
         # The procedural fallback still uses _ship_scale_player.
         sprite_scale = self._player_sprite_scale  # 0.55 by default
+        # Fallback scale for the procedural path (used when sprite is None).
+        # Was `scale` in the old code; d3c2ec3 renamed it to `sprite_scale`
+        # in the sprite branch but left the fallback branch referencing the
+        # old name -> NameError. Bind it explicitly.
+        proc_scale = self._ship_scale_player  # 1.05 by default
         # BLOQUE 58.50: nose_angle = 0° (up), 90° (right), 180° (down),
         # 270° (left). The sprite points UP at 0°. pygame.transform.rotate
         # uses degrees CCW, so we negate the angle to get a clockwise
@@ -4838,8 +4843,8 @@ class GameplayRuntime:
             offset_x = sw // 2 - int(self._player.x)
             offset_y = sh // 2 - int(self._player.y)
             self._draw_player(scratch, offset_x, offset_y)
-            new_w = int(sw * scale)
-            new_h = int(sh * scale)
+            new_w = int(sw * proc_scale)
+            new_h = int(sh * proc_scale)
             scaled = pygame.transform.scale(scratch, (new_w, new_h))
             blit_x = int(self._player.x + shx) - new_w // 2
             blit_y = int(self._player.y + shy) - new_h // 2
