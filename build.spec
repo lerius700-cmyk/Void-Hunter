@@ -52,6 +52,9 @@ a = Analysis(
         # from the original WAV at 600Hz cutoff. Safe to omit — the
         # game will regenerate on first pause if missing.
         (str(PROJECT_ROOT / "Assets" / "keep kept - Lerius - soundtrack gameplay_lp600.wav"), "Assets"),
+        # BLOQUE 58.59: bundle the cinematic video PNG sequences
+        # (V1-G title + V2-G zoom). ~5 MB total for 240x360 @ 30FPS.
+        (str(PROJECT_ROOT / "Assets" / "video"), "Assets/video"),
     ],
     hiddenimports=[
         # pygame submodules that PyInstaller's static analysis can miss.
