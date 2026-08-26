@@ -86,7 +86,11 @@ def test_spritesheet_falls_back_when_missing(tmp_path, monkeypatch):
 
 
 def test_player_sprite_uses_spritesheet_when_available():
-    """_get_player_sprite should return a 64x64 frame from the sheet when available."""
+    """_get_player_sprite should return a frame from the sheet when available.
+
+    BLOQUE 58.61: the cell extract now excludes the 1px FRAME_BORDER,
+    so the runtime sprite is 62x62 (was 64x64).
+    """
     from src.ui.gameplay_runtime import GameplayRuntime
     # Need a runtime instance to call instance method
     from src.entities.player.player import PlayerState
@@ -94,11 +98,10 @@ def test_player_sprite_uses_spritesheet_when_available():
     runtime._player = type("P", (), {"state": PlayerState.IDLE})()
     sprite = runtime._get_player_sprite()
     assert sprite is not None
-    # The cyan Arwing sprite from the sheet is 64x64.
-    # If the sheet is missing and we fall back to legacy PNG, the sprite
-    # would be 28x26. We require 64x64 to confirm the new sprite is in use.
-    assert sprite.get_width() == 64
-    assert sprite.get_height() == 64
+    # The cyan Arwing sprite from the sheet is 62x62 (BLOQUE 58.61
+    # excludes the 1px frame border).
+    assert sprite.get_width() == 62
+    assert sprite.get_height() == 62
 
 
 def test_player_sprite_changes_by_state():

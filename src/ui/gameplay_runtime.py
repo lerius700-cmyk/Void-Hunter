@@ -279,6 +279,12 @@ class GameplayRuntime:
         # draw time via scratch surface so the hitboxes / game logic
         # don't change, only the visual size.
         self._ship_scale_player: float = 1.05
+        # BLOQUE 58.61: separate scale for the new sprite-based player
+        # render. The sprite is 62x62 (post-chroma-key inset); at 0.55x
+        # it becomes ~34x34 in the playfield, matching the original
+        # procedural ship footprint (32x24) so the ship doesn't look
+        # comically huge next to the ~13-24px enemies.
+        self._player_sprite_scale: float = 0.55
         self._ship_scale_enemy: float = 1.05
         # Reusable scratch surface for the scaled player (avoids per-frame
         # allocation). 64x64 fits the 32x24 Arwing at 1.05x with margin.
@@ -4663,13 +4669,21 @@ class GameplayRuntime:
             PADDING = 8
             FRAME_SIZE = 64
             HEADER_HEIGHT = 18
+            # BLOQUE 58.61: exclude the 1px FRAME_BORDER from each cell.
+            # The sprite sheet draws a purple/lavender outline around each
+            # 64x64 cell (FRAME_BORDER = (60, 50, 80)) for the documentation
+            # card. When we extract the full cell as a subsurface, that
+            # border ends up wrapping the ship. We inset by 1px on each
+            # side to drop the border, so the runtime ship has no halo.
+            CELL_INSET = 1
             # Pick the row by player state
             row = 2 if is_propulsion else 0  # 0=idle, 2=propulsion
             col = 0  # first frame of the animation
-            x0 = LABEL_WIDTH + PADDING + col * (FRAME_SIZE + PADDING)
-            y0 = HEADER_HEIGHT + PADDING + row * (FRAME_SIZE + PADDING)
+            x0 = LABEL_WIDTH + PADDING + col * (FRAME_SIZE + PADDING) + CELL_INSET
+            y0 = HEADER_HEIGHT + PADDING + row * (FRAME_SIZE + PADDING) + CELL_INSET
+            cell_size = FRAME_SIZE - 2 * CELL_INSET  # 62x62
             try:
-                frame = sheet.subsurface(pygame.Rect(x0, y0, FRAME_SIZE, FRAME_SIZE)).copy()
+                frame = sheet.subsurface(pygame.Rect(x0, y0, cell_size, cell_size)).copy()
                 return self._chroma_key_sprite(frame)
             except (ValueError, pygame.error):
                 pass
@@ -4787,9 +4801,18 @@ class GameplayRuntime:
         Assets/sprites/ over the procedural code.
         BLOQUE 58.50: rotates the PNG to match the player's nose angle
         (the procedural code did this internally; the static PNG needs
-        an explicit rotate())."""
-        scale = self._ship_scale_player
+        an explicit rotate()).
+        BLOQUE 58.61: the new sprite from ship_01_spritesheet.png is
+        62x62 (post-chroma-key). At _ship_scale_player=1.05 that's ~65x65
+        in the playfield — way too big vs the enemies (~13-24 px) and
+        the original procedural ship (32x24). We use a SEPARATE scale
+        for the sprite path (0.55x) so the ship ends up at ~34x34,
+        matching the original 32x24 footprint."""
         sprite = self._get_player_sprite()
+        # BLOQUE 58.61: the sprite-based render uses its own scale (0.55x)
+        # so the new ship sprite matches the original procedural size.
+        # The procedural fallback still uses _ship_scale_player.
+        sprite_scale = self._player_sprite_scale  # 0.55 by default
         # BLOQUE 58.50: nose_angle = 0° (up), 90° (right), 180° (down),
         # 270° (left). The sprite points UP at 0°. pygame.transform.rotate
         # uses degrees CCW, so we negate the angle to get a clockwise
@@ -4802,7 +4825,7 @@ class GameplayRuntime:
                 sprite = pygame.transform.rotate(sprite, rot_deg)
             w, h = sprite.get_size()
             scaled = pygame.transform.scale(
-                sprite, (int(w * scale), int(h * scale)),
+                sprite, (int(w * sprite_scale), int(h * sprite_scale)),
             )
             blit_x = int(self._player.x + shx) - scaled.get_width() // 2
             blit_y = int(self._player.y + shy) - scaled.get_height() // 2
