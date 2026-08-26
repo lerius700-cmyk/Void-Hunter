@@ -19,6 +19,15 @@ from src.core.settings import INTERNAL_H, INTERNAL_W
 from src.utils.palette import PALETTE
 
 
+# BLOQUE 58.59: VideoPlayer drives the title screen video (V1-G) and the
+# cinematic ship zoom (V2-G). Imported here to avoid a hard dependency on
+# the parallax/VideoPlayer modules at module import time.
+try:
+    from src.ui.video_player import VideoPlayer
+except ImportError:
+    VideoPlayer = None  # type: ignore
+
+
 # Type alias for scene constructor
 TransitionFn = Callable[[GameState], None]
 
@@ -59,6 +68,48 @@ def _find_sprites_dir() -> Optional[Path]:
         if c.is_dir():
             return c
     return None
+
+
+# BLOQUE 58.59: same pattern as _find_sprites_dir but for Assets/video/.
+def _find_video_assets_dir() -> Optional[Path]:
+    """Locate the Assets/video/ directory containing the cinematic PNG sequences."""
+    candidates: list[Path] = []
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        meipass_p = Path(meipass)
+        candidates.append(meipass_p / "Assets" / "video")
+        candidates.append(meipass_p / "_internal" / "Assets" / "video")
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).parent
+    else:
+        exe_dir = Path(__file__).resolve().parent.parent.parent
+    candidates.append(exe_dir / "Assets" / "video")
+    candidates.append(exe_dir / "_internal" / "Assets" / "video")
+    candidates.append(exe_dir.parent / "Assets" / "video")
+    for c in candidates:
+        if c.is_dir():
+            return c
+    return None
+
+
+def _build_video_player(subdir: str, loop: bool) -> Optional["VideoPlayer"]:
+    """Build a VideoPlayer for a subdirectory of Assets/video/. Returns None if assets missing."""
+    if VideoPlayer is None:
+        return None
+    base = _find_video_assets_dir()
+    if base is None:
+        return None
+    frames_dir = base / subdir / "frames"
+    manifest_path = base / subdir / "manifest.json"
+    if not frames_dir.is_dir() or not manifest_path.is_file():
+        return None
+    return VideoPlayer(
+        frames_dir=frames_dir,
+        manifest_path=manifest_path,
+        loop=loop,
+        autoplay=True,
+        scale_to_fit=True,
+    )
 
 
 def _load_sprite(name: str) -> Optional[pygame.Surface]:
@@ -152,26 +203,30 @@ class TitleScene(Scene):
     def __init__(self, transition_to: TransitionFn) -> None:
         self._transition_to = transition_to
         self._t: float = 0.0
-        # Background demo
+        # BLOQUE 58.59: title screen now plays a pre-rendered video (V1-G)
+        # as its background. The procedural demo (ships/bullets/explosions)
+        # has been retired; the video provides the ambient + demo loop.
+        self._video = _build_video_player("title", loop=True)
+        # Fallback flag: if the video assets are missing, fall back to a
+        # black canvas (so the title still works in dev environments
+        # without the generated assets).
+        self._video_available = self._video is not None
+        # Keep _bg for the rare case the video is unavailable (older dev
+        # machines without the new assets) — draws a minimal starfield.
         self._bg: Optional[ParallaxBackground] = None
-        self._demo_ships: list[_TitleDemoShip] = []
-        self._demo_bullets: list[_TitleDemoBullet] = []
-        self._demo_explosions: list[_TitleDemoExplosion] = []
-        self._demo_rng: random.Random = random.Random(0xCAFE2026)
-        self._next_shoot: float = 0.0
-        self._next_explode: float = 1.5
+        # The "demo_ships/bullets/explosions" lists are now unused but kept
+        # as None to avoid touching the rest of the class. The draw() / update()
+        # methods are simplified to use the video.
 
     def on_enter(self) -> None:
         self._t = 0.0
-        # Init background + demo entities
-        from src.systems.parallax import ParallaxBackground
-        self._bg = ParallaxBackground(rng_seed=0xCAFE2026)
-        self._demo_ships.clear()
-        self._demo_bullets.clear()
-        self._demo_explosions.clear()
-        # Spawn initial ships
-        for _ in range(3):
-            self._spawn_demo_ship()
+        # BLOQUE 58.59: start the title video.
+        if self._video is not None:
+            self._video.play()
+        # Legacy parallax fallback (only used if video unavailable)
+        if not self._video_available:
+            from src.systems.parallax import ParallaxBackground
+            self._bg = ParallaxBackground(rng_seed=0xCAFE2026)
         # BLOQUE 58.45: play the title-screen track on loop.
         from src.audio import music
         # BLOQUE 58.57: diagnostic to confirm on_enter is reached
@@ -248,58 +303,13 @@ class TitleScene(Scene):
 
     def update(self, dt: float) -> None:
         self._t += dt
-        # Background
-        if self._bg is not None:
+        # BLOQUE 58.59: advance the title video.
+        if self._video is not None:
+            self._video.update(dt)
+        # Legacy parallax fallback (only when video is unavailable)
+        elif self._bg is not None:
             self._bg.update(dt)
-        # Update ships
-        for ship in self._demo_ships:
-            ship.x += ship.vx * dt
-            ship.y += ship.vy * dt
-            ship.fire_cd -= dt
-        # Remove off-screen ships + maybe respawn
-        kept = []
-        for ship in self._demo_ships:
-            if -20 <= ship.x <= INTERNAL_W + 20 and -20 <= ship.y <= INTERNAL_H + 20:
-                kept.append(ship)
-            else:
-                # Spawn an explosion + a new ship elsewhere
-                self._spawn_demo_explosion(ship.x, ship.y)
-        self._demo_ships = kept
-        while len(self._demo_ships) < 3:
-            self._spawn_demo_ship()
-        # Ships shoot
-        for ship in self._demo_ships:
-            if ship.fire_cd <= 0.0:
-                ship.fire_cd = self._demo_rng.uniform(0.8, 2.5)
-                if ship.kind == "player":
-                    # Player shoots UP (toward enemies)
-                    self._spawn_demo_bullet(ship.x, ship.y - 6, 0, -200, (255, 220, 100))
-                else:
-                    # Enemy shoots DOWN
-                    self._spawn_demo_bullet(ship.x, ship.y + 4,
-                                              (self._demo_rng.random() - 0.5) * 40,
-                                              150, (255, 100, 100))
-        # Update bullets
-        for b in self._demo_bullets:
-            b.x += b.vx * dt
-            b.y += b.vy * dt
-            b.life -= dt
-        self._demo_bullets = [b for b in self._demo_bullets if b.life > 0 and
-                              -10 <= b.x <= INTERNAL_W + 10 and
-                              -10 <= b.y <= INTERNAL_H + 10]
-        # Update explosions
-        for e in self._demo_explosions:
-            e.x += e.vx * dt
-            e.y += e.vy * dt
-            e.life -= dt
-        self._demo_explosions = [e for e in self._demo_explosions if e.life > 0]
-        # Random ambient explosion every few seconds (for visual interest)
-        if self._t > self._next_explode:
-            self._next_explode = self._t + self._demo_rng.uniform(2.5, 5.0)
-            x = self._demo_rng.uniform(40, INTERNAL_W - 40)
-            y = self._demo_rng.uniform(40, INTERNAL_H - 40)
-            self._spawn_demo_explosion(x, y)
-        # Any key / click → start
+        # "PRESS ANY KEY" or mouse click → start (BLOQUE 58.59: goes to CINEMATIC)
         for event in pygame.event.get(pygame.KEYDOWN):
             if event.key in (
                 pygame.K_LSHIFT, pygame.K_RSHIFT,
@@ -307,29 +317,24 @@ class TitleScene(Scene):
                 pygame.K_LALT, pygame.K_RALT,
             ):
                 continue
-            self._transition_to(GameState.ACT_INTRO)
+            self._transition_to(GameState.CINEMATIC)
             return
         for event in pygame.event.get(pygame.MOUSEBUTTONDOWN):
-            self._transition_to(GameState.ACT_INTRO)
+            self._transition_to(GameState.CINEMATIC)
             return
 
     def draw(self, target: pygame.Surface) -> None:
-        # Background (parallax starfield)
-        if self._bg is not None:
+        # BLOQUE 58.59: video background (V1-G). Falls back to legacy parallax
+        # starfield if the video assets are missing.
+        if self._video is not None:
+            self._video.draw(target)
+        elif self._bg is not None:
             self._bg.draw(target)
         else:
             target.fill((0, 0, 0))
-        # Explosions (behind ships)
-        self._draw_demo_explosions(target)
-        # Ships
-        self._draw_demo_ships(target)
-        # Bullets (on top of ships)
-        self._draw_demo_bullets(target)
-        # Title — big + bold
-        font = pygame.font.Font(None, 32)
-        title = font.render("VOID HUNTER", True, (220, 220, 255))
-        _center_blit(target, title, 100)
-        # Subtle subtitle (just the prompt, blinks)
+        # Text overlay (BLOQUE 58.59: VOID HUNTER title is now baked into
+        # the video for the reveal phase, so we don't render it here).
+        # Keep "PRESS ANY KEY TO START" and "C: CREDITS" as overlays.
         font2 = pygame.font.Font(None, 14)
         sub = font2.render("PRESS ANY KEY TO START", True, (255, 240, 140))
         if int(self._t * 2) % 2 == 0:
@@ -701,6 +706,55 @@ _ENEMY_DRAWERS.update({
     "sniper":   TitleScene._draw_enemy_sniper,
     "turret":   TitleScene._draw_enemy_turret,
 })
+
+
+# BLOQUE 58.59: CinematicScene plays the ship zoom video (V2-G) between
+# TITLE and ACT_INTRO. Plays once (10s). ESC skips to ACT_INTRO. When the
+# video finishes naturally, also transitions to ACT_INTRO.
+class CinematicScene(Scene):
+    """CINEMATIC — pre-gameplay cinematic. Plays V2-G once, then ACT_INTRO."""
+
+    def __init__(self, transition_to: TransitionFn) -> None:
+        self._transition_to = transition_to
+        self._t: float = 0.0
+        self._video = _build_video_player("zoom", loop=False)
+        self._video_available = self._video is not None
+        self._finished: bool = False
+
+    def on_enter(self) -> None:
+        self._t = 0.0
+        self._finished = False
+        if self._video is not None:
+            self._video.play()
+        # BLOQUE 58.59: trigger the procedural sting (1.5s impact + 8.5s swell).
+        try:
+            from src.audio import music
+            music.play_cinematic_sting()
+        except (ImportError, AttributeError):
+            pass
+
+    def update(self, dt: float) -> None:
+        self._t += dt
+        if self._video is not None:
+            self._video.update(dt)
+            if self._video.is_finished():
+                self._finished = True
+        # ESC = skip the cinematic and go straight to ACT_INTRO
+        for event in pygame.event.get(pygame.KEYDOWN):
+            if event.key == pygame.K_ESCAPE:
+                self._finished = True
+        # Safety net: if the video takes longer than 15s, force-finish
+        if self._t > 15.0:
+            self._finished = True
+        if self._finished:
+            self._transition_to(GameState.ACT_INTRO)
+
+    def draw(self, target: pygame.Surface) -> None:
+        if self._video is not None:
+            self._video.draw(target)
+        else:
+            # Fallback: black with a small ship drawn procedurally
+            target.fill((0, 0, 0))
 
 
 class ActIntroScene(Scene):

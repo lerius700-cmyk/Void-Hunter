@@ -500,6 +500,48 @@ def play_voice_pantalla_principal() -> bool:
     return play_voice_clip("voice_pantalla_principal.wav", volume=1.0)
 
 
+# BLOQUE 58.59: Cinematic sting (procedural SFX) for the ship zoom video.
+# Uses the existing AudioEngine to render `boss_warning` (a low sawtooth
+# with a long ADSR release) and plays it on the voice channel. The sting
+# is intentionally short (~0.8s) so it doesn't compete with the
+# gameplay BGM that fades in once the cinematic finishes.
+def play_cinematic_sting() -> bool:
+    """Play a procedural sting at the start of the CINEMATIC scene.
+
+    Best-effort: if the AudioEngine can't render, fails silently. The
+    cinematic visual is the main attraction; the audio is juice.
+    """
+    try:
+        from src.audio.synth import render_sfx
+        import array
+        # Reuse the existing boss_warning SFX (saw, 0.8s, impactful)
+        samples = render_sfx("boss_warning")
+        # Mix down to mono if stereo (the SFX renderer is mono, but be safe)
+        if isinstance(samples, array.array):
+            # Build a temporary WAV in RAM
+            import struct
+            import io
+            import wave
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_path = tmp.name
+            with wave.open(tmp_path, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)  # 16-bit
+                wf.setframerate(44100)
+                wf.writeframes(samples.tobytes())
+            sound = pygame.mixer.Sound(tmp_path)
+            channel = _ensure_voice_channel()
+            if channel is None:
+                return False
+            channel.play(sound)
+            return True
+    except Exception as exc:
+        _diag_log(f"play_cinematic_sting failed: {exc}")
+        return False
+    return False
+
+
 def play_voice_gameplay() -> bool:
     return play_voice_clip("voice_gameplay.wav", volume=1.0)
 

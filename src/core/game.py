@@ -24,6 +24,7 @@ from src.ui.scenes import (
     ActIntroScene,
     BossFightScene,
     BossIntroScene,
+    CinematicScene,  # BLOQUE 58.59
     CreditsScene,
     GameOverScene,
     GameplayScene,
@@ -252,6 +253,8 @@ class Game:
                 pass  # invalid transition; ignore for now
 
         self.scenes.register_scene(GameState.TITLE, TitleScene(transition_to))
+        # BLOQUE 58.59: cinematic ship zoom between TITLE and ACT_INTRO.
+        self.scenes.register_scene(GameState.CINEMATIC, CinematicScene(transition_to))
         self.scenes.register_scene(GameState.ACT_INTRO, ActIntroScene(transition_to, act=1))
         # BLOQUE 58.46: pass session_score callbacks so the score carries
         # over between gameplay, boss, and act_cleared scenes.

@@ -17,6 +17,8 @@ import pygame
 
 class GameState(Enum):
     TITLE = "title"
+    # BLOQUE 58.59: cinematic ship zoom between TITLE and ACT_INTRO
+    CINEMATIC = "cinematic"
     ACT_INTRO = "act_intro"
     GAMEPLAY = "gameplay"
     BOSS_INTRO = "boss_intro"
@@ -33,7 +35,8 @@ class GameState(Enum):
 
 # Valid transitions: from_state -> set of allowed to_states
 VALID_TRANSITIONS: dict[GameState, set[GameState]] = {
-    GameState.TITLE: {GameState.ACT_INTRO, GameState.CREDITS},
+    GameState.TITLE: {GameState.CINEMATIC, GameState.ACT_INTRO, GameState.CREDITS},  # BLOQUE 58.59
+    GameState.CINEMATIC: {GameState.ACT_INTRO, GameState.TITLE},  # BLOQUE 58.59
     GameState.ACT_INTRO: {GameState.GAMEPLAY, GameState.TITLE},
     GameState.GAMEPLAY: {
         GameState.BOSS_INTRO,
