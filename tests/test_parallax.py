@@ -21,9 +21,21 @@ from src.systems.parallax import (
     PLANET_SPAWN_MIN_S,
     STARS_PER_LAYER,
     STARS_PER_LAYER_DEFAULT,
-    STRIP_LARGE_GALAXIES,
-    STRIP_SMALL_GALAXIES,
     STRIP_PROCEDURAL_STARS,
+    STRIP_HERO_GALAXY,
+    STRIP_HERO_RADIUS_MIN,
+    STRIP_HERO_RADIUS_MAX,
+    STRIP_COMPANION_GALAXIES_MIN,
+    STRIP_COMPANION_GALAXIES_MAX,
+    STRIP_COMPANION_RADIUS_MIN,
+    STRIP_COMPANION_RADIUS_MAX,
+    STRIP_COMPANION_DISTANCE_MIN,
+    STRIP_COMPANION_DISTANCE_MAX,
+    STRIP_BG_GALAXIES_MIN,
+    STRIP_BG_GALAXIES_MAX,
+    STRIP_BG_RADIUS_MIN,
+    STRIP_BG_RADIUS_MAX,
+    STRIP_BG_MIN_DISTANCE_FROM_HERO,
     _STRIP_VARIANT_SEEDS,
     _STRIP_VARIANT_SPRITE_INDICES,
     _STRIP_VARIANT_THEMES,
@@ -155,9 +167,11 @@ class TestGalaxyStrip:
         )
 
     def test_sparse_galaxy_counts(self) -> None:
-        assert STRIP_LARGE_GALAXIES == 3
-        assert STRIP_SMALL_GALAXIES == 2
-        assert STRIP_PROCEDURAL_STARS == 70
+        # BLOQUE 58.62: replaced 3 large + 2 small with 1 hero + 3-5
+        # companions + 2-3 bg. The detailed TestStripLayout class covers
+        # the new layout; this is a smoke check.
+        assert STRIP_HERO_GALAXY == 1
+        assert STRIP_PROCEDURAL_STARS == 20
 
 
 class TestStripScroll:
@@ -283,3 +297,61 @@ def test_constructor_no_legacy_kwargs(bg: ParallaxBackground) -> None:
     assert "nebula_count" not in params
     assert "nebula_radius_min" not in params
     assert "nebula_radius_max" not in params
+
+# ---------------------------------------------------------------------------
+# 4. Strip layout (BLOQUE 58.62 - clustered heroes)
+# ---------------------------------------------------------------------------
+class TestStripLayout:
+    "Clustered heroes composition - module-level constants match the spec."
+
+    def test_hero_galaxy_count_is_1(self) -> None:
+        from src.systems import parallax as p
+        assert p.STRIP_HERO_GALAXY == 1
+
+    def test_hero_radius_range(self) -> None:
+        from src.systems import parallax as p
+        assert p.STRIP_HERO_RADIUS_MIN == 70
+        assert p.STRIP_HERO_RADIUS_MAX == 90
+
+    def test_companion_count_range(self) -> None:
+        from src.systems import parallax as p
+        assert p.STRIP_COMPANION_GALAXIES_MIN == 3
+        assert p.STRIP_COMPANION_GALAXIES_MAX == 5
+        assert p.STRIP_COMPANION_GALAXIES_MIN < p.STRIP_COMPANION_GALAXIES_MAX
+
+    def test_companion_radius_smaller_than_hero(self) -> None:
+        from src.systems import parallax as p
+        assert p.STRIP_COMPANION_RADIUS_MAX < p.STRIP_HERO_RADIUS_MIN
+
+    def test_companions_within_distance_of_hero(self) -> None:
+        from src.systems import parallax as p
+        assert p.STRIP_COMPANION_DISTANCE_MIN == 100
+        assert p.STRIP_COMPANION_DISTANCE_MAX == 150
+
+    def test_bg_galaxies_count_range(self) -> None:
+        from src.systems import parallax as p
+        assert p.STRIP_BG_GALAXIES_MIN == 2
+        assert p.STRIP_BG_GALAXIES_MAX == 3
+
+    def test_bg_min_distance_from_hero(self) -> None:
+        from src.systems import parallax as p
+        assert p.STRIP_BG_MIN_DISTANCE_FROM_HERO == 200
+
+    def test_star_count_is_20(self) -> None:
+        from src.systems import parallax as p
+        assert p.STRIP_PROCEDURAL_STARS == 20
+
+    def test_total_galaxies_in_range(self) -> None:
+        from src.systems import parallax as p
+        min_total = (
+            p.STRIP_HERO_GALAXY
+            + p.STRIP_COMPANION_GALAXIES_MIN
+            + p.STRIP_BG_GALAXIES_MIN
+        )
+        max_total = (
+            p.STRIP_HERO_GALAXY
+            + p.STRIP_COMPANION_GALAXIES_MAX
+            + p.STRIP_BG_GALAXIES_MAX
+        )
+        assert min_total == 6
+        assert max_total == 9
