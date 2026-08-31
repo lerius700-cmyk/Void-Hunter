@@ -83,38 +83,43 @@ GALAXY_STRIP_SPEED = 25.0
 # (480 - 320) / 2 = 80 px offset to the left so the playfield sees
 # the middle 320 of the 480.
 GALAXY_STRIP_X_OFFSET = (GALAXY_STRIP_W - INTERNAL_W) // 2
-# BLOQUE 58.62: clustered heroes composition. 1 hero + 3-5 companions
-# clustered around it + 2-3 background larges for depth, instead of the
-# BLOQUE 58.15 spread of 3+2. Star count down from 70 to 20 because
-# the user identified the stars as "too much information" in the
-# reference (the galaxies themselves are the visual focus now).
+# BLOQUE 58.62 v3: matches the hand-painted reference. 7 main galaxies
+# (one per vertical section of ~200px) + 4-6 small companions clustered
+# around each main + 80 procedural stars. The user accepted the v2
+# sparse look but said it was "too empty" vs the reference; the v3
+# numbers approximate the reference's per-section composition.
+#
+# Per-section composition:
+#   - 1 main galaxy (50-70 px radius, the visual anchor of the section)
+#   - 4-6 small companions (15-30 px, within 80-150 px of the main)
+#   - ~11 stars (out of 80 total / 7 sections)
+#
+# Total per strip: 7 + 28-42 = 35-49 galaxies + 80 stars = 115-129 elements.
 
-# --- Hero galaxy (the visual anchor of the strip) ---
-STRIP_HERO_GALAXY: int = 1
-STRIP_HERO_RADIUS_MIN: int = 70
-STRIP_HERO_RADIUS_MAX: int = 90
-# Uses sprite_indices[0] (the first preferred tint of the variant).
+# --- Main galaxies (7 sections, evenly distributed vertically) ---
+STRIP_MAIN_GALAXIES: int = 7
+STRIP_MAIN_RADIUS_MIN: int = 50
+STRIP_MAIN_RADIUS_MAX: int = 70
+# Uses sprite_indices[i % len(sprite_indices)] round-robin.
 
-# --- Small companions (clustered around the hero) ---
-STRIP_COMPANION_GALAXIES_MIN: int = 3
-STRIP_COMPANION_GALAXIES_MAX: int = 5
+# --- Small companions (clustered around each main) ---
+STRIP_COMPANION_GALAXIES_MIN: int = 4
+STRIP_COMPANION_GALAXIES_MAX: int = 6
 STRIP_COMPANION_RADIUS_MIN: int = 15
 STRIP_COMPANION_RADIUS_MAX: int = 30
-STRIP_COMPANION_DISTANCE_MIN: int = 100  # px from hero center
+STRIP_COMPANION_DISTANCE_MIN: int = 80  # px from main center
 STRIP_COMPANION_DISTANCE_MAX: int = 150
-# Uses sprite_indices[1] (the alternate tint of the variant).
 
-# --- Background larges (distant, NOT clustered) ---
-STRIP_BG_GALAXIES_MIN: int = 2
-STRIP_BG_GALAXIES_MAX: int = 3
-STRIP_BG_RADIUS_MIN: int = 50
-STRIP_BG_RADIUS_MAX: int = 70
-STRIP_BG_MIN_DISTANCE_FROM_HERO: int = 200  # px
-# Round-robin from sprite_indices.
+# --- Procedural stars (matches reference: many small + a few bright) ---
+STRIP_PROCEDURAL_STARS: int = 80
+# 60% small dim / 30% medium / 10% bright white.
 
-# --- Procedural stars (down from 70 to 20) ---
-STRIP_PROCEDURAL_STARS: int = 20
-# 60% small dim / 30% medium / 10% bright white, same as before.
+# --- Edge padding (galaxies stay this many px from the top/bottom seam) ---
+# BLOQUE 58.62: reduced from 200 to 50. With 200, the top and bottom
+# 14% of the strip were empty (28% total) and the player saw a "gap"
+# of empty space at every wrap. With 50, galaxies can live in 93% of
+# the strip height so the wrap is continuous.
+STRIP_EDGE_PAD: int = 50
 # Variant names (mapped to theme names). Order matters: this also
 # serves as the canonical act index -> theme name mapping.
 _STRIP_VARIANT_THEMES: tuple[str, ...] = (
@@ -340,61 +345,54 @@ class ParallaxBackground:
                 radius = 2
             pygame.draw.circle(surf, color, (int(x), int(y)), radius)
 
-        EDGE_PAD = 200
-
-        # 2) Hero galaxy: 1 large, EDGE_PAD, sprite_indices[0].
-        # This is the visual anchor of the strip.
-        hero_x = rng.uniform(40, GALAXY_STRIP_W - 40)
-        hero_y = rng.uniform(EDGE_PAD, GALAXY_STRIP_H - EDGE_PAD)
-        hero_radius = rng.uniform(STRIP_HERO_RADIUS_MIN, STRIP_HERO_RADIUS_MAX)
-        hero_sprite_idx = sprite_indices[0]
-        self._blit_galaxy_scaled(
-            surf, sprites[hero_sprite_idx], hero_x, hero_y, hero_radius
-        )
-
-        # 3) Small companions: 3-5 within 100-150 px of the hero,
-        # alternate tint. Clustered = the "solar system" feel.
-        n_companions = rng.randint(
-            STRIP_COMPANION_GALAXIES_MIN, STRIP_COMPANION_GALAXIES_MAX
-        )
-        companion_sprite_idx = sprite_indices[1 % len(sprite_indices)]
-        for _ in range(n_companions):
-            angle = rng.uniform(0, 2 * math.pi)
-            distance = rng.uniform(
-                STRIP_COMPANION_DISTANCE_MIN, STRIP_COMPANION_DISTANCE_MAX
-            )
-            cx = hero_x + math.cos(angle) * distance
-            cy = hero_y + math.sin(angle) * distance
-            # Clamp into strip bounds with EDGE_PAD (companions can sit
-            # close to edges for depth, but not on the wrap seam)
-            cx = max(20, min(GALAXY_STRIP_W - 20, cx))
-            cy = max(EDGE_PAD, min(GALAXY_STRIP_H - EDGE_PAD, cy))
-            radius = rng.uniform(
-                STRIP_COMPANION_RADIUS_MIN, STRIP_COMPANION_RADIUS_MAX
-            )
+        # 2) Main galaxies: STRIP_MAIN_GALAXIES (7) of them, distributed
+        # in vertical sections. Each main is the visual anchor of its
+        # section (~200px tall band in the 1440-tall strip). The
+        # distribution is evenly spaced (not random) so the player sees
+        # a consistent rhythm as the strip scrolls past.
+        section_h = GALAXY_STRIP_H / STRIP_MAIN_GALAXIES
+        for i in range(STRIP_MAIN_GALAXIES):
+            # x: random in the strip width (with side padding)
+            main_x = rng.uniform(40, GALAXY_STRIP_W - 40)
+            # y: centered in the section, with some jitter so they don't
+            # all sit on a perfect grid
+            section_center_y = (i + 0.5) * section_h
+            jitter = rng.uniform(-section_h * 0.25, section_h * 0.25)
+            main_y = section_center_y + jitter
+            # Clamp to EDGE_PAD bounds (just in case jitter pushes too far)
+            main_y = max(STRIP_EDGE_PAD, min(GALAXY_STRIP_H - STRIP_EDGE_PAD, main_y))
+            main_radius = rng.uniform(STRIP_MAIN_RADIUS_MIN, STRIP_MAIN_RADIUS_MAX)
+            main_sprite_idx = sprite_indices[i % len(sprite_indices)]
             self._blit_galaxy_scaled(
-                surf, sprites[companion_sprite_idx], cx, cy, radius
+                surf, sprites[main_sprite_idx], main_x, main_y, main_radius
             )
 
-        # 4) Background larges: 2-3, random, min 200 px from hero
-        # (so they don't merge visually with the hero cluster).
-        n_bg = rng.randint(STRIP_BG_GALAXIES_MIN, STRIP_BG_GALAXIES_MAX)
-        for i in range(n_bg):
-            # Re-sample up to 10 times if we land too close to the hero
-            bg_x, bg_y = 0.0, 0.0
-            for _attempt in range(10):
-                bg_x = rng.uniform(40, GALAXY_STRIP_W - 40)
-                bg_y = rng.uniform(EDGE_PAD, GALAXY_STRIP_H - EDGE_PAD)
-                dist = math.hypot(bg_x - hero_x, bg_y - hero_y)
-                if dist >= STRIP_BG_MIN_DISTANCE_FROM_HERO:
-                    break
-            bg_radius = rng.uniform(STRIP_BG_RADIUS_MIN, STRIP_BG_RADIUS_MAX)
-            bg_sprite_idx = sprite_indices[i % len(sprite_indices)]
-            self._blit_galaxy_scaled(
-                surf, sprites[bg_sprite_idx], bg_x, bg_y, bg_radius
+            # 3) Small companions: 4-6 clustered around this main galaxy.
+            # Each main is the "center" of a section; the companions give
+            # the section the "solar system" feel from the reference.
+            n_companions = rng.randint(
+                STRIP_COMPANION_GALAXIES_MIN, STRIP_COMPANION_GALAXIES_MAX
             )
+            for _ in range(n_companions):
+                angle = rng.uniform(0, 2 * math.pi)
+                distance = rng.uniform(
+                    STRIP_COMPANION_DISTANCE_MIN, STRIP_COMPANION_DISTANCE_MAX
+                )
+                cx = main_x + math.cos(angle) * distance
+                cy = main_y + math.sin(angle) * distance
+                # Clamp into strip bounds (companions can sit close to
+                # edges for depth, but not on the wrap seam)
+                cx = max(20, min(GALAXY_STRIP_W - 20, cx))
+                cy = max(STRIP_EDGE_PAD, min(GALAXY_STRIP_H - STRIP_EDGE_PAD, cy))
+                radius = rng.uniform(
+                    STRIP_COMPANION_RADIUS_MIN, STRIP_COMPANION_RADIUS_MAX
+                )
+                companion_sprite_idx = sprite_indices[1 % len(sprite_indices)]
+                self._blit_galaxy_scaled(
+                    surf, sprites[companion_sprite_idx], cx, cy, radius
+                )
 
-        # 5) Glow overlay (unchanged from BLOQUE 58.15)
+        # 4) Glow overlay (unchanged from BLOQUE 58.15)
         self._draw_glow_overlay(surf, theme)
         return surf
 
