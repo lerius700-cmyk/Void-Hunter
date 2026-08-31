@@ -6,6 +6,43 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [v1.1.6] — 2026-08-31
+
+> Nebula strip v3 - matches the hand-painted reference (BLOQUE 58.62).
+
+### Changed
+
+**BLOQUE 58.62 v3 - Nebula strip matches the hand-painted reference**
+- v1.1.5's v1 layout (1 hero + 3-5 companions + 2-3 bg + 20 stars = 26-29
+  elements per strip) was too sparse compared to the reference. v2 (1
+  hero + 4-6 companions + 80 stars, EDGE_PAD 50) was still too empty.
+  v3 numbers approximate the reference's per-section composition.
+- **7 main galaxies** (one per vertical section of ~205 px), each
+  50-70 px radius. Uses sprite_indices[i] round-robin.
+- **4-6 small companions** clustered 80-150 px around each main, each
+  15-30 px radius. Uses sprite_indices[1] (alternate tint).
+- **80 procedural stars** (matches reference starfield density; up from
+  20 in v1.1.5's v1 layout). 60% small dim / 30% medium / 10% bright.
+- Total: 35-49 galaxies + 80 stars = **115-129 elements per strip**
+  (close to the reference's ~122 elements per strip).
+- **STRIP_EDGE_PAD = 50** (was 200). The 200 px padding left 14% empty
+  zones at the top and bottom of the strip (28% total) and the player
+  saw a "gap" of empty space at every wrap. With 50, galaxies can live
+  in 93% of the strip height.
+- The v1.1.5 v1 "force 1 bg galaxy in bottom half" trick is no longer
+  needed; the 7 evenly-distributed main galaxies guarantee coverage
+  of the whole strip.
+
+### Verified
+- 1676/1681 pytest pass (5 pre-existing sub_boss test isolation flakes;
+  pre-existing, not introduced by this work).
+- Visual captures at `release/strip_variants/`: 4 variants x 4 scroll
+  positions = 16 frames. User approved the look.
+- Each variant is deterministic (same seed produces same pixels, verified
+  by `test_each_variant_is_deterministic`).
+
+---
+
 ## [v1.1.5] — 2026-08-26
 
 > Player ship scale fix (BLOQUE 58.61) + procedural patterns as default (BLOQUE 58.62).
