@@ -207,3 +207,44 @@ def test_pool_sizes_strictly_greater_than_seed() -> None:
 def test_key_balance_constants(attr: str, expected: float | int) -> None:
     """Pin balance-critical constants so accidental edits break the test."""
     assert getattr(settings, attr) == expected
+
+
+# ---------------------------------------------------------------------------
+# 9. SF-SM Tier 1 regression — version invariants (added 2026-09-01)
+#
+# The WINDOW_TITLE string and src.__version__ drifted apart in 2026-08:
+# WINDOW_TITLE said "v1.2.5 (BLOQUE 58.60)" but the released version was
+# v1.1.6 (BLOQUE 58.62), and src/__init__.py still had __version__ = "0.1.0"
+# from the seed. This pair of tests pins both invariants so future sessions
+# fail loudly if they update one without the other.
+# ---------------------------------------------------------------------------
+def test_window_title_is_current_release() -> None:
+    """WINDOW_TITLE must reflect the currently released version + BLOQUE.
+
+    Format: 'VOID HUNTER v<MAJOR>.<MINOR>.<PATCH> (BLOQUE 58.<N>)'.
+    """
+    import re
+    pattern = r"^VOID HUNTER v\d+\.\d+\.\d+ \(BLOQUE 58\.\d+\)$"
+    assert re.match(pattern, settings.WINDOW_TITLE), (
+        f"WINDOW_TITLE {settings.WINDOW_TITLE!r} does not match the expected "
+        f"format. Update it when bumping the version."
+    )
+
+
+def test_window_title_version_matches_src_version() -> None:
+    """The vX.Y.Z in WINDOW_TITLE must equal src.__version__ (single source of truth).
+
+    Catches the drift where one is updated and the other isn't.
+    """
+    import re
+    import src  # the package __init__
+    title_match = re.search(r"v(\d+\.\d+\.\d+)", settings.WINDOW_TITLE)
+    assert title_match is not None, (
+        f"Could not extract version from WINDOW_TITLE {settings.WINDOW_TITLE!r}"
+    )
+    title_version = title_match.group(1)
+    assert title_version == src.__version__, (
+        f"Version drift: WINDOW_TITLE has {title_version!r} but "
+        f"src.__version__ is {src.__version__!r}. Both must be updated "
+        f"together when bumping the release."
+    )
