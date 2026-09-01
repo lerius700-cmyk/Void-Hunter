@@ -1,4 +1,4 @@
-"""Global settings and constants for VOID HUNTER.
+﻿"""Global settings and constants for VOID HUNTER.
 
 Description: Vertical shmup, 240x360 base @ 4x scale, 120 FPS lock, 8-bit
              aesthetic with Metal Slug-grade juice. All numeric tunables live
@@ -16,7 +16,7 @@ INTERNAL_H: int = 480        # BLOQUE 34: 1.33x taller playfield (was 360)
 DEFAULT_SCALE: int = 3  # window = INTERNAL_W x INTERNAL_H at this scale
 WINDOW_W: int = INTERNAL_W * DEFAULT_SCALE   # 960x1440 @ scale 3
 WINDOW_H: int = INTERNAL_H * DEFAULT_SCALE
-WINDOW_TITLE: str = "VOID HUNTER v1.2.5 (BLOQUE 58.60)"
+WINDOW_TITLE: str = "VOID HUNTER v1.1.6 (BLOQUE 58.62)"
 
 # ---------------------------------------------------------------------------
 # Frame timing — 120 FPS lock
