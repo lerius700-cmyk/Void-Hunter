@@ -35,6 +35,7 @@ Regla: entrar por L1 → L1.5 → identificar silo → leer CONTEXT.md del silo 
 | **L3** | `docs/session-reports/CONTEXT.md` | Reportes de sesión | Continuity cross-session |
 | **L3** | `docs/superpowers/CONTEXT.md` | Planes + specs de features grandes | Diseño de features nuevas |
 | **L3** | `docs/design/CONTEXT.md` | Game design (GDD) | Game design questions |
+| **L3** | `docs/movement/CONTEXT.md` | Coreografía de naves (FROZEN subsystem) | ANTES de tocar `src/movement/` o `src/systems/wave_patterns/` |
 | **L3** | `docs/references/CONTEXT.md` | Assets de referencia (sprites, paneles) | Visual references |
 
 > **Regla:** los silos `docs/*/CONTEXT.md` son **passive hubs** (sin `.synapse`).
