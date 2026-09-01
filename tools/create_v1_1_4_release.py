@@ -22,7 +22,19 @@ CHANGELOG_PATH = Path(r"D:\AI\void-hunter\CHANGELOG.md")
 
 
 def get_token() -> str:
-    """Read the user's GitHub token from git credential store."""
+    """Read the user's GitHub token. Prefers GITHUB_TOKEN env var.
+
+    Order:
+      1. $GITHUB_TOKEN or $GH_TOKEN env var (intentional choice)
+      2. git credential store (fallback for old workflows)
+
+    The env var is preferred so the user's explicit choice wins over
+    any stale credential that might be in the git credential store
+    from a previous session.
+    """
+    env = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if env:
+        return env.strip()
     try:
         out = subprocess.check_output(
             ["git", "credential", "fill"],
@@ -34,9 +46,6 @@ def get_token() -> str:
                 return line[len("password="):].strip()
     except Exception:
         pass
-    env = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    if env:
-        return env.strip()
     raise RuntimeError(
         "No GitHub token found. Set GITHUB_TOKEN env var or "
         "configure git credential helper for github.com."
