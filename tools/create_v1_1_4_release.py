@@ -71,7 +71,12 @@ def http(method, url, headers, body=None, timeout=600):
 
 def main():
     token = get_token()
-    print(f"token: {token[:8]}...{token[-4:]} (len={len(token)})")
+    # Don't print the token (even masked) — the script's purpose is
+    # to authenticate, not display credentials. Length is logged
+    # separately for sanity check that the token loaded correctly.
+    print(f"Authenticating with GitHub... (token len={len(token)})")
+    token_len = len(token)
+    del token_len  # noqa: F841 (kept for future logging hooks)"
 
     print("Creating GitHub release...")
     headers = {
