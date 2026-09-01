@@ -1,4 +1,4 @@
-# VOID HUNTER
+﻿# VOID HUNTER
 
 > Vertical shmup. 8-bit pixel art with Metal Slug-grade juice.
 > Star Fox 64 inspired. **120 FPS lock. Windowed 320×480 portrait.**
@@ -7,7 +7,7 @@
 
 <div align="center">
 
-### 👉 [⬇️ Descargar VoidHunter v1.0.0 para Windows (256 MB)](https://github.com/lerius700-cmyk/Void-Hunter/releases/download/v1.0.0/VoidHunter-v1.0.0-win64.zip) 👈
+### 👉 [⬇️ Descargar VoidHunter v1.1.6 para Windows (279 MB)](https://github.com/lerius700-cmyk/Void-Hunter/releases/download/v1.1.6/VoidHunter-v1.1.6-win64.zip) 👈
 
 </div>
 
@@ -15,7 +15,7 @@
 **Si Windows SmartScreen pregunta:** *More info* → *Run anyway* (no tenemos cert de firma todavía)  
 **Controles:** `WASD` / flechas = mover · `Click` / `Espacio` = disparar · `P` = pausa · `ESC` = salir
 
-📜 [Todos los releases + notas de versión](https://github.com/lerius700-cmyk/Void-Hunter/releases) · [Notas de v1.0.0](https://github.com/lerius700-cmyk/Void-Hunter/releases/tag/v1.0.0)
+📜 [Todos los releases + notas de versión](https://github.com/lerius700-cmyk/Void-Hunter/releases) · [Notas de v1.1.6](https://github.com/lerius700-cmyk/Void-Hunter/releases/tag/v1.1.6)
 
 ---
 
