@@ -346,14 +346,25 @@ class ParallaxBackground:
             pygame.draw.circle(surf, color, (int(x), int(y)), radius)
 
         # 2) Main galaxies: STRIP_MAIN_GALAXIES (7) of them, distributed
-        # in vertical sections. Each main is the visual anchor of its
-        # section (~200px tall band in the 1440-tall strip). The
-        # distribution is evenly spaced (not random) so the player sees
-        # a consistent rhythm as the strip scrolls past.
+        # in vertical sections AND horizontal columns. Each main is the
+        # visual anchor of its (column, row) cell in a 7x7-ish grid.
+        # The X distribution is evenly spaced (was rng.uniform, which
+        # caused the 2026-08-31 visual regression where all galaxies
+        # clustered on the right edge of the playfield — unlucky seeds
+        # produced right-heavy layouts). Y stays in the same section
+        # band with vertical jitter. Together this guarantees the 7
+        # mains cover the full width of the playfield (320 px) plus
+        # the strip's 80 px buffer on each side.
         section_h = GALAXY_STRIP_H / STRIP_MAIN_GALAXIES
+        section_w = (GALAXY_STRIP_W - 80) / STRIP_MAIN_GALAXIES
         for i in range(STRIP_MAIN_GALAXIES):
-            # x: random in the strip width (with side padding)
-            main_x = rng.uniform(40, GALAXY_STRIP_W - 40)
+            # x: evenly distributed across the strip width, with small
+            # jitter (±30% of section_w) so the 7 mains look scattered
+            # but still cover the full width.
+            base_x = 40 + (i + 0.5) * section_w
+            x_jitter = rng.uniform(-section_w * 0.30, section_w * 0.30)
+            main_x = base_x + x_jitter
+            main_x = max(40, min(GALAXY_STRIP_W - 40, main_x))
             # y: centered in the section, with some jitter so they don't
             # all sit on a perfect grid
             section_center_y = (i + 0.5) * section_h
