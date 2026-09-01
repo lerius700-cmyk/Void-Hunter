@@ -502,3 +502,169 @@ showing each pattern with visible leader glow ring.
 
 **v1.1 zip rebuilt**: 181.2 MB at releases/void-hunter-v1.1-windows.zip
 (previous v1.1 moved to archive/_legacy_releases/).
+
+---
+
+## v1.1.4/5/6 — BLOQUE 58.15, 58.59, 58.60, 58.61, 58.62 (nebula strip + videos + ship half-size + procedural patterns default) — 2026-08-25..2026-08-31
+
+## [v1.1.6] — 2026-08-31
+
+> Nebula strip v3 - matches the hand-painted reference (BLOQUE 58.62).
+
+### Changed
+
+**BLOQUE 58.62 v3 - Nebula strip matches the hand-painted reference**
+- v1.1.5's v1 layout (1 hero + 3-5 companions + 2-3 bg + 20 stars = 26-29
+  elements per strip) was too sparse compared to the reference. v2 (1
+  hero + 4-6 companions + 80 stars, EDGE_PAD 50) was still too empty.
+  v3 numbers approximate the reference's per-section composition.
+- **7 main galaxies** (one per vertical section of ~205 px), each
+  50-70 px radius. Uses sprite_indices[i] round-robin.
+- **4-6 small companions** clustered 80-150 px around each main, each
+  15-30 px radius. Uses sprite_indices[1] (alternate tint).
+- **80 procedural stars** (matches reference starfield density; up from
+  20 in v1.1.5's v1 layout). 60% small dim / 30% medium / 10% bright.
+- Total: 35-49 galaxies + 80 stars = **115-129 elements per strip**
+  (close to the reference's ~122 elements per strip).
+- **STRIP_EDGE_PAD = 50** (was 200). The 200 px padding left 14% empty
+  zones at the top and bottom of the strip (28% total) and the player
+  saw a "gap" of empty space at every wrap. With 50, galaxies can live
+  in 93% of the strip height.
+- The v1.1.5 v1 "force 1 bg galaxy in bottom half" trick is no longer
+  needed; the 7 evenly-distributed main galaxies guarantee coverage
+  of the whole strip.
+
+### Verified
+- 1676/1681 pytest pass (5 pre-existing sub_boss test isolation flakes;
+  pre-existing, not introduced by this work).
+- Visual captures at `release/strip_variants/`: 4 variants x 4 scroll
+  positions = 16 frames. User approved the look.
+- Each variant is deterministic (same seed produces same pixels, verified
+  by `test_each_variant_is_deterministic`).
+
+---
+
+## [v1.1.5] — 2026-08-26
+
+> Player ship scale fix (BLOQUE 58.61) + procedural patterns as default (BLOQUE 58.62).
+
+### Fixed
+
+**BLOQUE 58.61 — Player ship half-size + remove frame-border rectangle**
+- New ship sprite (ship_01_spritesheet) was 62x62 px and rendered at full
+  size (~65 px in the playfield), which was stupidly large vs the
+  enemy ships (~13-24 px) and the previous procedural ship (32x24).
+  - `self._player_sprite_scale: float = 0.55` — the sprite path now uses
+    its own scale (about half the previous size), so the new ship ends
+    up at ~34x34, matching the original 32x24 footprint.
+- A 1px `FRAME_BORDER` rectangle was visible around each sprite cell
+  (debug visualization leaked into runtime).
+  - `CELL_INSET = 1` — the gallery and sprite path now skip the
+    1px border on each side, so the ship renders without the rectangle.
+- Fixed NameError regression in the procedural fallback path: d3c2ec3
+  renamed `scale` to `sprite_scale` in the sprite branch but left the
+  fallback branch referencing the old name. Rebound to `proc_scale =
+  self._ship_scale_player` (1.05x, the original scale for the
+  procedural ship).
+
+**BLOQUE 58.62 — Procedural patterns as default mode**
+- `main.py`: when the user runs `void-hunter` with no flag, the game
+  now starts in procedural patterns mode (the same as `--patterns 42`).
+  This makes the Star Fox-inspired choreographies (BEZIER_SWEEP,
+  V_FORMATION, LEADER_FOLLOWER_CHAIN, DICE_FIVE_GRID, PINCER_CROSS,
+  OSCILLATING_BUTTERFLY, plus the 50 composed multi-segment patterns
+  from BLOQUE 58.14.7) the main experience.
+- `--roguelike [SEED]` and `--campaign` remain opt-in for the
+  roguelike flow and the 18 hand-tuned JSON waves, respectively.
+- The legacy roguelike default is preserved when `--roguelike` is passed.
+
+### Verified
+- 1667/1672 pytest pass (5 pre-existing test isolation flakes in
+  test_sub_boss_* that pass in isolation but fail in full suite).
+- Visual validation frame: `release/strip_variants/player_ship_v114_validate.png`
+  shows the player ship at the new half-size with no border rectangle.
+
+---
+
+## [v1.1.4] — 2026-08-25
+
+> Scrolling galaxy strip + cinematic video intros (title + zoom).
+
+### Added
+
+**BLOQUE 58.15 — Scrolling galaxy strip**
+- Replaced the BLOQUE 58.next nebula state machine (1+ nebulae with
+  fade/reposition) with a single 480x1440 galaxy strip that scrolls
+  downward at 25 px/s. The strip is wider than the 320 px playfield
+  (480 px) so the side edges show partial galaxies that "enter" and
+  "exit" the viewport — creates a depth effect.
+- 4 strip variants (one per act) with deterministic seeds:
+  - 0 blue_void   (act 1, blue + violet galaxies)
+  - 1 teal        (act 2, cyan + blue galaxies)
+  - 2 gold_amber  (act 3, red + cyan galaxies)
+  - 3 purple_dusk (act 4, violet + red galaxies)
+- Per-strip content: 3 large galaxies (45-65 px radius) + 2 small
+  companion galaxies (20-30 px radius, within 60-100 px of a parent)
+  + 70 procedural stars + a soft parabolic vertical glow overlay
+  (replaces the previous 3-band version which showed a hard line).
+- `set_strip_variant(variant: int)` API + `set_theme(name)` auto-maps
+  the theme name to its variant index. Out-of-range clamps to 0.
+- `GameplayRuntime.on_enter()` now calls `set_strip_variant(act - 1)`
+  so the strip color treatment matches the current act.
+
+**BLOQUE 58.59 — Cinematic videos**
+- New `src/ui/video_player.py`: a PNG-sequence video player with
+  autoplay, loop, and scale-to-fit. Used by the title and cinematic
+  scenes to play pre-rendered 30 fps cinematics.
+- New `Assets/video/title/` (12 s) and `Assets/video/zoom/` (10 s)
+  PNG sequences + manifest.json files generated by `tools/video_gen/`.
+- New `CinematicScene`: plays the zoom video once between TITLE and
+  ACT_INTRO. ESC skips to ACT_INTRO. Procedural boss_warning sting
+  on the voice channel at start.
+- `TitleScene` simplified: plays the title video as its background
+  (looping). Ships/bullets/explosions demo replaced by the video.
+- New `GameState.CINEMATIC` with `TITLE → CINEMATIC → ACT_INTRO` and
+  `CINEMATIC → TITLE` transitions.
+
+**Video generation pipeline (tools/video_gen/)**
+- `gen_v1_title.py`: builds the title reveal video (12 s, 30 fps).
+  - 0-4 s: ship silhouette enters, "VOID" + "HUNTER" reveals letter
+    by letter with a 0.2 s/letter timing, word wave, ink splat.
+  - 4-8 s: ambient nebula/star field, title settled, ship drifts.
+  - 8-12 s: 3-ship demo with parallax + procedural explosions.
+- `gen_v2_zoom.py`: builds the dolly-back zoom video (10 s, 30 fps).
+  - 0-3 s: ship close-up.
+  - 3-5 s: nebula stars + asteroid field pass.
+  - 5-7 s: planet enters from the right.
+  - 7-10 s: ease-out into gameplay view.
+- `common/`: shared composition, effects, palette, pixel_font, pixel_grid,
+  ship_overlay (chroma-keyed).
+- `encode_mp4.py`: bundles the PNG sequence to MP4 (H.264 via ffmpeg).
+- `preview_frames.py`: extracts key frames for visual review.
+
+### Changed
+- `ParallaxBackground` constructor no longer accepts `nebula_count`,
+  `nebula_radius_min`, `nebula_radius_max`. The strip replaces the
+  nebula system entirely.
+- `ParallaxBackground.set_theme(name)` no longer retints nebula colors
+  (no nebulae); it picks the matching strip variant instead.
+
+### Removed
+- `Nebula` dataclass, `_init_nebula`, `_render_nebula_surface`,
+  `_render_nebula_sprite_masked`, `_render_procedural_nebula_surface`,
+  `_render_nebula_surface_sprite`, `_fallback_nebula_surface`,
+  `_update_nebula_state`, `_reposition_nebula`: replaced by the
+  scrolling strip system.
+- `tests/test_nebula_state_machine.py`: tests for the old system.
+  Replaced by `TestGalaxyStrip`, `TestStripScroll`,
+  `TestStripVariants`, `TestStripIsVisible` in test_parallax.py.
+
+### Verified
+- 1651/1651 pytest pass (32 new + 3 backward-compat + 31 video tests
+  added across the BLOQUE 58.15 + 58.59 work).
+- Visual verification: 4 strip variants captured at 4 scroll
+  positions each (16 playfield views + 4 full strip views in
+  `release/strip_variants/`).
+- Each variant is deterministic (pixel-by-pixel reproducible given
+  the same seed and variant index).
+
