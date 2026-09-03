@@ -195,6 +195,78 @@ form = FlightFormation.custom([(0, 0), (-30, 10), (30, 10), (-60, 20), (60, 20)]
 
 ---
 
+## Sacred Geometry & Fractal Presets (BLOQUE 58.next)
+
+Ten new formations added in BLOQUE 58.next. All are 2D slot patterns
+(no z-axis). Explicitly NO star shapes (excludes pentagram, hexagram,
+{n/k} star polygons, snowflake-star hybrids).
+
+### 10. `FLOWER_OF_LIFE` — center + 6 hex
+
+7 ships: center (0, 0) + 6 hex points at radius 18, angles 0/60/120/180/240/300 deg.
+
+Builder: `FlightFormation.flower_of_life(count=7, radius=18.0)`
+
+### 11. `VESICA_PISCIS` — 2 ships
+
+2 ships at (±9, 0). The dyadic sacred figure.
+
+Builder: `FlightFormation.vesica_piscis(count=2, spacing=18.0)`
+
+### 12. `FIBONACFI_SPIRAL` — logarithmic spiral
+
+8 ships on a logarithmic spiral: r = 8.0 · phi^(i/2), theta = i · 60 deg, where phi = (1+sqrt(5))/2.
+
+Builder: `FlightFormation.fibonacfi_spiral(count=8, r0=8.0)` (sic, intentional typo per user)
+
+### 13. `TREE_OF_LIFE` — 10 Kabbalistic sephirot
+
+3 columns x 4 rows = 10 sephirot (crown row of 3, two middle rows of 3, kingdom row of 1). Layout:
+- Crown: y = -22, x in {-22, 0, 22}
+- Row 2: y = 0, x in {-22, 0, 22}
+- Row 3: y = 22, x in {-22, 0, 22}
+- Kingdom: y = 44, x = 0
+
+Builder: `FlightFormation.tree_of_life(count=10, spacing=22.0)`
+
+### 14. `SIERPINSKI_TRIANGLE` — depth-2 fractal
+
+7 ships: 3 triangle vertices + 3 midpoints of edges + 1 centroid. Triangle inscribed in a circle of radius 24.
+
+Builder: `FlightFormation.sierpinski_triangle(count=7, radius=24.0)`
+
+### 15. `HEX_CLOSE_PACK` — honeycomb (tighter than flower_of_life)
+
+Same 7 hex layout as `FLOWER_OF_LIFE` but with radius=14 (tighter spacing creates a true honeycomb cell).
+
+Builder: `FlightFormation.hex_close_pack(count=7, radius=14.0)`
+
+### 16. `MANDALA_RINGS` — 2 concentric hex rings
+
+12 ships: 6 inner ring at r=12 + 6 outer ring at r=24 (outer offset by 30 deg).
+
+Builder: `FlightFormation.mandala_rings(count=12, inner_r=12.0, outer_r=24.0)`
+
+### 17. `GOLDEN_RATIO_ROW` — accelerating horizontal row
+
+5 ships on a horizontal line at offsets 0, phi, 2·phi, 3·phi, 4·phi (× spacing=10).
+
+Builder: `FlightFormation.golden_ratio_row(count=5, spacing=10.0)`
+
+### 18. `KOCH_3FOLD` — 3-fold Koch zigzag (no central peak)
+
+7 pre-computed anchors on a 3-fold Koch curve. The 3-fold version (NOT 6-fold snowflake) is asymmetric and reads as a "fractal zigzag", not a star.
+
+Builder: `FlightFormation.koch_3fold(count=7, scale=24.0)`
+
+### 19. `DRAGON_CURVE` — Heighway dragon recursion
+
+8 pre-computed anchors of the Heighway dragon curve. Reads as a "fractal staircase".
+
+Builder: `FlightFormation.dragon_curve(count=8, scale=16.0)`
+
+---
+
 ## How slots connect to paths
 
 A formation **does not own a path**. The path is a separate `HybridPath`.

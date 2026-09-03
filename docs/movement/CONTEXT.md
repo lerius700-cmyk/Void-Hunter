@@ -66,8 +66,12 @@
 
 ## Lock Status
 
-**Estado: FROZEN** (intencional)
+**Estado: TEMPORALMENTE UN-FROZEN** para BLOQUE 58.next (Movement Expansion: Sacred Geometry & Fractal Symbolism). Re-FROZEN after the spec + plan + implementation + tests are merged.
 
-**Razón:** este silo documenta la "alma" del juego (Star Fox 64-style choreography). Cambios al contrato sin re-leer las 6 secciones rompen silenciosamente los 56 wave patterns. La próxima vez que se desbloquee, **re-leer completo y agregar test de regresión** por cada cambio de signature.
+**Cambios durante este BLOQUE:**
+- 10 nuevas formations agregadas (Flower of Life, Vesica Piscis, Fibonacci Spiral, Tree of Life, Sierpinski Triangle, Hex Close-Pack, Mandala Rings, Golden Ratio Row, Koch 3-fold, Dragon Curve)
+- 7 nuevos paths agregados (Lemniscate, Cardioid, Lissajous, Rose k2/k3, Hypocycloid, Epicycloid)
+- 1,050 nuevos COMPOSED patterns (cross product 19 forms × 15 paths × 3 follows × 5 counts, capped 1050)
+- "2D explicit" notation fix en `01_movement_primitives.md`
 
-**Si necesitás cambiar algo aquí:** abrir un BLOQUE nuevo con spec en `docs/superpowers/specs/`, plan en `docs/superpowers/plans/`, y PR description que cite qué métodos del contract cambian.
+**Regla para próximos cambios:** reabrir el FROZEN es BLOQUE-worthy. Spec + plan + tests + visual proof antes de tocar el código.

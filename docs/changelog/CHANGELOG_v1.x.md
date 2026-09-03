@@ -488,7 +488,8 @@ The capture script used floor=5 to verify all 5, masking the bug.
 - ase.py: SpawnedShip now has is_leader: bool = False field.
 - All 5 patterns mark their leader ship (slot==0 for sweep/chain/V,
   center for DICE, slot==0 for each side of PINCER).
-- untime.py: spawn_pattern_wave() tracks leader_enemy_ids in
+- 
+untime.py: spawn_pattern_wave() tracks leader_enemy_ids in
   PatternRuntime. New draw_leader_glows() draws a pulsing cyan/white
   ring around the leader on the playfield (not on the 32x24 sprite
   scratch, so the ring is fully visible).
@@ -502,6 +503,51 @@ showing each pattern with visible leader glow ring.
 
 **v1.1 zip rebuilt**: 181.2 MB at releases/void-hunter-v1.1-windows.zip
 (previous v1.1 moved to archive/_legacy_releases/).
+
+---
+
+## [v1.2.x] — 2026-09-XX — BLOQUE 58.next: Movement Expansion: Sacred Geometry & Fractal Symbolism
+
+### Added
+
+**10 new formations (sacred geometry + fractals):**
+- `FLOWER_OF_LIFE` — center + 6 hex
+- `VESICA_PISCIS` — 2 ships at the dyadic intersect
+- `FIBONACFI_SPIRAL` — logarithmic spiral r = r0·phi^(i/2) (sic, intentional typo)
+- `TREE_OF_LIFE` — 10 Kabbalistic sephirot
+- `SIERPINSKI_TRIANGLE` — depth-2 recursive
+- `HEX_CLOSE_PACK` — honeycomb (tighter than flower of life)
+- `MANDALA_RINGS` — 2 concentric hex rings
+- `GOLDEN_RATIO_ROW` — accelerating horizontal row
+- `KOCH_3FOLD` — 3-fold Koch zigzag (no central peak)
+- `DRAGON_CURVE` — Heighway dragon recursion
+
+**7 new paths:**
+- `LemniscatePath` — figure-8
+- `CardioidPath` — heart
+- `LissajousPath` — 3:2 parametric
+- `RoseK2Path` — 4-petal rose
+- `RoseK3Path` — 3-petal rose (NOT a 3-pointed star)
+- `HypocycloidPath` — Spirograph (R=3r → 3-cusp deltoid)
+- `EpicycloidPath` — small circle outside big (R=r → cardioid)
+
+**1,050 new COMPOSED patterns** (cross product 19 forms × 15 paths × 3 follows × 5 counts, capped 1050). First 50 patterns unchanged (backward compat verified).
+
+**Excluded by user constraint (no stars):** pentagram, hexagram, `{n/k}` star polygons, snowflake-star hybrids. Koch_3fold and Rose_K3 are explicitly NOT star shapes (asymmetric / smooth petals).
+
+**Doc updates:** `01_movement_primitives.md` got a "Notation" note clarifying "cubic" is polynomial degree (NOT 3D). `02_formations.md` got a "Sacred Geometry & Fractal Presets" section. New `06_paths.md` documents the 7 new paths. `CONTEXT.md` and `README.md` updated to reference the new files.
+
+### Fixed
+
+**"Cubic" 2D vs 3D ambiguity in the doc** — the original `01_movement_primitives.md` said "cubic bezier curve" without clarifying "2D". A user (human) read this as 3D. Added a Notation note: "cubic" is polynomial degree 3, NOT 3D. All curves in the project are 2D Bezier with `Point(x, y)` control points (no z).
+
+### Verified
+
+- All 10 new formations: 11 unit tests in `tests/test_formation.py` pass.
+- All 7 new paths: 10 unit tests in `tests/test_paths.py` pass (no star shapes verified by `test_paths_no_star_shapes`).
+- 4 integration tests in `tests/test_wave_patterns.py` pass.
+- `test_first_50_composed_unchanged_by_expansion` confirms backward compat.
+- 17 visual proof PNGs in `tools/playtest_out/`: 10 formations + 7 paths.
 
 ---
 

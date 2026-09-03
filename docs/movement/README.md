@@ -41,6 +41,11 @@ that.
    (pair dance) and `OrbitalPath` (butterfly orbit). The choreographic
    flourishes.
 
+6. **[06_paths.md](./06_paths.md)** — `LemniscatePath`, `CardioidPath`,
+   `LissajousPath`, `RoseK2Path`, `RoseK3Path`, `HypocycloidPath`,
+   `EpicycloidPath`. The sacred-geometry & fractal movement primitives
+   added in BLOQUE 58.next.
+
 ## Source code map
 
 ```

@@ -8,6 +8,21 @@ rest of the system follows naturally.
 
 ---
 
+## Notation
+
+- **"cubic"** in this doc means polynomial degree 3 (NOT 3D). All curves
+  in this project are **2D Bezier** — control points are 2D tuples
+  `Point(x, y)`, no z-coordinate.
+- **"2D"** in this doc means screen-coordinate 2D plane: +x right, +y
+  down, 320×480 internal playfield. There is no 3D / z-axis in this
+  project.
+- **"circle"** in a formation name = points on a 2D circle, not a
+  sphere.
+- **"spiral"** in a path name = 2D curve, not a 3D helix.
+
+If you (human or AI) are about to add a "3D" anything, stop: this
+project is 2D-only.
+
 ## 1. `BezierPath` — cubic bezier curve
 
 A cubic bezier defined by 4 control points: `P0` (start), `P1`, `P2`, `P3` (end).
