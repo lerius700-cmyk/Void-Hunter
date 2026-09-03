@@ -453,6 +453,109 @@ def test_flower_of_life_offsets_match_geometry() -> None:
         ), f"angle {math.degrees(actual_angle)} != {angle_deg}"
 
 
+# --- BLOQUE 58.next: 9 sacred-geometry / fractal formations ---
+PHI = (1 + math.sqrt(5)) / 2  # golden ratio, for fibonacfi_spiral + golden_ratio_row
+
+
+def test_vesica_piscis_two_ships() -> None:
+    from src.movement import FlightFormation, FormationKind
+
+    form = FlightFormation.vesica_piscis()
+    assert form.kind == FormationKind.VESICA_PISCIS
+    assert form.count == 2
+    assert math.isclose(form.offsets[0][0], -9.0, abs_tol=0.1)
+    assert math.isclose(form.offsets[1][0], 9.0, abs_tol=0.1)
+
+
+def test_fibonacfi_spiral_golden_ratio() -> None:
+    """Verify r-values follow r = r0 * phi^(i/2) within 1%."""
+    from src.movement import FlightFormation
+
+    form = FlightFormation.fibonacfi_spiral()
+    r0 = 8.0
+    for i, (dx, dy) in enumerate(form.offsets):
+        r_actual = math.hypot(dx, dy)
+        r_expected = r0 * (PHI ** (i / 2))
+        assert math.isclose(r_actual, r_expected, rel_tol=0.01), f"slot {i}: r {r_actual} != {r_expected}"
+
+
+def test_tree_of_life_10_ships() -> None:
+    from src.movement import FlightFormation, FormationKind
+
+    form = FlightFormation.tree_of_life()
+    assert form.kind == FormationKind.TREE_OF_LIFE
+    assert form.count == 10
+    # 3 left col (-22, y), 3 mid col (0, y), 3 right col (+22, y), 1 bottom (0, +44)
+    xs = sorted(dx for dx, _ in form.offsets)
+    assert xs.count(-22) == 3
+    assert xs.count(0) == 4
+    assert xs.count(22) == 3
+
+
+def test_sierpinski_triangle_depth_2() -> None:
+    from src.movement import FlightFormation
+
+    form = FlightFormation.sierpinski_triangle()
+    assert form.count == 7
+    # top vertex at (0, -24), centroid at (0, 0)
+    assert (0.0, -24.0) in form.offsets
+    assert (0.0, 0.0) in form.offsets
+
+
+def test_hex_close_pack_seven_ships() -> None:
+    from src.movement import FlightFormation
+
+    form = FlightFormation.hex_close_pack()
+    assert form.count == 7
+    # 6 outer at radius 14
+    outer = [(dx, dy) for dx, dy in form.offsets if (dx, dy) != (0.0, 0.0)]
+    for dx, dy in outer:
+        assert math.isclose(math.hypot(dx, dy), 14.0, abs_tol=0.1)
+
+
+def test_mandala_rings_concentric() -> None:
+    from src.movement import FlightFormation
+
+    form = FlightFormation.mandala_rings()
+    assert form.count == 12
+    # 6 inner at r=12, 6 outer at r=24
+    inner = [(dx, dy) for dx, dy in form.offsets if math.isclose(math.hypot(dx, dy), 12.0, abs_tol=0.1)]
+    outer = [(dx, dy) for dx, dy in form.offsets if math.isclose(math.hypot(dx, dy), 24.0, abs_tol=0.1)]
+    assert len(inner) == 6
+    assert len(outer) == 6
+
+
+def test_golden_ratio_row_phi_offsets() -> None:
+    from src.movement import FlightFormation
+
+    form = FlightFormation.golden_ratio_row(spacing=10.0)
+    assert form.count == 5
+    expected_xs = [0.0, 1 * PHI * 10, 2 * PHI * 10, 3 * PHI * 10, 4 * PHI * 10]
+    actual_xs = [dx for dx, _ in form.offsets]
+    for exp, act in zip(expected_xs, actual_xs):
+        assert math.isclose(act, exp, rel_tol=0.01), f"x {act} != {exp}"
+
+
+def test_koch_3fold_seven_ships() -> None:
+    """Koch 3-fold: 7 anchor points on a 3-fold zigzag, NO central peak (not a star)."""
+    from src.movement import FlightFormation
+
+    form = FlightFormation.koch_3fold()
+    assert form.count == 7
+    # No slot should be at (0, 0) — that would be a central star point
+    assert (0.0, 0.0) not in form.offsets
+
+
+def test_dragon_curve_recursive_layout() -> None:
+    """First 8 anchors of the Heighway dragon curve."""
+    from src.movement import FlightFormation
+
+    form = FlightFormation.dragon_curve()
+    assert form.count == 8
+    assert (0.0, 0.0) in form.offsets  # origin
+    assert (0.0, -16.0) in form.offsets  # first up
+
+
 # -----------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------
