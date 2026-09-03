@@ -424,6 +424,35 @@ def test_formation_make_dispatch() -> None:
     assert f.count == 3
 
 
+def test_flower_of_life_default_count() -> None:
+    """FLOWER_OF_LIFE with count=7 returns 7 slots: 1 center + 6 hex."""
+    from src.movement import FlightFormation, FormationKind
+
+    form = FlightFormation.flower_of_life()
+    assert form.kind == FormationKind.FLOWER_OF_LIFE
+    assert form.count == 7
+    assert (0.0, 0.0) in form.offsets  # center
+
+
+def test_flower_of_life_offsets_match_geometry() -> None:
+    """The 6 outer slots are at radius=18, angles 0/60/120/180/240/300 deg."""
+    from src.movement import FlightFormation
+
+    form = FlightFormation.flower_of_life()
+    outer = [(dx, dy) for dx, dy in form.offsets if (dx, dy) != (0.0, 0.0)]
+    assert len(outer) == 6
+    expected_angles = [0, 60, 120, 180, 240, 300]
+    for dx, dy, angle_deg in zip([dx for dx, _ in outer], [dy for _, dy in outer], expected_angles):
+        r = math.hypot(dx, dy)
+        assert math.isclose(r, 18.0, abs_tol=0.1), f"radius {r} != 18 at angle {angle_deg}"
+        expected_angle = math.radians(angle_deg)
+        actual_angle = math.atan2(dy, dx)
+        # angles modulo 2pi
+        assert math.isclose(
+            (actual_angle - expected_angle) % (2 * math.pi), 0, abs_tol=0.01
+        ), f"angle {math.degrees(actual_angle)} != {angle_deg}"
+
+
 # -----------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------

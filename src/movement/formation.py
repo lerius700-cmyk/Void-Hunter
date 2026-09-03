@@ -37,6 +37,7 @@ class FormationKind(str, Enum):
     TRIANGLE = "triangle"
     HALF_V = "half_v"
     CUSTOM = "custom"
+    FLOWER_OF_LIFE = "flower_of_life"
 
 
 class FlightFormation:
@@ -205,6 +206,22 @@ class FlightFormation:
         return FlightFormation(FormationKind.HALF_V, offsets)
 
     @staticmethod
+    def flower_of_life(count: int = 7, radius: float = 18.0) -> "FlightFormation":
+        """Sacred geometry: center + 6 hex points (Flower of Life pattern).
+
+        count=7 -> center (0, 0) + 6 hex at radius 18, angles 0/60/120/180/240/300.
+        count=1 -> only the center.
+        """
+        count = max(1, count)
+        if count == 1:
+            return FlightFormation(FormationKind.FLOWER_OF_LIFE, [(0.0, 0.0)])
+        offsets: list[tuple[float, float]] = [(0.0, 0.0)]
+        for i in range(6):
+            angle = math.radians(i * 60)
+            offsets.append((math.cos(angle) * radius, math.sin(angle) * radius))
+        return FlightFormation(FormationKind.FLOWER_OF_LIFE, offsets[:count])
+
+    @staticmethod
     def custom(offsets: Sequence[tuple[float, float]]) -> "FlightFormation":
         """User-defined slot offsets (e.g. from JSON or inline)."""
         if not offsets:
@@ -231,6 +248,8 @@ class FlightFormation:
             return FlightFormation.triangle(count, spacing)
         if kind == FormationKind.HALF_V:
             return FlightFormation.half_v(count, spacing)
+        if kind == FormationKind.FLOWER_OF_LIFE:
+            return FlightFormation.flower_of_life(count, radius)
         if kind == FormationKind.CUSTOM:
             raise ValueError("custom formations require explicit offsets")
         raise ValueError(f"unknown formation kind: {kind}")
