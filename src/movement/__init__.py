@@ -16,6 +16,7 @@ from src.movement.bezier import BezierPath, Point
 from src.movement.formation import FlightFormation, FormationKind
 from src.movement.hybrid import HybridPath
 from src.movement.follower import PathFollower
+from src.movement.cardioid_path import CardioidPath  # noqa: F401
 from src.movement.lemniscate_path import LemniscatePath  # noqa: F401
 from src.movement.spec import FormationPathSpec
 from src.movement.waypoint import WaypointPath
@@ -30,4 +31,5 @@ __all__ = [
     "FormationKind",
     "FormationPathSpec",
     "LemniscatePath",
+    "CardioidPath",
 ]

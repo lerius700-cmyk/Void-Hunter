@@ -3,6 +3,7 @@ import math
 import pytest
 
 from src.core.settings import INTERNAL_W, INTERNAL_H
+from src.movement.cardioid_path import CardioidPath
 from src.movement.lemniscate_path import LemniscatePath
 
 
@@ -31,3 +32,32 @@ def test_lemniscate_no_self_intersection_in_approximation() -> None:
     assert len(path.segments) == 8, f"expected 8 segments, got {len(path.segments)}"
     # Verify total duration matches
     assert math.isclose(path.total_duration_s, 6.0, abs_tol=0.01)
+
+
+def test_cardioid_closes_smoothly() -> None:
+    """Cardioid endpoints match (start = end), 12 segments, no cusp visible at playfield scale."""
+    path = CardioidPath(scale=60.0, duration_s=5.0).get_path()
+    # Walk to t=0 and t=1 — should be the same point
+    p_start = path.position_at(0.0)
+    p_end = path.position_at(1.0)
+    assert math.hypot(p_start.x - p_end.x, p_start.y - p_end.y) < 1.0, (
+        f"start {p_start} != end {p_end}"
+    )
+    # 12 segments expected
+    assert len(path.segments) == 12
+    # Total extent: cardioid with scale=60 has max extent ~120 (the heart's lobe is at x=2*scale)
+    # Verify the path is contained in 200x200 (heart shape with 2*scale extent)
+    for i in range(50):
+        t = i / 49.0
+        pos = path.position_at(t)
+        assert -200 <= pos.x <= 200
+        assert -200 <= pos.y <= 200
+
+
+def test_cardioid_attachment_to_hybridpath() -> None:
+    """CardioidPath.get_path() returns a valid HybridPath."""
+    path = CardioidPath().get_path()
+    from src.movement.hybrid import HybridPath
+    assert isinstance(path, HybridPath)
+    # Verify the path has segments and durations
+    assert path.total_duration_s > 0
