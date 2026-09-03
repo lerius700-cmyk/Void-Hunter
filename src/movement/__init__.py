@@ -17,7 +17,11 @@ from src.movement.formation import FlightFormation, FormationKind
 from src.movement.hybrid import HybridPath
 from src.movement.follower import PathFollower
 from src.movement.cardioid_path import CardioidPath  # noqa: F401
+from src.movement.epicycloid_path import EpicycloidPath  # noqa: F401
+from src.movement.hypocycloid_path import HypocycloidPath  # noqa: F401
 from src.movement.lemniscate_path import LemniscatePath  # noqa: F401
+from src.movement.lissajous_path import LissajousPath  # noqa: F401
+from src.movement.rose_path import RoseK2Path, RoseK3Path  # noqa: F401
 from src.movement.spec import FormationPathSpec
 from src.movement.waypoint import WaypointPath
 
@@ -32,4 +36,9 @@ __all__ = [
     "FormationPathSpec",
     "LemniscatePath",
     "CardioidPath",
+    "LissajousPath",
+    "RoseK2Path",
+    "RoseK3Path",
+    "HypocycloidPath",
+    "EpicycloidPath",
 ]

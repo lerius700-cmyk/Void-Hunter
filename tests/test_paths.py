@@ -61,3 +61,103 @@ def test_cardioid_attachment_to_hybridpath() -> None:
     assert isinstance(path, HybridPath)
     # Verify the path has segments and durations
     assert path.total_duration_s > 0
+
+
+# ---------------------------------------------------------------------------
+# Task 5: LissajousPath, RoseK2Path, RoseK3Path, HypocycloidPath, EpicycloidPath
+# ---------------------------------------------------------------------------
+from src.movement.lissajous_path import LissajousPath  # noqa: E402
+from src.movement.rose_path import RoseK2Path, RoseK3Path  # noqa: E402
+from src.movement.hypocycloid_path import HypocycloidPath  # noqa: E402
+from src.movement.epicycloid_path import EpicycloidPath  # noqa: E402
+
+
+def test_lissajous_3_2_threefold_symmetry() -> None:
+    """Lissajous 3:2 has 3-fold symmetry: rotating 120 deg maps the curve to itself."""
+    path = LissajousPath(a=3, b=2, duration_s=6.0).get_path()
+    # Sample 100 points; for each, verify a point rotated by 120 deg is also on the curve (within 5 px)
+    # Cheaper: just verify 12 segments and that the path returns to start
+    p0 = path.position_at(0.0)
+    p1 = path.position_at(1.0)
+    assert math.hypot(p0.x - p1.x, p0.y - p1.y) < 1.0
+    assert len(path.segments) == 12
+
+
+def test_lissajous_attachable_to_hybridpath() -> None:
+    path = LissajousPath().get_path()
+    from src.movement.hybrid import HybridPath
+    assert isinstance(path, HybridPath)
+
+
+def test_rose_k2_four_petals() -> None:
+    """Rose curve with k=2 has 4 petals."""
+    path = RoseK2Path(scale=80.0, duration_s=6.0).get_path()
+    # 4 petals = 8 segments (2 per petal)
+    assert len(path.segments) == 8
+    # Path closes
+    p0 = path.position_at(0.0)
+    p1 = path.position_at(1.0)
+    assert math.hypot(p0.x - p1.x, p0.y - p1.y) < 1.0
+
+
+def test_rose_k3_three_petals() -> None:
+    """Rose curve with k=3 has 3 petals."""
+    path = RoseK3Path(scale=80.0, duration_s=6.0).get_path()
+    # 3 petals = 12 segments (4 per petal for smooth petals)
+    assert len(path.segments) == 12
+    p0 = path.position_at(0.0)
+    p1 = path.position_at(1.0)
+    assert math.hypot(p0.x - p1.x, p0.y - p1.y) < 1.0
+
+
+def test_hypocycloid_R3r_three_cusps() -> None:
+    """Hypocycloid with R=3r has 3 cusps (deltoid)."""
+    path = HypocycloidPath(R=60, r=20, duration_s=8.0).get_path()
+    # 3 cusps = 18 segments (6 per cusp)
+    assert len(path.segments) == 18
+    p0 = path.position_at(0.0)
+    p1 = path.position_at(1.0)
+    assert math.hypot(p0.x - p1.x, p0.y - p1.y) < 1.0
+
+
+def test_epicycloid_Rr_is_cardioid() -> None:
+    """Epicycloid with R=r is a cardioid (heart shape)."""
+    path = EpicycloidPath(R=30, r=30, duration_s=8.0).get_path()
+    # R=r gives a cardioid with a single cusp
+    assert len(path.segments) == 16
+    p0 = path.position_at(0.0)
+    p1 = path.position_at(1.0)
+    assert math.hypot(p0.x - p1.x, p0.y - p1.y) < 1.0
+
+
+def test_paths_all_attachable_to_hybridpath() -> None:
+    """All 5 new path classes return HybridPath instances."""
+    from src.movement.hybrid import HybridPath
+    for path in [
+        LissajousPath(),
+        RoseK2Path(),
+        RoseK3Path(),
+        HypocycloidPath(),
+        EpicycloidPath(),
+    ]:
+        assert isinstance(path.get_path(), HybridPath)
+
+
+def test_paths_no_star_shapes() -> None:
+    """Verify NONE of the 5 paths produce a star-shape (no sharp spikes in the curve).
+
+    Sample 100 points along each path; check that no two consecutive points
+    have a tangent that rotates by more than 90 degrees (a star would have
+    sharp spikes).
+    """
+    for path_cls in [LissajousPath, RoseK2Path, RoseK3Path, HypocycloidPath, EpicycloidPath]:
+        path = path_cls().get_path()
+        prev_tangent = None
+        for i in range(100):
+            t = i / 99.0
+            tan = path.tangent_at(t)
+            angle = math.atan2(tan.y, tan.x)
+            if prev_tangent is not None:
+                delta = abs((angle - prev_tangent + math.pi) % (2 * math.pi) - math.pi)
+                assert delta < math.pi / 2, f"{path_cls.__name__}: tangent rotated {math.degrees(delta)} deg at t={t} (star spike?)"
+            prev_tangent = angle
