@@ -556,6 +556,96 @@ def test_dragon_curve_recursive_layout() -> None:
     assert (0.0, -16.0) in form.offsets  # first up
 
 
+# --- BLOQUE 58.next fix round 1: make() dispatch smoke tests ---
+# These guard against the bug class where make() passes `spacing=18` (or
+# the default `radius=24`) as a parameter that the formation builder
+# doesn't accept, or accepts under a different name. Each test calls
+# FlightFormation.make(...) (the public dispatch) and asserts the spec
+# default radius is honored, not the generic spacing/radius argument.
+def test_flower_of_life_make_dispatch() -> None:
+    """make(FLOWER_OF_LIFE) routes through radius=18 (not spacing=18)."""
+    from src.movement import FlightFormation, FormationKind
+
+    f = FlightFormation.make(FormationKind.FLOWER_OF_LIFE, count=7)
+    assert f.kind == FormationKind.FLOWER_OF_LIFE
+    assert f.count == 7
+    # 6 outer slots at radius 18
+    outer = [(dx, dy) for dx, dy in f.offsets if (dx, dy) != (0.0, 0.0)]
+    assert len(outer) == 6
+    for dx, dy in outer:
+        assert math.isclose(math.hypot(dx, dy), 18.0, abs_tol=0.1)
+
+
+def test_vesica_piscis_make_dispatch() -> None:
+    """make(VESICA_PISCIS) routes through spacing=18 (default)."""
+    from src.movement import FlightFormation, FormationKind
+
+    f = FlightFormation.make(FormationKind.VESICA_PISCIS, count=2)
+    assert f.kind == FormationKind.VESICA_PISCIS
+    assert f.count == 2
+    assert math.isclose(f.offsets[0][0], -9.0, abs_tol=0.1)
+    assert math.isclose(f.offsets[1][0], 9.0, abs_tol=0.1)
+
+
+def test_fibonacfi_spiral_make_dispatch() -> None:
+    """make(FIBONACFI_SPIRAL) routes through r0=8.0 (not spacing=18)."""
+    from src.movement import FlightFormation, FormationKind
+
+    f = FlightFormation.make(FormationKind.FIBONACFI_SPIRAL, count=7)
+    assert f.kind == FormationKind.FIBONACFI_SPIRAL
+    assert f.count == 7
+    # First slot is at r0=8.0 (spec default), not 18.0 (would be the bug).
+    r_first = math.hypot(f.offsets[0][0], f.offsets[0][1])
+    assert math.isclose(r_first, 8.0, abs_tol=0.1), (
+        f"first slot r={r_first} should be 8.0 (spec default r0), not 18.0"
+    )
+
+
+def test_hex_close_pack_make_dispatch() -> None:
+    """make(HEX_CLOSE_PACK) routes through radius=14 (not spacing=18)."""
+    from src.movement import FlightFormation, FormationKind
+
+    f = FlightFormation.make(FormationKind.HEX_CLOSE_PACK, count=7)
+    assert f.kind == FormationKind.HEX_CLOSE_PACK
+    assert f.count == 7
+    # 6 outer at radius 14, not 18 (would be the bug).
+    outer = [(dx, dy) for dx, dy in f.offsets if (dx, dy) != (0.0, 0.0)]
+    assert len(outer) == 6
+    for dx, dy in outer:
+        assert math.isclose(math.hypot(dx, dy), 14.0, abs_tol=0.1), (
+            f"outer slot r={math.hypot(dx, dy)} should be 14.0, not 18.0"
+        )
+
+
+def test_sierpinski_triangle_make_dispatch() -> None:
+    """make(SIERPINSKI_TRIANGLE) routes through radius=24 (not spacing=18)."""
+    from src.movement import FlightFormation, FormationKind
+
+    f = FlightFormation.make(FormationKind.SIERPINSKI_TRIANGLE, count=7)
+    assert f.kind == FormationKind.SIERPINSKI_TRIANGLE
+    assert f.count == 7
+    # Top vertex at (0, -24) — r=24 (spec default), not 18 (would be the bug).
+    assert (0.0, -24.0) in f.offsets, (
+        f"top vertex (0, -24) missing; offsets={f.offsets}"
+    )
+
+
+def test_mandala_rings_make_dispatch() -> None:
+    """make(MANDALA_RINGS) routes through inner_r=12, outer_r=24 (not radius=24)."""
+    from src.movement import FlightFormation, FormationKind
+
+    f = FlightFormation.make(FormationKind.MANDALA_RINGS, count=12)
+    assert f.kind == FormationKind.MANDALA_RINGS
+    assert f.count == 12
+    # 6 inner at r=12, 6 outer at r=24
+    inner = [(dx, dy) for dx, dy in f.offsets
+             if math.isclose(math.hypot(dx, dy), 12.0, abs_tol=0.1)]
+    outer = [(dx, dy) for dx, dy in f.offsets
+             if math.isclose(math.hypot(dx, dy), 24.0, abs_tol=0.1)]
+    assert len(inner) == 6
+    assert len(outer) == 6
+
+
 # -----------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------

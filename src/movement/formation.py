@@ -426,19 +426,19 @@ class FlightFormation:
         if kind == FormationKind.HALF_V:
             return FlightFormation.half_v(count, spacing)
         if kind == FormationKind.FLOWER_OF_LIFE:
-            return FlightFormation.flower_of_life(count, radius)
+            return FlightFormation.flower_of_life(count, radius=18.0)
         if kind == FormationKind.VESICA_PISCIS:
             return FlightFormation.vesica_piscis(count, spacing)
         if kind == FormationKind.FIBONACFI_SPIRAL:
-            return FlightFormation.fibonacfi_spiral(count, spacing)
+            return FlightFormation.fibonacfi_spiral(count, r0=8.0)
         if kind == FormationKind.TREE_OF_LIFE:
             return FlightFormation.tree_of_life(count, spacing)
         if kind == FormationKind.SIERPINSKI_TRIANGLE:
-            return FlightFormation.sierpinski_triangle(count, spacing)
+            return FlightFormation.sierpinski_triangle(count, radius=24.0)
         if kind == FormationKind.HEX_CLOSE_PACK:
-            return FlightFormation.hex_close_pack(count, spacing)
+            return FlightFormation.hex_close_pack(count, radius=14.0)
         if kind == FormationKind.MANDALA_RINGS:
-            return FlightFormation.mandala_rings(count, radius=radius)
+            return FlightFormation.mandala_rings(count, inner_r=12.0, outer_r=24.0)
         if kind == FormationKind.GOLDEN_RATIO_ROW:
             return FlightFormation.golden_ratio_row(count, spacing)
         if kind == FormationKind.KOCH_3FOLD:
