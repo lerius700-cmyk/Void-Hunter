@@ -1,6 +1,6 @@
-"""BLOQUE 58.14.7 + 58.next: parametrize tests over all 50 ComposedPatterns.
+"""BLOQUE 58.14.7 + 58.next: parametrize tests over all 4275 ComposedPatterns.
 
-Each ComposedPattern (one of 9 formations × 8 paths × 3 follow × counts 4-8 = 50)
+Each ComposedPattern (one of 19 formations × 15 paths × 3 follow × counts 4-8 = 4275)
 should:
   - generate a non-empty WavePatternResult
   - have valid spawn positions (within playfield +/- a margin)
@@ -10,6 +10,12 @@ should:
 
 Per-instance jitter (added in this BLOQUE) means the result depends on the
 jitter seed. Tests pass a fixed jitter_seed for reproducibility.
+
+BLOQUE 58.next (Task 6): the library grew from 50 to 4275 entries (full
+cross product). To keep pytest run time bounded, the per-pattern tests
+are parametrized over a representative sample (first + every Nth pattern,
+plus all new formations × new paths combinations). Pool-level sanity
+(unique names, kind, difficulty) still runs over the FULL pool.
 """
 from __future__ import annotations
 
@@ -40,6 +46,61 @@ def _all_names():
     return [(i, p.name) for i, p in enumerate(COMPOSED_PATTERNS)]
 
 
+def _sample_names():
+    """Yield (index, name) for a representative SAMPLE of patterns.
+
+    BLOQUE 58.next: 4275 patterns is too many to fully parametrize (would
+    take many minutes per test). Sample:
+      - first 50 (legacy ordering, backward-compat cover)
+      - 1 new-formation pattern per new formation (10 total) — covers
+        that the new formations work in COMPOSED
+      - 1 new-path pattern per new path (7 total) — covers that the new
+        paths work in COMPOSED
+      - 1 combined new-formation × new-path pattern per (form, path) pair
+        (70 total) — covers that the new×new combos work
+
+    Total: ~140 patterns per parametrized test (vs 4275 un-sampled).
+    """
+    sample: list[tuple[int, str]] = []
+    seen: set[int] = set()
+    n = len(COMPOSED_PATTERNS)
+    # First 50
+    for i in range(min(50, n)):
+        sample.append((i, COMPOSED_PATTERNS[i].name))
+        seen.add(i)
+    new_forms = {
+        "flower_of_life", "vesica_piscis", "fibonacfi_spiral",
+        "tree_of_life", "sierpinski_triangle", "hex_close_pack",
+        "mandala_rings", "golden_ratio_row", "koch_3fold",
+        "dragon_curve",
+    }
+    new_paths = {
+        "lemniscate", "cardioid", "lissajous_3_2", "rose_k2",
+        "rose_k3", "hypocycloid", "epicycloid",
+    }
+    # 1 new-formation pattern per new formation (the first match)
+    for i, p in enumerate(COMPOSED_PATTERNS):
+        if p._formation in new_forms and p._formation not in seen and i not in seen:
+            sample.append((i, p.name))
+            seen.add(i)
+            seen.add(p._formation)  # mark this formation as covered
+    # 1 new-path pattern per new path (the first match not already sampled)
+    for i, p in enumerate(COMPOSED_PATTERNS):
+        if p._path in new_paths and p._path not in seen and i not in seen:
+            sample.append((i, p.name))
+            seen.add(i)
+            seen.add(p._path)  # mark this path as covered
+    # 1 combined new×new pattern per (form, path) pair (use leader + n4)
+    for i, p in enumerate(COMPOSED_PATTERNS):
+        if (p._formation in new_forms and p._path in new_paths
+                and p._follow == "leader" and p._count == 4
+                and i not in seen):
+            sample.append((i, p.name))
+            seen.add(i)
+    sample.sort(key=lambda x: x[0])
+    return sample
+
+
 def _playfield_bounds(margin: float = 80.0):
     """Valid spawn region (with margin for off-screen entry)."""
     return (-margin, INTERNAL_W + margin, -margin, INTERNAL_H + margin)
@@ -48,9 +109,11 @@ def _playfield_bounds(margin: float = 80.0):
 # --- Pool sanity (one-time, not parametrized) ---
 
 class TestComposedPool:
-    def test_exactly_50_patterns(self):
-        assert len(COMPOSED_PATTERNS) == 50, (
-            f"Expected 50 ComposedPatterns, got {len(COMPOSED_PATTERNS)}"
+    def test_full_cross_product_size(self):
+        # 19 forms * 15 paths * 3 follows * 5 counts = 4275
+        assert len(COMPOSED_PATTERNS) == 4275, (
+            f"Expected 4275 ComposedPatterns (full cross product), "
+            f"got {len(COMPOSED_PATTERNS)}"
         )
 
     def test_all_have_unique_names(self):
@@ -74,12 +137,12 @@ class TestComposedPool:
             )
 
 
-# --- Parametrized: each of the 50 generates a valid result ---
+# --- Parametrized: each sampled pattern generates a valid result ---
 
-@pytest.mark.parametrize("idx,name", _all_names(),
-                         ids=[n for _, n in _all_names()])
+@pytest.mark.parametrize("idx,name", _sample_names(),
+                         ids=[n for _, n in _sample_names()])
 def test_composed_generates_non_empty_result(idx, name):
-    """Each of the 50 must produce a WavePatternResult with >= 1 ship."""
+    """Each sampled pattern must produce a WavePatternResult with >= 1 ship."""
     p = COMPOSED_PATTERNS[idx]
     rng = random.Random(42)
     result = p.generate(rng, level=3, enemy_kind="SCOUT")
@@ -87,8 +150,8 @@ def test_composed_generates_non_empty_result(idx, name):
     assert len(result.ships) >= 1, f"{name}: empty ships list"
 
 
-@pytest.mark.parametrize("idx,name", _all_names(),
-                         ids=[n for _, n in _all_names()])
+@pytest.mark.parametrize("idx,name", _sample_names(),
+                         ids=[n for _, n in _sample_names()])
 def test_composed_ships_have_valid_spawn_positions(idx, name):
     """All ship spawn positions within the playfield (with margin for entry)."""
     p = COMPOSED_PATTERNS[idx]
@@ -104,8 +167,8 @@ def test_composed_ships_have_valid_spawn_positions(idx, name):
         )
 
 
-@pytest.mark.parametrize("idx,name", _all_names(),
-                         ids=[n for _, n in _all_names()])
+@pytest.mark.parametrize("idx,name", _sample_names(),
+                         ids=[n for _, n in _sample_names()])
 def test_composed_ships_have_valid_colors(idx, name):
     """All ship colors are RGB tuples with channels in [0, 255]."""
     p = COMPOSED_PATTERNS[idx]
@@ -120,8 +183,8 @@ def test_composed_ships_have_valid_colors(idx, name):
             )
 
 
-@pytest.mark.parametrize("idx,name", _all_names(),
-                         ids=[n for _, n in _all_names()])
+@pytest.mark.parametrize("idx,name", _sample_names(),
+                         ids=[n for _, n in _sample_names()])
 def test_composed_segments_non_degenerate(idx, name):
     """Segments (4-tuples of points) must have at least some non-coincident
     consecutive points — i.e., not a zero-length path."""
@@ -145,8 +208,8 @@ def test_composed_segments_non_degenerate(idx, name):
         )
 
 
-@pytest.mark.parametrize("idx,name", _all_names(),
-                         ids=[n for _, n in _all_names()])
+@pytest.mark.parametrize("idx,name", _sample_names(),
+                         ids=[n for _, n in _sample_names()])
 def test_composed_duration_positive(idx, name):
     """duration_s must be > 0."""
     p = COMPOSED_PATTERNS[idx]
@@ -155,8 +218,8 @@ def test_composed_duration_positive(idx, name):
     assert result.duration_s > 0, f"{name}: duration_s={result.duration_s}"
 
 
-@pytest.mark.parametrize("idx,name", _all_names(),
-                         ids=[n for _, n in _all_names()])
+@pytest.mark.parametrize("idx,name", _sample_names(),
+                         ids=[n for _, n in _sample_names()])
 def test_composed_has_follow_formation_path(idx, name):
     """Each ship carries formation/path/follow in extra (the contract that
     runtime.attach_multi_segment_path reads)."""
@@ -173,10 +236,10 @@ def test_composed_has_follow_formation_path(idx, name):
         )
 
 
-# --- Determinism (one per pattern) ---
+# --- Determinism (one per sampled pattern) ---
 
-@pytest.mark.parametrize("idx,name", _all_names(),
-                         ids=[n for _, n in _all_names()])
+@pytest.mark.parametrize("idx,name", _sample_names(),
+                         ids=[n for _, n in _sample_names()])
 def test_composed_deterministic_with_same_seed(idx, name):
     """Same seed + level -> same ship count + duration."""
     p = COMPOSED_PATTERNS[idx]
@@ -193,8 +256,8 @@ def test_composed_deterministic_with_same_seed(idx, name):
 # --- Difficulty matches the count (the contract from _DIFFICULTY_BY_COUNT) ---
 
 class TestComposedDifficulty:
-    @pytest.mark.parametrize("idx,name", _all_names(),
-                             ids=[n for _, n in _all_names()])
+    @pytest.mark.parametrize("idx,name", _sample_names(),
+                             ids=[n for _, n in _sample_names()])
     def test_difficulty_matches_count(self, idx, name):
         p = COMPOSED_PATTERNS[idx]
         # Extract count from name (e.g., "line_sweep_leader_n5" -> 5)

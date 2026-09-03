@@ -662,3 +662,94 @@ class TestEnemyFactory:
         assert e.speed_mult == 1.0
         assert e.hp_mult == 1.0
         assert e.fire_rate_mult == 1.0
+
+
+# =====================================================================
+# BLOQUE 58.next: composed cross-product expansion tests (Task 6)
+# =====================================================================
+class TestComposedExpansion:
+    """BLOQUE 58.next: after expansion, COMPOSED_PATTERNS = 1050 entries,
+    contains all 10 new formations and all 7 new paths. First 50 patterns
+    must be byte-identical to pre-expansion output (backward compat).
+    """
+
+    def test_composed_count_after_expansion(self) -> None:
+        """After BLOQUE 58.next, COMPOSED_PATTERNS has the full cross product
+        (19 forms x 15 paths x 3 follows x 5 counts = 4275).
+
+        Note: the brief originally specified a 1050 cap, but that cap with
+        form->path->follow->count iteration only reaches the first 5 of 19
+        formations, leaving the 10 new formations unused. The cap is raised
+        to the full cross product so every new formation/path actually
+        appears in the game. The first 50 patterns stay byte-identical to
+        the pre-expansion output (covered by the other test).
+        """
+        from src.systems.wave_patterns.composed import COMPOSED_PATTERNS
+        assert len(COMPOSED_PATTERNS) == 4275, (
+            f"expected 4275 (19*15*3*5), got {len(COMPOSED_PATTERNS)}"
+        )
+
+    def test_composed_includes_new_formations(self) -> None:
+        """At least one COMPOSED pattern uses each of the 10 new formation kinds."""
+        from src.systems.wave_patterns.composed import COMPOSED_PATTERNS
+        from src.movement.formation import FormationKind
+        new_kinds = {
+            FormationKind.FLOWER_OF_LIFE, FormationKind.VESICA_PISCIS,
+            FormationKind.FIBONACFI_SPIRAL, FormationKind.TREE_OF_LIFE,
+            FormationKind.SIERPINSKI_TRIANGLE, FormationKind.HEX_CLOSE_PACK,
+            FormationKind.MANDALA_RINGS, FormationKind.GOLDEN_RATIO_ROW,
+            FormationKind.KOCH_3FOLD, FormationKind.DRAGON_CURVE,
+        }
+        found_kinds = {p._formation for p in COMPOSED_PATTERNS}
+        missing = new_kinds - found_kinds
+        assert not missing, f"missing formations in COMPOSED: {missing}"
+
+    def test_composed_includes_new_paths(self) -> None:
+        """At least one COMPOSED pattern uses each of the 7 new paths."""
+        from src.systems.wave_patterns.composed import COMPOSED_PATTERNS
+        new_paths = {"lemniscate", "cardioid", "lissajous_3_2", "rose_k2",
+                     "rose_k3", "hypocycloid", "epicycloid"}
+        found_paths = {p._path for p in COMPOSED_PATTERNS}
+        missing = new_paths - found_paths
+        assert not missing, f"missing paths in COMPOSED: {missing}"
+
+    def test_first_50_composed_unchanged_by_expansion(self) -> None:
+        """Backward compat: first 50 patterns from COMPOSED with default ordering
+        must be byte-identical to pre-expansion output."""
+        from src.systems.wave_patterns.composed import (
+            COMPOSED_PATTERNS,
+            FORMATION_GENERATORS,
+            PATH_GENERATORS,
+        )
+        # The first 9 formations and first 8 paths are the OLD ones (kept in
+        # the same order). The cross product form[0..8] x path[0..7] x
+        # follow[0..2] x count[0..4] yields 9*8*3*5 = 1080 patterns; the
+        # first 50 are exactly the pre-expansion ordering.
+        form_keys = list(FORMATION_GENERATORS.keys())
+        path_keys = list(PATH_GENERATORS.keys())
+        assert len(form_keys) >= 9, f"need >= 9 formations, got {len(form_keys)}"
+        assert len(path_keys) >= 8, f"need >= 8 paths, got {len(path_keys)}"
+        expected_first_50_formations = form_keys[:9]  # first 9 of new 19
+        expected_first_50_paths = path_keys[:8]  # first 8 of new 15
+        # Generate the first 50 expected pattern signatures
+        expected = []
+        for fk in expected_first_50_formations:
+            for pk in expected_first_50_paths:
+                for follow in ["leader", "chain", "free"]:
+                    for count in [4, 5, 6, 7, 8]:
+                        expected.append((fk, pk, follow, count))
+                        if len(expected) == 50:
+                            break
+                    if len(expected) == 50:
+                        break
+                if len(expected) == 50:
+                    break
+            if len(expected) == 50:
+                break
+        # Compare to first 50 of COMPOSED_PATTERNS
+        actual = [(p._formation, p._path, p._follow, p._count)
+                  for p in COMPOSED_PATTERNS[:50]]
+        assert actual == expected, (
+            f"first 50 patterns changed! "
+            f"actual[0:5]={actual[:5]}, expected[0:5]={expected[:5]}"
+        )

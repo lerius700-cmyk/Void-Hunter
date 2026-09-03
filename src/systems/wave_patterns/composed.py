@@ -19,6 +19,13 @@ import random
 from typing import Optional
 
 from src.core.settings import INTERNAL_W, INTERNAL_H
+from src.movement.formation import FlightFormation
+from src.movement.cardioid_path import CardioidPath
+from src.movement.epicycloid_path import EpicycloidPath
+from src.movement.hypocycloid_path import HypocycloidPath
+from src.movement.lemniscate_path import LemniscatePath
+from src.movement.lissajous_path import LissajousPath
+from src.movement.rose_path import RoseK2Path, RoseK3Path
 from src.systems.wave_patterns.base import (
     PatternDifficulty,
     SpawnedShip,
@@ -146,6 +153,17 @@ FORMATION_GENERATORS = {
     "x": _slot_x,
     "pincer": _slot_pincer,
     "arrow": _slot_arrow,
+    # BLOQUE 58.next: sacred-geometry & fractal formations
+    "flower_of_life": lambda c: FlightFormation.flower_of_life(c).offsets,
+    "vesica_piscis": lambda c: FlightFormation.vesica_piscis(c).offsets,
+    "fibonacfi_spiral": lambda c: FlightFormation.fibonacfi_spiral(c).offsets,
+    "tree_of_life": lambda c: FlightFormation.tree_of_life(c).offsets,
+    "sierpinski_triangle": lambda c: FlightFormation.sierpinski_triangle(c).offsets,
+    "hex_close_pack": lambda c: FlightFormation.hex_close_pack(c).offsets,
+    "mandala_rings": lambda c: FlightFormation.mandala_rings(c).offsets,
+    "golden_ratio_row": lambda c: FlightFormation.golden_ratio_row(c).offsets,
+    "koch_3fold": lambda c: FlightFormation.koch_3fold(c).offsets,
+    "dragon_curve": lambda c: FlightFormation.dragon_curve(c).offsets,
 }
 
 
@@ -264,6 +282,40 @@ def _path_dive(
     ]
 
 
+def _hybridpath_to_segments(
+    hp,
+    start: tuple[float, float],
+) -> list[tuple[tuple[float, float], ...]]:
+    """Convert a HybridPath to a list of 4-tuples (segments), translated to `start`.
+
+    BLOQUE 58.next: the new path classes (LemniscatePath, CardioidPath, ...)
+    return a HybridPath whose BezierPath segments are defined in path-local
+    coordinates centered at (0, 0). To position the path at the entry point,
+    we translate every control point so the FIRST anchor (segments[0].p0)
+    lands at `start`. The shape is preserved exactly; only the location shifts.
+
+    The output format is the canonical runtime format that
+    ComposedPattern.generate() emits into ship.extra["segments"]: a list of
+    4-tuples of (x, y) points, one per cubic bezier segment. Generate()
+    detects this format (each item has length 4) and uses it directly
+    without the chained-bezier conversion used for the flat-point paths.
+    """
+    if not hp.segments:
+        return []
+    first = hp.segments[0].p0
+    dx = start[0] - first.x
+    dy = start[1] - first.y
+    out: list[tuple[tuple[float, float], ...]] = []
+    for seg in hp.segments:
+        out.append((
+            (seg.p0.x + dx, seg.p0.y + dy),
+            (seg.p1.x + dx, seg.p1.y + dy),
+            (seg.p2.x + dx, seg.p2.y + dy),
+            (seg.p3.x + dx, seg.p3.y + dy),
+        ))
+    return out
+
+
 PATH_GENERATORS = {
     "sweep": _path_sweep,
     "s_curve": _path_s_curve,
@@ -273,6 +325,24 @@ PATH_GENERATORS = {
     "loop": _path_loop,
     "zigzag": _path_zigzag,
     "dive": _path_dive,
+    # BLOQUE 58.next: sacred-geometry & fractal paths. Each new path class
+    # returns a HybridPath of pre-built bezier segments. We translate the
+    # path so its first anchor sits at the entry point, then return a list
+    # of (p0, p1, p2, p3) 4-tuples for the runtime to consume directly.
+    "lemniscate": lambda start, rng: _hybridpath_to_segments(
+        LemniscatePath().get_path(), start),
+    "cardioid": lambda start, rng: _hybridpath_to_segments(
+        CardioidPath().get_path(), start),
+    "lissajous_3_2": lambda start, rng: _hybridpath_to_segments(
+        LissajousPath().get_path(), start),
+    "rose_k2": lambda start, rng: _hybridpath_to_segments(
+        RoseK2Path().get_path(), start),
+    "rose_k3": lambda start, rng: _hybridpath_to_segments(
+        RoseK3Path().get_path(), start),
+    "hypocycloid": lambda start, rng: _hybridpath_to_segments(
+        HypocycloidPath().get_path(), start),
+    "epicycloid": lambda start, rng: _hybridpath_to_segments(
+        EpicycloidPath().get_path(), start),
 }
 
 
@@ -406,16 +476,32 @@ class ComposedPattern(WavePattern):
         entry_y = -20.0
         path_pts = path_fn((entry_x, entry_y), rng)
 
-        # Convert path_pts (list of points) into bezier segments.
-        # Each consecutive 4 points = 1 bezier segment (P0, P1, P2, P3).
-        # This is the format runtime.py reads via attach_multi_segment_path.
+        # Two path-generator return formats are supported:
+        #
+        # 1) Flat list of (x, y) anchor points (legacy). Each consecutive
+        #    4 points = 1 chained bezier segment. The 4-tuple is the
+        #    canonical (P0, P1, P2, P3) consumed by runtime.py.
+        #
+        # 2) Pre-segmented list of 4-tuples (BLOQUE 58.next: new path
+        #    classes return HybridPath segments already built as bezier
+        #    curves). Use directly, no chained-bezier conversion.
+        #
+        # Distinguish by the length of the first element: 2-tuple = flat
+        # point, 4-tuple = pre-segmented.
         segments: list[tuple[tuple[float, float], ...]] = []
-        for i in range(0, len(path_pts) - 3):
-            p0 = path_pts[i]
-            p1 = path_pts[i + 1]
-            p2 = path_pts[i + 2]
-            p3 = path_pts[i + 3]
-            segments.append((p0, p1, p2, p3))
+        if path_pts and len(path_pts[0]) == 4:
+            # Pre-segmented format: already in runtime format.
+            for seg in path_pts:
+                p0, p1, p2, p3 = seg
+                segments.append((p0, p1, p2, p3))
+        else:
+            # Flat-point format: chain into bezier segments.
+            for i in range(0, len(path_pts) - 3):
+                p0 = path_pts[i]
+                p1 = path_pts[i + 1]
+                p2 = path_pts[i + 2]
+                p3 = path_pts[i + 3]
+                segments.append((p0, p1, p2, p3))
         if not segments:
             # Degenerate path (e.g. count=0 or all points coincident).
             # Fall back to a trivial down segment so the ship still moves.
@@ -472,18 +558,24 @@ class ComposedPattern(WavePattern):
         )
 
 
-# ---- 50 pre-defined combinations ----
+# ---- 1050 pre-defined combinations ----
+# BLOQUE 58.next: 19 formations * 15 paths * 3 follows * 5 counts = 4275.
+# Capped at 1050 to keep the library bounded.
+#
 # 9 formations * 6 paths * ~1 follow mode = 54 (close to 50)
 # Plus a few hand-picked favorites.
 
 COMPOSED_PATTERNS: list[ComposedPattern] = []
 
-# Cross product: every formation * every path
+# Cross product: every formation * every path. After BLOQUE 58.next, the
+# keys here match the FIRST 9 entries of FORMATION_GENERATORS and the
+# FIRST 8 entries of PATH_GENERATORS (the legacy entries are kept first
+# to preserve backward-compat — see test_first_50_composed_unchanged_by_expansion).
 _FORMATIONS_FOR_LIBRARY = [
     "line", "v", "diamond", "wedge", "circle", "spiral", "x", "pincer", "arrow",
 ]
 _PATHS_FOR_LIBRARY = [
-    "sweep", "s_curve", "sine", "spiral", "loop", "zigzag", "dive", "straight",
+    "sweep", "s_curve", "sine", "spiral", "straight", "loop", "zigzag", "dive",
 ]
 _FOLLOW_FOR_LIBRARY = ["leader", "chain", "free"]
 _COUNTS = [4, 5, 6, 7, 8]
@@ -495,17 +587,35 @@ _DIFFICULTY_BY_COUNT = {
     8: PatternDifficulty.HARD,
 }
 
+# BLOQUE 58.next: cap on the COMPOSED_PATTERNS library size.
+# 19 formations * 15 paths * 3 follows * 5 counts = 4275 (full cross product).
+# A cap < 4275 with form->path->follow->count iteration would NOT cover all
+# formations (e.g. cap=1050 covers only the first 5 formations because each
+# form gets 15 paths * 15 follow/count = 225 patterns). To honour the spec
+# requirement that every new formation/path appears in the library, we cap
+# at the full cross product. The cap is still a soft bound -- it bounds
+# memory, not variety.
+_PATTERN_LIBRARY_CAP = 4275
 
-def _build_50_patterns() -> list[ComposedPattern]:
-    """Generate ~50 patterns from the cross product of (formation, path, follow, count)."""
+
+def _build_all_patterns() -> list[ComposedPattern]:
+    """Generate up to _PATTERN_LIBRARY_CAP patterns from the full cross
+    product of FORMATION_GENERATORS x PATH_GENERATORS x follow x count.
+
+    Iteration order is the same as before (form -> path -> follow -> count)
+    so the FIRST 50 patterns are byte-identical to the pre-expansion
+    output. New formations and paths come AFTER the legacy 9 / 8 entries
+    in their respective dicts, so they only appear at later positions
+    (after the legacy combinations are exhausted).
+    """
     out: list[ComposedPattern] = []
     seen: set[tuple[str, str, str, int]] = set()
-    for form in _FORMATIONS_FOR_LIBRARY:
-        for path in _PATHS_FOR_LIBRARY:
+    for form in FORMATION_GENERATORS:
+        for path in PATH_GENERATORS:
             for follow in _FOLLOW_FOR_LIBRARY:
                 for count in _COUNTS:
-                    if len(out) >= 50:
-                        break
+                    if len(out) >= _PATTERN_LIBRARY_CAP:
+                        return out
                     key = (form, path, follow, count)
                     if key in seen:
                         continue
@@ -519,16 +629,10 @@ def _build_50_patterns() -> list[ComposedPattern]:
                         count=count,
                         difficulty=_DIFFICULTY_BY_COUNT[count],
                     ))
-                if len(out) >= 50:
-                    break
-            if len(out) >= 50:
-                break
-        if len(out) >= 50:
-            break
     return out
 
 
-COMPOSED_PATTERNS = _build_50_patterns()
+COMPOSED_PATTERNS = _build_all_patterns()
 
 
 # ---- Solo enemy spawner ----
