@@ -531,7 +531,7 @@ showing each pattern with visible leader glow ring.
 - `HypocycloidPath` — Spirograph (R=3r → 3-cusp deltoid)
 - `EpicycloidPath` — small circle outside big (R=r → cardioid)
 
-**1,050 new COMPOSED patterns** (cross product 19 forms × 15 paths × 3 follows × 5 counts, capped 1050). First 50 patterns unchanged (backward compat verified).
+**4,275 new COMPOSED patterns** (full cross product 19 forms × 15 paths × 3 follows × 5 counts; cap raised from 50 to 4,275 so all 10 new formations and 7 new paths actually appear in the game). First 50 patterns unchanged (backward compat verified).
 
 **Excluded by user constraint (no stars):** pentagram, hexagram, `{n/k}` star polygons, snowflake-star hybrids. Koch_3fold and Rose_K3 are explicitly NOT star shapes (asymmetric / smooth petals).
 
@@ -543,8 +543,8 @@ showing each pattern with visible leader glow ring.
 
 ### Verified
 
-- All 10 new formations: 11 unit tests in `tests/test_formation.py` pass.
-- All 7 new paths: 10 unit tests in `tests/test_paths.py` pass (no star shapes verified by `test_paths_no_star_shapes`).
+- All 10 new formations: 17 unit tests in `tests/test_movement.py` pass (covering all 10 new formations).
+- All 7 new paths: 12 unit tests in `tests/test_paths.py` pass (covering all 7 new paths).
 - 4 integration tests in `tests/test_wave_patterns.py` pass.
 - `test_first_50_composed_unchanged_by_expansion` confirms backward compat.
 - 17 visual proof PNGs in `tools/playtest_out/`: 10 formations + 7 paths.

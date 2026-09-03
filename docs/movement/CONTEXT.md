@@ -71,7 +71,7 @@
 **Cambios durante este BLOQUE:**
 - 10 nuevas formations agregadas (Flower of Life, Vesica Piscis, Fibonacci Spiral, Tree of Life, Sierpinski Triangle, Hex Close-Pack, Mandala Rings, Golden Ratio Row, Koch 3-fold, Dragon Curve)
 - 7 nuevos paths agregados (Lemniscate, Cardioid, Lissajous, Rose k2/k3, Hypocycloid, Epicycloid)
-- 1,050 nuevos COMPOSED patterns (cross product 19 forms × 15 paths × 3 follows × 5 counts, capped 1050)
+- 4,275 nuevos COMPOSED patterns (full cross product 19 forms × 15 paths × 3 follows × 5 counts; cap raised from 50 a 4,275)
 - "2D explicit" notation fix en `01_movement_primitives.md`
 
 **Regla para próximos cambios:** reabrir el FROZEN es BLOQUE-worthy. Spec + plan + tests + visual proof antes de tocar el código.
