@@ -566,6 +566,244 @@ class TestBuildPathContract:
 
 
 # =====================================================================
+# BLOQUE 58.next: motion invariants — tests that catch visual bugs
+# =====================================================================
+class TestMotionInvariants:
+    """Motion-level invariants that the structural tests miss.
+
+    Each test below simulates the pattern via PathFollower.update() and
+    checks a geometric property that the pattern MUST satisfy. If the
+    pattern's intent ever drifts (e.g., the V gets inverted, the dice
+    cluster deforms, the cross-side swap fails, the orbit collapses),
+    one of these tests breaks.
+
+    These are the tests that would have caught the bugs surfaced by
+    the audit: the inverted V, the PINCER_CROSS extract_xy crash, the
+    OSCILLATING_BUTTERFLY orbit integrity, etc.
+    """
+
+    def _make_followers(self, pattern_cls, level=3, seed=42):
+        """Helper: build a list of (ship, PathFollower) for a generated pattern."""
+        from src.movement.follower import PathFollower
+        result = pattern_cls().generate(random.Random(seed), level=level)
+        pairs = []
+        for ship in result.ships:
+            path = pattern_cls.build_path(ship)
+            assert path is not None, f"{pattern_cls.__name__}.build_path returned None"
+            pairs.append((ship, PathFollower(path, t_offset=ship.t_offset)))
+        return pairs, result
+
+    def _positions_at(self, pairs, t):
+        """Run each follower for t seconds, return list of (ship, pos)."""
+        out = []
+        for ship, follower in pairs:
+            pos, _ = follower.update(t)
+            out.append((ship, pos))
+        return out
+
+    # ------------------------------------------------------------------
+    # V_FORMATION — leader must be at the FRONT of the direction of motion
+    # ------------------------------------------------------------------
+    def test_v_formation_leader_at_front_of_motion(self):
+        """V_FORMATION: leader's projection onto the forward direction
+        must be the MAXIMUM among all ships. The V should point in the
+        direction of motion (Star Fox 64 style). If the V is inverted
+        (wings ahead of leader), this test fails."""
+        import math
+        from src.systems.wave_patterns import VFormationPattern
+        pairs, result = self._make_followers(VFormationPattern, level=3)
+        direction = result.ships[0].extra["direction"]
+        # Forward unit vector: V moves at (direction * speed, +1 * speed)
+        norm = math.sqrt(direction * direction + 1.0)
+        fx, fy = direction / norm, 1.0 / norm
+        # Sample at t=2.0s — well past spawn, formation has spread
+        positions = self._positions_at(pairs, 2.0)
+        leader_ship = next(s for s in result.ships if s.is_leader)
+        leader_proj = None
+        for ship, p in positions:
+            proj = p.x * fx + p.y * fy
+            if ship is leader_ship:
+                leader_proj = proj
+                break
+        assert leader_proj is not None, "Leader ship not found in positions"
+        for ship, p in positions:
+            proj = p.x * fx + p.y * fy
+            assert proj <= leader_proj + 1e-6, (
+                f"V_FORMATION: ship slot={ship.slot} is AHEAD of leader "
+                f"(forward_proj={proj:.2f} > leader={leader_proj:.2f}). "
+                f"The V is INVERTED — wings are in front of the leader."
+            )
+
+    # ------------------------------------------------------------------
+    # DICE_FIVE_GRID — 5 ships must move as a rigid cluster
+    # ------------------------------------------------------------------
+    def test_dice_five_grid_rigid_cluster(self):
+        """DICE_FIVE_GRID: relative positions of all 5 ships must be
+        CONSTANT over time. If the cluster deforms in motion (ships
+        drift apart or the shape warps), this test fails."""
+        from src.systems.wave_patterns import DiceFiveGridPattern
+        pairs, result = self._make_followers(DiceFiveGridPattern, level=3)
+        # Initial relative positions (subtract centroid)
+        initial = self._positions_at(pairs, 0.0)
+        cx0 = sum(p.x for _, p in initial) / len(initial)
+        cy0 = sum(p.y for _, p in initial) / len(initial)
+        rel0 = [(p.x - cx0, p.y - cy0) for _, p in initial]
+        # After 2.0s, check relative positions are still the same
+        later = self._positions_at(pairs, 2.0)
+        cx1 = sum(p.x for _, p in later) / len(later)
+        cy1 = sum(p.y for _, p in later) / len(later)
+        for i, (ship, p) in enumerate(later):
+            rx_now, ry_now = p.x - cx1, p.y - cy1
+            assert rx_now == pytest.approx(rel0[i][0], abs=0.5), (
+                f"DICE_FIVE_GRID: ship slot={ship.slot} drifted in X "
+                f"({rx_now:.2f} vs initial {rel0[i][0]:.2f})"
+            )
+            assert ry_now == pytest.approx(rel0[i][1], abs=0.5), (
+                f"DICE_FIVE_GRID: ship slot={ship.slot} drifted in Y "
+                f"({ry_now:.2f} vs initial {rel0[i][1]:.2f})"
+            )
+
+    # ------------------------------------------------------------------
+    # PINCER_CROSS — at midpoint, 'left' ships must be on the RIGHT side
+    # ------------------------------------------------------------------
+    def test_pincer_cross_swaps_sides_at_midpoint(self):
+        """PINCER_CROSS: at t=2.3s (end of the CROSS segment), the
+        'left' ships must be on the RIGHT side of the playfield and
+        vice versa. Duration 4.8s = 1.5s entry + 0.8s cross + 1.0s
+        cruise + 1.5s exit. If the cross segment fails, this test fails."""
+        from src.systems.wave_patterns import PincerCrossPattern
+        from src.core.settings import INTERNAL_W
+        pairs, result = self._make_followers(PincerCrossPattern, level=3)
+        positions = self._positions_at(pairs, 2.3)
+        mid_x = INTERNAL_W / 2
+        for ship, p in positions:
+            side = ship.extra["side"]
+            if side == "left":
+                assert p.x > mid_x, (
+                    f"PINCER_CROSS: left ship at t=2.3s is still on the "
+                    f"LEFT (X={p.x:.1f} < mid={mid_x}). CROSS segment failed."
+                )
+            else:  # right
+                assert p.x < mid_x, (
+                    f"PINCER_CROSS: right ship at t=2.3s is still on the "
+                    f"RIGHT (X={p.x:.1f} > mid={mid_x}). CROSS segment failed."
+                )
+
+    # ------------------------------------------------------------------
+    # OSCILLATING_BUTTERFLY — each ship must stay on the orbital ellipse
+    # ------------------------------------------------------------------
+    def test_oscillating_butterfly_ships_on_closed_orbit(self):
+        """OSCILLATING_BUTTERFLY: all 6 ships must remain on the same
+        closed orbit. We sample the orbit path itself at 16 arc-length
+        waypoints and use the centroid of those samples as the orbit
+        center (rotation-invariant). Every ship's position at any
+        time must be at a distance from that center within the orbit's
+        own [min, max] distance range.
+
+        This invariant holds for ANY elliptical orbit, regardless of
+        rotation, rx/ry, or how the path is parametrized.
+        """
+        import math
+        from src.systems.wave_patterns import OscillatingButterflyPattern
+        from src.movement.follower import PathFollower
+        # Build the orbit path and sample it at 16 arc-length waypoints
+        result = OscillatingButterflyPattern().generate(random.Random(42), level=3)
+        orbit_path = result.ships[0].extra["orbital"].get_path()
+        N = 16
+        orbit_points = [
+            orbit_path.position_at_distance(orbit_path.total_arc_length * i / N)
+            for i in range(N)
+        ]
+        # Centroid of orbit samples = orbit center (rotation-invariant)
+        cx = sum(p.x for p in orbit_points) / N
+        cy = sum(p.y for p in orbit_points) / N
+        # All orbit samples should be at non-trivial distance from center
+        distances = [math.hypot(p.x - cx, p.y - cy) for p in orbit_points]
+        min_d, max_d = min(distances), max(distances)
+        assert min_d > 30, (
+            f"OSCILLATING_BUTTERFLY: orbit is too small (min_d={min_d:.1f}, "
+            f"expected > 30)"
+        )
+        # Ellipse: max_d / min_d = rx / ry. With rx in [100,140] and ry
+        # in [70,100], the ratio is at most 2.0. If higher, the orbit is
+        # broken (e.g., not closed, or one axis collapsed).
+        assert max_d / min_d < 2.5, (
+            f"OSCILLATING_BUTTERFLY: orbit not elliptical "
+            f"(max_d/min_d={max_d/min_d:.2f}, expected < 2.5)"
+        )
+        # Now check every ship's position at multiple times falls on the orbit
+        for ship in result.ships:
+            for t_sample in (0.5, 1.5, 2.5, 3.5):
+                # Fresh follower per sample (PathFollower is stateful)
+                ship_path = OscillatingButterflyPattern.build_path(ship)
+                follower = PathFollower(ship_path, t_offset=ship.t_offset)
+                pos, _ = follower.update(t_sample)
+                dist = math.hypot(pos.x - cx, pos.y - cy)
+                assert min_d - 3 <= dist <= max_d + 3, (
+                    f"OSCILLATING_BUTTERFLY: ship slot={ship.slot} at t={t_sample} "
+                    f"is OFF the orbit (dist={dist:.1f}, expected in "
+                    f"[{min_d:.1f}, {max_d:.1f}])"
+                )
+
+    # ------------------------------------------------------------------
+    # LEADER_FOLLOWER_CHAIN — followers must be BEHIND the leader
+    # ------------------------------------------------------------------
+    def test_leader_follower_chain_followers_behind_leader(self):
+        """LEADER_FOLLOWER_CHAIN: at any time, the leader of each chain
+        must be FURTHER ALONG the path than its followers. The chain
+        is a 'follow the leader' snake — leader at front, followers
+        trailing behind. If the t_offset logic is inverted (followers
+        ahead of leader), this test fails.
+
+        We test via arc-length progress: at the same simulation time,
+        the leader's arc length should be >= each follower's arc length
+        in the same chain."""
+        from src.systems.wave_patterns import LeaderFollowerChainPattern
+        from src.movement.follower import PathFollower
+        result = LeaderFollowerChainPattern().generate(random.Random(42), level=4)
+        # 2 chains × 5 ships = 10. Chain A = ships[0..4], Chain B = ships[5..9]
+        # Leader is slot 0 in each chain (ships[0] and ships[5]).
+        for chain_start in (0, 5):
+            leader = result.ships[chain_start]
+            assert leader.is_leader, f"ship {chain_start} should be the leader"
+            # Build the path the leader uses, then compute the path arc length
+            # of the leader and each follower at t=2.0s.
+            leader_path = LeaderFollowerChainPattern.build_path(leader)
+            assert leader_path is not None
+            leader_follower = PathFollower(leader_path, t_offset=leader.t_offset)
+            leader_pos, _ = leader_follower.update(2.0)
+            # For each follower in this chain, compute its position
+            for slot in range(1, 5):
+                follower = result.ships[chain_start + slot]
+                follower_path = LeaderFollowerChainPattern.build_path(follower)
+                assert follower_path is not None
+                # Sanity: same path object (shared parallel_pair per chain)
+                assert follower_path is leader_path, (
+                    f"Chain {chain_start}: follower slot={slot} has DIFFERENT "
+                    f"path than leader. Top/bot split?"
+                )
+                follower_f = PathFollower(follower_path, t_offset=follower.t_offset)
+                follower_pos, _ = follower_f.update(2.0)
+                # The leader should be FURTHER ALONG the path (larger arc
+                # length from the spawn point p0) than the follower.
+                # We measure this as: distance from start of path.
+                p0 = leader_path.segments[0].p0
+                leader_dist = (
+                    (leader_pos.x - p0.x) ** 2 + (leader_pos.y - p0.y) ** 2
+                ) ** 0.5
+                follower_dist = (
+                    (follower_pos.x - p0.x) ** 2 + (follower_pos.y - p0.y) ** 2
+                ) ** 0.5
+                assert leader_dist >= follower_dist - 0.5, (
+                    f"LEADER_FOLLOWER_CHAIN: chain={chain_start//5} follower "
+                    f"slot={slot} is AHEAD of the leader at t=2.0s "
+                    f"(follower_dist={follower_dist:.1f} > leader_dist={leader_dist:.1f}). "
+                    f"t_offsets are inverted: follower has t_offset={follower.t_offset} "
+                    f"vs leader t_offset={leader.t_offset}."
+                )
+
+
+# =====================================================================
 # ProceduralWaveManager tests
 # =====================================================================
 class TestProceduralWaveManager:
