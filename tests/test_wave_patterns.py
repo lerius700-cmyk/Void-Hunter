@@ -169,9 +169,11 @@ class TestVFormation:
         offsets = result.ships[0].extra["wing_offsets"]
         # Leader at (0,0)
         assert offsets[0] == (0.0, 0.0)
-        # V opens downward (positive Y in screen coords)
+        # V opens UPWARD (wings above leader in screen coords, negative Y)
+        # so the leader is at the FRONT of motion (apex pointing down
+        # toward the player, like a flying goose).
         for ox, oy in offsets[1:]:
-            assert oy > 0  # wings are below leader (in screen y)
+            assert oy < 0, f"wing offset oy={oy} should be < 0 (above leader)"
 
     def test_v_symmetric(self):
         from src.systems.wave_patterns import VFormationPattern
@@ -231,15 +233,20 @@ class TestLeaderFollowerChain:
         for i in non_leader_indices:
             assert result.ships[i].is_leader is False
 
-    def test_chains_have_increasing_delay_within_chain(self):
-        """BLOQUE 58.13: t_offsets are non-decreasing within each chain."""
+    def test_chains_have_decreasing_delay_within_chain(self):
+        """BLOQUE 58.13: t_offsets DECREASE within each chain (leader at
+        front, followers trail behind in snake-like formation)."""
         from src.systems.wave_patterns import LeaderFollowerChainPattern
         rng = random.Random(42)
         result = LeaderFollowerChainPattern().generate(rng, level=3)
         # Chain A = ships 0..4, Chain B = ships 5..9
         for chain_start in (0, 5):
             for i in range(chain_start + 1, chain_start + 5):
-                assert result.ships[i].t_offset >= result.ships[i - 1].t_offset
+                assert result.ships[i].t_offset <= result.ships[i - 1].t_offset, (
+                    f"chain {chain_start}: ship {i} t_offset "
+                    f"{result.ships[i].t_offset} should be <= ship {i-1} "
+                    f"t_offset {result.ships[i-1].t_offset}"
+                )
 
     def test_frequency_param(self):
         from src.systems.wave_patterns import LeaderFollowerChainPattern

@@ -74,9 +74,15 @@ class LeaderFollowerChainPattern(WavePattern):
         for chain_idx in range(chain_count):
             side = "top" if chain_idx == 0 else "bot"
             for slot in range(followers_per_chain + 1):
+                # Leader (slot=0) has the HIGHEST t_offset (furthest along
+                # the path = front of the chain). Followers have decreasing
+                # t_offset so they trail behind the leader (snake-like).
                 t_offset = (chain_idx * inter_chain_offset
-                            + slot * delay_per_follower)
-                x, y = self._bezier_point(0.0, p0, p1, p2, p3)
+                            + (followers_per_chain - slot) * delay_per_follower)
+                # Spawn position matches what the PathFollower will produce
+                # on its first update (no visible "jump" on game start).
+                t_param = min(1.0, t_offset / duration_s) if duration_s > 0 else 0.0
+                x, y = self._bezier_point(t_param, p0, p1, p2, p3)
                 is_leader = (slot == 0)
                 ships.append(SpawnedShip(
                     spawn_x=x,

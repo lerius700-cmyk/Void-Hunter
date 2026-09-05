@@ -49,7 +49,10 @@ class VFormationPattern(WavePattern):
         # offset is multiplied by a small slope factor so the V bends
         # gracefully as it moves, like a flying goose flock).
         wing_dx = 16.0 * direction
-        wing_dy = 22.0
+        # Negative wing_dy: wings are ABOVE the leader in screen coords,
+        # so as the V moves DOWN, the leader is at the front of motion
+        # (apex pointing down toward the player, like a flying goose).
+        wing_dy = -22.0
         # Curve: outer wings have extra dx to bend the V (graceful sweep)
         curve_factor = 0.15  # 0.0 = rigid V, 0.3 = strong curve
 
