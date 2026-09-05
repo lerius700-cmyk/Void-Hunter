@@ -12,6 +12,7 @@ from __future__ import annotations
 import random
 
 from src.core.settings import INTERNAL_W, INTERNAL_H
+from src.movement.bezier import Point
 from src.systems.wave_patterns.base import (
     PatternDifficulty,
     SpawnedShip,
@@ -152,3 +153,27 @@ class PincerCrossPattern(WavePattern):
         x = (u**3) * p0[0] + 3 * (u**2) * t * p1[0] + 3 * u * (t**2) * p2[0] + (t**3) * p3[0]
         y = (u**3) * p0[1] + 3 * (u**2) * t * p1[1] + 3 * u * (t**2) * p2[1] + (t**3) * p3[1]
         return (x, y)
+
+    @classmethod
+    def build_path(cls, ship: "SpawnedShip"):
+        """BLOQUE 58.next: extract the per-ship multi-segment HybridPath.
+
+        PINCER_CROSS stores 4 control-point quads in extra['segments'] and
+        matching durations in extra['segment_durations']. Wraps them in
+        a HybridPath so a PathFollower can drive the ship.
+        """
+        from src.movement.bezier import BezierPath
+        from src.movement.hybrid import HybridPath
+        segments_pts = ship.extra.get("segments")
+        if not segments_pts:
+            return None
+        segs = []
+        for p0, p1, p2, p3 in segments_pts:
+            segs.append(BezierPath(
+                p0=Point(p0[0], p0[1]),
+                p1=Point(p1[0], p1[1]),
+                p2=Point(p2[0], p2[1]),
+                p3=Point(p3[0], p3[1]),
+            ))
+        seg_durs = ship.extra.get("segment_durations", [3.0] * len(segs))
+        return HybridPath(segs, seg_durs)

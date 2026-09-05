@@ -20,6 +20,7 @@ import random
 from typing import Optional
 
 from src.core.settings import INTERNAL_W, INTERNAL_H
+from src.movement.bezier import Point
 from src.systems.wave_patterns.base import (
     PatternDifficulty,
     SpawnedShip,
@@ -90,6 +91,20 @@ class OscillatingButterflyPattern(WavePattern):
             duration_s=duration_s,
             seed_used=rng.randint(0, 2**31 - 1),
         )
+
+    @classmethod
+    def build_path(cls, ship: "SpawnedShip"):
+        """BLOQUE 58.next: extract the per-ship orbital HybridPath.
+
+        OSCILLATING_BUTTERFLY stores a single OrbitalPath in extra['orbital']
+        and uses the same path for all ships (each with its own t_offset).
+        Returns the 4-quarter-orbital HybridPath.
+        """
+        from src.movement.hybrid import HybridPath
+        orbital = ship.extra.get("orbital")
+        if orbital is None:
+            return None
+        return orbital.get_path()
 
     @staticmethod
     def _hue_to_rgb(hue: float, sat: float = 0.85, val: float = 0.95) -> tuple[int, int, int]:

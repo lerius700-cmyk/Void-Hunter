@@ -12,6 +12,7 @@ import random
 from typing import Optional
 
 from src.core.settings import INTERNAL_W, INTERNAL_H
+from src.movement.bezier import Point
 from src.systems.wave_patterns.base import (
     PatternDifficulty,
     SpawnedShip,
@@ -89,6 +90,28 @@ class VFormationPattern(WavePattern):
             duration_s=ships[0].extra["duration_s"],
             seed_used=rng.randint(0, 2**31 - 1),
         )
+
+    @classmethod
+    def build_path(cls, ship: "SpawnedShip"):
+        """BLOQUE 58.next: build a straight-line HybridPath for visual replay.
+
+        The runtime uses rigid straight-line motion for V_FORMATION (no
+        PathFollower attached). We mirror that by building a 2-waypoint
+        HybridPath from the ship's spawn to off-screen at SCOUT speed,
+        in the formation's direction.
+        """
+        from src.movement.hybrid import HybridPath
+        from src.movement.waypoint import WaypointPath
+        duration_s = ship.extra.get("duration_s", 5.0)
+        direction = ship.extra.get("direction", 1)
+        speed = 90.0  # SCOUT default (matches runtime)
+        end_x = ship.spawn_x + direction * speed * duration_s
+        end_y = ship.spawn_y + speed * duration_s
+        seg = WaypointPath(
+            [Point(ship.spawn_x, ship.spawn_y), Point(end_x, end_y)],
+            speed_px_s=speed,
+        )
+        return HybridPath([seg], [duration_s])
 
     @staticmethod
     def _wing_color(base_hue: float, slot: int, total: int) -> tuple[int, int, int]:

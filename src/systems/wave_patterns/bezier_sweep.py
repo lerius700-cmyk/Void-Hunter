@@ -233,6 +233,21 @@ class BezierSweepPattern(WavePattern):
     # ------------------------------------------------------------------
     # BLOQUE 58.13: HSV → RGB for pair colors
     # ------------------------------------------------------------------
+    @classmethod
+    def build_path(cls, ship: "SpawnedShip"):
+        """BLOQUE 58.next: extract per-ship path from the parallel_pair.
+
+        BEZIER_SWEEP stores a single ParallelPathPair in extra['parallel_pair']
+        and per-ship side ('top' or 'bot') in extra['side']. Returns the
+        matching HybridPath (top or bot offset) for this ship.
+        """
+        from src.movement.hybrid import HybridPath
+        pair = ship.extra.get("parallel_pair")
+        if pair is None:
+            return None
+        side = ship.extra.get("side", "top")
+        return pair.get_top() if side == "top" else pair.get_bot()
+
     @staticmethod
     def _hue_to_rgb(hue: float, sat: float = 0.85, val: float = 0.95) -> tuple[int, int, int]:
         """HSV to RGB. hue in [0, 360), sat/val in [0, 1]."""

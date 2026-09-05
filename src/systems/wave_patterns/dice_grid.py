@@ -12,6 +12,7 @@ from __future__ import annotations
 import random
 
 from src.core.settings import INTERNAL_W, INTERNAL_H
+from src.movement.bezier import Point
 from src.systems.wave_patterns.base import (
     PatternDifficulty,
     SpawnedShip,
@@ -96,3 +97,22 @@ class DiceFiveGridPattern(WavePattern):
             duration_s=ships[0].extra["duration_s"],
             seed_used=rng.randint(0, 2**31 - 1),
         )
+
+    @classmethod
+    def build_path(cls, ship: "SpawnedShip"):
+        """BLOQUE 58.next: build a straight-down HybridPath for visual replay.
+
+        The runtime does not attach a PathFollower for DICE_FIVE_GRID — the
+        cluster falls as a rigid group. We mirror that with a 2-waypoint
+        HybridPath from spawn to off-screen below.
+        """
+        from src.movement.hybrid import HybridPath
+        from src.movement.waypoint import WaypointPath
+        duration_s = ship.extra.get("duration_s", 5.0)
+        speed = 90.0  # SCOUT default
+        seg = WaypointPath(
+            [Point(ship.spawn_x, ship.spawn_y),
+             Point(ship.spawn_x, ship.spawn_y + speed * duration_s)],
+            speed_px_s=speed,
+        )
+        return HybridPath([seg], [duration_s])

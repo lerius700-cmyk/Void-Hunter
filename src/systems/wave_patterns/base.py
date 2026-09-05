@@ -97,6 +97,25 @@ class WavePattern(ABC):
         ...
 
     # ------------------------------------------------------------------
+    # BLOQUE 58.next: visual replay contract
+    # ------------------------------------------------------------------
+    @classmethod
+    def build_path(cls, ship: "SpawnedShip") -> Optional["HybridPath"]:
+        """Extract the per-ship HybridPath from this pattern's spawn data.
+
+        Subclasses override this so visual replay tools (capture scripts,
+        animation previews, headless render harnesses) can reproduce the
+        runtime motion. The default returns None for patterns that rely on
+        rigid straight-line motion (the runtime does not attach a
+        PathFollower for those — e.g. V_FORMATION, DICE_FIVE_GRID).
+
+        Returns:
+            HybridPath: the ship's path, ready to be wrapped in a PathFollower.
+            None: the pattern uses rigid motion with no PathFollower.
+        """
+        return None
+
+    # ------------------------------------------------------------------
     # Shared helpers (subclasses can use these)
     # ------------------------------------------------------------------
     @staticmethod

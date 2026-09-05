@@ -116,3 +116,17 @@ class LeaderFollowerChainPattern(WavePattern):
         x = (u**3) * p0[0] + 3 * (u**2) * t * p1[0] + 3 * u * (t**2) * p2[0] + (t**3) * p3[0]
         y = (u**3) * p0[1] + 3 * (u**2) * t * p1[1] + 3 * u * (t**2) * p2[1] + (t**3) * p3[1]
         return (x, y)
+
+    @classmethod
+    def build_path(cls, ship: "SpawnedShip"):
+        """BLOQUE 58.next: extract per-ship path from the shared parallel_pair.
+
+        LEADER_FOLLOWER_CHAIN shares one ParallelPathPair across all 10 ships
+        in 2 chains (top/bot). Returns the matching HybridPath for this ship.
+        """
+        from src.movement.hybrid import HybridPath
+        pair = ship.extra.get("parallel_pair")
+        if pair is None:
+            return None
+        side = ship.extra.get("side", "top")
+        return pair.get_top() if side == "top" else pair.get_bot()

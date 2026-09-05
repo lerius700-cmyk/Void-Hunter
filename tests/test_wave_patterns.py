@@ -432,6 +432,140 @@ class TestPincerCross:
 
 
 # =====================================================================
+# BLOQUE 58.next: build_path() contract — visual replay API
+# =====================================================================
+class TestBuildPathContract:
+    """Pin the build_path() classmethod contract that the capture script
+    and any future visual-replay tool depend on.
+
+    Regression: PINCER_CROSS used to crash the capture script with
+    'int() argument ... not Point' because the script's build_path_from_ship
+    only understood the 'segments' key, not parallel_pair/orbital/rigid.
+    Moving the logic into pattern.build_path() guarantees every pattern
+    exposes its per-ship path in a uniform way.
+    """
+
+    def test_base_default_returns_none(self):
+        """WavePattern.build_path() default is None — patterns must override."""
+        from src.systems.wave_patterns.base import WavePattern
+        from src.systems.wave_patterns.base import SpawnedShip
+
+        class _MinimalPattern(WavePattern):
+            kind = None
+            difficulty = None
+
+            def generate(self, rng, level, enemy_kind="SCOUT"):
+                return None
+
+        ship = SpawnedShip(spawn_x=0, spawn_y=0)
+        assert _MinimalPattern.build_path(ship) is None
+
+    def test_pincer_cross_build_path(self):
+        """PINCER_CROSS: 4-segment HybridPath (one per side per ship)."""
+        from src.systems.wave_patterns import PincerCrossPattern
+        from src.movement.hybrid import HybridPath
+        rng = random.Random(42)
+        result = PincerCrossPattern().generate(rng, level=3)
+        for ship in result.ships:
+            path = PincerCrossPattern.build_path(ship)
+            assert isinstance(path, HybridPath)
+            assert path.total_arc_length > 0
+            assert len(path.segments) == 4
+
+    def test_bezier_sweep_build_path(self):
+        """BEZIER_SWEEP: 2 unique HybridPaths (top/bot of the parallel pair)."""
+        from src.systems.wave_patterns import BezierSweepPattern
+        from src.movement.hybrid import HybridPath
+        rng = random.Random(42)
+        result = BezierSweepPattern().generate(rng, level=3)
+        path_ids = set()
+        for ship in result.ships:
+            path = BezierSweepPattern.build_path(ship)
+            assert isinstance(path, HybridPath)
+            assert path.total_arc_length > 0
+            path_ids.add(id(path))
+        assert len(path_ids) == 2  # top + bot only
+
+    def test_leader_follower_chain_build_path(self):
+        """LEADER_FOLLOWER_CHAIN: 2 unique HybridPaths (one per chain)."""
+        from src.systems.wave_patterns import LeaderFollowerChainPattern
+        from src.movement.hybrid import HybridPath
+        rng = random.Random(42)
+        result = LeaderFollowerChainPattern().generate(rng, level=3)
+        path_ids = set()
+        for ship in result.ships:
+            path = LeaderFollowerChainPattern.build_path(ship)
+            assert isinstance(path, HybridPath)
+            assert path.total_arc_length > 0
+            path_ids.add(id(path))
+        assert len(path_ids) == 2  # top + bot
+
+    def test_oscillating_butterfly_build_path(self):
+        """OSCILLATING_BUTTERFLY: 4-quarter-orbital HybridPath."""
+        from src.systems.wave_patterns import OscillatingButterflyPattern
+        from src.movement.hybrid import HybridPath
+        rng = random.Random(42)
+        result = OscillatingButterflyPattern().generate(rng, level=3)
+        for ship in result.ships:
+            path = OscillatingButterflyPattern.build_path(ship)
+            assert isinstance(path, HybridPath)
+            assert len(path.segments) == 4
+
+    def test_v_formation_build_path(self):
+        """V_FORMATION: single straight-line HybridPath (rigid motion mirror)."""
+        from src.systems.wave_patterns import VFormationPattern
+        from src.movement.hybrid import HybridPath
+        rng = random.Random(42)
+        result = VFormationPattern().generate(rng, level=3)
+        for ship in result.ships:
+            path = VFormationPattern.build_path(ship)
+            assert isinstance(path, HybridPath)
+            assert len(path.segments) == 1
+            assert path.total_arc_length > 0
+
+    def test_dice_five_grid_build_path(self):
+        """DICE_FIVE_GRID: single straight-down HybridPath (rigid motion mirror)."""
+        from src.systems.wave_patterns import DiceFiveGridPattern
+        from src.movement.hybrid import HybridPath
+        rng = random.Random(42)
+        result = DiceFiveGridPattern().generate(rng, level=3)
+        for ship in result.ships:
+            path = DiceFiveGridPattern.build_path(ship)
+            assert isinstance(path, HybridPath)
+            assert len(path.segments) == 1
+            assert path.total_arc_length > 0
+
+    def test_path_follower_advances_on_each_path(self):
+        """Smoke: every pattern's build_path can be wrapped in a PathFollower
+        and produces a valid (Point, Point) update."""
+        from src.movement.follower import PathFollower
+        from src.systems.wave_patterns import (
+            BezierSweepPattern,
+            VFormationPattern,
+            LeaderFollowerChainPattern,
+            DiceFiveGridPattern,
+            PincerCrossPattern,
+            OscillatingButterflyPattern,
+        )
+        patterns = [
+            BezierSweepPattern, VFormationPattern, LeaderFollowerChainPattern,
+            DiceFiveGridPattern, PincerCrossPattern, OscillatingButterflyPattern,
+        ]
+        for pcls in patterns:
+            rng = random.Random(42)
+            result = pcls().generate(rng, level=1)
+            assert result.ships, f"{pcls.__name__} produced 0 ships"
+            path = pcls.build_path(result.ships[0])
+            assert path is not None, f"{pcls.__name__}.build_path returned None"
+            follower = PathFollower(path, t_offset=result.ships[0].t_offset)
+            pos, vel = follower.update(1.0 / 60.0)
+            # pos must be a Point with x,y attrs
+            assert hasattr(pos, 'x') and hasattr(pos, 'y'), \
+                f"{pcls.__name__}: pos has no x/y attrs (type={type(pos).__name__})"
+            assert isinstance(vel, tuple) and len(vel) == 2
+
+
+# =====================================================================
 # ProceduralWaveManager tests
 # =====================================================================
 class TestProceduralWaveManager:
