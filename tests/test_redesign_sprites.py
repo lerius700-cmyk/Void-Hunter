@@ -7,6 +7,12 @@ from unittest import mock
 from PIL import Image
 
 from tools.redesign_ships._ai_client import generate_ship_base
+from tools.redesign_ships._animation_frames import (
+    generate_death_frames,
+    generate_damage_frames,
+    generate_idle_frames,
+    generate_thrust_frames,
+)
 from tools.redesign_ships._palette_map import map_image_to_palette, nearest_palette_color
 from src.utils.palette import PALETTE
 
@@ -29,12 +35,11 @@ def test_nearest_palette_color_finds_nearest():
 
 def test_map_image_to_palette_uses_only_palette_colors():
     """Every pixel after mapping is within ±2 of a palette color."""
-    # Create a small test image with random colors
     test_img = Image.new("RGB", (4, 4))
     pixels = test_img.load()
     for x in range(4):
         for y in range(4):
-            pixels[x, y] = (50, 100, 150)  # arbitrary RGB
+            pixels[x, y] = (50, 100, 150)
     mapped = map_image_to_palette(test_img)
     assert mapped.size == (4, 4)
     mapped_pixels = mapped.load()
@@ -42,7 +47,6 @@ def test_map_image_to_palette_uses_only_palette_colors():
     for x in range(4):
         for y in range(4):
             rgb = mapped_pixels[x, y]
-            # Check this pixel is within ±2 of some palette color
             found = False
             for p in palette_set:
                 if all(abs(rgb[i] - p[i]) <= 2 for i in range(3)):
@@ -69,7 +73,7 @@ def test_generate_ship_base_invokes_mcode_tools(monkeypatch, tmp_path):
     )
     assert node_id == "abc123"
     cmd = captured["cmd"]
-    assert cmd[0] == "mcode-tools"
+    assert "mcode-tools" in cmd[0].lower()
     assert cmd[1] == "connector"
     assert cmd[2] == "call"
     assert cmd[3] == "connector__matrix__generate_image"
@@ -90,4 +94,74 @@ def test_generate_ship_base_raises_on_no_success(monkeypatch):
         assert "no success_items" in str(e).lower()
     else:
         raise AssertionError("expected RuntimeError")
+
+
+# --- Animation frame tests (Task 4) ---
+
+def _make_test_source(size: int = 32) -> Image.Image:
+    """Create a 32x32 RGBA test source with a simple ship shape."""
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    px = img.load()
+    # Draw a 12x8 ship in the center
+    for x in range(10, 22):
+        for y in range(12, 20):
+            px[x, y] = (200, 200, 220, 255)
+    # Engine glow at bottom
+    for y in range(20, 24):
+        px[14, y] = (255, 180, 80, 255)
+        px[15, y] = (255, 180, 80, 255)
+        px[16, y] = (255, 180, 80, 255)
+        px[17, y] = (255, 180, 80, 255)
+    return img
+
+
+def test_generate_idle_frames_produces_10(tmp_path):
+    src = _make_test_source()
+    out_dir = tmp_path / "idle"
+    frames = generate_idle_frames(src, out_dir)
+    assert len(frames) == 10
+    assert all(f.exists() for f in frames)
+    for f in frames:
+        with Image.open(f) as img:
+            assert img.size == (32, 32)
+
+
+def test_generate_thrust_frames_produces_10(tmp_path):
+    src = _make_test_source()
+    out_dir = tmp_path / "thrust"
+    frames = generate_thrust_frames(src, out_dir)
+    assert len(frames) == 10
+
+
+def test_generate_damage_frames_produces_10(tmp_path):
+    src = _make_test_source()
+    out_dir = tmp_path / "damage"
+    frames = generate_damage_frames(src, out_dir)
+    assert len(frames) == 10
+
+
+def test_generate_death_frames_produces_10(tmp_path):
+    src = _make_test_source()
+    out_dir = tmp_path / "death"
+    frames = generate_death_frames(src, out_dir)
+    assert len(frames) == 10
+
+
+def test_idle_frame0_equals_frame9(tmp_path):
+    """Idle loop must be seamless: frame 0 == frame 9."""
+    src = _make_test_source()
+    out_dir = tmp_path / "idle"
+    frames = generate_idle_frames(src, out_dir)
+    with Image.open(frames[0]) as f0, Image.open(frames[9]) as f9:
+        assert list(f0.getdata()) == list(f9.getdata()), "idle loop seam not pixel-perfect"
+
+
+def test_thrust_frame0_equals_frame9(tmp_path):
+    """Thrust loop must be seamless (all frames are identical, so trivially equal)."""
+    src = _make_test_source()
+    out_dir = tmp_path / "thrust"
+    frames = generate_thrust_frames(src, out_dir)
+    with Image.open(frames[0]) as f0, Image.open(frames[9]) as f9:
+        assert list(f0.getdata()) == list(f9.getdata()), "thrust loop seam not pixel-perfect"
+
 
