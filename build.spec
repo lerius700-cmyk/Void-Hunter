@@ -42,6 +42,9 @@ a = Analysis(
         # The runtime needs: backgrounds, sprites, music .wav files.
         (str(PROJECT_ROOT / "Assets" / "background"), "Assets/background"),
         (str(PROJECT_ROOT / "Assets" / "sprites"), "Assets/sprites"),
+        # BLOQUE 59: per-frame enemy animation sprites (new layout
+        # Assets/sprites/enemies/<kind>/<animation>/frame_NN.png)
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "enemies"), "Assets/sprites/enemies"),
         # Music files (BLOQUE 58.45): only the runtime wav files, not
         # dev references. The 2 voice clips are tiny.
         (str(PROJECT_ROOT / "Assets" / "pantalla principal.wav"), "Assets"),
