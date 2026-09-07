@@ -714,3 +714,9 @@ showing each pattern with visible leader glow ring.
 - Each variant is deterministic (pixel-by-pixel reproducible given
   the same seed and variant index).
 
+### BLOQUE 58.next — Roguelike density + leader HP scaling (2026-09-06)
+
+- **Item #1:** Confirmed the existing 4275-pattern COMPOSED pool + ProceduralWaveManager is the roguelike variety system. No code change.
+- **Item #2:** Wave spawn interval halved: `spawn_interval=4.0` → `2.0` in `src/core/game.py:276`. Same per-pattern ship counts, 2x waves per minute. `MAX_ENEMIES_ON_SCREEN` raised 12 → 24 in `src/core/settings.py:229` to avoid throttle.
+- **Item #3:** Leader HP scales with wave proximity to boss. New pure function `_leader_hits_at_wave(wave_idx)` returns 3-5 (linear, clamped). New `current_wave_idx` parameter in `spawn_pattern_wave` defaults to 0 (backward compat). Leader HP = `_KIND_HP["SCOUT"]` (30) × hits = 90/120/150 at wave 1/5/10. Followers untouched (keep pool default of 1 HP).
+

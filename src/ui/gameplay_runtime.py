@@ -2649,7 +2649,8 @@ class GameplayRuntime:
                 # Only spawn if no active pattern
                 result = self._proc_mgr.pick_pattern(level=self._proc_floor)
                 self._active_pattern_runtime = spawn_pattern_wave(
-                    self._enemies, result
+                    self._enemies, result,
+                    current_wave_idx=self._wave_idx,  # BLOQUE 58.next: leader HP scaling
                 )
                 self._active_pattern_kind_label = get_pattern_hud_label(result.kind)
         # BLOQUE 58.14.7: tick the SoloEnemySpawner (1 red ship every 5s).
