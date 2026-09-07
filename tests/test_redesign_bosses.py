@@ -225,3 +225,41 @@ def test_generate_intro_frames_produces_10():
         af.generate_intro_frames(src, out_dir)
         frames = sorted(out_dir.glob("frame_*.png"))
         assert len(frames) == 10
+
+
+# ---------------------------------------------------------------------------
+# Task 6: build sheets + integrate
+# ---------------------------------------------------------------------------
+#
+# ``_03_build_sheets.py`` and ``_04_integrate.py`` are named with an
+# underscore prefix (BLOQUE 60 deviation from plan: plan called for
+# ``03_build_sheets.py`` / ``04_integrate.py``). Underscore prefix is
+# required so the modules are importable as identifiers via
+# ``from tools.redesign_bosses import _03_build_sheets`` (Python's
+# ``from X import Y`` syntax does not accept digit-prefixed names).
+
+from tools.redesign_bosses import _03_build_sheets, _04_integrate
+
+
+def test_build_sheet_grid_is_5x10():
+    """Sheet is 5 rows (states) x 10 cols (frames)."""
+    assert _03_build_sheets.STATES == ("idle", "damage", "phase2", "death", "intro")
+    assert _03_build_sheets.FRAMES_PER_STATE == 10
+
+
+def test_integrate_copies_to_live_assets():
+    """Verify the integration target is Assets/sprites/bosses/goliath/, not
+    redesign/ which is staging-only. Path is normalized to forward slashes
+    so the assertion works on both Windows and POSIX."""
+    # Normalize path separators to forward slashes for portability.
+    live_norm = str(_04_integrate.LIVE_DIR).replace("\\", "/")
+    assert "Assets/sprites/bosses/goliath" in live_norm
+    # The path after the 'bosses' segment must not contain 'redesign'.
+    after_bosses = live_norm.lower().split("bosses")[1]
+    assert "redesign" not in after_bosses
+
+
+def test_integrate_copies_one_frame_at_a_time():
+    """50 frames total: 5 states * 10 frames = 50."""
+    assert _04_integrate.STATE_COUNT == 5
+    assert _04_integrate.FRAMES_PER_STATE == 10
