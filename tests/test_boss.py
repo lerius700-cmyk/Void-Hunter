@@ -84,3 +84,43 @@ def test_boss_death_is_oneshot() -> None:
     assert b.animation_frame == 9
     b.update_animation(0.10)
     assert b.animation_frame == 9
+
+
+# --- BLOQUE 60 Task 8: Phase 2 speed + fire_cd scaling ---
+
+
+def test_goliath_phase1_speed_is_30() -> None:
+    """Phase 1 GOLIATH: effective_speed returns the base cfg.speed (30.0)."""
+    b = Boss()
+    b.active = True
+    b.id = BossId.GOLIATH
+    b.phase = 1
+    assert b.effective_speed() == 30.0
+
+
+def test_goliath_phase2_speed_is_48() -> None:
+    """Phase 2 GOLIATH: effective_speed is 1.6x the base = 30.0 * 1.6 = 48.0.
+
+    Used by ``update()`` to scale the sin-oscillation frequency so the
+    boss visibly speeds up after the 66% HP threshold.
+    """
+    b = Boss()
+    b.active = True
+    b.id = BossId.GOLIATH
+    b.phase = 2
+    assert abs(b.effective_speed() - 48.0) < 0.01
+
+
+def test_goliath_phase2_fire_cd_is_halved() -> None:
+    """Phase 2 GOLIATH: select_attack() sets fire_cd = 1.5s / 2 = 0.75s.
+
+    Doubles the spear throw rate (and all other attacks) when the boss
+    crosses to phase 2.
+    """
+    b = Boss()
+    b.active = True
+    b.id = BossId.GOLIATH
+    b.phase = 2
+    b.fire_cd = 0.0  # ensure select_attack() actually picks an attack
+    b.select_attack()
+    assert abs(b.fire_cd - 0.75) < 0.01

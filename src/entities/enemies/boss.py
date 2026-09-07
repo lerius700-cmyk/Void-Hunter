@@ -171,6 +171,16 @@ class Boss:
         else:
             self.animation_frame = (self.animation_frame + 1) % 10
 
+    def effective_speed(self) -> float:
+        """BLOQUE 60: Phase 2 speeds up GOLIATH by 1.6x.
+
+        Returns the base cfg.speed scaled by the current phase multiplier.
+        Used by ``update()`` to scale the sin-oscillation frequency so the
+        boss visibly speeds up at 66% HP. Phase 1 = 1.0x, Phase 2+ = 1.6x.
+        """
+        cfg = BOSS_CONFIGS[self.id]
+        return cfg.speed * (1.6 if self.phase >= 2 else 1.0)
+
     def apply_damage(self, amount: int) -> bool:
         """Returns True if this hit was lethal."""
         if not self.active:
@@ -222,8 +232,9 @@ class Boss:
             self.x = bx
             self.y = by
         elif cfg.speed > 0.0:
-            # Sine oscillation around anchor (default behavior).
-            self.move_t += dt
+            # BLOQUE 60: Phase 2 boosts oscillation frequency (1.6x speed).
+            eff = self.effective_speed()
+            self.move_t += dt * (eff / cfg.speed)
             self.x = cfg.anchor_x + math.sin(self.move_t * 0.5) * 80.0
         # Fire cooldown
         if self.fire_cd > 0.0:
@@ -270,7 +281,9 @@ class Boss:
         import random
         rng = random.Random(int(self.move_t * 10) + self.phase * 100)
         idx = rng.choice(pool)
-        self.fire_cd = cfg.attack_cooldown_s
+        # BLOQUE 60: Phase 2 fires twice as often
+        cd_mult = 0.5 if self.phase >= 2 else 1.0
+        self.fire_cd = cfg.attack_cooldown_s * cd_mult
         self.on_attack = idx
         return idx
 
