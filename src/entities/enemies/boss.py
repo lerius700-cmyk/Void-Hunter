@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:  # avoid runtime import cycles
     from src.systems.bezier_path import BezierPath
@@ -113,6 +113,13 @@ class Boss:
     # When set and not complete, the boss follows this path instead of
     # the default sine oscillation. After completion, falls back to sin.
     bezier_path: "BezierPath | None" = None
+    # BLOQUE 60: animation state machine (5 states × 10 frames at 10 fps).
+    # States: idle | damage | phase2 | death | intro. Boss starts in
+    # "intro" on spawn; runtime switches to "idle" once intro completes.
+    animation_state: str = "idle"
+    animation_frame: int = 0
+    animation_timer: float = 0.0
+    ANIMATION_FRAME_DURATION: ClassVar[float] = 0.10  # 10 fps, 1.0s per loop
 
     def on_spawn(self) -> None:
         self.on_phase_transition = 0
@@ -126,6 +133,11 @@ class Boss:
         self.vx = 0.0
         self.bezier_path = None  # BLOQUE 56: default to legacy sin motion
         self.vy = 0.0
+        # BLOQUE 60: reset animation state. Boss starts in "intro"; the
+        # runtime caller will switch to "idle" once the intro completes.
+        self.animation_state = "intro"
+        self.animation_frame = 0
+        self.animation_timer = 0.0
 
     def on_release(self) -> None:
         pass
@@ -135,6 +147,29 @@ class Boss:
         w = int(cfg.width * self.hitbox_factor)
         h = int(cfg.height * self.hitbox_factor)
         return pygame.Rect(int(self.x - w // 2), int(self.y - h // 2), w, h)
+
+    @property
+    def animation_path(self) -> str:
+        """BLOQUE 60: relative path under Assets/sprites/ for the current
+        animation frame. Format: 'bosses/goliath/<state>/frame_NN.png'.
+        """
+        return f"bosses/goliath/{self.animation_state}/frame_{self.animation_frame:02d}.png"
+
+    def update_animation(self, dt: float) -> None:
+        """BLOQUE 60: advance the animation frame. Loops for idle/damage/
+        phase2; one-shot (holds last frame) for death/intro.
+        """
+        if dt <= 0.0:
+            return
+        self.animation_timer += dt
+        if self.animation_timer < self.ANIMATION_FRAME_DURATION:
+            return
+        self.animation_timer -= self.ANIMATION_FRAME_DURATION
+        if self.animation_state in ("death", "intro"):
+            if self.animation_frame < 9:
+                self.animation_frame += 1
+        else:
+            self.animation_frame = (self.animation_frame + 1) % 10
 
     def apply_damage(self, amount: int) -> bool:
         """Returns True if this hit was lethal."""
