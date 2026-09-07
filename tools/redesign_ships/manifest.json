@@ -1,0 +1,76 @@
+{
+  "bases": {
+    "enemy_scout": {
+      "node_id": "439308820463808",
+      "prompt": "16-bit pixel art, top-down 3/4 view, facing forward (upward in playfield), isolated on pure black transparent background, single spaceship, sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic, small fast scout ship, narrow pointy wings, single thruster, compact ~20x14 pixels equivalent, cyan and electric blue color scheme, game asset sprite, no background scenery",
+      "template": "light",
+      "display_name": "Scout (light)",
+      "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\enemy_scout_base.png",
+      "size_bytes": 327351,
+      "created_at": "2026-09-07T13:32:49"
+    },
+    "enemy_drone": {
+      "node_id": "439308010799189",
+      "prompt": "16-bit pixel art, top-down 3/4 view, facing forward (upward in playfield), isolated on pure black transparent background, single spaceship, sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic, small boxy drone, four small thrusters, compact ~20x14 pixels equivalent, cyan and electric blue color scheme, game asset sprite, no background scenery",
+      "template": "light",
+      "display_name": "Drone (light)",
+      "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\enemy_drone_base.png",
+      "size_bytes": 191506,
+      "created_at": "2026-09-07T13:34:49"
+    },
+    "enemy_kamikaze": {
+      "node_id": "439308849614994",
+      "prompt": "16-bit pixel art, top-down 3/4 view, facing forward (upward in playfield), isolated on pure black transparent background, single spaceship, sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic, small triangular ship with central glowing core, pointed nose, compact ~20x14 pixels equivalent, cyan and electric blue color scheme, game asset sprite, no background scenery",
+      "template": "light",
+      "display_name": "Kamikaze (light)",
+      "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\enemy_kamikaze_base.png",
+      "size_bytes": 116504,
+      "created_at": "2026-09-07T13:35:24"
+    },
+    "enemy_sniper": {
+      "node_id": "439308820463825",
+      "prompt": "16-bit pixel art, top-down 3/4 view, facing forward (upward in playfield), isolated on pure black transparent background, single spaceship, sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic, balanced fighter, medium wings, focused weapon hardpoint, mid-sized ~24x18 pixels equivalent, navy blue and dark void color scheme, game asset sprite, no background scenery",
+      "template": "medium",
+      "display_name": "Sniper (medium)",
+      "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\enemy_sniper_base.png",
+      "size_bytes": 324916,
+      "created_at": "2026-09-07T13:36:25"
+    },
+    "enemy_turret": {
+      "node_id": "439308849615000",
+      "prompt": "16-bit pixel art, top-down 3/4 view, facing forward (upward in playfield), isolated on pure black transparent background, single spaceship, sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic, round turret-style ship, omnidirectional weapon mount, mid-sized ~24x18 pixels equivalent, navy blue and dark void color scheme, game asset sprite, no background scenery",
+      "template": "medium",
+      "display_name": "Turret (medium)",
+      "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\enemy_turret_base.png",
+      "size_bytes": 140861,
+      "created_at": "2026-09-07T13:36:58"
+    },
+    "enemy_heavy": {
+      "node_id": "439308849615004",
+      "prompt": "16-bit pixel art, top-down 3/4 view, facing forward (upward in playfield), isolated on pure black transparent background, single spaceship, sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic, large armored ship, blocky hull, multiple turrets, thick armor, large ~30x22 pixels equivalent, red and mars orange color scheme, game asset sprite, no background scenery",
+      "template": "heavy",
+      "display_name": "Heavy (heavy)",
+      "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\enemy_heavy_base.png",
+      "size_bytes": 324730,
+      "created_at": "2026-09-07T13:37:29"
+    },
+    "enemy_cruiser": {
+      "node_id": "439309621821576",
+      "prompt": "16-bit pixel art, top-down 3/4 view, facing forward (upward in playfield), isolated on pure black transparent background, single spaceship, sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic, long armored cruiser, multiple turrets along the hull, large ~30x22 pixels equivalent, red and mars orange color scheme, game asset sprite, no background scenery",
+      "template": "heavy",
+      "display_name": "Cruiser (heavy)",
+      "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\enemy_cruiser_base.png",
+      "size_bytes": 230758,
+      "created_at": "2026-09-07T13:38:01"
+    },
+    "player": {
+      "node_id": "439308820463836",
+      "prompt": "16-bit pixel art, top-down 3/4 view, facing forward (upward in playfield), isolated on pure black transparent background, single spaceship, sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic, hero ship, sleek aggressive silhouette, prominent cockpit, gold accents, white hull with gold highlights and red engine tips, heroic ~30x24 pixels equivalent with more detail, game asset sprite, no background scenery",
+      "template": "player",
+      "display_name": "Player ship (ship_01 redesign)",
+      "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\player_base.png",
+      "size_bytes": 154926,
+      "created_at": "2026-09-07T13:38:33"
+    }
+  }
+}
