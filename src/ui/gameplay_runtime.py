@@ -5518,6 +5518,22 @@ class GameplayRuntime:
         """
         if self._boss is None:
             return
+        # BLOQUE 60: try to load the redesigned sprite first (96x80).
+        # If the sprite file is missing, fall through to the procedural
+        # fallback below. This keeps legacy builds working even when the
+        # Assets/sprites/bosses/goliath/ folder is absent.
+        from src.ui.scenes import _load_sprite
+        sprite = _load_sprite(self._boss.animation_path) if self._boss else None
+        if sprite is not None:
+            bob = math.sin(self._t * 1.0) * 1.5
+            cx = int(self._boss.x + ox)
+            cy = int(self._boss.y + oy)
+            vw, vh = 96, 80
+            blit_x = cx - vw // 2
+            blit_y = cy - vh // 2 + int(bob)
+            target.blit(sprite, (blit_x, blit_y))
+            return
+        # --- Procedural fallback (original BLOQUE 51+52+53a+60 body) ---
         cfg = BOSS_CONFIGS[self._boss.id]
         # Visual is centered on the hitbox; offset y for the "breathing" bob.
         bob = math.sin(self._t * 1.0) * 1.5
