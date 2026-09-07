@@ -1017,6 +1017,28 @@ class TestProceduralWaveManager:
             f"got {counts}"
         )
 
+    def test_game_uses_spawn_interval_2s(self) -> None:
+        """BLOQUE 58.next: spawn_interval changed from 4.0 to 2.0.
+        Item #2 of the roguelike density spec."""
+        import re
+        from pathlib import Path
+        game_path = Path("src/core/game.py")
+        text = game_path.read_text(encoding="utf-8")
+        # Find the spawn_interval= in the wave manager construction
+        m = re.search(r"spawn_interval\s*=\s*([\d.]+)", text)
+        assert m is not None, "spawn_interval not found in src/core/game.py"
+        assert float(m.group(1)) == 2.0, (
+            f"Expected spawn_interval=2.0, got {m.group(1)}"
+        )
+
+    def test_max_enemies_on_screen_is_24(self) -> None:
+        """BLOQUE 58.next: MAX_ENEMIES_ON_SCREEN raised 12 -> 24 to
+        avoid throttling the faster waves."""
+        from src.core.settings import MAX_ENEMIES_ON_SCREEN
+        assert MAX_ENEMIES_ON_SCREEN == 24, (
+            f"Expected MAX_ENEMIES_ON_SCREEN=24, got {MAX_ENEMIES_ON_SCREEN}"
+        )
+
 
 # =====================================================================
 # Procedural enemy factory tests

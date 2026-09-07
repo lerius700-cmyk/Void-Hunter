@@ -226,7 +226,7 @@ WAVE_TIME_LIMIT_S: float = 30.0
 SUBBOSS_TRIGGER_KILLS: int = 40
 WAVE_GROWTH: int = 2
 # BLOQUE 40: formation-based encounter pacing
-MAX_ENEMIES_ON_SCREEN: int = 12           # BLOQUE 58.56: 8→12 (doubled enemies need more on-screen capacity)
+MAX_ENEMIES_ON_SCREEN: int = 24           # BLOQUE 58.next: 12→24 (2x waves per minute needs 2x cap to avoid throttle)
 SPAWN_CADENCE_S_MIN: float = 0.8         # min time between spawns
 SPAWN_CADENCE_S_MAX: float = 1.5         # max time between spawns
 WAVE_RESPITE_S_MIN: float = 4.0          # min breathing room between waves

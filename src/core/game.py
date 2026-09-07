@@ -273,7 +273,7 @@ class Game:
             gp_scene = self.scenes.scenes.get(GameState.GAMEPLAY)
             if gp_scene is not None:
                 gp_scene.enable_procedural_patterns(
-                    seed=self._patterns_seed, floor=1, spawn_interval=4.0,
+                    seed=self._patterns_seed, floor=1, spawn_interval=2.0,
                 )
         # BLOQUE 58.23: pass the shared audio engine to BOSS_INTRO and
         # SUB_BOSS_INTRO. The previous versions did `AudioEngine()` in
