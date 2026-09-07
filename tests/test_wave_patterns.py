@@ -1223,3 +1223,51 @@ class TestComposedExpansion:
             f"first 50 patterns changed! "
             f"actual[0:5]={actual[:5]}, expected[0:5]={expected[:5]}"
         )
+
+
+# =====================================================================
+# Leader HP scaling tests (BLOQUE 58.next item #3)
+# =====================================================================
+class TestLeaderHPScaling:
+    """BLOQUE 58.next item #3: leader HP scales with wave proximity to boss.
+
+    Wave 1 (idx=0) = 3 hits, wave 10 (idx=9) = 5 hits, linear, clamped.
+    See docs/superpowers/specs/2026-09-06-roguelike-density-leader-hp-design.md
+    """
+
+    def test_hits_at_wave_1_is_3(self) -> None:
+        from src.systems.wave_patterns.runtime import _leader_hits_at_wave
+        assert _leader_hits_at_wave(0) == 3
+
+    def test_hits_at_wave_4_is_4(self) -> None:
+        from src.systems.wave_patterns.runtime import _leader_hits_at_wave
+        assert _leader_hits_at_wave(4) == 4
+
+    def test_hits_at_wave_10_is_5(self) -> None:
+        from src.systems.wave_patterns.runtime import _leader_hits_at_wave
+        assert _leader_hits_at_wave(9) == 5
+
+    def test_hits_beyond_wave_10_clamps_to_5(self) -> None:
+        from src.systems.wave_patterns.runtime import _leader_hits_at_wave
+        assert _leader_hits_at_wave(20) == 5
+        assert _leader_hits_at_wave(100) == 5
+
+    def test_hits_below_wave_1_clamps_to_3(self) -> None:
+        from src.systems.wave_patterns.runtime import _leader_hits_at_wave
+        assert _leader_hits_at_wave(-5) == 3
+
+    def test_hits_scales_linearly_between_anchors(self) -> None:
+        from src.systems.wave_patterns.runtime import _leader_hits_at_wave
+        # wave_idx 0..9 -> 3,3,3,4,4,4,4,5,5,5
+        # raw = 3 + wave_idx * 2/9, rounded, clamped to [3, 5]
+        expected = [3, 3, 3, 4, 4, 4, 4, 5, 5, 5]
+        actual = [_leader_hits_at_wave(i) for i in range(10)]
+        assert actual == expected, f"Expected {expected}, got {actual}"
+
+    def test_hp_formula_is_hits_times_scout_hp(self) -> None:
+        """Leader HP = SCOUT_HP (30) * hits."""
+        from src.systems.wave_patterns.runtime import _KIND_HP
+        from src.systems.wave_patterns.runtime import _leader_hits_at_wave
+        scout_hp = _KIND_HP["SCOUT"]
+        for wave_idx, expected_hits in [(0, 3), (4, 4), (9, 5), (20, 5)]:
+            assert scout_hp * _leader_hits_at_wave(wave_idx) == scout_hp * expected_hits

@@ -58,6 +58,27 @@ _KIND_HP = {
 }
 
 
+def _leader_hits_at_wave(wave_idx: int) -> int:
+    """BLOQUE 58.next: leader HP scaling with wave proximity to boss.
+
+    Wave 1 (idx=0) = 3 hits, wave 10 (idx=9) = 5 hits, linear, clamped.
+    The 'hits' value is multiplied by SCOUT_HP (30) to get the leader's
+    actual HP value (90/120/150).
+
+    The wave_idx is the GLOBAL wave counter, matching
+    `self._wave_idx` in gameplay_runtime.py. See the spec's open
+    question Q5 for the GLOBAL vs PER-FLOOR discussion.
+
+    Args:
+        wave_idx: 0-based global wave index.
+
+    Returns:
+        Integer in [3, 5] — number of player hits to kill a leader.
+    """
+    raw = 3 + (wave_idx * 2.0) / 9.0
+    return max(3, min(5, round(raw)))
+
+
 @dataclass
 class PatternRuntime:
     """Active pattern being played in the runtime."""
