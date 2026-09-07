@@ -4735,10 +4735,25 @@ class GameplayRuntime:
 
     def _get_enemy_sprite(self, e: "Enemy") -> "Optional[pygame.Surface]":
         """Return the enemy ship PNG by EnemyKind value, with optional
-        flash overlay applied for hit feedback."""
+        flash overlay applied for hit feedback.
+
+        BLOQUE 59: prefers the new per-frame animation path
+        (Assets/sprites/enemies/<kind>/<animation>/frame_NN.png) and
+        falls back to the legacy single-frame path
+        (Assets/sprites/enemy_<kind>.png) for backward compat.
+        """
         from src.ui.scenes import _load_sprite
         from src.entities.enemies.enemy import EnemyKind
         kind_value = e.kind.value if hasattr(e.kind, "value") else str(e.kind)
+        if kind_value not in {"scout", "cruiser", "heavy", "kamikaze",
+                              "drone", "sniper", "turret"}:
+            return None
+        # BLOQUE 59: try the new per-frame animation path first
+        if hasattr(e, "animation_path") and e.animation_path:
+            anim_sprite = _load_sprite(e.animation_path)
+            if anim_sprite is not None:
+                return anim_sprite
+        # Fallback to the legacy single-frame path
         filename = {
             "scout":    "enemy_scout.png",
             "cruiser":  "enemy_cruiser.png",

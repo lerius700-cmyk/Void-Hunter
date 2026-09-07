@@ -262,6 +262,24 @@ class Enemy:
     path_follower: object | None = None  # PathFollower | None (forward-ref)
     path_slot_dx: float = 0.0           # formation slot offset (added to path pos)
     path_slot_dy: float = 0.0
+    # BLOQUE 59: animation state for per-frame sprite lookup. The new
+    # sprite system (Assets/sprites/enemies/<kind>/<animation>/frame_NN.png)
+    # has 4 animations x 10 frames per ship. animation_state is one of
+    # "idle", "thrust", "damage", "death". animation_frame is 0..9 and
+    # advances by 1 every ANIMATION_FRAME_DURATION seconds.
+    animation_state: str = "idle"
+    animation_frame: int = 0
+    animation_timer: float = 0.0
+    ANIMATION_FRAME_DURATION: float = 0.08  # 10 frames at 12.5 FPS, ~80ms per frame
+
+    @property
+    def animation_path(self) -> str:
+        """BLOQUE 59: relative path under Assets/sprites/ for the current
+        animation frame. Empty string if kind is not a redesigned enemy."""
+        kind_value = self.kind.value if hasattr(self.kind, "value") else str(self.kind)
+        if kind_value == "sub_boss":
+            return ""  # sub-boss keeps its own 4-direction sprites
+        return f"enemies/{kind_value}/{self.animation_state}/frame_{self.animation_frame:02d}.png"
 
     def on_spawn(self) -> None:
         self.damage_taken = 0
@@ -283,6 +301,10 @@ class Enemy:
         # BLOQUE 58.next: reset leader flag (default False, runtime sets
         # True on the leader during spawn_pattern_wave)
         self.is_leader = False
+        # BLOQUE 59: reset animation state on respawn
+        self.animation_state = "idle"
+        self.animation_frame = 0
+        self.animation_timer = 0.0
         # BLOQUE 58.6.4: sub-boss movement state is NOT reset here
         # because it persists across wrap-arounds (entry_count,
         # current_wall, etc. are needed for the next entry).
@@ -343,8 +365,16 @@ class Enemy:
         self.damage_taken += amount
         if self.hp <= 0:
             self.state = EnemyState.DYING
+            # BLOQUE 59: trigger the death animation
+            self.animation_state = "death"
+            self.animation_frame = 0
+            self.animation_timer = 0.0
             self.on_death = True
             return True
+        # BLOQUE 59: hit that doesn't kill transitions to damage animation
+        self.animation_state = "damage"
+        self.animation_frame = 0
+        self.animation_timer = 0.0
         return False
 
     def update(self, dt: float, player_x: float, player_y: float) -> None:
@@ -354,9 +384,28 @@ class Enemy:
         BLOQUE 58.59: Scout ships no longer sine-wobble (all ships move in
         a straight line by default). Curved motion is now handled by the
         BezierPath / FlightFormation system, not by per-enemy oscillation.
+        BLOQUE 59: also advances the per-frame animation state. Frame rate
+        is ANIMATION_FRAME_DURATION per frame (12.5 FPS). idle and thrust
+        loop (frame 0..9 cyclically); damage and death are one-shots that
+        transition back to idle when the animation completes.
         """
         if not self.active or dt <= 0.0 or self.state == EnemyState.DEAD:
             return
+        # BLOQUE 59: advance animation frame. Use integer division to
+        # avoid floating point drift (subtracting FRAME_DURATION in a
+        # while loop accumulates 1e-15 errors per iter; int division
+        # computes the exact frame count).
+        self.animation_timer += dt
+        frames_to_advance = int(self.animation_timer / self.ANIMATION_FRAME_DURATION)
+        if frames_to_advance > 0:
+            self.animation_timer -= frames_to_advance * self.ANIMATION_FRAME_DURATION
+            self.animation_frame += frames_to_advance
+            if self.animation_state in ("idle", "thrust"):
+                self.animation_frame %= 10
+            elif self.animation_frame >= 10:
+                # damage and death are one-shots; return to idle
+                self.animation_frame = 0
+                self.animation_state = "idle"
         cfg = ENEMY_CONFIGS[self.kind]
         # BLOQUE 58.6x: if a PathFollower is attached, drive position +
         # velocity from it. The straight-line / L-turn code below is

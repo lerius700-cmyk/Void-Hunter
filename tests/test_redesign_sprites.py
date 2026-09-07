@@ -165,3 +165,80 @@ def test_thrust_frame0_equals_frame9(tmp_path):
         assert list(f0.getdata()) == list(f9.getdata()), "thrust loop seam not pixel-perfect"
 
 
+# --- Enemy state machine tests (Task 6) ---
+
+def test_enemy_animation_starts_idle():
+    """A new enemy starts in idle state, frame 0."""
+    from src.entities.enemies.enemy import Enemy, EnemyKind
+    e = Enemy(kind=EnemyKind.SCOUT, x=0, y=0)
+    e.on_spawn()
+    assert e.animation_state == "idle"
+    assert e.animation_frame == 0
+
+
+def test_enemy_animation_frame_advances_on_tick():
+    """Each tick advances the frame after ANIMATION_FRAME_DURATION seconds."""
+    from src.entities.enemies.enemy import Enemy, EnemyKind
+    e = Enemy(kind=EnemyKind.SCOUT, x=0, y=0)
+    e.on_spawn()
+    e.active = True
+    e.update(dt=e.ANIMATION_FRAME_DURATION, player_x=160, player_y=240)
+    assert e.animation_frame == 1
+    # 9 more frames
+    e.update(dt=e.ANIMATION_FRAME_DURATION * 9, player_x=160, player_y=240)
+    assert e.animation_frame == 0  # wrapped (mod 10)
+
+
+def test_enemy_damage_state_transitions():
+    """A non-lethal hit transitions to 'damage' state."""
+    from src.entities.enemies.enemy import Enemy, EnemyKind
+    e = Enemy(kind=EnemyKind.SCOUT, x=0, y=0)
+    e.on_spawn()
+    e.active = True
+    # Give it enough HP to survive 1 hit
+    e.hp = 5
+    e.apply_damage(1)
+    assert e.animation_state == "damage"
+    assert e.animation_frame == 0
+
+
+def test_enemy_death_state_transitions():
+    """A lethal hit transitions to 'death' state."""
+    from src.entities.enemies.enemy import Enemy, EnemyKind
+    e = Enemy(kind=EnemyKind.SCOUT, x=0, y=0)
+    e.on_spawn()
+    e.active = True
+    e.hp = 1
+    e.apply_damage(1)
+    assert e.animation_state == "death"
+    assert e.animation_frame == 0
+
+
+def test_enemy_animation_path_format():
+    """animation_path returns the expected relative path under Assets/sprites/."""
+    from src.entities.enemies.enemy import Enemy, EnemyKind
+    e = Enemy(kind=EnemyKind.SCOUT, x=0, y=0)
+    e.on_spawn()
+    assert e.animation_path == "enemies/scout/idle/frame_00.png"
+    e.animation_state = "thrust"
+    e.animation_frame = 5
+    assert e.animation_path == "enemies/scout/thrust/frame_05.png"
+    e.animation_state = "death"
+    e.animation_frame = 9
+    assert e.animation_path == "enemies/scout/death/frame_09.png"
+
+
+def test_enemy_animation_resets_on_respawn():
+    """on_spawn() resets the animation state to idle/0."""
+    from src.entities.enemies.enemy import Enemy, EnemyKind
+    e = Enemy(kind=EnemyKind.SCOUT, x=0, y=0)
+    e.on_spawn()
+    e.active = True
+    e.animation_state = "death"
+    e.animation_frame = 7
+    e.on_spawn()
+    assert e.animation_state == "idle"
+    assert e.animation_frame == 0
+
+
+
