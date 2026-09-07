@@ -5537,7 +5537,11 @@ class GameplayRuntime:
             blit_x = cx - vw // 2
             blit_y = cy - vh // 2 + int(bob)
             target.blit(sprite, (blit_x, blit_y))
-            return
+            # BLOQUE 60 Task 10 fix: do NOT return here. The Phase 2 red eye
+            # trail (Layer 13) is rendered at the END of this function, and
+            # must be reached regardless of whether the sprite or the
+            # procedural fallback drew the body. Falling through lets the
+            # eye trail appear on top of both rendering paths.
         # --- Procedural fallback (original BLOQUE 51+52+53a+60 body) ---
         cfg = BOSS_CONFIGS[self._boss.id]
         # Visual is centered on the hitbox; offset y for the "breathing" bob.
