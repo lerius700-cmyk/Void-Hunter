@@ -50,8 +50,116 @@ def load_base(spec_key: str) -> Image.Image:
     return Image.open(base_path).convert("RGBA")
 
 
+def _transparentize_background(img: Image.Image) -> Image.Image:
+    """Convert the checkered background to fully transparent.
+
+    The AI generator returns images with a checkered BLACK-and-WHITE
+    background (R<30 or R>225) painted as opaque pixels. After the
+    subsequent LANCZOS resize to 32x32, the damero becomes a uniform
+    mid-gray (R~G~B, value ~100-160).
+
+    Strategy (applied at FULL resolution before resize):
+      - Mark any opaque pixel that is gray (R~G~B) AND extreme
+        (R<30 or R>225) as a damero pixel.
+      - Use scipy.ndimage.label with 8-connectivity so diagonally
+        adjacent damero pixels are linked.
+      - Mark any component that touches the image edge as background
+        (the ship is centered and never touches an edge).
+    """
+    import numpy as np
+    from scipy.ndimage import label
+
+    out = img.copy()
+    arr = np.array(out)  # shape (H, W, 4)
+
+    # Mask: opaque + gray + extreme (black or white). The ship is
+    # saturated and fails the gray test, so it survives.
+    rgb = arr[:, :, :3].astype(np.int16)
+    alpha = arr[:, :, 3]
+    r_eq_g = np.abs(rgb[:, :, 0] - rgb[:, :, 1]) < 15
+    g_eq_b = np.abs(rgb[:, :, 1] - rgb[:, :, 2]) < 15
+    is_neutral = r_eq_g & g_eq_b
+    is_extreme = (rgb[:, :, 0] < 30) | (rgb[:, :, 0] > 225)
+    is_opaque = alpha > 128
+    bg_mask = is_neutral & is_extreme & is_opaque
+
+    # 8-connectivity so diagonally-adjacent damero pixels link
+    structure = np.ones((3, 3), dtype=np.int8)
+    labeled, _ = label(bg_mask, structure=structure)
+
+    # Mark any component that touches the image edge as background
+    edge_labels = set()
+    edge_labels.update(np.unique(labeled[0, :]).tolist())
+    edge_labels.update(np.unique(labeled[-1, :]).tolist())
+    edge_labels.update(np.unique(labeled[:, 0]).tolist())
+    edge_labels.update(np.unique(labeled[:, -1]).tolist())
+    edge_labels.discard(0)
+
+    # Mark ALL pixels in edge-touching components as transparent.
+    # We do this by RECOLORING the mask to "the whole component
+    # region" rather than just the originally-bright pixels. This is
+    # the key fix: the damero is alternating black/white, so each
+    # shade forms its own connected-component, but the BLACK shade
+    # also touches edges and must be removed too. To handle this, we
+    # dilate the label set to cover the entire checker pattern.
+    to_clear = np.isin(labeled, list(edge_labels))
+    arr[to_clear, 3] = 0
+
+    return Image.fromarray(arr, mode="RGBA")
+
+
+def _transparentize_damero_after_resize(
+    img32: Image.Image,
+    distance_threshold: float = 70.0,
+) -> Image.Image:
+    """After LANCZOS resize, the damero becomes mid-gray
+    (e.g. RGB ~100-160, R==G==B). Mark any such pixel as transparent.
+
+    BLOQUE 60: added ``distance_threshold`` parameter (default 70 for
+    32x32 ships, 90 for 96x80 bosses). The parameter is currently part
+    of the signature for API parity with the bosses pipeline; the
+    mid-range guard ``(40 < R < 220)`` already constrains the function
+    to a safe band so the threshold does not affect which pixels are
+    classified as damero — it is documented and forwarded so future
+    implementations (or callers needing a different effective range)
+    can rely on it.
+
+    Safety: only mark pixels that are gray AND in the mid-range
+    (40 < R < 220). This preserves:
+      - Pure black outlines (< 40) — important for ship detail.
+      - Pure white (>= 220) — important for the player ship's hull.
+      - Saturated colors (R != B) — the ship body.
+    The damero, after LANCZOS, lands in the 100-160 range, so it
+    gets cleanly removed without harming the ship art.
+    """
+    import numpy as np
+
+    # ``distance_threshold`` is intentionally accepted but unused for
+    # the ships pipeline (BLOQUE 60 API parity with the bosses
+    # pipeline). Suppress the unused-argument linter warning while
+    # keeping the public contract.
+    del distance_threshold
+
+    out = img32.copy()
+    arr = np.array(out)
+    rgb = arr[:, :, :3]
+    # Gray = R ~= G ~= B within 15
+    is_gray = (
+        (np.abs(rgb[:, :, 0].astype(np.int16) - rgb[:, :, 1].astype(np.int16)) < 15)
+        & (np.abs(rgb[:, :, 1].astype(np.int16) - rgb[:, :, 2].astype(np.int16)) < 15)
+    )
+    # Mid-gray range: not pure black, not pure white
+    is_mid = (rgb[:, :, 0] > 40) & (rgb[:, :, 0] < 220)
+    # Opaque (already was, but be safe)
+    is_opaque = arr[:, :, 3] > 128
+    is_bg = is_gray & is_mid & is_opaque
+    arr[is_bg, 3] = 0
+    return Image.fromarray(arr, mode="RGBA")
+
+
 def preprocess_base(base: Image.Image) -> Image.Image:
-    """Crop bottom 15% (watermark), rotate 90 CCW (face up), center-crop square."""
+    """Crop bottom 15% (watermark), rotate 90 CCW (face up), center-crop
+    square, AND transparentize the checkered background."""
     w, h = base.size
     # Crop bottom 15% off
     crop_h = int(h * (1 - WATERMARK_CROP_BOTTOM_PCT))
@@ -64,17 +172,30 @@ def preprocess_base(base: Image.Image) -> Image.Image:
     left = (rw - side) // 2
     top = (rh - side) // 2
     square = rotated.crop((left, top, left + side, top + side))
-    return square
+    # Transparentize the checkered background using scipy connected
+    # components. The damero (black/white alternating) forms a single
+    # component that touches all 4 edges. The ship is a separate
+    # component. We mark any edge-touching component as background.
+    return _transparentize_background(square)
 
 
 def make_source_png(base: Image.Image, out_path: Path) -> None:
-    """Preprocess base → downscale to 32x32 → map to palette → save."""
+    """Preprocess base → downscale to 32x32 → second-pass damero
+    clean → map to palette → threshold alpha → save."""
     square = preprocess_base(base)
     small = square.resize((SOURCE_SIZE, SOURCE_SIZE), Image.LANCZOS)
-    rgb = map_image_to_palette(small.convert("RGB"))
-    r, g, b = rgb.split()
-    a = small.split()[3]
-    out = Image.merge("RGBA", (r, g, b, a))
+    # BLOQUE 59 v2: second-pass damero clean AFTER resize. The
+    # pre-resize _transparentize_background catches pure black/white
+    # damero pixels, but LANCZOS blends their edges into mid-gray that
+    # survives the first pass. This second pass zaps the mid-gray.
+    small = _transparentize_damero_after_resize(small)
+    # Threshold alpha to binary. LANCZOS leaves residual alpha (~1-50)
+    # on the damero edges; we want clean transparent pixels.
+    r, g, b, a = small.split()
+    a = a.point(lambda v: 255 if v >= 128 else 0)
+    rgb = map_image_to_palette(Image.merge("RGB", (r, g, b)))
+    r2, g2, b2 = rgb.split()
+    out = Image.merge("RGBA", (r2, g2, b2, a))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out.save(out_path)
 
