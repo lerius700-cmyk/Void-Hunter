@@ -75,3 +75,8 @@ release/_backup_old_releases/
 # post-processing into the final 16-bit pixel-art PNGs). The final
 # sprites in stellar_horizon/assets/sprites/*.png ARE tracked.
 stellar_horizon/assets/sprites/_gen_*.png
+
+# BLOQUE 60: GOLIATH AI base outputs (1024x1024 PNGs from mcode-tools,
+# post-processed into 96x80 frames by 02_postprocess.py). Not committed —
+# regenerate with `python tools/redesign_bosses/01_generate_bases.py`.
+Assets/sprites/bosses/goliath/_base/
