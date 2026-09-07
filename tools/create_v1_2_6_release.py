@@ -1,14 +1,8 @@
-"""Create GitHub Release v1.2.6 with the .zip asset.
+"""Create GitHub Release v1.2.6 with the .exe asset.
 
-Uploads release/VoidHunter-v1.2.6-win64.zip to a new GitHub Release
-on tag v1.2.6 (BLOQUE 58.next), with release notes extracted from
+Uploads dist/void-hunter/void-hunter.exe to a new GitHub Release on
+tag v1.2.6 (BLOQUE 58.next), with release notes extracted from
 docs/changelog/CHANGELOG_v1.x.md.
-
-The .zip is the full PyInstaller output (dist/void-hunter/), matching
-the pattern from tools/create_v1_1_6_release.py. It is created
-manually before running this script (Compress-Archive in PowerShell,
-or zip CLI). The script only UPLOADS the .zip — it does not build
-or compress.
 
 BLOQUE 58.next:
 - COMPOSED slot offset preservation (no stacked ships)
@@ -34,7 +28,7 @@ from pathlib import Path
 
 REPO = "lerius700-cmyk/Void-Hunter"
 TAG = "v1.2.6"
-ASSET_PATH = Path(r"D:\AI\void-hunter\release\VoidHunter-v1.2.6-win64.zip")
+ASSET_PATH = Path(r"D:\AI\void-hunter\dist\void-hunter\void-hunter.exe")
 CHANGELOG_PATH = Path(r"D:\AI\void-hunter\docs\changelog\CHANGELOG_v1.x.md")
 
 
