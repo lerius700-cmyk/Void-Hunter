@@ -7,11 +7,11 @@
 
 <div align="center">
 
-### 👉 [⬇️ Descargar VoidHunter v1.2.6 para Windows (4 MB)](https://github.com/lerius700-cmyk/Void-Hunter/releases/download/v1.2.6/void-hunter.exe) 👈
+### 👉 [⬇️ Descargar VoidHunter v1.2.6 para Windows (266 MB)](https://github.com/lerius700-cmyk/Void-Hunter/releases/download/v1.2.6/void-hunter.exe) 👈
 
 </div>
 
-**Pasos:** descarga el `.exe` → doble click (no necesita instalación, no necesita ZIP)  
+**Pasos:** descarga el `.exe` (onefile, ~266 MB porque trae Python + pygame + todos los assets dentro) → doble click (no necesita instalación, no necesita ZIP, no necesita carpeta `_internal/`)  
 **Si Windows SmartScreen pregunta:** *More info* → *Run anyway* (no tenemos cert de firma todavía)  
 **Controles:** `WASD` / flechas = mover · `Click` / `Espacio` = disparar · `P` = pausa · `ESC` = salir
 
@@ -179,9 +179,9 @@ SDL_VIDEODRIVER=dummy python main.py --easy
 python tools/capture/capture_sub_boss.py
 # → tools/playtest_out/sub_boss_v1.26.png
 
-# Build the .exe
+# Build the .exe (onefile mode: single 266 MB .exe, no _internal/ folder)
 pyinstaller build.spec --clean --noconfirm
-# → dist/void-hunter/void-hunter.exe (~4.4 MB)
+# → dist/void-hunter.exe (~266 MB; self-extracts to tempdir on launch)
 ```
 
 **Quality gates:**
