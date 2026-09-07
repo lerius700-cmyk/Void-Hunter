@@ -1,19 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for VOID HUNTER (BLOQUE 54).
+"""PyInstaller spec for VOID HUNTER (BLOQUE 54 + 58.next fix).
 
-Builds a single-folder distribution `dist/void-hunter/` with the launcher
-executable at `dist/void-hunter/void-hunter.exe`. No external assets to bundle
-(the game is fully procedural: graphics drawn in code, audio synthesized).
+Builds a SINGLE-FILE distribution `dist/void-hunter.exe` (onefile mode).
+BLOQUE 58.next fix: switched from onedir to onefile so users can download
+ONE .exe and run it without needing a companion _internal/ folder. The
+onedir mode created a `._internal` Python311.dll dependency that failed
+with "Failed to load Python DLL" if the .exe was extracted alone.
 
 Usage:
     pyinstaller build.spec            # one-time build
     pyinstaller build.spec --clean    # nuke build/ + dist/ first
 
 Output:
-    dist/void-hunter/void-hunter.exe  ~ launcher
-    dist/void-hunter/_internal/       python runtime + pygame + game code
+    dist/void-hunter.exe              ~ single self-extracting executable
 
-Size: ~15-25 MB (mostly Python stdlib + pygame).
+Size: ~120-180 MB (Python runtime + pygame + all Assets bundled inside).
+Startup: ~3-5s extra on first launch (self-extracts to tempdir).
 """
 from pathlib import Path
 import sys
@@ -105,8 +107,11 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,   # BLOQUE 58.next: onefile mode — bundle binaries inside .exe
+    a.zipfiles,
+    a.datas,
     [],
-    exclude_binaries=True,  # split: binaries go in _internal/, exe is small
+    exclude_binaries=False,  # onefile: everything is in the .exe (no _internal/)
     name="void-hunter",
     debug=False,
     bootloader_ignore_signals=False,
@@ -120,13 +125,8 @@ exe = EXE(
     # icon=str(PROJECT_ROOT / "tools" / "playtest_out" / "polish_29_goliath_phase1.png"),  # uncomment if you add an .ico
 )
 
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=False,
-    upx_exclude=[],
-    name="void-hunter",
-)
+# BLOQUE 58.next: removed COLLECT step. Onefile mode produces a single
+# dist/void-hunter.exe (~120-180 MB) instead of dist/void-hunter/ directory
+# with .exe + _internal/. Trades startup time (~3-5s self-extract) for
+# true single-file portability — the user can download one .exe and run
+# it without needing any companion files.

@@ -28,7 +28,7 @@ from pathlib import Path
 
 REPO = "lerius700-cmyk/Void-Hunter"
 TAG = "v1.2.6"
-ASSET_PATH = Path(r"D:\AI\void-hunter\dist\void-hunter\void-hunter.exe")
+ASSET_PATH = Path(r"D:\AI\void-hunter\dist\void-hunter.exe")  # BLOQUE 58.next: onefile mode (no _internal/ folder)
 CHANGELOG_PATH = Path(r"D:\AI\void-hunter\docs\changelog\CHANGELOG_v1.x.md")
 
 
