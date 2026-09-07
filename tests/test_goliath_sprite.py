@@ -156,3 +156,28 @@ def test_draw_goliath_falls_back_to_procedural_when_sprite_missing():
                 "bosses/goliath/THIS_DOES_NOT_EXIST/frame_00.png"
             )
             assert entry is None
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 60 Task 10: Phase 2 red eye trail.
+# The Boss dataclass carries a list `_eye_trail_positions` that records the
+# boss's recent (x, y) as a ring buffer of length 8. `update_eye_trail()`
+# appends the current position and pops the oldest when the buffer exceeds 8.
+# ---------------------------------------------------------------------------
+def test_eye_trail_initially_empty():
+    """A freshly constructed Boss has an empty eye-trail buffer."""
+    from src.entities.enemies.boss import Boss
+    b = Boss()
+    assert b._eye_trail_positions == []
+
+
+def test_eye_trail_records_position_on_update():
+    """Each call to update_eye_trail() appends the boss's current (x, y)."""
+    from src.entities.enemies.boss import Boss
+    b = Boss()
+    b.active = True
+    b.x = 100.0
+    b.y = 50.0
+    b.update_eye_trail()
+    assert len(b._eye_trail_positions) == 1
+    assert b._eye_trail_positions[0] == (100.0, 50.0)

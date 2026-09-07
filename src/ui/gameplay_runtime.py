@@ -1927,6 +1927,11 @@ class GameplayRuntime:
             else:
                 # Normal boss behavior (sine oscillation)
                 self._boss.update(dt)
+                # BLOQUE 60: Phase 2 — record the boss position in the eye
+                # trail ring buffer (8 positions). Cheap; only fires when
+                # the boss has crossed the 66% HP threshold.
+                if self._boss.phase >= 2:
+                    self._boss.update_eye_trail()
             # Boss attack selection (suppressed during entry)
             if self._boss_entry_t >= 0.8:
                 attack = self._boss.select_attack()
@@ -5911,6 +5916,27 @@ class GameplayRuntime:
         ratio = self._boss.hp / self._boss.max_hp
         hp_color = (220, 60, 40) if ratio < 0.34 else (220, 140, 50)
         pygame.draw.rect(target, hp_color, (bar_x, bar_y, int(bar_w * ratio), bar_h))
+        # ------------------------------------------------------------------
+        # Layer 13: BLOQUE 60 — Phase 2 red eye trail (afterimage).
+        # Renders the last 8 boss positions as fading red dots. Drawn last
+        # so it appears on top of the body, like a motion trail.
+        # ------------------------------------------------------------------
+        if self._boss.phase >= 2 and self._boss._eye_trail_positions:
+            for i, (tx, ty) in enumerate(self._boss._eye_trail_positions):
+                alpha_mult = i / max(1, len(self._boss._eye_trail_positions) - 1)
+                alpha = int(30 + 200 * alpha_mult)  # 30..230
+                radius = 0.5 + alpha_mult * 1.5      # 0.5..2.0
+                trail_surf = pygame.Surface(
+                    (int(radius * 2) + 2, int(radius * 2) + 2), pygame.SRCALPHA,
+                )
+                pygame.draw.circle(
+                    trail_surf, (255, 40, 30, alpha),
+                    (int(radius) + 1, int(radius) + 1), int(radius),
+                )
+                target.blit(
+                    trail_surf,
+                    (int(tx + ox) - int(radius) - 1, int(ty + oy) - int(radius) - 1),
+                )
 
     # ------------------------------------------------------------------
     # BLOQUE 58.37: HYDRA — 3-headed weapon platform (Act 2 boss)

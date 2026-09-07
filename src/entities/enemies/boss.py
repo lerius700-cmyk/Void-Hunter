@@ -120,6 +120,10 @@ class Boss:
     animation_frame: int = 0
     animation_timer: float = 0.0
     ANIMATION_FRAME_DURATION: ClassVar[float] = 0.10  # 10 fps, 1.0s per loop
+    # BLOQUE 60: red eye trail (phase 2 only) — ring buffer of recent
+    # (x, y) boss positions. _draw_goliath() renders fading red dots
+    # from this list when phase >= 2.
+    _eye_trail_positions: list = field(default_factory=list)
 
     def on_spawn(self) -> None:
         self.on_phase_transition = 0
@@ -170,6 +174,14 @@ class Boss:
                 self.animation_frame += 1
         else:
             self.animation_frame = (self.animation_frame + 1) % 10
+
+    def update_eye_trail(self) -> None:
+        """BLOQUE 60: record current position in the eye trail ring buffer.
+        Only call this when phase >= 2 (avoids wasted work in phase 1).
+        """
+        self._eye_trail_positions.append((self.x, self.y))
+        if len(self._eye_trail_positions) > 8:
+            self._eye_trail_positions.pop(0)
 
     def effective_speed(self) -> float:
         """BLOQUE 60: Phase 2 speeds up GOLIATH by 1.6x.
