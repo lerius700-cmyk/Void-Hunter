@@ -65,16 +65,23 @@ def load_base(state_key: str) -> Image.Image:
 
 
 def preprocess_base(base: Image.Image) -> Image.Image:
-    """Crop + rotate + center-crop square."""
+    """Crop bottom 15% (watermark) + center-crop to square.
+
+    BLOQUE 60: NO rotation. The AI generated boss portraits in correct
+    orientation (head at top, feet at bottom, facing the viewer = facing
+    down toward the player). The 90 CCW rotation that the BLOQUE 59
+    ship pipeline uses is WRONG for bosses because the ship AI
+    generated side-view ships facing right, but the boss AI generated
+    front-view portraits already in the correct playfield orientation.
+    """
     w, h = base.size
     crop_h = int(h * (1 - WATERMARK_CROP_BOTTOM_PCT))
     cropped = base.crop((0, 0, w, crop_h))
-    rotated = cropped.rotate(90, expand=True)
-    rw, rh = rotated.size
-    side = min(rw, rh)
-    left = (rw - side) // 2
-    top = (rh - side) // 2
-    return rotated.crop((left, top, left + side, top + side))
+    cw, ch = cropped.size
+    side = min(cw, ch)
+    left = (cw - side) // 2
+    top = (ch - side) // 2
+    return cropped.crop((left, top, left + side, top + side))
 
 
 def make_source_png(base: Image.Image, out_path: Path) -> None:
