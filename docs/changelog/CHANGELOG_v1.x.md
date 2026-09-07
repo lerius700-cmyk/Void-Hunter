@@ -714,6 +714,29 @@ showing each pattern with visible leader glow ring.
 - Each variant is deterministic (pixel-by-pixel reproducible given
   the same seed and variant index).
 
+### BLOQUE 59 — Ship sprite redesign (2026-09-07)
+
+- **3 enemy templates redesigned** (AI-generated, 1024x1024 base + post-processed to 32x32 RGBA + mapped to 64-color palette):
+  - **Light** (cyan/electric blue, small/pointy, single thruster): scout, drone, kamikaze
+  - **Medium** (navy blue/void, balanced, focused weapon hardpoint): sniper, turret
+  - **Heavy** (red/mars orange, large, armored, multiple turrets): heavy, cruiser
+- **1 player ship redesigned**: `ship_01` (white hull + gold highlights + red engine tips, hero aesthetic)
+- **4 animations × 10 frames = 40 frames per ship**: idle (1px Y bob, looped), thrust (1px X lean + dilated engine, looped), damage (red flash + tilt ±1px, one-shot), death (expand + recolor + debris, one-shot)
+- **32×32 source → 16px render**: per-frame PNGs are 32×32 RGBA, scaled to 16×16 with nearest-neighbor at render time
+- **Pipeline**: `tools/redesign_ships/01_generate_bases.py` (mcode-tools AI gen) → `02_postprocess.py` (PIL downscale + watermark crop + 90° rotation + palette map + animation frame gen) → `03_build_sheets.py` (preview sprite-sheets) → `04_integrate.py` (copy to live assets)
+- **Enemy state machine**: `src/entities/enemies/enemy.py` gains `animation_state` + `animation_frame` + `animation_timer` fields; `update()` advances frames using integer division to avoid floating point drift. `apply_damage` transitions to `damage` or `death` state based on HP remaining.
+- **Render path**: `src/ui/gameplay_runtime.py:_get_enemy_sprite` looks up per-frame PNG via `enemy.animation_path`, falls back to legacy single-frame path for backward compat
+- **New asset layout**: `Assets/sprites/enemies/<kind>/<animation>/frame_NN.png` (replaces old `Assets/sprites/enemy_<kind>.png` single-frame PNGs)
+- **Old single-frame enemy PNGs** moved to `archive/_legacy_sprites/` (git history preserved)
+- **build.spec** bundles the new `Assets/sprites/enemies/` directory
+- **AI generation quirk fix**: mcode-tools resolves to `.cmd` shim on Windows, so `subprocess.run` uses `shutil.which` to find the full path (not just `mcode-tools` on PATH)
+
+### Verified
+- 17 new tests in `tests/test_redesign_sprites.py` all passing (palette_map, AI client mock, animation frame generation with seamless loops, enemy state machine)
+- Full test suite: 1,630 + 17 = 1,647 passing; 6 pre-existing failures (test_paths + 5 headless sub_boss flakes) remain pre-existing
+- 8 sprite-sheet previews generated at `Assets/sprites/redesign/spritesheet_*.png`
+- `.exe` rebuilds at 280 MB, launches with new sprites in playfield (BLOQUE 59 integration live in build)
+
 ### BLOQUE 58.next — Roguelike density + leader HP scaling (2026-09-06)
 
 - **Item #1:** Confirmed the existing 4275-pattern COMPOSED pool + ProceduralWaveManager is the roguelike variety system. No code change.
