@@ -236,6 +236,12 @@ class Enemy:
     squadron_age: float = 0.0         # seconds since this enemy "entered" the path
                                        # starts at -time_offset_s so followers appear
                                        # at the leader's past position
+    # BLOQUE 58.next: leader flag, mirrored from SpawnedShip.is_leader at
+    # spawn time by runtime.spawn_pattern_wave. Default False for all
+    # non-leader enemies (followers keep the default SCOUT HP from the
+    # pool, no scaling). Exposed as a public attribute so downstream
+    # consumers (HUD, score, AI) can read it directly.
+    is_leader: bool = False
     # BLOQUE 58.6.4: SUB_BOSS movement pattern state. Tracks which
     # entry cycle we're on and whether the current path includes
     # an "L pattern" (vertical-then-horizontal exit). Used by the
@@ -274,6 +280,9 @@ class Enemy:
         self.path_follower = None
         self.path_slot_dx = 0.0
         self.path_slot_dy = 0.0
+        # BLOQUE 58.next: reset leader flag (default False, runtime sets
+        # True on the leader during spawn_pattern_wave)
+        self.is_leader = False
         # BLOQUE 58.6.4: sub-boss movement state is NOT reset here
         # because it persists across wrap-arounds (entry_count,
         # current_wall, etc. are needed for the next entry).

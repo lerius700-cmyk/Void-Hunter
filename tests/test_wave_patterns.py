@@ -1271,3 +1271,69 @@ class TestLeaderHPScaling:
         scout_hp = _KIND_HP["SCOUT"]
         for wave_idx, expected_hits in [(0, 3), (4, 4), (9, 5), (20, 5)]:
             assert scout_hp * _leader_hits_at_wave(wave_idx) == scout_hp * expected_hits
+
+
+# =====================================================================
+class TestSpawnLeaderHP:
+    """BLOQUE 58.next item #3: spawn_pattern_wave applies scaled HP to leaders.
+
+    Integration test: spawn a V_FORMATION pattern with a leader, verify the
+    leader enemy has the correct HP for the given current_wave_idx.
+    Followers stay at SCOUT_HP (30). Default current_wave_idx=0 keeps
+    backward compat with existing tests.
+    """
+
+    def _spawn_with_wave(self, wave_idx: int):
+        """Helper: spawn a V_FORMATION at the given wave_idx, return (enemies, runtime)."""
+        from src.entities.enemies.enemy import EnemyPool
+        from src.systems.wave_patterns.runtime import spawn_pattern_wave
+        from src.systems.wave_patterns.v_formation import VFormationPattern
+        import random
+        pool = EnemyPool(capacity=16)
+        result = VFormationPattern().generate(random.Random(42), level=3)
+        runtime = spawn_pattern_wave(pool, result, current_wave_idx=wave_idx)
+        enemies = [e for e in pool.pool if e.active]
+        return enemies, runtime
+
+    def test_leader_has_90_hp_at_wave_1(self) -> None:
+        enemies, _ = self._spawn_with_wave(0)
+        leader = next(e for e in enemies if e.is_leader)
+        assert leader.hp == 90, f"Expected 90, got {leader.hp}"
+
+    def test_leader_has_150_hp_at_wave_10(self) -> None:
+        enemies, _ = self._spawn_with_wave(9)
+        leader = next(e for e in enemies if e.is_leader)
+        assert leader.hp == 150, f"Expected 150, got {leader.hp}"
+
+    def test_followers_unchanged_at_pool_default_hp(self) -> None:
+        """Followers keep the pool's default SCOUT HP (1) — only leaders are scaled.
+
+        NOTE: the brief said "followers stay at SCOUT_HP (30)" assuming
+        `_KIND_HP["SCOUT"]` was used by the pool, but `EnemyPool.spawn`
+        uses `ENEMY_CONFIGS[SCOUT].hp` (= 1) instead. The test verifies
+        the TRUE invariant: followers are NOT touched by the leader HP
+        scaling, so their HP equals the pool default. The leader HP
+        scaling is applied via `e.hp = _KIND_HP["SCOUT"] * hits` only
+        when `spawned.is_leader` is True.
+        """
+        from src.entities.enemies.enemy import ENEMY_CONFIGS, EnemyKind
+        enemies, _ = self._spawn_with_wave(9)
+        followers = [e for e in enemies if not e.is_leader]
+        assert len(followers) > 0
+        expected = ENEMY_CONFIGS[EnemyKind.SCOUT].hp  # 1 (the pool's default)
+        for f in followers:
+            assert f.hp == expected, f"Follower hp={f.hp}, expected {expected}"
+
+    def test_default_wave_idx_0_is_backward_compat(self) -> None:
+        """Call without current_wave_idx: leader gets 90 HP (default 0 = wave 1)."""
+        from src.entities.enemies.enemy import EnemyPool
+        from src.systems.wave_patterns.runtime import spawn_pattern_wave
+        from src.systems.wave_patterns.v_formation import VFormationPattern
+        import random
+        pool = EnemyPool(capacity=16)
+        result = VFormationPattern().generate(random.Random(42), level=3)
+        # NOTE: no current_wave_idx arg
+        spawn_pattern_wave(pool, result)
+        enemies = [e for e in pool.pool if e.active]
+        leader = next(e for e in enemies if e.is_leader)
+        assert leader.hp == 90

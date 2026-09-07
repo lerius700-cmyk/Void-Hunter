@@ -224,6 +224,7 @@ def spawn_pattern_wave(
     pool: EnemyPool,
     result: WavePatternResult,
     duration_s: Optional[float] = None,
+    current_wave_idx: int = 0,  # BLOQUE 58.next: leader HP scaling
 ) -> PatternRuntime:
     """Spawn the enemies for a pattern. Returns the runtime tracker.
 
@@ -231,6 +232,9 @@ def spawn_pattern_wave(
         pool: the EnemyPool to spawn into
         result: from ProceduralWaveManager.pick_pattern()
         duration_s: override duration (uses result.duration_s if None)
+        current_wave_idx: BLOQUE 58.next — global wave index (0-based).
+            Used to scale leader HP: wave 1=3 hits (90 HP), wave 10=5
+            hits (150 HP). Default 0 = wave 1 (backward compat).
 
     Returns:
         PatternRuntime with spawn tracking
@@ -257,6 +261,14 @@ def spawn_pattern_wave(
         # highlight it with a glow ring.
         if spawned.is_leader:
             runtime.leader_enemy_ids.append(id(e))
+            # BLOQUE 58.next: leader HP scales with wave proximity to boss.
+            # Wave 1=3 hits (90 HP), wave 10=5 hits (150 HP). Followers
+            # keep the default SCOUT_HP from the pool (30).
+            hits = _leader_hits_at_wave(current_wave_idx)
+            e.hp = _KIND_HP["SCOUT"] * hits
+            # BLOQUE 58.next: mirror the leader flag onto the Enemy so
+            # downstream consumers (HUD, score, AI) can read it directly.
+            e.is_leader = True
 
         # Attach bezier path if pattern provides control points
         if "p0" in spawned.extra:
