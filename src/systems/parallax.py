@@ -75,51 +75,66 @@ STARS_PER_LAYER = STARS_PER_LAYER_DEFAULT
 # show partial galaxies for a "depth" effect. The strip is 3x the
 # playfield height (1440 vs 480) so the wrap is not too obvious.
 GALAXY_STRIP_W = 480
-GALAXY_STRIP_H = 1440
-# Scroll speed: between slowest star layer (20) and second (50).
-# 25 px/s gives ~58s for one full wrap.
-GALAXY_STRIP_SPEED = 25.0
+# BLOQUE 58.next redesign: 2x taller (2880 vs 1440) so the SINGLE
+# main galaxy per strip has room to breathe. Wrap is now 2880/12 =
+# 240 seconds (4 minutes) — the player sees the same distant
+# nebula for a long time before it scrolls off, reinforcing the
+# "we're far away" feel.
+GALAXY_STRIP_H = 2880
+# BLOQUE 58.next redesign: slower scroll for distance. Was 25 px/s
+# (~58s wrap on 1440). 12 px/s on 2880 = 240s wrap (4 minutes).
+# The slower motion makes the nebula feel far away.
+GALAXY_STRIP_SPEED = 12.0
 # X offset to center the wider strip on the playfield.
 # (480 - 320) / 2 = 80 px offset to the left so the playfield sees
 # the middle 320 of the 480.
 GALAXY_STRIP_X_OFFSET = (GALAXY_STRIP_W - INTERNAL_W) // 2
-# BLOQUE 58.62 v3: matches the hand-painted reference. 7 main galaxies
-# (one per vertical section of ~200px) + 4-6 small companions clustered
-# around each main + 80 procedural stars. The user accepted the v2
-# sparse look but said it was "too empty" vs the reference; the v3
-# numbers approximate the reference's per-section composition.
+# BLOQUE 58.next redesign: the strip composition is now MINIMAL —
+# 1 main galaxy (large, the visual anchor) + 0-1 small companion +
+# ~30 procedural stars. The previous 7 mains + 28-42 companions +
+# 80 stars was too busy; the user asked for 1 large OR 2 small
+# nebulae MAX on screen. With STRIP_H=2880 and 1 main centered
+# vertically, the playfield (480 tall) sees the main for the
+# majority of the wrap, then ~1 minute of empty space, then the
+# wrap brings it back. The companion (if any) is small and close
+# to the main.
 #
-# Per-section composition:
-#   - 1 main galaxy (50-70 px radius, the visual anchor of the section)
-#   - 4-6 small companions (15-30 px, within 80-150 px of the main)
-#   - ~11 stars (out of 80 total / 7 sections)
+# Per-strip composition:
+#   - 1 main galaxy (40-60 px radius, near horizontal center)
+#   - 0-1 small companion (12-18 px, 30-50 px from the main)
+#   - 30 stars (60% small dim / 30% medium / 10% bright white)
 #
-# Total per strip: 7 + 28-42 = 35-49 galaxies + 80 stars = 115-129 elements.
+# Total per strip: 1 + 0-1 = 1-2 galaxies + 30 stars = 31-32 elements.
 
-# --- Main galaxies (7 sections, evenly distributed vertically) ---
-STRIP_MAIN_GALAXIES: int = 7
-STRIP_MAIN_RADIUS_MIN: int = 50
-STRIP_MAIN_RADIUS_MAX: int = 70
-# Uses sprite_indices[i % len(sprite_indices)] round-robin.
+# --- Main galaxies (1, centered vertically and horizontally) ---
+STRIP_MAIN_GALAXIES: int = 1
+STRIP_MAIN_RADIUS_MIN: int = 40
+STRIP_MAIN_RADIUS_MAX: int = 60
 
-# --- Small companions (clustered around each main) ---
-STRIP_COMPANION_GALAXIES_MIN: int = 4
-STRIP_COMPANION_GALAXIES_MAX: int = 6
-STRIP_COMPANION_RADIUS_MIN: int = 15
-STRIP_COMPANION_RADIUS_MAX: int = 30
-STRIP_COMPANION_DISTANCE_MIN: int = 80  # px from main center
-STRIP_COMPANION_DISTANCE_MAX: int = 150
+# --- Small companions (clustered very close to the main) ---
+STRIP_COMPANION_GALAXIES_MIN: int = 0
+STRIP_COMPANION_GALAXIES_MAX: int = 1
+STRIP_COMPANION_RADIUS_MIN: int = 12
+STRIP_COMPANION_RADIUS_MAX: int = 18
+# BLOQUE 58.next redesign: companion stays close to the main so it
+# reads as part of the same nebula system, not a separate object.
+# Previous range (80-150 px) was too far — companion could drift
+# off the playfield.
+STRIP_COMPANION_DISTANCE_MIN: int = 30
+STRIP_COMPANION_DISTANCE_MAX: int = 50
 
-# --- Procedural stars (matches reference: many small + a few bright) ---
-STRIP_PROCEDURAL_STARS: int = 80
+# --- Procedural stars (atmosphere, not nebulae) ---
+STRIP_PROCEDURAL_STARS: int = 30
 # 60% small dim / 30% medium / 10% bright white.
 
-# --- Edge padding (galaxies stay this many px from the top/bottom seam) ---
-# BLOQUE 58.62: reduced from 200 to 50. With 200, the top and bottom
-# 14% of the strip were empty (28% total) and the player saw a "gap"
-# of empty space at every wrap. With 50, galaxies can live in 93% of
-# the strip height so the wrap is continuous.
-STRIP_EDGE_PAD: int = 50
+# --- Edge padding (galaxies stay this many px from the seams) ---
+# BLOQUE 58.next redesign: 250 px on each end so no galaxy is
+# visible at the wrap seam. With 2880 tall and 250 pad, the
+# main galaxy lives in y in [250, 2630]. The playfield sees a
+# 480-tall window — when the strip wraps, the galaxy is always
+# at least 250 px away from the visible edge. No clipping at
+# the seam, ever.
+STRIP_EDGE_PAD: int = 250
 # Variant names (mapped to theme names). Order matters: this also
 # serves as the canonical act index -> theme name mapping.
 _STRIP_VARIANT_THEMES: tuple[str, ...] = (
@@ -345,26 +360,29 @@ class ParallaxBackground:
                 radius = 2
             pygame.draw.circle(surf, color, (int(x), int(y)), radius)
 
-        # 2) Main galaxies: STRIP_MAIN_GALAXIES (7) of them, distributed
-        # in vertical sections AND horizontal columns. Each main is the
-        # visual anchor of its (column, row) cell in a 7x7-ish grid.
-        # The X distribution is evenly spaced (was rng.uniform, which
-        # caused the 2026-08-31 visual regression where all galaxies
-        # clustered on the right edge of the playfield — unlucky seeds
-        # produced right-heavy layouts). Y stays in the same section
-        # band with vertical jitter. Together this guarantees the 7
-        # mains cover the full width of the playfield (320 px) plus
-        # the strip's 80 px buffer on each side.
+        # 2) Main galaxies: STRIP_MAIN_GALAXIES of them. With the BLOQUE
+        # 58.next redesign, this is 1 per strip, centered both vertically
+        # and horizontally. The X jitter is kept TIGHT (±40 px) so the
+        # galaxy's sprite (up to 2 * STRIP_MAIN_RADIUS_MAX = 120 px wide)
+        # stays inside the playfield (strip x in [80, 400]). No left/right
+        # clipping at the playfield edges.
         section_h = GALAXY_STRIP_H / STRIP_MAIN_GALAXIES
         section_w = (GALAXY_STRIP_W - 80) / STRIP_MAIN_GALAXIES
         for i in range(STRIP_MAIN_GALAXIES):
-            # x: evenly distributed across the strip width, with small
-            # jitter (±30% of section_w) so the 7 mains look scattered
-            # but still cover the full width.
+            # X: centered on the playfield (strip x = 240), with small
+            # jitter (±40 px) so the galaxy has horizontal variety but
+            # never clips the playfield edges. STRIP_MAIN_RADIUS_MAX is
+            # 60, so 240 ± 40 keeps main_x in [200, 280] and the sprite
+            # bounds in [140, 340] (well inside the playfield [80, 400]).
             base_x = 40 + (i + 0.5) * section_w
-            x_jitter = rng.uniform(-section_w * 0.30, section_w * 0.30)
+            x_jitter = rng.uniform(-40.0, 40.0)
             main_x = base_x + x_jitter
-            main_x = max(40, min(GALAXY_STRIP_W - 40, main_x))
+            # Defensive clamp: even with the small jitter, ensure the
+            # sprite bounds stay inside the playfield.
+            main_x = max(
+                80 + STRIP_MAIN_RADIUS_MAX,
+                min(GALAXY_STRIP_W - 80 - STRIP_MAIN_RADIUS_MAX, main_x),
+            )
             # y: centered in the section, with some jitter so they don't
             # all sit on a perfect grid
             section_center_y = (i + 0.5) * section_h
@@ -378,9 +396,9 @@ class ParallaxBackground:
                 surf, sprites[main_sprite_idx], main_x, main_y, main_radius
             )
 
-            # 3) Small companions: 4-6 clustered around this main galaxy.
-            # Each main is the "center" of a section; the companions give
-            # the section the "solar system" feel from the reference.
+            # 3) Small companions: 0-1 clustered very close to the main
+            # galaxy. The companion is small and stays inside the
+            # playfield so it never clips the edges.
             n_companions = rng.randint(
                 STRIP_COMPANION_GALAXIES_MIN, STRIP_COMPANION_GALAXIES_MAX
             )
@@ -391,9 +409,13 @@ class ParallaxBackground:
                 )
                 cx = main_x + math.cos(angle) * distance
                 cy = main_y + math.sin(angle) * distance
-                # Clamp into strip bounds (companions can sit close to
-                # edges for depth, but not on the wrap seam)
-                cx = max(20, min(GALAXY_STRIP_W - 20, cx))
+                # BLOQUE 58.next: clamp companion into the PLAYFIELD
+                # (not just the strip). Playfield spans strip x [80, 400].
+                # We also leave room for the sprite radius.
+                cx = max(
+                    80 + STRIP_COMPANION_RADIUS_MAX,
+                    min(GALAXY_STRIP_W - 80 - STRIP_COMPANION_RADIUS_MAX, cx),
+                )
                 cy = max(STRIP_EDGE_PAD, min(GALAXY_STRIP_H - STRIP_EDGE_PAD, cy))
                 radius = rng.uniform(
                     STRIP_COMPANION_RADIUS_MIN, STRIP_COMPANION_RADIUS_MAX

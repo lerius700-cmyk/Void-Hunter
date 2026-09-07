@@ -809,6 +809,75 @@ class TestMotionInvariants:
                     f"vs leader t_offset={leader.t_offset}."
                 )
 
+    # ------------------------------------------------------------------
+    # COMPOSED — ships must preserve formation slot offsets along the path
+    # ------------------------------------------------------------------
+    def test_composed_ships_preserve_formation_offsets(self):
+        """COMPOSED: every ship in the pattern must stay at its formation
+        slot offset (dx, dy) RELATIVE TO the path, not collapse onto the
+        path's start point.
+
+        Before the BLOQUE 58.next fix, attach_multi_segment_path() passed
+        slot_dx=slot_dy=0 to enemy.attach_path, so all ships followed
+        the same shared path from the same world position. The result
+        was every ship rendered on top of each other (the user-reported
+        "stacked ships" bug in COMPOSED).
+
+        We test a V formation (slots spread up to 88 px in X, 30 px in Y)
+        on a sweep path. After the fix, at any sample time the ships'
+        positions must be spread by at least one formation-slot unit
+        on at least one axis. Without the fix, x_range and y_range are
+        both ~0 (all ships at the path's start).
+        """
+        from src.systems.wave_patterns.composed import ComposedPattern
+        from src.systems.wave_patterns.base import PatternDifficulty
+        from src.movement.follower import PathFollower
+        pattern = ComposedPattern(
+            name="v_sweep_leader_n5",
+            formation="v",
+            path="sweep",
+            follow="leader",
+            count=5,
+            difficulty=PatternDifficulty.EASY,
+        )
+        result = pattern.generate(random.Random(42), level=3)
+        assert len(result.ships) == 5, (
+            f"Expected 5 ships from n=5 COMPOSED, got {len(result.ships)}"
+        )
+        for t_sample in (0.1, 0.5, 1.0, 1.5, 2.0):
+            positions = []
+            for ship in result.ships:
+                path = ComposedPattern.build_path(ship)
+                assert path is not None, (
+                    f"ComposedPattern.build_path returned None for ship "
+                    f"slot={ship.slot} (missing 'segments' in extra?)"
+                )
+                follower = PathFollower(path, t_offset=ship.t_offset)
+                pos, _ = follower.update(t_sample)
+                # Account for the formation slot offset that the runtime
+                # applies via path_slot_dx / path_slot_dy. The test mirrors
+                # the runtime: each ship's effective position is
+                # path_position + (slot_dx, slot_dy).
+                pos_x = pos.x + ship.extra.get("slot_dx", 0.0)
+                pos_y = pos.y + ship.extra.get("slot_dy", 0.0)
+                positions.append((pos_x, pos_y))
+            xs = [p[0] for p in positions]
+            ys = [p[1] for p in positions]
+            x_range = max(xs) - min(xs)
+            y_range = max(ys) - min(ys)
+            # The V formation has 5 ships spanning ~88 px in X and ~30 px
+            # in Y (before jitter). A spread of < 10 px on BOTH axes means
+            # the ships are visually stacked. 10 px is well below the
+            # minimum formation spread but well above the <1 px you'd see
+            # if all ships were collapsed.
+            assert x_range > 10.0 or y_range > 10.0, (
+                f"COMPOSED: ships are STACKED at t={t_sample}s "
+                f"(x_range={x_range:.1f}, y_range={y_range:.1f}). "
+                f"All positions: {positions}. "
+                f"slot_dx/slot_dy are not being applied to the path follower "
+                f"(or ship.extra is missing 'slot_dx' / 'slot_dy')."
+            )
+
 
 # =====================================================================
 # ProceduralWaveManager tests

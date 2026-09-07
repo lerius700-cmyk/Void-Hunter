@@ -135,16 +135,21 @@ def test_release_all_resets_state(bg: ParallaxBackground) -> None:
 class TestGalaxyStrip:
 
     def test_strip_dimensions_match_design(self) -> None:
+        # BLOQUE 58.next redesign: strip is 2x taller (2880 vs 1440)
+        # to give the single main galaxy room to breathe.
         assert GALAXY_STRIP_W == 480
-        assert GALAXY_STRIP_H == 1440
+        assert GALAXY_STRIP_H == 2880
 
     def test_strip_x_offset_centers_on_playfield(self) -> None:
         assert GALAXY_STRIP_X_OFFSET == 80
         assert GALAXY_STRIP_X_OFFSET + INTERNAL_W <= GALAXY_STRIP_W
 
-    def test_strip_speed_between_star_layers(self) -> None:
-        assert LAYER_SPEEDS[0] < GALAXY_STRIP_SPEED < LAYER_SPEEDS[1]
-        assert GALAXY_STRIP_SPEED == 25.0
+    def test_strip_speed_slower_than_slowest_star_layer(self) -> None:
+        # BLOQUE 58.next redesign: strip is now SLOWER than the
+        # slowest star layer (was between layer 0 and 1). Slower
+        # scroll = more distant feel.
+        assert GALAXY_STRIP_SPEED < LAYER_SPEEDS[0]
+        assert GALAXY_STRIP_SPEED == 12.0
 
     def test_strip_uses_galaxy_sprites(self, bg: ParallaxBackground) -> None:
         bg._get_or_render_strip(0)
@@ -163,11 +168,12 @@ class TestGalaxyStrip:
         )
 
     def test_sparse_galaxy_counts(self) -> None:
-        # BLOQUE 58.62 v3: 7 main + 4-6 companions each + 80 stars.
-        # The detailed TestStripLayout class covers the new layout;
-        # this is a smoke check.
-        assert STRIP_MAIN_GALAXIES == 7
-        assert STRIP_PROCEDURAL_STARS == 80
+        # BLOQUE 58.next redesign: 1 main + 0-1 companion + 30 stars.
+        # The user asked for "1 large OR 2 small nebulae MAX on screen,
+        # more distant, no clipping". The detailed TestStripLayout class
+        # covers the new layout; this is a smoke check.
+        assert STRIP_MAIN_GALAXIES == 1
+        assert STRIP_PROCEDURAL_STARS == 30
 
 
 class TestStripScroll:
@@ -185,12 +191,15 @@ class TestStripScroll:
         assert 0.0 <= offset < GALAXY_STRIP_H
 
     def test_scroll_is_continuous(self, bg: ParallaxBackground) -> None:
+        # BLOQUE 58.next redesign: speed is now 12 px/s (was 25). At
+        # 0.1s per step, the offset advances by 12 * 0.1 = 1.2 px per
+        # step. Two steps = 2.4 px.
         bg.update(0.1)
         first = bg.get_strip_y_offset()
         bg.update(0.1)
         second = bg.get_strip_y_offset()
-        assert first == pytest.approx(2.5, abs=0.01)
-        assert second == pytest.approx(5.0, abs=0.01)
+        assert first == pytest.approx(1.2, abs=0.01)
+        assert second == pytest.approx(2.4, abs=0.01)
 
 
 class TestStripVariants:
@@ -298,21 +307,27 @@ def test_constructor_no_legacy_kwargs(bg: ParallaxBackground) -> None:
 # 4. Strip layout (BLOQUE 58.62 v3 - matches the hand-painted reference)
 # ---------------------------------------------------------------------------
 class TestStripLayout:
-    "v3 layout: 7 main + 4-6 companions each + 80 stars per strip."
+    """BLOQUE 58.next redesign: minimal layout — 1 main + 0-1 companion
+    + 30 stars per strip. The user asked for 1 large OR 2 small nebulae
+    MAX on screen, more distant, no clipping."""
 
-    def test_main_galaxy_count_is_7(self) -> None:
+    def test_main_galaxy_count_is_1(self) -> None:
         from src.systems import parallax as p
-        assert p.STRIP_MAIN_GALAXIES == 7
+        assert p.STRIP_MAIN_GALAXIES == 1
 
     def test_main_radius_range(self) -> None:
         from src.systems import parallax as p
-        assert p.STRIP_MAIN_RADIUS_MIN == 50
-        assert p.STRIP_MAIN_RADIUS_MAX == 70
+        # Smaller than before (was 50-70) so the sprite fits inside
+        # the playfield without left/right clipping.
+        assert p.STRIP_MAIN_RADIUS_MIN == 40
+        assert p.STRIP_MAIN_RADIUS_MAX == 60
 
     def test_companion_count_range(self) -> None:
         from src.systems import parallax as p
-        assert p.STRIP_COMPANION_GALAXIES_MIN == 4
-        assert p.STRIP_COMPANION_GALAXIES_MAX == 6
+        # 0-1 small companion per main (was 4-6). Reads as "0 or 1 small
+        # companion" so the playfield never sees more than 2 small.
+        assert p.STRIP_COMPANION_GALAXIES_MIN == 0
+        assert p.STRIP_COMPANION_GALAXIES_MAX == 1
         assert p.STRIP_COMPANION_GALAXIES_MIN < p.STRIP_COMPANION_GALAXIES_MAX
 
     def test_companion_radius_smaller_than_main(self) -> None:
@@ -321,26 +336,31 @@ class TestStripLayout:
 
     def test_companions_within_distance_of_main(self) -> None:
         from src.systems import parallax as p
-        assert p.STRIP_COMPANION_DISTANCE_MIN == 80
-        assert p.STRIP_COMPANION_DISTANCE_MAX == 150
+        # Closer than before (was 80-150) so the companion reads as part
+        # of the same nebula, not a separate object.
+        assert p.STRIP_COMPANION_DISTANCE_MIN == 30
+        assert p.STRIP_COMPANION_DISTANCE_MAX == 50
 
-    def test_star_count_is_80(self) -> None:
+    def test_star_count_is_30(self) -> None:
         from src.systems import parallax as p
-        assert p.STRIP_PROCEDURAL_STARS == 80
+        # Sparser stars for atmosphere without clutter (was 80).
+        assert p.STRIP_PROCEDURAL_STARS == 30
 
-    def test_edge_pad_is_50(self) -> None:
+    def test_edge_pad_is_250(self) -> None:
         from src.systems import parallax as p
-        assert p.STRIP_EDGE_PAD == 50
+        # Much larger than before (was 50) so no galaxy is visible at
+        # the wrap seam — guarantees no vertical clipping at the seam.
+        assert p.STRIP_EDGE_PAD == 250
 
     def test_total_galaxies_in_range(self) -> None:
         from src.systems import parallax as p
-        # Total galaxies per strip: 7 main + 4-6 companions c/u
-        # = 7 + 28-42 = 35-49 galaxies (much closer to the reference)
+        # Total galaxies per strip: 1 main + 0-1 companions
+        # = 1-2 galaxies (well under the user's "1 large OR 2 small max")
         min_total = p.STRIP_MAIN_GALAXIES + (
             p.STRIP_COMPANION_GALAXIES_MIN * p.STRIP_MAIN_GALAXIES
         )
         max_total = p.STRIP_MAIN_GALAXIES + (
             p.STRIP_COMPANION_GALAXIES_MAX * p.STRIP_MAIN_GALAXIES
         )
-        assert min_total == 35
-        assert max_total == 49
+        assert min_total == 1
+        assert max_total == 2

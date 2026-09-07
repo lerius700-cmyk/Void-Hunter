@@ -20,6 +20,7 @@ from typing import Optional
 
 from src.core.settings import INTERNAL_W, INTERNAL_H
 from src.movement.formation import FlightFormation
+from src.movement.bezier import Point
 from src.movement.cardioid_path import CardioidPath
 from src.movement.epicycloid_path import EpicycloidPath
 from src.movement.hypocycloid_path import HypocycloidPath
@@ -541,12 +542,20 @@ class ComposedPattern(WavePattern):
                 slot=i,
                 color=self._jitter_color(base_color, color_rng),
                 is_leader=is_leader,
+                # BLOQUE 58.next fix: also store the slot's (dx, dy) offset
+                # in `extra` so the runtime can preserve the formation shape
+                # throughout the multi-segment path. Without this, every
+                # ship in a COMPOSED pattern followed the same path with
+                # slot_dx=slot_dy=0, collapsing them all to the same
+                # world position (visible as the "stacked ships" bug).
                 extra={
                     "formation": self._formation,
                     "path": self._path,
                     "follow": self._follow,
                     "segments": segments,
                     "segment_durations": seg_durs,
+                    "slot_dx": dx,
+                    "slot_dy": dy,
                 },
             ))
         return WavePatternResult(
@@ -556,6 +565,33 @@ class ComposedPattern(WavePattern):
             duration_s=duration_s,
             seed_used=rng.randrange(2**32),
         )
+
+    @classmethod
+    def build_path(cls, ship: "SpawnedShip"):
+        """BLOQUE 58.next: build the per-ship HybridPath for visual replay.
+
+        COMPOSED stores the pre-segmented bezier (segments + segment_durations)
+        in `extra`. We rebuild a HybridPath from it so headless renderers
+        and motion-invariant tests can reproduce the runtime motion.
+
+        Returns None if the ship has no `segments` extra (defensive).
+        """
+        from src.movement.bezier import BezierPath
+        from src.movement.hybrid import HybridPath
+        segments = ship.extra.get("segments")
+        if not segments:
+            return None
+        seg_durs = ship.extra.get("segment_durations", [3.0] * len(segments))
+        beziers = []
+        for seg in segments:
+            p0, p1, p2, p3 = seg
+            beziers.append(BezierPath(
+                p0=Point(p0[0], p0[1]),
+                p1=Point(p1[0], p1[1]),
+                p2=Point(p2[0], p2[1]),
+                p3=Point(p3[0], p3[1]),
+            ))
+        return HybridPath(beziers, segment_durations=seg_durs)
 
 
 # ---- 1050 pre-defined combinations ----

@@ -118,6 +118,8 @@ def attach_multi_segment_path(
     segments: list,
     segment_durations: list[float],
     t_offset: float = 0.0,
+    slot_dx: float = 0.0,
+    slot_dy: float = 0.0,
 ) -> None:
     """BLOQUE 58.12: attach a multi-segment HybridPath (compound bezier).
 
@@ -130,6 +132,9 @@ def attach_multi_segment_path(
         segments: list of (p0, p1, p2, p3) tuples (one per segment)
         segment_durations: list of float seconds (one per segment)
         t_offset: phase offset in seconds
+        slot_dx: BLOQUE 58.next — formation slot offset in X (preserves
+            the formation shape while the ship follows a shared path).
+        slot_dy: same, in Y.
     """
     from src.movement.hybrid import HybridPath
     beziers = []
@@ -143,7 +148,7 @@ def attach_multi_segment_path(
         ))
     path = HybridPath(beziers, segment_durations=segment_durations)
     follower = PathFollower(path, t_offset=t_offset)
-    enemy.attach_path(follower, slot_dx=0.0, slot_dy=0.0)
+    enemy.attach_path(follower, slot_dx=slot_dx, slot_dy=slot_dy)
 
 
 def attach_parallel_pair_path(
@@ -250,8 +255,14 @@ def spawn_pattern_wave(
             # Used for more complex Star Fox 64 style choreography.
             segments = spawned.extra["segments"]
             seg_durs = spawned.extra.get("segment_durations", [3.0] * len(segments))
+            # BLOQUE 58.next fix: forward the formation slot offset so each
+            # ship keeps its formation position while following the shared
+            # path. Without this, all ships collapse to the same world
+            # position (the "stacked ships" bug reported by the user).
             attach_multi_segment_path(
                 e, segments, seg_durs, t_offset=spawned.t_offset,
+                slot_dx=spawned.extra.get("slot_dx", 0.0),
+                slot_dy=spawned.extra.get("slot_dy", 0.0),
             )
         elif "parallel_pair" in spawned.extra:
             # BLOQUE 58.13: parallel pair path (BEZIER_SWEEP, LEADER_CHAIN)
