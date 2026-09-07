@@ -93,3 +93,53 @@ def test_build_prompt_includes_bronze_armor():
     assert "spear" in prompt.lower()
     assert "shield" in prompt.lower()
     assert "red eyes" in prompt.lower() or "red eye" in prompt.lower()
+
+
+# ---------------------------------------------------------------------------
+# Task 4: postprocess for bosses (96x80, distance_threshold=90)
+# ---------------------------------------------------------------------------
+#
+# ``02_postprocess.py`` cannot be imported via ``from package import 02_...``
+# because the leading digit makes it an invalid Python identifier. Load it
+# by file path with importlib, matching the convention used by
+# tests/test_postprocess_shared.py and by the Task 3 load above.
+
+_BOSS_POSTPROCESS_PATH = (
+    _PROJECT_ROOT / "tools" / "redesign_bosses" / "02_postprocess.py"
+)
+_pp_spec = importlib.util.spec_from_file_location(
+    "_redesign_bosses_postprocess", _BOSS_POSTPROCESS_PATH
+)
+assert _pp_spec is not None and _pp_spec.loader is not None, (
+    f"could not load spec for {_BOSS_POSTPROCESS_PATH}"
+)
+pp = importlib.util.module_from_spec(_pp_spec)
+sys.modules["_redesign_bosses_postprocess"] = pp
+_pp_spec.loader.exec_module(pp)
+
+
+def test_boss_postprocess_source_size():
+    """BLOQUE 60: boss source is 96x80, NOT 32x32 like ships."""
+    assert pp.SOURCE_SIZE == 96
+    assert pp.SOURCE_HEIGHT == 80
+
+
+def test_boss_postprocess_uses_threshold_90():
+    """Bosses at 96x80 need a wider transparentize threshold (90 vs 70
+    default for ships) because LANCZOS at 1024->96 blends more damero."""
+    assert pp.TRANSPARENTIZE_DISTANCE_THRESHOLD == 90.0
+
+
+def test_boss_postprocess_calls_shared_transparentize():
+    """Verify that boss postprocess uses the shared transparentize
+    function from redesign_ships, not its own copy."""
+    import inspect
+    src = inspect.getsource(pp)
+    assert "_transparentize_damero_after_resize" in src
+    # And the call must pass the boss threshold
+    assert "90" in src
+
+
+def test_boss_postprocess_crops_15_pct_bottom():
+    """Same as ships: remove bottom 15% (the AI watermark)."""
+    assert pp.WATERMARK_CROP_BOTTOM_PCT == 0.15
