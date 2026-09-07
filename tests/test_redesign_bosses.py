@@ -143,3 +143,85 @@ def test_boss_postprocess_calls_shared_transparentize():
 def test_boss_postprocess_crops_15_pct_bottom():
     """Same as ships: remove bottom 15% (the AI watermark)."""
     assert pp.WATERMARK_CROP_BOTTOM_PCT == 0.15
+
+
+# ---------------------------------------------------------------------------
+# Task 5: animation frame generators (10 frames per state)
+# ---------------------------------------------------------------------------
+#
+# ``_animation_frames.py`` uses an underscore prefix (a valid Python
+# identifier), so it is importable directly via the normal import system.
+# No importlib shim needed here.
+
+from tools.redesign_bosses import _animation_frames as af
+
+
+def test_generate_idle_frames_produces_10():
+    """idle: 10 byte-identical copies of _source (motion is runtime bob)."""
+    import tempfile
+    from PIL import Image
+    with tempfile.TemporaryDirectory() as td:
+        td_p = __import__('pathlib').Path(td)
+        src = td_p / "_source.png"
+        Image.new("RGBA", (80, 96), (40, 80, 180, 255)).save(src)
+        out_dir = td_p / "idle"
+        af.generate_idle_frames(src, out_dir)
+        frames = sorted(out_dir.glob("frame_*.png"))
+        assert len(frames) == 10
+        # All 10 must be byte-identical (motion comes from runtime transforms)
+        contents = [f.read_bytes() for f in frames]
+        assert all(c == contents[0] for c in contents)
+
+
+def test_generate_damage_frames_produces_10():
+    """damage: 10 byte-identical copies (motion is runtime tilt)."""
+    import tempfile
+    from PIL import Image
+    with tempfile.TemporaryDirectory() as td:
+        td_p = __import__('pathlib').Path(td)
+        src = td_p / "_source.png"
+        Image.new("RGBA", (80, 96), (40, 80, 180, 255)).save(src)
+        out_dir = td_p / "damage"
+        af.generate_damage_frames(src, out_dir)
+        frames = sorted(out_dir.glob("frame_*.png"))
+        assert len(frames) == 10
+
+
+def test_generate_phase2_frames_produces_10():
+    """phase2: 10 distinct frames (real AI gen sequence)."""
+    import tempfile
+    from PIL import Image
+    with tempfile.TemporaryDirectory() as td:
+        td_p = __import__('pathlib').Path(td)
+        src = td_p / "_source.png"
+        Image.new("RGBA", (80, 96), (40, 80, 180, 255)).save(src)
+        out_dir = td_p / "phase2"
+        af.generate_phase2_frames(src, out_dir)
+        frames = sorted(out_dir.glob("frame_*.png"))
+        assert len(frames) == 10
+
+
+def test_generate_death_frames_produces_10():
+    import tempfile
+    from PIL import Image
+    with tempfile.TemporaryDirectory() as td:
+        td_p = __import__('pathlib').Path(td)
+        src = td_p / "_source.png"
+        Image.new("RGBA", (80, 96), (40, 80, 180, 255)).save(src)
+        out_dir = td_p / "death"
+        af.generate_death_frames(src, out_dir)
+        frames = sorted(out_dir.glob("frame_*.png"))
+        assert len(frames) == 10
+
+
+def test_generate_intro_frames_produces_10():
+    import tempfile
+    from PIL import Image
+    with tempfile.TemporaryDirectory() as td:
+        td_p = __import__('pathlib').Path(td)
+        src = td_p / "_source.png"
+        Image.new("RGBA", (80, 96), (40, 80, 180, 255)).save(src)
+        out_dir = td_p / "intro"
+        af.generate_intro_frames(src, out_dir)
+        frames = sorted(out_dir.glob("frame_*.png"))
+        assert len(frames) == 10
