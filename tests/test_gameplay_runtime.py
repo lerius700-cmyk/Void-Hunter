@@ -1901,7 +1901,9 @@ def test_boss_trigger_fast_requires_at_least_one_kill() -> None:
 # ---------------------------------------------------------------------------
 # BLOQUE 42: density cap
 # ---------------------------------------------------------------------------
-def test_density_cap_setting_is_12() -> None:
-    """BLOQUE 58.56: MAX_ENEMIES_ON_SCREEN is 12 (bumped from 8 for 2x ships)."""
+def test_density_cap_setting_is_24() -> None:
+    """BLOQUE 58.next: MAX_ENEMIES_ON_SCREEN is 24 (raised 12 -> 24 to
+    accommodate the 2x waves per minute from spawn_interval 4.0 -> 2.0;
+    see test_game_uses_spawn_interval_2s + test_max_enemies_on_screen_is_24)."""
     from src.core.settings import MAX_ENEMIES_ON_SCREEN
-    assert MAX_ENEMIES_ON_SCREEN == 12
+    assert MAX_ENEMIES_ON_SCREEN == 24
