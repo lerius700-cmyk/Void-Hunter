@@ -506,6 +506,27 @@ showing each pattern with visible leader glow ring.
 
 ---
 
+## [BLOQUE 60] — 2026-09-07 — GOLIATH Boss Redesign + Phase 2 Escalation
+
+### Added
+- GOLIATH Act 1 boss redesigned as proper 16-bit pixel art (5 states × 10 frames at 96×80)
+- 50 frame PNGs in `Assets/sprites/bosses/goliath/<state>/frame_NN.png`
+- Boss animation state machine in `src/entities/enemies/boss.py`
+- Phase 2 escalation: 1.6x speed, halved spear cooldown, red eye trail, eye laser attack
+- `tools/redesign_bosses/` pipeline (mirrors `tools/redesign_ships/`)
+- 25+ new tests in `tests/test_redesign_bosses.py` and `tests/test_goliath_sprite.py`
+
+### Changed
+- `_draw_goliath()` rewritten to load sprite with procedural fallback (procedural body in `else:`)
+- `_transparentize_damero_after_resize` exposed with `distance_threshold` parameter (ships: 70, bosses: 90)
+- Boss `postprocess_base` does NOT rotate (AI already generates vertical portraits)
+
+### Removed
+- 4 UNUSED boss placeholder PNGs (`boss_goliath_*.png`, `boss_simple_hydra.png`)
+- BLOQUE 59 broken-damero backup folder (`Assets/sprites/_backup_broken_damero/`)
+
+---
+
 ## [v1.2.x] — 2026-09-XX — BLOQUE 58.next: Movement Expansion: Sacred Geometry & Fractal Symbolism
 
 ### Added
