@@ -28,52 +28,52 @@ SHIPS: tuple[ShipSpec, ...] = (
         key="enemy_scout",
         template="light",
         display_name="Scout (light)",
-        prompt_fill="small fast scout ship, narrow pointy wings, single thruster, compact ~20x14 pixels equivalent, cyan and electric blue color scheme",
+        prompt_fill="small fast scout ship, narrow pointy wings, single thruster, compact triangular silhouette, cyan and electric blue color scheme",
     ),
     ShipSpec(
         key="enemy_drone",
         template="light",
         display_name="Drone (light)",
-        prompt_fill="small boxy drone, four small thrusters, compact ~20x14 pixels equivalent, cyan and electric blue color scheme",
+        prompt_fill="small boxy drone, four small thrusters in a square pattern, compact rectangular silhouette, cyan and electric blue color scheme",
     ),
     ShipSpec(
         key="enemy_kamikaze",
         template="light",
         display_name="Kamikaze (light)",
-        prompt_fill="small triangular ship with central glowing core, pointed nose, compact ~20x14 pixels equivalent, cyan and electric blue color scheme",
+        prompt_fill="small triangular ship with central glowing core, sharp pointed nose, compact arrowhead silhouette, cyan and electric blue color scheme",
     ),
     # Medium template (navy blue/void, balanced)
     ShipSpec(
         key="enemy_sniper",
         template="medium",
         display_name="Sniper (medium)",
-        prompt_fill="balanced fighter, medium wings, focused weapon hardpoint, mid-sized ~24x18 pixels equivalent, navy blue and dark void color scheme",
+        prompt_fill="balanced fighter, medium swept-back wings, focused forward weapon hardpoint, mid-sized diamond silhouette, navy blue and dark void color scheme",
     ),
     ShipSpec(
         key="enemy_turret",
         template="medium",
         display_name="Turret (medium)",
-        prompt_fill="round turret-style ship, omnidirectional weapon mount, mid-sized ~24x18 pixels equivalent, navy blue and dark void color scheme",
+        prompt_fill="round turret-style ship, omnidirectional weapon mount visible on top, mid-sized hexagonal silhouette, navy blue and dark void color scheme",
     ),
     # Heavy template (red/mars, large, armored)
     ShipSpec(
         key="enemy_heavy",
         template="heavy",
         display_name="Heavy (heavy)",
-        prompt_fill="large armored ship, blocky hull, multiple turrets, thick armor, large ~30x22 pixels equivalent, red and mars orange color scheme",
+        prompt_fill="large armored warship, blocky angular hull, multiple turrets across the upper deck, thick armor plates, large imposing silhouette, red and mars orange color scheme",
     ),
     ShipSpec(
         key="enemy_cruiser",
         template="heavy",
         display_name="Cruiser (heavy)",
-        prompt_fill="long armored cruiser, multiple turrets along the hull, large ~30x22 pixels equivalent, red and mars orange color scheme",
+        prompt_fill="long elongated armored cruiser, multiple turrets along the upper hull spine, segmented armor sections, large elongated silhouette, red and mars orange color scheme",
     ),
     # Player ship (white + gold + red, hero)
     ShipSpec(
         key="player",
         template="player",
         display_name="Player ship (ship_01 redesign)",
-        prompt_fill="hero ship, sleek aggressive silhouette, prominent cockpit, gold accents, white hull with gold highlights and red engine tips, heroic ~30x24 pixels equivalent with more detail",
+        prompt_fill="hero ship, sleek aggressive silhouette, prominent cockpit, gold accents, white hull with gold highlights and red engine tips, heroic with more detail",
     ),
 )
 
