@@ -11,6 +11,24 @@ import subprocess
 from pathlib import Path
 
 
+def _mcode_cmd() -> str:
+    """Resolve the mcode-tools executable path.
+
+    On Windows, mcode-tools is shipped as a .cmd shim at
+    `C:\\Users\\<user>\\.minimax\\bin\\mcode-tools.cmd`. subprocess.run with
+    a list of args does not auto-resolve .cmd files, so we look it up
+    explicitly via shutil.which first.
+    """
+    import shutil
+    path = shutil.which("mcode-tools")
+    if not path:
+        raise FileNotFoundError(
+            "mcode-tools not found on PATH. "
+            "Expected at C:\\Users\\<user>\\.minimax\\bin\\mcode-tools.cmd"
+        )
+    return path
+
+
 def generate_ship_base(prompt: str, output_file: str) -> str:
     """Call mcode-tools to generate one ship base image.
 
@@ -34,7 +52,7 @@ def generate_ship_base(prompt: str, output_file: str) -> str:
         ]
     }
     cmd = [
-        "mcode-tools",
+        _mcode_cmd(),
         "connector",
         "call",
         "connector__matrix__generate_image",
@@ -54,7 +72,7 @@ def generate_ship_base(prompt: str, output_file: str) -> str:
 def download_node(node_id: str, dest_path: str) -> None:
     """Download a generated asset by node_id to dest_path."""
     # First get the short-lived URL
-    cmd = ["mcode-tools", "get_asset_url", node_id]
+    cmd = [_mcode_cmd(), "get_asset_url", node_id]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     if result.returncode != 0:
         raise RuntimeError(f"get_asset_url failed: {result.stderr}")
@@ -63,3 +81,4 @@ def download_node(node_id: str, dest_path: str) -> None:
     # Then fetch the URL
     import urllib.request
     urllib.request.urlretrieve(url, dest_path)
+
