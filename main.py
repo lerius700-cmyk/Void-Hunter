@@ -24,16 +24,41 @@ import time
 # forced driver that might fail. Diagnostic logging will reveal what
 # was actually selected.
 if sys.platform == "win32":
-    # Make sure logs dir exists
+    # BLOQUE 60: write the audio diagnostic log to a path that's stable
+    # regardless of CWD (PyInstaller onefile may set CWD to the .exe's
+    # directory when launched from File Explorer, breaking the relative
+    # "logs/" path). Use the directory containing the entry script.
+    # Also wrap the open() in try/except so a permission error on the
+    # log file doesn't crash the whole .exe (was the cause of the
+    # "PermissionError [Errno 13]" crash on .exe launch).
     try:
-        os.makedirs("logs", exist_ok=True)
-    except Exception:
-        pass
-    with open("logs/_audio_status.log", "w", encoding="utf-8") as _f:
-        _f.write(f"=== void-hunter audio diagnostic ===\n")
-        _f.write(f"SDL_VIDEODRIVER={os.environ.get('SDL_VIDEODRIVER', '<unset>')}\n")
-        _f.write(f"SDL_AUDIODRIVER={os.environ.get('SDL_AUDIODRIVER', '<unset>')}\n")
-        _f.write(f"sys.platform={sys.platform}\n")
+        import pathlib
+        if getattr(sys, "frozen", False):
+            # PyInstaller onefile: sys.executable is the .exe path
+            base_dir = pathlib.Path(sys.executable).parent
+        else:
+            base_dir = pathlib.Path(__file__).parent
+        logs_dir = base_dir / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        log_path = logs_dir / "_audio_status.log"
+        with open(log_path, "w", encoding="utf-8") as _f:
+            _f.write(f"=== void-hunter audio diagnostic ===\n")
+            _f.write(f"SDL_VIDEODRIVER={os.environ.get('SDL_VIDEODRIVER', '<unset>')}\n")
+            _f.write(f"SDL_AUDIODRIVER={os.environ.get('SDL_AUDIODRIVER', '<unset>')}\n")
+            _f.write(f"sys.platform={sys.platform}\n")
+            _f.write(f"cwd={os.getcwd()}\n")
+            _f.write(f"log_path={log_path}\n")
+    except Exception as _e:
+        # Never let a logging failure crash the .exe.
+        # The audio module has its own _diag_log with try/except as a
+        # secondary fallback. Worst case: no log file, but game still
+        # launches.
+        try:
+            import traceback
+            sys.stderr.write(f"[main.py] audio diag log init failed: {_e}\n")
+            sys.stderr.write(traceback.format_exc())
+        except Exception:
+            pass
 
 
 def _detect_screen_scale() -> float:
