@@ -1,67 +1,67 @@
 {
   "bases": {
     "enemy_scout": {
-      "node_id": "439308820463808",
-      "prompt": "16-bit pixel art, top-down 3/4 view, facing forward (upward in playfield), isolated on pure black transparent background, single spaceship, sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic, small fast scout ship, narrow pointy wings, single thruster, compact ~20x14 pixels equivalent, cyan and electric blue color scheme, game asset sprite, no background scenery",
+      "node_id": "439596656406694",
+      "prompt": "16-bit pixel art, STRICT TOP-DOWN 3/4 PERSPECTIVE viewed from above and behind the ship. The ship's NOSE points DOWN toward the bottom of the image. WINGS spread OUT to the left and right sides of the image. ENGINES at the TOP of the image (rear of ship). COCKPIT/CANOPY visible on the upper body. Single isolated ship on pure black background. Sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic. Character: small fast scout ship, narrow pointy wings, single thruster, compact triangular silhouette, cyan and electric blue color scheme. ",
       "template": "light",
       "display_name": "Scout (light)",
       "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\enemy_scout_base.png",
-      "size_bytes": 327351,
-      "created_at": "2026-09-07T13:32:49"
+      "size_bytes": 180269,
+      "created_at": "2026-09-08T09:08:56"
     },
     "enemy_drone": {
-      "node_id": "439308010799189",
-      "prompt": "16-bit pixel art, top-down 3/4 view, facing forward (upward in playfield), isolated on pure black transparent background, single spaceship, sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic, small boxy drone, four small thrusters, compact ~20x14 pixels equivalent, cyan and electric blue color scheme, game asset sprite, no background scenery",
+      "node_id": "439597108093219",
+      "prompt": "16-bit pixel art, STRICT TOP-DOWN 3/4 PERSPECTIVE viewed from above and behind the ship. The ship's NOSE points DOWN toward the bottom of the image. WINGS spread OUT to the left and right sides of the image. ENGINES at the TOP of the image (rear of ship). COCKPIT/CANOPY visible on the upper body. Single isolated ship on pure black background. Sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic. Character: small boxy drone, four small thrusters in a square pattern, compact rectangular silhouette, cyan and electric blue color scheme. ",
       "template": "light",
       "display_name": "Drone (light)",
       "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\enemy_drone_base.png",
-      "size_bytes": 191506,
-      "created_at": "2026-09-07T13:34:49"
+      "size_bytes": 202974,
+      "created_at": "2026-09-08T09:09:32"
     },
     "enemy_kamikaze": {
-      "node_id": "439308849614994",
-      "prompt": "16-bit pixel art, top-down 3/4 view, facing forward (upward in playfield), isolated on pure black transparent background, single spaceship, sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic, small triangular ship with central glowing core, pointed nose, compact ~20x14 pixels equivalent, cyan and electric blue color scheme, game asset sprite, no background scenery",
+      "node_id": "439598035775631",
+      "prompt": "16-bit pixel art, STRICT TOP-DOWN 3/4 PERSPECTIVE viewed from above and behind the ship. The ship's NOSE points DOWN toward the bottom of the image. WINGS spread OUT to the left and right sides of the image. ENGINES at the TOP of the image (rear of ship). COCKPIT/CANOPY visible on the upper body. Single isolated ship on pure black background. Sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic. Character: small triangular ship with central glowing core, sharp pointed nose, compact arrowhead silhouette, cyan and electric blue color scheme. ",
       "template": "light",
       "display_name": "Kamikaze (light)",
       "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\enemy_kamikaze_base.png",
-      "size_bytes": 116504,
-      "created_at": "2026-09-07T13:35:24"
+      "size_bytes": 178963,
+      "created_at": "2026-09-08T09:10:29"
     },
     "enemy_sniper": {
-      "node_id": "439308820463825",
-      "prompt": "16-bit pixel art, top-down 3/4 view, facing forward (upward in playfield), isolated on pure black transparent background, single spaceship, sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic, balanced fighter, medium wings, focused weapon hardpoint, mid-sized ~24x18 pixels equivalent, navy blue and dark void color scheme, game asset sprite, no background scenery",
+      "node_id": "439597993021535",
+      "prompt": "16-bit pixel art, STRICT TOP-DOWN 3/4 PERSPECTIVE viewed from above and behind the ship. The ship's NOSE points DOWN toward the bottom of the image. WINGS spread OUT to the left and right sides of the image. ENGINES at the TOP of the image (rear of ship). COCKPIT/CANOPY visible on the upper body. Single isolated ship on pure black background. Sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic. Character: balanced fighter, medium swept-back wings, focused forward weapon hardpoint, mid-sized diamond silhouette, navy blue and dark void color scheme. ",
       "template": "medium",
       "display_name": "Sniper (medium)",
       "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\enemy_sniper_base.png",
-      "size_bytes": 324916,
-      "created_at": "2026-09-07T13:36:25"
+      "size_bytes": 152910,
+      "created_at": "2026-09-08T09:11:18"
     },
     "enemy_turret": {
-      "node_id": "439308849615000",
-      "prompt": "16-bit pixel art, top-down 3/4 view, facing forward (upward in playfield), isolated on pure black transparent background, single spaceship, sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic, round turret-style ship, omnidirectional weapon mount, mid-sized ~24x18 pixels equivalent, navy blue and dark void color scheme, game asset sprite, no background scenery",
+      "node_id": "439597108093246",
+      "prompt": "16-bit pixel art, STRICT TOP-DOWN 3/4 PERSPECTIVE viewed from above and behind the ship. The ship's NOSE points DOWN toward the bottom of the image. WINGS spread OUT to the left and right sides of the image. ENGINES at the TOP of the image (rear of ship). COCKPIT/CANOPY visible on the upper body. Single isolated ship on pure black background. Sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic. Character: round turret-style ship, omnidirectional weapon mount visible on top, mid-sized hexagonal silhouette, navy blue and dark void color scheme. ",
       "template": "medium",
       "display_name": "Turret (medium)",
       "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\enemy_turret_base.png",
-      "size_bytes": 140861,
-      "created_at": "2026-09-07T13:36:58"
+      "size_bytes": 163367,
+      "created_at": "2026-09-08T09:12:00"
     },
     "enemy_heavy": {
-      "node_id": "439308849615004",
-      "prompt": "16-bit pixel art, top-down 3/4 view, facing forward (upward in playfield), isolated on pure black transparent background, single spaceship, sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic, large armored ship, blocky hull, multiple turrets, thick armor, large ~30x22 pixels equivalent, red and mars orange color scheme, game asset sprite, no background scenery",
+      "node_id": "439597526171956",
+      "prompt": "16-bit pixel art, STRICT TOP-DOWN 3/4 PERSPECTIVE viewed from above and behind the ship. The ship's NOSE points DOWN toward the bottom of the image. WINGS spread OUT to the left and right sides of the image. ENGINES at the TOP of the image (rear of ship). COCKPIT/CANOPY visible on the upper body. Single isolated ship on pure black background. Sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic. Character: large armored warship, blocky angular hull, multiple turrets across the upper deck, thick armor plates, large imposing silhouette, red and mars orange color scheme. ",
       "template": "heavy",
       "display_name": "Heavy (heavy)",
       "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\enemy_heavy_base.png",
-      "size_bytes": 324730,
-      "created_at": "2026-09-07T13:37:29"
+      "size_bytes": 165741,
+      "created_at": "2026-09-08T09:13:02"
     },
     "enemy_cruiser": {
-      "node_id": "439309621821576",
-      "prompt": "16-bit pixel art, top-down 3/4 view, facing forward (upward in playfield), isolated on pure black transparent background, single spaceship, sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic, long armored cruiser, multiple turrets along the hull, large ~30x22 pixels equivalent, red and mars orange color scheme, game asset sprite, no background scenery",
+      "node_id": "439598035775661",
+      "prompt": "16-bit pixel art, STRICT TOP-DOWN 3/4 PERSPECTIVE viewed from above and behind the ship. The ship's NOSE points DOWN toward the bottom of the image. WINGS spread OUT to the left and right sides of the image. ENGINES at the TOP of the image (rear of ship). COCKPIT/CANOPY visible on the upper body. Single isolated ship on pure black background. Sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors), Metal Slug aesthetic. Character: long elongated armored cruiser, multiple turrets along the upper hull spine, segmented armor sections, large elongated silhouette, red and mars orange color scheme. ",
       "template": "heavy",
       "display_name": "Cruiser (heavy)",
       "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\enemy_cruiser_base.png",
-      "size_bytes": 230758,
-      "created_at": "2026-09-07T13:38:01"
+      "size_bytes": 192088,
+      "created_at": "2026-09-08T09:14:06"
     },
     "player": {
       "node_id": "439308820463836",
