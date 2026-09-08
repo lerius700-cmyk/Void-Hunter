@@ -158,36 +158,39 @@ def _transparentize_damero_after_resize(
 
 
 def preprocess_base(base: Image.Image, face_down: bool = False) -> Image.Image:
-    """Crop bottom 15% (watermark), rotate 90 CCW (face up), center-crop
-    square, AND transparentize the checkered background.
+    """Crop bottom 15% (watermark), center-crop to square, transparentize.
 
-    ``face_down=True`` adds an extra 180 rotation after the 90 CCW so
-    the ship's nose points DOWN instead of UP. This is required for
-    enemy ships in a vertical shmup: the AI generator returns side-view
-    ships facing RIGHT; after the standard 90 CCW they face UP (which
-    is correct for the player ship at the bottom of the playfield) but
-    WRONG for enemy ships that need to face DOWN toward the player.
+    Rotation logic (BLOQUE 59 v3 — corrected):
+      - Player ship: AI generates SIDE-view facing RIGHT. We rotate 90
+        CCW so the player faces UP (correct for a vertical shmup).
+      - Enemy ships: AI generates TOP-DOWN view already facing DOWN
+        (nose at bottom of image). We do NOT rotate. The ships already
+        face the correct direction for a vertical shmup.
+
+    The ``face_down`` parameter was previously misnamed: it added 180
+    after the 90 CCW, but that was based on the wrong assumption that
+    enemies came out facing RIGHT. To preserve the public API, when
+    ``face_down=True`` we now SKIP the 90 CCW rotation (the AI base
+    already faces DOWN). When False, we apply the 90 CCW (player ship).
     """
     w, h = base.size
     # Crop bottom 15% off
     crop_h = int(h * (1 - WATERMARK_CROP_BOTTOM_PCT))
     cropped = base.crop((0, 0, w, crop_h))
-    # Rotate 90 CCW so the ship's nose points up
-    rotated = cropped.rotate(90, expand=True)
     if face_down:
-        # Apply an extra 180 so enemy ships face DOWN toward the
-        # player at the bottom of the playfield.
-        rotated = rotated.rotate(180)
+        # Enemy ships: AI generates top-down view with nose at BOTTOM.
+        # Do NOT rotate. Ship is already facing DOWN.
+        rotated = cropped
+    else:
+        # Player ship: AI generates side-view facing RIGHT. Rotate 90 CCW
+        # to make it face UP (correct for a vertical shmup).
+        rotated = cropped.rotate(90, expand=True)
     # Center-crop to square (rotated may be wider than tall now)
     rw, rh = rotated.size
     side = min(rw, rh)
     left = (rw - side) // 2
     top = (rh - side) // 2
     square = rotated.crop((left, top, left + side, top + side))
-    # Transparentize the checkered background using scipy connected
-    # components. The damero (black/white alternating) forms a single
-    # component that touches all 4 edges. The ship is a separate
-    # component. We mark any edge-touching component as background.
     return _transparentize_background(square)
 
 
