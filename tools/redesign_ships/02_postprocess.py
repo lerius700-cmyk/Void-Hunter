@@ -157,15 +157,27 @@ def _transparentize_damero_after_resize(
     return Image.fromarray(arr, mode="RGBA")
 
 
-def preprocess_base(base: Image.Image) -> Image.Image:
+def preprocess_base(base: Image.Image, face_down: bool = False) -> Image.Image:
     """Crop bottom 15% (watermark), rotate 90 CCW (face up), center-crop
-    square, AND transparentize the checkered background."""
+    square, AND transparentize the checkered background.
+
+    ``face_down=True`` adds an extra 180 rotation after the 90 CCW so
+    the ship's nose points DOWN instead of UP. This is required for
+    enemy ships in a vertical shmup: the AI generator returns side-view
+    ships facing RIGHT; after the standard 90 CCW they face UP (which
+    is correct for the player ship at the bottom of the playfield) but
+    WRONG for enemy ships that need to face DOWN toward the player.
+    """
     w, h = base.size
     # Crop bottom 15% off
     crop_h = int(h * (1 - WATERMARK_CROP_BOTTOM_PCT))
     cropped = base.crop((0, 0, w, crop_h))
     # Rotate 90 CCW so the ship's nose points up
     rotated = cropped.rotate(90, expand=True)
+    if face_down:
+        # Apply an extra 180 so enemy ships face DOWN toward the
+        # player at the bottom of the playfield.
+        rotated = rotated.rotate(180)
     # Center-crop to square (rotated may be wider than tall now)
     rw, rh = rotated.size
     side = min(rw, rh)
@@ -179,10 +191,14 @@ def preprocess_base(base: Image.Image) -> Image.Image:
     return _transparentize_background(square)
 
 
-def make_source_png(base: Image.Image, out_path: Path) -> None:
+def make_source_png(base: Image.Image, out_path: Path, face_down: bool = False) -> None:
     """Preprocess base → downscale to 32x32 → second-pass damero
-    clean → map to palette → threshold alpha → save."""
-    square = preprocess_base(base)
+    clean → map to palette → threshold alpha → save.
+
+    ``face_down=True`` rotates the result 180 so enemy ships face DOWN
+    (see ``preprocess_base`` for the geometry).
+    """
+    square = preprocess_base(base, face_down=face_down)
     small = square.resize((SOURCE_SIZE, SOURCE_SIZE), Image.LANCZOS)
     # BLOQUE 59 v2: second-pass damero clean AFTER resize. The
     # pre-resize _transparentize_background catches pure black/white
@@ -200,13 +216,24 @@ def make_source_png(base: Image.Image, out_path: Path) -> None:
     out.save(out_path)
 
 
-def postprocess_one(spec_key: str) -> None:
+def postprocess_one(spec_key: str, face_down: bool = False, force: bool = False) -> None:
+    """Post-process a single ship.
+
+    ``face_down=True`` rotates the result 180 so the ship's nose points
+    DOWN. Required for enemy ships in a vertical shmup (see
+    ``preprocess_base`` for the geometry).
+
+    ``force=True`` regenerates ``_source.png`` even if it already
+    exists. The animation frame directories are always regenerated when
+    force is True. Use this after changing the rotation logic so the
+    cached _source.png and the per-anim frame folders are rebuilt.
+    """
     ship_dir = REDESIGN_DIR / spec_key
     source_path = ship_dir / "_source.png"
-    if not source_path.exists():
-        print(f"[src ] {spec_key}")
+    if force or not source_path.exists():
+        print(f"[src ] {spec_key} (face_down={face_down}{', force' if force else ''})")
         base = load_base(spec_key)
-        make_source_png(base, source_path)
+        make_source_png(base, source_path, face_down=face_down)
     source = Image.open(source_path).convert("RGBA")
     for gen_fn, anim in [
         (generate_idle_frames, "idle"),
@@ -215,7 +242,7 @@ def postprocess_one(spec_key: str) -> None:
         (generate_death_frames, "death"),
     ]:
         out_dir = ship_dir / anim
-        if all((out_dir / f"frame_{i:02d}.png").exists() for i in range(10)):
+        if not force and all((out_dir / f"frame_{i:02d}.png").exists() for i in range(10)):
             print(f"[skip] {spec_key}/{anim} (all 10 frames exist)")
             continue
         print(f"[anim] {spec_key}/{anim}")
@@ -226,6 +253,11 @@ def postprocess_one(spec_key: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ship", help="Post-process only this ship key")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Regenerate _source.png and per-anim frame folders even if they exist",
+    )
     args = parser.parse_args()
     if not MANIFEST_PATH.exists():
         print("manifest.json not found; run Stage 1 first")
@@ -235,7 +267,10 @@ def main() -> int:
         print(f"unknown ship: {args.ship}")
         return 1
     for spec in targets:
-        postprocess_one(spec.key)
+        # BLOQUE 59 fix: enemy ships (light/medium/heavy template) face
+        # DOWN toward the player. Player ship keeps the default face-up.
+        face_down = spec.template in ("light", "medium", "heavy")
+        postprocess_one(spec.key, face_down=face_down, force=args.force)
     print(f"\nDone. {len(targets)} ship(s) post-processed.")
     return 0
 
