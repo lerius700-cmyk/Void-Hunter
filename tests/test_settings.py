@@ -221,13 +221,17 @@ def test_key_balance_constants(attr: str, expected: float | int) -> None:
 def test_window_title_is_current_release() -> None:
     """WINDOW_TITLE must reflect the currently released version + BLOQUE.
 
-    Format: 'VOID HUNTER v<MAJOR>.<MINOR>.<PATCH> (BLOQUE 58.<N>)' where
-    <N> is either a digit (e.g. 62) or the placeholder 'next' for
-    in-progress BLOQUES that have not been assigned a number yet.
+    Format: 'VOID HUNTER v<MAJOR>.<MINOR>.<PATCH> (BLOQUE <X>)' where
+    <X> is the BLOQUE name/number. Accepts 58.N, 58.next (placeholder
+    for in-progress BLOQUES), or 59+ (e.g. BLOQUE 60).
     """
     import re
     pattern = r"^VOID HUNTER v\d+\.\d+\.\d+ \(BLOQUE 58\.(\d+|next)\)$"
-    assert re.match(pattern, settings.WINDOW_TITLE), (
+    # BLOQUE 59+ relaxes the constraint: any non-58 BLOQUE name is allowed.
+    if re.match(pattern, settings.WINDOW_TITLE):
+        return
+    pattern_loose = r"^VOID HUNTER v\d+\.\d+\.\d+ \(BLOQUE \w[\w.]*\)$"
+    assert re.match(pattern_loose, settings.WINDOW_TITLE), (
         f"WINDOW_TITLE {settings.WINDOW_TITLE!r} does not match the expected "
         f"format. Update it when bumping the version."
     )
