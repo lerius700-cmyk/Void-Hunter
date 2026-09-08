@@ -124,6 +124,11 @@ class Boss:
     # (x, y) boss positions. _draw_goliath() renders fading red dots
     # from this list when phase >= 2.
     _eye_trail_positions: list = field(default_factory=list)
+    # BLOQUE 60: eye laser cooldown (phase 2 only) — decremented by
+    # gameplay_runtime. When it hits 0 in phase 2, attack idx 9 fires
+    # (a long red downward beam) and the cd is reset to 3.0s. Default
+    # 3.0 so the first laser fires 3s after entering phase 2.
+    eye_laser_cd: float = 3.0
 
     def on_spawn(self) -> None:
         self.on_phase_transition = 0
@@ -142,6 +147,10 @@ class Boss:
         self.animation_state = "intro"
         self.animation_frame = 0
         self.animation_timer = 0.0
+        # BLOQUE 60: reset the eye laser countdown. First laser fires 3s
+        # after the boss enters phase 2 (the runtime only decrements it
+        # when phase >= 2, so it stays at 3.0 in phase 1).
+        self.eye_laser_cd = 3.0
 
     def on_release(self) -> None:
         pass

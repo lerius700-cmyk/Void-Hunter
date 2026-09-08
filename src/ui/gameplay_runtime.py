@@ -1937,6 +1937,18 @@ class GameplayRuntime:
                 attack = self._boss.select_attack()
                 if attack >= 0:
                     self._spawn_boss_attack(attack)
+            # BLOQUE 60: GOLIATH Phase 2 eye laser (attack idx 9). The
+            # laser fires on its OWN 3-second timer, not from the random
+            # attack pool (it would be unfair as a random roll — 5px wide
+            # vertical beam is nearly undodgeable). Tick the cd every
+            # frame once the boss has settled (entry >= 0.8s, matching
+            # the regular attack gate) and phase >= 2; spawn and reset
+            # when the cd hits 0.
+            if self._boss_entry_t >= 0.8 and self._boss.phase >= 2:
+                self._boss.eye_laser_cd -= dt
+                if self._boss.eye_laser_cd <= 0.0:
+                    self._spawn_boss_attack(9)
+                    self._boss.eye_laser_cd = 3.0
             # Boss death
             if self._boss.hp <= 0:
                 self._on_boss_killed()
@@ -1999,6 +2011,19 @@ class GameplayRuntime:
                     math.sin(r) * 200, math.cos(r) * 200,
                     damage=1, owner=OWNER_BOSS,
                 )
+        elif attack == 9:
+            # BLOQUE 60: GOLIATH Phase 2 eye laser — straight red beam
+            # downward from boss position. Triggered automatically by
+            # the eye_laser_cd timer (every 3s in phase 2), NOT by
+            # select_attack()'s random pool — see the dedicated tick in
+            # the boss update branch.
+            from src.systems.projectile import spawn_boss_laser
+            spawn_boss_laser(
+                self._bullets,
+                x=self._boss.x,
+                y=self._boss.y + 30,  # just below the boss hitbox
+                owner="goliath",
+            )
 
     def _start_goliath_spear_throw(self) -> None:
         """BLOQUE 52: begin the GOLIATH spear throw wind-up animation.

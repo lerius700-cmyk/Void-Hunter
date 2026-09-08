@@ -254,9 +254,16 @@ def test_release_all_clears_active(pool: ProjectilePool) -> None:
 # 10. Pre-baked frame surface invariant
 # ---------------------------------------------------------------------------
 def test_pre_baked_frames_have_4_per_kind(pool: ProjectilePool) -> None:
-    """BLOQUE 30: 5 kinds × 4 frames = 20 surface keys."""
-    # PLAYER, PLAYER_CHARGED, PLAYER_BEAM, ENEMY, BOSS = 5 kinds
-    assert len(pool._frames) == 20
+    """BLOQUE 30: 5 kinds × 4 frames = 20 surface keys.
+
+    BLOQUE 60: BULLET_BOSS_LASER added as a 6th kind, so the cache now
+    holds 24 entries (4 frames per kind, all kinds aliased for the
+    1-frame boss + laser kinds). 5 kinds × 4 + 1 extra (LASER) = 24
+    surface keys (since BOSS and BOSS_LASER each alias all 4 frames to
+    their single source frame, they still occupy 4 keys each).
+    """
+    # PLAYER, PLAYER_CHARGED, PLAYER_BEAM, ENEMY, BOSS, BOSS_LASER = 6 kinds
+    assert len(pool._frames) == 24
 
 
 def test_bullet_kinds_have_correct_size(pool: ProjectilePool) -> None:

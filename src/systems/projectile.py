@@ -34,6 +34,7 @@ BULLET_PLAYER_CHARGED = 1  # glow halo, pierce
 BULLET_PLAYER_BEAM = 4     # BLOQUE 30: L3 charged beam — BLOQUE 36: recolored to plasma cyan
 BULLET_ENEMY = 2           # standard enemy shot
 BULLET_BOSS = 3            # boss shot, 1-frame anim (no flicker per spec)
+BULLET_BOSS_LASER = 5      # BLOQUE 60: GOLIATH Phase 2 eye laser (5x360 red beam)
 
 # Bullet owner
 OWNER_PLAYER = 0
@@ -48,12 +49,16 @@ NUM_FRAMES = 4
 # BLOQUE 35: visual ~75% scale (was 4x6 / 6x10 / 12x16 / 4x6 / 8x8).
 # Collision rects are hardcoded elsewhere (4x6) and NOT scaled — keeps
 # difficulty consistent with pre-BLOQUE-35 gameplay.
+# BLOQUE 60: BULLET_BOSS_LASER is a long thin red beam (5x360) for the
+# GOLIATH Phase 2 eye laser. Much larger than other bullets because the
+# laser is the visual itself (no separate glow sprite).
 BULLET_SIZES = {
     BULLET_PLAYER: (3, 5),             # was (4, 6)
     BULLET_PLAYER_CHARGED: (5, 8),     # was (6, 10)
     BULLET_PLAYER_BEAM: (9, 12),       # was (12, 16)
     BULLET_ENEMY: (3, 5),              # was (4, 6)
     BULLET_BOSS: (6, 6),               # was (8, 8)
+    BULLET_BOSS_LASER: (5, 360),       # BLOQUE 60: 5px wide, 360px tall red beam
 }
 
 # Default speeds (px/s) per kind
@@ -63,6 +68,7 @@ DEFAULT_SPEEDS = {
     BULLET_PLAYER_BEAM: 700.0,  # BLOQUE 30: beam is fast
     BULLET_ENEMY: 220.0,
     BULLET_BOSS: 240.0,
+    BULLET_BOSS_LASER: 200.0,   # BLOQUE 60: slow, menacing downward beam
 }
 
 # Default colors per kind
@@ -72,6 +78,7 @@ DEFAULT_COLORS = {
     BULLET_PLAYER_BEAM: (140, 220, 255),  # BLOQUE 36: electric cyan plasma (was pure white)
     BULLET_ENEMY: (255, 100, 100),         # red-ish
     BULLET_BOSS: (220, 120, 255),          # purple-ish
+    BULLET_BOSS_LASER: (255, 40, 40),      # BLOQUE 60: bright crimson red
 }
 
 
@@ -249,7 +256,7 @@ class ProjectilePool:
         for boss (no flicker), and a glow halo for charged.
         """
         for kind in (BULLET_PLAYER, BULLET_PLAYER_CHARGED, BULLET_PLAYER_BEAM,
-                     BULLET_ENEMY, BULLET_BOSS):
+                     BULLET_ENEMY, BULLET_BOSS, BULLET_BOSS_LASER):
             w, h = BULLET_SIZES[kind]
             for frame in range(NUM_FRAMES):
                 if kind == BULLET_BOSS:
@@ -259,6 +266,18 @@ class ProjectilePool:
                         self._frames[(kind, frame)] = surf
                     else:
                         # Alias all frames to the same boss surface.
+                        self._frames[(kind, frame)] = self._frames[(kind, 0)]
+                    continue
+                if kind == BULLET_BOSS_LASER:
+                    # BLOQUE 60: GOLIATH Phase 2 eye laser. 1-frame, no
+                    # flicker — the laser is a static red beam sprite.
+                    if frame == 0:
+                        surf = self._make_bullet_sprite(
+                            kind, w, h, 1.0, DEFAULT_COLORS[kind],
+                        )
+                        self._frames[(kind, frame)] = surf
+                    else:
+                        # Alias all frames to the same laser surface.
                         self._frames[(kind, frame)] = self._frames[(kind, 0)]
                     continue
                 # 4-frame pulse: scale 0.9 → 1.1 → 0.95 → 1.05
@@ -293,6 +312,11 @@ class ProjectilePool:
             halo = 6
         elif kind == BULLET_BOSS:
             halo = 4
+        elif kind == BULLET_BOSS_LASER:
+            # BLOQUE 60: laser needs ~4px horizontal padding for the
+            # rect-based glow drawn below (a circle halo would be a 184px
+            # blob on a 360px-tall laser — wrong shape).
+            halo = 4
         else:
             halo = 0
         canvas_w = sw + halo * 2
@@ -300,9 +324,11 @@ class ProjectilePool:
         surf = pygame.Surface((canvas_w, canvas_h), pygame.SRCALPHA)
         cx, cy = canvas_w // 2, canvas_h // 2
         # ------------------------------------------------------------------
-        # Halo (soft alpha falloff) — same logic for all kinds
+        # Halo (soft alpha falloff) — circular for all kinds except laser.
+        # BLOQUE 60: BULLET_BOSS_LASER draws its own rect-based glow in
+        # the body section, so we skip the circular halo loop for it.
         # ------------------------------------------------------------------
-        if halo > 0:
+        if halo > 0 and kind != BULLET_BOSS_LASER:
             for r in range(halo, 0, -1):
                 a = int(42 * (r / halo)) if kind == BULLET_PLAYER_BEAM else int(40 * (r / halo))
                 pygame.draw.circle(
@@ -432,9 +458,90 @@ class ProjectilePool:
             pygame.draw.polygon(surf, color, star2)
             # White hot center
             pygame.draw.circle(surf, (255, 255, 255), (cx, cy), 1)
+        elif kind == BULLET_BOSS_LASER:
+            # BLOQUE 60: GOLIATH Phase 2 eye laser — straight red beam.
+            # Visual: 5px wide, 360px tall red rectangle centered on (cx, cy).
+            # The beam is centered vertically: top at cy - h/2, bottom at cy + h/2.
+            # Glow halo: 2px soft red on each side via a wider translucent rect
+            # underneath the solid beam.
+            beam_w = sw
+            beam_h = sh
+            # Outer glow (wider, soft alpha)
+            glow_w = beam_w + 4
+            pygame.draw.rect(
+                surf, (255, 60, 60, 80),
+                (cx - glow_w // 2, cy - beam_h // 2, glow_w, beam_h),
+            )
+            # Mid glow (slightly wider, brighter)
+            mid_w = beam_w + 2
+            pygame.draw.rect(
+                surf, (255, 100, 100, 160),
+                (cx - mid_w // 2, cy - beam_h // 2, mid_w, beam_h),
+            )
+            # Solid red beam
+            pygame.draw.rect(
+                surf, color,
+                (cx - beam_w // 2, cy - beam_h // 2, beam_w, beam_h),
+            )
+            # White-hot center line (1px)
+            core_w = max(1, beam_w // 3)
+            pygame.draw.rect(
+                surf, (255, 240, 240),
+                (cx - core_w // 2, cy - beam_h // 2, core_w, beam_h),
+            )
         else:
             # Fallback (shouldn't happen): just a rect
             rect = pygame.Rect(0, 0, sw, sh)
             rect.center = (cx, cy)
             pygame.draw.rect(surf, color, rect)
         return surf
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 60: Module-level spawn helper for the GOLIATH Phase 2 eye laser.
+# Mirrors the existing pattern of inline calls to ``ProjectilePool.spawn``
+# (see e.g. _spawn_boss_attack in src/ui/gameplay_runtime.py) but keeps
+# the laser-specific parameters (kind, vy=200, owner, damage) in one place
+# so the runtime doesn't have to know bullet-kind internals.
+#
+# Note: the plan referenced a ``src/entities/projectiles.py`` file but
+# the actual projectile module lives at ``src/systems/projectile.py``
+# (ProjectilePool + Projectile + BULLET_* constants). We keep the function
+# here so callers only need a single import.
+# ---------------------------------------------------------------------------
+def spawn_boss_laser(
+    pool: "ProjectilePool",
+    x: float,
+    y: float,
+    owner: str = "goliath",
+) -> Projectile | None:
+    """BLOQUE 60: GOLIATH Phase 2 eye laser — straight red beam downward.
+
+    Visual: 5px wide, 360px tall red rectangle (pre-baked BULLET_BOSS_LASER
+    sprite, see ``_make_bullet_sprite``).
+    Motion: vx=0, vy=200 px/s downward.
+    Damage: 1 (matches other BULLET_BOSS).
+    Lifetime: implicit via offscreen cull (INTERNAL_H + 16 margin at
+    200 px/s ≈ 2.4s, so the beam travels the full playfield height
+    before being released).
+
+    Parameters
+    ----------
+    pool : ProjectilePool
+        The shared projectile pool (typically ``runtime._bullets``).
+    x, y : float
+        Spawn position. Caller picks this — by convention the boss's
+        ``(x, y + 30)`` so the beam originates just below the boss
+        hitbox.
+    owner : str
+        Owning boss key (informational; bullet.owner still uses
+        OWNER_BOSS so collision/cleanup treats it as enemy fire).
+    """
+    return pool.spawn(
+        BULLET_BOSS_LASER,
+        x, y,
+        vx=0.0,
+        vy=DEFAULT_SPEEDS[BULLET_BOSS_LASER],
+        damage=1,
+        owner=OWNER_BOSS,
+    )

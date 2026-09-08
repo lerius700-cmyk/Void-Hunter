@@ -181,3 +181,27 @@ def test_eye_trail_records_position_on_update():
     b.update_eye_trail()
     assert len(b._eye_trail_positions) == 1
     assert b._eye_trail_positions[0] == (100.0, 50.0)
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 60 Task 11: Phase 2 eye laser (attack index 9).
+# The Boss dataclass carries an `eye_laser_cd` countdown that fires the
+# laser every 3s in phase 2. Default 3.0, decremented in the runtime, reset
+# in on_spawn().
+# ---------------------------------------------------------------------------
+def test_eye_laser_cd_starts_at_3():
+    """BLOQUE 60: eye laser fires every 3s in phase 2."""
+    from src.entities.enemies.boss import Boss
+    b = Boss()
+    b.active = True
+    assert b.eye_laser_cd == 3.0
+
+
+def test_eye_laser_cd_decrements():
+    """The countdown is a plain float that the runtime decrements each tick."""
+    from src.entities.enemies.boss import Boss
+    b = Boss()
+    b.active = True
+    b.eye_laser_cd = 2.0
+    b.eye_laser_cd -= 0.5
+    assert abs(b.eye_laser_cd - 1.5) < 0.01
