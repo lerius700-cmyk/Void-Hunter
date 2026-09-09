@@ -556,6 +556,40 @@ showing each pattern with visible leader glow ring.
 
 ---
 
+## [BLOQUE 62] — 2026-09-08 — Top-Down Ship Pass (8 ships × 4 anims × 10 frames)
+
+### Added
+- **8 AI-regenerated top-down ship bases** (1024×1024 PNGs) in `Assets/sprites/redesign/_base/`: 1 player (`ship_01`) + 7 enemies (`enemy_scout`, `enemy_drone`, `enemy_kamikaze`, `enemy_sniper`, `enemy_turret`, `enemy_heavy`, `enemy_cruiser`). All enemies face DOWN (NOSE points to bottom of image); the player faces UP (NOSE points to top of image, since the player is at the bottom of the screen shooting up).
+- **320 integrated ship frames** (8 ships × 4 anims × 10 frames) at 32×32 transparent PNGs in `Assets/sprites/enemies/<kind>/<anim>/frame_NN.png` and `Assets/sprites/player_ships/ship_01/<anim>/frame_NN.png`. Animations: `idle`, `thrust`, `damage`, `death`.
+- **8 sprite sheets** in `Assets/sprites/redesign/spritesheet_<key>.png` (one per ship, 1×32 frame preview).
+- **34 new tests** in `tests/test_ship_perspective.py` covering: prompt file purity (no "3/4" wording in any active prompt file, no "3/4" in regenerated manifest entries), prompt content sanity (TOP-DOWN, NOSE, DOWN present; LANCZOS resize at 32×32; `_transparentize_damero_after_resize` helper exists), ship spec invariants (enemy templates are light/medium/heavy, player template is `player`), 8 base PNGs present, 4 anims × 10 frames per ship (parametrized over 7 enemy kinds + 1 player), sprite orientation heuristic (enemy lowest opaque pixel in bottom 60%, player highest opaque pixel in top 50%), sprite sheet presence (5 player sheets including `ship_01`), sprite sheet dimensions sane (≥200×200), 5 player sprite sheets total, hitbox math per kind, player movement fields, enemy kinds directory alignment, ship_01 location, pipeline files presence, postprocess signature stability.
+- **Visual capture** at `tools/capture/capture_bloque_62_ships.py` → `tools/playtest_out/bloque_62_8_ships.png` (4×2 grid, 4× scale, idle frame per ship with name labels; surfaces missing ships as red "MISSING" text).
+
+### Changed
+- `tools/redesign_ships/01_generate_bases.py`: PROMPT_TEMPLATE now uses `(perpendicular, bird's-eye)` instead of the rejected `3/4 angle` wording. All ships share a single unified top-down prompt; the player and 7 enemies all render in the same eye-level camera (directly above, perpendicular to the playfield).
+- `tools/redesign_ships/manifest.json`: 8 entries updated with new `node_id` + `size_bytes` + `created_at` (BLOQUE 62 regen run).
+- `Assets/sprites/redesign/_base/_old_v3/` + `Assets/sprites/redesign/_base/_old_v4/`: previous-generation bases preserved as untracked backups (NOT committed; just a local safety net).
+- `Assets/sprites/_backup_bloque_62_pre_regen/`: full backup of pre-BLOQUE-62 live ship assets (enemies/, player_ships/ship_01/, redesign/_base/, manifest.json). Local safety net; not committed.
+
+### Preserved (per spec)
+- Collision math per enemy kind (`ENEMY_CONFIGS[kind].width/height` × 0.7 forgiving scale) — unchanged.
+- Player movement fields (`x`, `y`, `vx`, `vy`) — unchanged.
+- Animation API (4 states: `idle`, `thrust`, `damage`, `death`; 10 frames each) — unchanged.
+- Pipeline structure: `01_generate_bases` → `02_postprocess` (force-regen) → `_animation_frames` → `03_build_sheets` → `04_integrate`.
+- 2491 existing tests still pass. 34 new tests added → 2525 total (BLOQUE 62 scope). Known pre-existing failures (Lissajous + 5 sub_boss) remain acceptable per the umbrella design.
+
+### Pipeline (BLOQUE 62)
+1. `tools/redesign_ships/01_generate_bases.py [--ship <key>]` calls `mcode-tools connector call connector__matrix__generate_image` for each of 8 ships → saves 1024×1024 base PNG to `Assets/sprites/redesign/_base/<key>_base.png` → logs `node_id` + prompt to `tools/redesign_ships/manifest.json`. Supports per-ship retry (`--ship enemy_heavy`).
+2. `tools/redesign_ships/02_postprocess.py --force`: transparentize background, crop bottom 15% (AI watermark), LANCZOS resize to 32×32, post-resize damero clean.
+3. `tools/redesign_ships/_animation_frames.py`: generates 4 anims × 10 frames per ship into `Assets/sprites/redesign/<key>/<anim>/`.
+4. `tools/redesign_ships/03_build_sheets.py`: 1×32 preview sprite sheet per ship → `Assets/sprites/redesign/spritesheet_<key>.png`.
+5. `tools/redesign_ships/04_integrate.py`: copies the redesign dirs into the live `Assets/sprites/enemies/<kind>/` and `Assets/sprites/player_ships/ship_01/` paths.
+
+### Visual verification
+- `tools/playtest_out/bloque_62_8_ships.png` confirms the 4×2 grid of all 8 ships (idle frame), with NOSE clearly DOWN for the 7 enemies and NOSE clearly UP for the player. No 3/4 angle artifacts; consistent eye-level.
+
+---
+
 ## [v1.2.x] — 2026-09-XX — BLOQUE 58.next: Movement Expansion: Sacred Geometry & Fractal Symbolism
 
 ### Added
