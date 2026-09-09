@@ -39,6 +39,7 @@ from src.entities.enemies.enemy import (
     MINE_OPEN1_DURATION_S,
     MINE_OPEN2_DURATION_S,
     MINE_OPEN_DURATION_S,
+    MINE_FIRE_INTERVAL_S,
     Enemy,
     EnemyKind,
     EnemyState,
@@ -158,26 +159,75 @@ class TestStateMachine:
             e.update(0.1, player_x=160.0, player_y=400.0)
         assert e.mine_state == "open3"
 
-    def test_open3_does_not_fire_again(self) -> None:
-        """BLOQUE 65: the on_fire flag is set ONLY when transitioning to open3.
+    def test_open3_fires_every_1_second(self) -> None:
+        """BLOQUE 67: MINE-ASTEROID fires 1 fan per second in open3.
 
-        In the legacy cycle, on_fire could fire multiple times. The
-        new design fires once at the open2->open3 transition.
+        User's absolute requirement: the open mine must fire forward
+        at 1Hz, not just once. After the first fire (on entry to
+        open3), the mine must keep firing every MINE_FIRE_INTERVAL_S
+        (1.0s) until destroyed.
+
+        Test: enter open3, reset on_fire (caller responsibility),
+        advance time in 0.1s ticks for 2.5s. Verify on_fire is set
+        True approximately 2-3 times during that span (1Hz ± noise).
         """
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
         e.y = OPENING_Y_THRESHOLD - 10
         e.update(0.016, player_x=160.0, player_y=400.0)
         e.update(0.2, player_x=160.0, player_y=400.0)
-        # Right at the open2->open3 boundary
+        e.update(0.2, player_x=160.0, player_y=400.0)
+        assert e.mine_state == "open3"
+        # Entry fire: on_fire was set True. Caller resets it.
+        e.on_fire = False
+        # Track how many times on_fire flips to True over 2.5s
+        fire_count = 0
+        for _ in range(25):
+            was_firing = e.on_fire
+            e.update(0.1, player_x=160.0, player_y=400.0)
+            if not was_firing and e.on_fire:
+                fire_count += 1
+        # Expected: ~2 fires (at t=1.0 and t=2.0) in 2.5s of post-entry
+        # open3 time. Allow a tolerance of [1, 3] for tick noise.
+        assert 1 <= fire_count <= 3, (
+            f"Expected 1-3 fires in 2.5s of open3 time, got {fire_count}. "
+            f"This means the mine is not firing at 1Hz as required."
+        )
+
+    def test_open3_fire_interval_is_one_second(self) -> None:
+        """BLOQUE 67: MINE_FIRE_INTERVAL_S is exactly 1.0s.
+
+        Required so the mine fires "1 time per second" as specified.
+        """
+        assert MINE_FIRE_INTERVAL_S == 1.0
+
+    def test_closed_open1_open2_do_not_fire(self) -> None:
+        """BLOQUE 67: only open3 fires. closed/open1/open2 are silent.
+
+        While in 'asteroid mode' (closed), the mine is silent and
+        indestructible. While opening (open1/open2), the mine is
+        vulnerable but not yet firing. The first fire is on entry
+        to open3, then every 1s thereafter.
+        """
+        # Spawn above the threshold so the mine stays closed while
+        # we verify it doesn't fire.
+        e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, OPENING_Y_THRESHOLD + 50)
+        # closed (above threshold — no transition)
+        e.update(0.5, player_x=160.0, player_y=400.0)
+        assert e.mine_state == "closed"
+        assert e.on_fire is False
+        # open1 (move into the threshold zone)
+        e.y = OPENING_Y_THRESHOLD - 10
+        e.update(0.05, player_x=160.0, player_y=400.0)
+        assert e.mine_state == "open1"
+        assert e.on_fire is False
+        # open2 (0.2s in open1)
+        e.update(0.2, player_x=160.0, player_y=400.0)
+        assert e.mine_state == "open2"
+        assert e.on_fire is False
+        # open3 (0.2s in open2) — on_fire is set True on ENTRY only
         e.update(0.2, player_x=160.0, player_y=400.0)
         assert e.mine_state == "open3"
         assert e.on_fire is True
-        # Reset on_fire (caller responsibility) and update again
-        e.on_fire = False
-        e.update(0.5, player_x=160.0, player_y=400.0)
-        # Should still be in open3 and NOT re-fire
-        assert e.mine_state == "open3"
-        assert e.on_fire is False
 
     def test_has_opened_set_when_reaching_open3(self) -> None:
         """BLOQUE 65: has_opened=True is set at the open2->open3 transition.

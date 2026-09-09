@@ -62,6 +62,13 @@ MINE_OPEN_DURATION_S: float = 0.6    # BLOQUE 65: total opening cycle (0.6s = 0.
                                      # still reference it). Equals MINE_OPEN1 + MINE_OPEN2.
 MINE_OPEN3_DURATION_S: float = float("inf")  # open3 is the terminal vulnerable state (no transition out)
 
+# BLOQUE 67: fire 1 fan (3 bullets) per second while in open3. The
+# mine opens, becomes vulnerable, and CONTINUES firing forward at 1Hz
+# until destroyed. The first fan fires on entry to open3; subsequent
+# fans fire every MINE_FIRE_INTERVAL_S. Required so the player has a
+# continuous threat to dodge while the mine is alive in its open form.
+MINE_FIRE_INTERVAL_S: float = 1.0
+
 # Fan pattern for the 3 bullets fired in 'open' state.
 MINE_FAN_ANGLE_DEG: float = 15.0       # ±15° from straight down
 MINE_FAN_BULLET_SPEED: float = 80.0    # px/s
@@ -382,6 +389,12 @@ class Enemy:
     # update() method ticks it down by dt each frame. Default 0.0
     # (no flash). Other enemy kinds ignore this field.
     mine_hit_flash_timer: float = 0.0
+    # BLOQUE 67: cooldown until the next fan fires in open3. Set to 0
+    # on spawn (so the first fire happens immediately on entry to
+    # open3) and reset to MINE_FIRE_INTERVAL_S after each fire. Other
+    # states (closed/open1/open2) ignore this field. Other enemy kinds
+    # ignore this field.
+    mine_fire_cooldown: float = 0.0
 
     @property
     def animation_path(self) -> str:
@@ -455,6 +468,8 @@ class Enemy:
         self.state_timer = 0.0
         self.has_opened = False
         self.mine_variant = 0
+        # BLOQUE 67: reset fire cooldown (first fire happens on entry to open3)
+        self.mine_fire_cooldown = 0.0
         # BLOQUE 58.6.4: sub-boss movement state is NOT reset here
         # because it persists across wrap-arounds (entry_count,
         # current_wall, etc. are needed for the next entry).
@@ -881,6 +896,13 @@ class Enemy:
         destroyed. Per-state durations: open1=0.2s, open2=0.2s, open3
         is terminal. The opening sequence takes 0.6s total.
 
+        BLOQUE 67: while in open3, the mine fires 1 fan (3 bullets)
+        forward per second at MINE_FIRE_INTERVAL_S. The first fan fires
+        on entry to open3; subsequent fans fire every interval. This
+        makes the open form an active threat that the player must
+        engage with, not a passive target. The mine continues to fire
+        at 1Hz until its HP drops to 0 (i.e. it's destroyed).
+
         Implementation note: the timer advances BEFORE the transition
         check, and a single large tick can chain through multiple
         states by using the remaining time after each transition. This
@@ -920,17 +942,32 @@ class Enemy:
                 if self.state_timer < MINE_OPEN2_DURATION_S:
                     return
                 # Transition to 'open3' (terminal). Fires 3 bullets in
-                # a fan via the integration site.
+                # a fan via the integration site. The first fan fires
+                # on entry; subsequent fans fire every MINE_FIRE_INTERVAL_S
+                # (BLOQUE 67) — the mine continues to threaten the
+                # player at 1Hz until destroyed.
                 remaining = max(0.0, self.state_timer - MINE_OPEN2_DURATION_S)
                 self.state_timer = 0.0
                 self.mine_state = "open3"
                 self.has_opened = True  # mark cycle complete (BLOQUE 63 invariant)
                 self.on_fire = True
+                # First fire is on entry. Set cooldown to the interval
+                # so the next fire happens MINE_FIRE_INTERVAL_S later.
+                self.mine_fire_cooldown = MINE_FIRE_INTERVAL_S
                 if remaining <= 0.0:
                     return
             elif self.mine_state == "open3":
-                # BLOQUE 65: terminal state. The mine stays in open3
-                # until destroyed (HP=0). No transition out.
+                # BLOQUE 67: terminal state. The mine stays in open3
+                # until destroyed (HP=0). Continuously fires 1 fan
+                # forward per second while alive. Tick the cooldown
+                # down by dt; when it reaches 0, set on_fire=True
+                # (the integration site at gameplay_runtime.py:1941
+                # reads on_fire, fires the fan, and sets it back to
+                # False) and reset the cooldown.
+                self.mine_fire_cooldown -= dt
+                if self.mine_fire_cooldown <= 0.0:
+                    self.on_fire = True
+                    self.mine_fire_cooldown = MINE_FIRE_INTERVAL_S
                 return
             else:
                 # Unknown state — bail out

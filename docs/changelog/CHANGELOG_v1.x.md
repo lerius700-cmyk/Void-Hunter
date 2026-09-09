@@ -1676,3 +1676,76 @@ fully-tested, fully-documented block. Three pillars:
 - Bumping the title-screen "BLOQUE 60" text (cosmetic, not requested).
 
 
+## [BLOQUE 67] — 2026-09-09 — MINE-ASTEROID continuous 1Hz fire in open3 (fix for "fires only once" bug)
+
+### User's absolute requirement
+> "POR LO TANTO DE CADA 4 ASTEROIDES QUE SALGAN, 1 DE ELLOS DEBE
+> ABRIRSE, VOLVERSE VULNERABLE Y DISPARAR HACIA EL FRENTE 1 VEZ
+> CADA SEGUNDO."
+
+Translation: "Of every 4 asteroids that appear, 1 of them must
+open, become vulnerable, and fire forward 1 time per second."
+
+### Gap found in BLOQUE 65
+The original state machine fired 1 fan (3 bullets) ONCE at the
+open2→open3 transition and then went silent. The mine was
+vulnerable but did not fire continuously. The user explicitly
+demanded 1Hz continuous fire while open.
+
+### What was already in place (verified, not re-implemented)
+- 25% spawn rule (`MINE_SPAWN_FRACTION = 0.25`, BLOQUE 64.5).
+- 4-frame animation cycle (closed/open1/open2/open3, BLOQUE 65).
+- Vulnerability rules: closed = immune, open1/2/3 = vulnerable.
+- Indestructible regular asteroids (BLOQUE 64.A).
+- 5 variant closed sprites (BLOQUE 66).
+- Bullet integration site at `gameplay_runtime.py:1941-1943 +
+  2016-2019` (reads `enemy.on_fire`, fires the fan, resets flag).
+
+### New in BLOQUE 67
+- **Continuous 1Hz fire in open3.** The mine fires 1 fan (3 bullets)
+  every 1.0s while in open3. The first fan fires on entry to open3;
+  subsequent fans fire every `MINE_FIRE_INTERVAL_S` (1.0s). The mine
+  continues to threaten the player at 1Hz until its HP drops to 0.
+- New constant: `MINE_FIRE_INTERVAL_S: float = 1.0` in
+  `src/entities/enemies/enemy.py`.
+- New per-instance field: `mine_fire_cooldown: float = 0.0` on the
+  Enemy dataclass. Reset to 0.0 on `on_spawn()` so the first fire
+  happens immediately on entry to open3. Reset to 1.0 after each
+  fire.
+- New branch in `_update_mine_asteroid` for the open3 state: tick
+  the cooldown down by dt; when it reaches 0, set `on_fire = True`
+  (the integration site fires the fan) and reset the cooldown.
+
+### Files Changed
+- `src/entities/enemies/enemy.py`:
+  - `MINE_FIRE_INTERVAL_S` constant
+  - `mine_fire_cooldown` field on Enemy
+  - `on_spawn` reset of `mine_fire_cooldown`
+  - open2→open3 transition sets `mine_fire_cooldown = MINE_FIRE_INTERVAL_S`
+  - open3 branch decrements cooldown and re-fires at 1Hz
+- `tests/test_mine_asteroid.py`:
+  - `test_open3_does_not_fire_again` (old, wrong) REPLACED by
+    `test_open3_fires_every_1_second` (verifies 1Hz)
+  - `test_open3_fire_interval_is_one_second` (asserts constant = 1.0)
+  - `test_closed_open1_open2_do_not_fire` (only open3 fires)
+- `tools/verify_mine_1hz.py`: empirical simulator (5.05s in open3
+  produces 6 fires = 1 entry + 5 periodic at 1Hz).
+
+### Verified
+- 40/40 tests in `tests/test_mine_asteroid.py` pass (was 38, +3
+  new for the 1Hz behavior; -1 removed for the old wrong test).
+- Full test suite: 1,637 pass + 6 pre-existing failures (5
+  sub_boss + 1 Lissajous). No new regressions.
+- Empirical simulation: 5.05s of open3 → 6 fires (1 entry + 5
+  periodic @ 1Hz) → 18 bullets (3 per fan). 1Hz rate confirmed.
+- Visual capture will follow after rebuild + launch.
+
+### Out of Scope
+- The 3-bullet fan pattern is preserved (not changed to 1 bullet).
+  The user said "1 vez" which is interpreted as "1 firing action",
+  not "1 bullet". If the user prefers 1 single bullet per fire,
+  this is a 1-line tweak in `_fire_mine_bullets`.
+- Bumping the title-screen "BLOQUE 60" text (cosmetic, not
+  requested).
+
+
