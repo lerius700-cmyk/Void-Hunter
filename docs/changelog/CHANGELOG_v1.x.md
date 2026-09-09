@@ -1418,3 +1418,184 @@ helmet / shield / spear / cracks) + the phase 2 red eye-trail ring buffer.
   (BLOQUE 64.A's `Asteroid` rename, not in scope here).
 - Visual capture saved for all 6 anims + the 6×10 sprite-sheet
   grid (7 PNGs total in `tools/playtest_out/`).
+
+
+## BLOQUE 64.C — 2026-09-08/09 — Act 1 Tiles AI Generation + Integration
+
+### Headline
+The 6 background tiles for level 1 "Asteroid Approach" (Act 1) are now
+AI-generated via a hybrid pipeline (Matrix 9:16/4K + PIL postprocess + MINE-ASTEROID overlay)
+and integrated into the gameplay loop. Level 1 now scrolls through the 6-tile sequence
+at 12 px/s, replacing the single-galaxy-strip fallback for that level only.
+
+### The 6 tiles
+- `tile_01_atmosphere_exit.png` — saliendo de la atmósfera del planeta base
+- `tile_02_enter_belt.png` — entrando al cinturón (6 MINE-ASTEROID asteroids)
+- `tile_03_mid_belt.png` — mid-belt density (10 asteroids)
+- `tile_04_peak_belt.png` — peak density + distant structure (14 asteroids)
+- `tile_05_exit_belt.png` — exit thinning (4 asteroids)
+- `tile_06_open_stars.png` — open space, no asteroids
+
+All 320×480, 16-color palette, transparent background. Wrap time 4 min exact (6 × 480 / 12 = 240s).
+
+### Production pipeline (tools/tiles/ai_gen/)
+- `01_generate_tiles.py` (replaced by direct `mcode-tools connector call` for the batch) — Matrix 9:16, 4K, batch of 6 with MINE-ASTEROID style anchor for tiles 2-5
+- `02_postprocess.py` — crop center 320, LANCZOS+NEAREST resize to 480, quantize to 16 colors
+- `03_validate.py` — 16-color check, 320×480 check, narrative beat heuristic detection
+- `04_hybrid_overlay.py` — composites BLOQUE 61 MINE-ASTEROID sprites on top of AI atmosphere
+- `VERIFICATION.md` — end-to-end report with frame evidence
+
+### Integration (BLOQUE 64.C)
+- NEW `src/systems/tile_manager.py` (~80 LOC) — TileManager class
+- `ParallaxBackground.use_tile_sequence` mode flag (default False for backward compat with levels 2-4)
+- `src/ui/gameplay_runtime.py:185-215` uses tile mode for level 1
+
+### Tests
+- +10 new tests (3 TileManager + 4 edge cases + 3 parallax mode) = 53/53 relevant tests pass
+- All existing parallax tests (43) still pass — no regression
+- Visual capture: 6 frames in `tools/playtest_out/bloque_64_act1_scroll_*.png`
+
+### Specs & plans
+- `docs/superpowers/specs/2026-09-08-act1-tiles-ai-generation-design.md`
+- `docs/superpowers/specs/2026-09-08-act1-tiles-ai-generation-prompt-weapon.md` (8-dimension Prompt-Weapon)
+- `docs/superpowers/plans/2026-09-08-act1-tiles-integration.md`
+
+### Known limitations
+- AI atmosphere still has horizontal banding / "smeary" look (the AI's natural tendency
+  to render atmosphere as horizontal bands). The hybrid overlay does not fix the background,
+  only the foreground asteroids.
+- Levels 2-4 still use the single galaxy strip (unchanged).
+- Future: per-level tile sequences for Acts 2-4 with their own themes.
+
+## [BLOQUE 65] � 2026-09-09 � MINE-ASTEROID 4-frame redesign (closed/open1/open2/open3)
+
+The MINE-ASTEROID opening animation was redesigned from a 5-state cycle
+(closed/opening/open/closing) to a **4-state cycle** (closed/open1/open2/open3).
+The cycle is ONE-WAY � once the mine reaches open3 (the user's new ship
+reference with gun barrel visible), it stays there until destroyed (HP=0).
+The legacy 5-state cycle closed->opening->open->closing->closed is replaced
+with the simpler closed->open1->open2->open3.
+
+### Why
+The user's playtest feedback (2026-09-09): the legacy MINE-ASTEROID
+opening cycle felt chunky and the open-state ship didn't match the
+player's mental model of a hidden ship inside the asteroid. The new
+4-frame cycle:
+- Plays over 0.6s total (faster than the legacy 2.0s)
+- Has a clear "crack -> reveal -> fully open" progression
+- Uses the user's new ship reference (gun barrel visible) for the
+  terminal vulnerable state (open3 = "fully revealed, ready to fire")
+
+### Per-state timing
+| State  | Duration | What happens                        |
+|--------|----------|-------------------------------------|
+| closed | 8        | y > 200: camo as round asteroid.    |
+| open1  | 0.2s     | y < 200: 25% open, thin crack, tiny gun tip. |
+| open2  | 0.2s     | y < 200: 75% open, wider gap, gun visible.   |
+| open3  | 8        | y < 200: fully open, fires 3 bullets, HP=3.   |
+
+has_opened = True is set when reaching open3 (BLOQUE 63 invariant
+preserved � no re-open after the cycle completes).
+
+### Files
+
+#### Code
+- src/entities/enemies/enemy.py � 4-state cycle replaces 5-state cycle:
+  - new constants: MINE_OPEN1_DURATION_S = 0.2, MINE_OPEN2_DURATION_S = 0.2
+  - MINE_OPEN_DURATION_S = 0.6 (total cycle; was 1.0 in BLOQUE 64.5)
+  - new MINE_OPEN3_DURATION_S = inf (terminal state)
+  - mine_state values now: "closed" | "open1" | "open2" | "open3"
+  - _update_mine_asteroid chain: closed -> open1 -> open2 -> open3 (one-way)
+  - nimation_path returns enemies/mine_asteroid/<state>/frame_00.png
+    for closed/open1/open2; enemies/mine_asteroid/open/frame_00.png for open3
+  - the legacy 5-state names opening / open / closing are NO LONGER used
+    in the state machine (the open directory now contains the open3 sprite)
+
+#### Assets
+- Assets/sprites/enemies/mine_asteroid/closed/frame_00.png � UNCHANGED
+  (byte-equal to 
+ound.png, perfect camo)
+- Assets/sprites/enemies/mine_asteroid/open/frame_00.png � REPLACED
+  with the user's new ship reference (gun barrel pointing down). Was a
+  32x32 BLOQUE 63 gun barrel; now a 64x64 ship reference.
+- Assets/sprites/enemies/mine_asteroid/open1/frame_00.png � NEW
+  64x64 composite: closed round with thin horizontal seam + tiny gun tip.
+- Assets/sprites/enemies/mine_asteroid/open2/frame_00.png � NEW
+  64x64 composite: closed round with wider gap + gun barrel + cockpit visible.
+- Assets/sprites/enemies/mine_asteroid/opening/ � MOVED to
+  _backup_pre_bloque_65/opening/ (no longer used in 4-state cycle)
+- Assets/sprites/enemies/mine_asteroid/closing/ � MOVED to
+  _backup_pre_bloque_65/closing/ (no longer used in 4-state cycle)
+- Assets/sprites/enemies/mine_asteroid/death/ � UNCHANGED
+  (10 frames for the death animation, not affected by the 4-state cycle)
+
+#### Tools
+- 	ools/postprocess_mine_asteroid.py � updated to 64x64 (was 32x32)
+  + new 4-state FRAME_COUNTS dict. The 'open' state is special-cased
+  (uses the user's reference, not an AI base).
+- 	ools/postprocess_mine_asteroid_bloque_65.py � NEW. Processes the
+  user's new reference images into game-ready sprites (dark-bg removal,
+  crop to content bbox, LANCZOS resize, post-resize damero cleanup,
+  threshold alpha).
+- 	ools/generate_mine_asteroid_intermediates_bloque_65.py � NEW.
+  Generates the open1 + open2 frames as composites of the closed round
+  + a programmatically-drawn crack / gun / cockpit (avoids the AI gen
+  damero-on-asteroid-body issue).
+- 	ools/capture/capture_bloque_65_mine_asteroid.py � NEW. Captures
+  the 4-state cycle arranged horizontally for visual proof.
+
+#### Tests
+- 	ests/test_mine_asteroid.py � updated for the 4-state cycle:
+  - TestStateMachine rewritten with 6 tests for closed/open1/open2/open3
+  - 	est_open1_to_open2_after_0_2s (renamed from 	est_open_to_closing_after_0_3s)
+  - 	est_open3_stays_terminal (new; replaces 	est_closing_to_closed_after_0_5s)
+  - 	est_open3_does_not_fire_again (new; one-shot firing on the open2->open3 transition)
+  - 	est_has_opened_set_when_reaching_open3 (renamed; was 	est_has_opened_prevents_reopen)
+  - TestSprites updated for the 4-state sprite layout:
+    - 	est_4_states_exist (replaces 	est_5_state_directories_exist)
+    - 	est_open1_sprite_is_64x64 (new)
+    - 	est_open2_sprite_is_64x64 (new)
+    - 	est_open3_sprite_uses_new_reference (new)
+    - 	est_closed_uses_round_png (renamed from 	est_sprite_closed_equals_asteroid_round)
+    - 	est_opening_directory_removed (new; BLOQUE 65 invariant)
+    - 	est_closing_directory_removed (new; BLOQUE 65 invariant)
+  - TestFiring updated: _make_mine_in_open3 (was _make_mine_in_open),
+    advances through 0.016 + 0.2 + 0.2 = 0.416s to reach open3
+  - TestHPAndImmunity updated: 	est_open3_vulnerable_to_bullets (renamed),
+    added 	est_open1_vulnerable_to_bullets and 	est_open2_vulnerable_to_bullets
+- **33/33 tests in 	ests/test_mine_asteroid.py pass.**
+
+### Preserved (BLOQUE 64 invariants)
+- MINE-ASTEROID HP=3 (BLOQUE 64.A): unchanged. The mine still takes
+  3 hits to destroy when vulnerable (open1/open2/open3).
+- MINE-ASTEROID red flash on hit (BLOQUE 64.A): unchanged. The 0.2s
+  red tint still applies on a successful hit.
+- Closed-state bullet immunity (BLOQUE 63): unchanged. The closed
+  state is still immune to player bullets (perfect camo).
+- Spawn ratio 1/4 (BLOQUE 64.5): unchanged. ~25% of obstacles are
+  MINE-ASTEROID, ~75% are regular asteroids.
+- 50% powerup drop on destroy (BLOQUE 63): unchanged. The mine
+  drops BOMB/HP/WEAPON (50% chance) when destroyed.
+- Asteroid code (BLOQUE 64.A): untouched. The indestructibility
+  + 64x64 size + scale 1.5-2.5x is preserved.
+
+### Out of scope (per user request)
+- GOLIATH state machine (BLOQUE 64.B): untouched. The GOLIATH
+  6-animation borderless sprite-sheet from BLOQUE 64.B is unchanged.
+- Player ships (BLOQUE 62): untouched. The 5 top-down ships are unchanged.
+- Bosses (HYDRA / PHANTOM / NEMESIS): untouched. Only GOLIATH got the
+  BLOQUE 64.B redesign; the others keep their old visuals.
+- New BGM, SFX, boss types, or other gameplay features.
+
+### Visual proof
+- 	ools/playtest_out/bloque_65_mine_asteroid_4_frames.png � 4 frames
+  arranged horizontally: closed (perfect camo round) | open1 (25% open,
+  thin crack + tiny gun tip) | open2 (75% open, wider gap + gun + cockpit)
+  | open3 (fully open, user's new ship reference with gun barrel).
+
+### Verified
+- 33/33 tests in 	ests/test_mine_asteroid.py pass (was 29, +4 new).
+- Full test suite baseline preserved (the pre-existing failures in
+  	ests/test_sub_boss_real_flow.py and the tile/ribbon tests are
+  unrelated to BLOQUE 65).
+- Visual capture saved (	ools/playtest_out/bloque_65_mine_asteroid_4_frames.png).
