@@ -267,11 +267,12 @@ class TestFiring:
 # HP + immunity (3 tests)
 # =====================================================================
 class TestHPAndImmunity:
-    def test_hp_starts_at_2(self) -> None:
-        """MINE_ASTEROID has HP=2 (1 hit destroys when vulnerable)."""
+    def test_hp_starts_at_3(self) -> None:
+        """BLOQUE 64.A: MINE_ASTEROID has HP=3 (was 2 in BLOQUE 63).
+        3 hits are required to destroy the mine when vulnerable."""
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
-        assert e.hp == 2
-        assert e.max_hp == 2
+        assert e.hp == 3
+        assert e.max_hp == 3
 
     def test_closed_immune_to_bullets(self) -> None:
         """When mine_state=='closed', hit() returns False (no damage applied)."""
@@ -287,12 +288,19 @@ class TestHPAndImmunity:
         assert result is False
 
     def test_open_vulnerable_to_bullets(self) -> None:
-        """When mine_state=='open' (or any non-closed), 1 hit destroys (HP=2 = 1 hit)."""
+        """BLOQUE 64.A: HP=3, so 3 hits destroy the MINE_ASTEROID."""
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
         # Force into 'open' state directly
         e.mine_state = "open"
-        e.hp = 2
-        result = e.apply_damage(2)  # 2 dmg = kill
+        e.hp = 3
+        # 1 hit — alive
+        e.apply_damage(1)
+        assert e.hp == 2
+        # 2nd hit — alive
+        e.apply_damage(1)
+        assert e.hp == 1
+        # 3rd hit — destroyed
+        result = e.apply_damage(1)
         assert result is True
         assert e.hp <= 0
 
@@ -300,8 +308,11 @@ class TestHPAndImmunity:
         """When mine_state=='opening', bullets deal damage (only closed is immune)."""
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
         e.mine_state = "opening"
-        e.hp = 2
-        result = e.apply_damage(2)
+        e.hp = 3
+        # 3 hits to destroy
+        e.apply_damage(1)
+        e.apply_damage(1)
+        result = e.apply_damage(1)
         assert result is True
 
 

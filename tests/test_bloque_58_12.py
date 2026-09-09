@@ -38,37 +38,40 @@ from src.entities.asteroid import (
 # =====================================================================
 class TestAsteroidBasics:
     def test_asteroid_creation(self) -> None:
-        ast = Asteroid(x=100, y=50, radius=15, hp=2)
+        # BLOQUE 64.A: the ``hp`` field was removed (asteroids are
+        # indestructible). The constructor no longer accepts ``hp=``.
+        ast = Asteroid(x=100, y=50, radius=15)
         assert ast.x == 100
         assert ast.y == 50
         assert ast.radius == 15
-        assert ast.hp == 2
         assert ast.active is True
         assert ast.powerup_dropped is False
         assert ast.hidden_powerup is None  # default no powerup
 
     def test_asteroid_update_drifts(self) -> None:
-        ast = Asteroid(x=100, y=50, radius=15, hp=2, drift_vy=30.0)
+        ast = Asteroid(x=100, y=50, radius=15, drift_vy=30.0)
         ast.update(1.0)
         assert ast.y == 80  # 50 + 30*1
         # BLOQUE 61: no rotation field — update() only advances x/y.
 
-    def test_asteroid_hit_takes_damage(self) -> None:
-        ast = Asteroid(x=100, y=50, radius=15, hp=2)
+    def test_asteroid_hit_is_noop(self) -> None:
+        """BLOQUE 64.A: regular asteroids are indestructible. hit()
+        always returns False and never marks the asteroid inactive."""
+        ast = Asteroid(x=100, y=50, radius=15)
         destroyed = ast.hit(damage=1)
         assert destroyed is False
-        assert ast.hp == 1
         assert ast.active is True
-        destroyed = ast.hit(damage=1)
-        assert destroyed is True
-        assert ast.active is False
+        # Many hits still don't destroy it
+        for _ in range(10):
+            ast.hit(damage=1)
+        assert ast.active is True
 
     def test_asteroid_off_screen(self) -> None:
         # Inside the playfield
-        ast = Asteroid(x=100, y=100, radius=15, hp=2)
+        ast = Asteroid(x=100, y=100, radius=15)
         assert ast.is_off_screen() is False
         # Below the playfield
-        ast2 = Asteroid(x=100, y=600, radius=15, hp=2)
+        ast2 = Asteroid(x=100, y=600, radius=15)
         assert ast2.is_off_screen() is True
 
 

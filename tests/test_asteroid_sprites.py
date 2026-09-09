@@ -49,12 +49,13 @@ class TestAssetPresence:
         missing = [v for v in VARIANTS if not (SPRITES_DIR / f"{v}.png").exists()]
         assert not missing, f"missing variants: {missing}"
 
-    def test_each_variant_is_32x32(self) -> None:
+    def test_each_variant_is_64x64(self) -> None:
+        """BLOQUE 64.A: asteroid sprites regenerated at 64x64 (was 32x32)."""
         # Defer import so failures are clear
         from PIL import Image
         for v in VARIANTS:
             with Image.open(SPRITES_DIR / f"{v}.png") as img:
-                assert img.size == (32, 32), f"{v} is {img.size}, not (32, 32)"
+                assert img.size == (64, 64), f"{v} is {img.size}, not (64, 64)"
 
     def test_each_variant_has_transparent_background(self) -> None:
         """Majority of edge pixels should be fully transparent (alpha=0)."""
@@ -119,15 +120,15 @@ class TestDataclass:
         assert "rotation_speed" not in fields
 
     def test_asteroid_dataclass_has_variant_field(self) -> None:
-        ast = Asteroid(x=100, y=50, radius=15, hp=2, variant=2)
+        ast = Asteroid(x=100, y=50, radius=15, variant=2)
         assert ast.variant == 2
 
     def test_asteroid_dataclass_has_scale_field(self) -> None:
-        ast = Asteroid(x=100, y=50, radius=15, hp=2, scale=1.2)
+        ast = Asteroid(x=100, y=50, radius=15, scale=1.2)
         assert ast.scale == 1.2
 
     def test_drift_vx_vy_unchanged(self) -> None:
-        ast = Asteroid(x=100, y=50, radius=15, hp=2,
+        ast = Asteroid(x=100, y=50, radius=15,
                        drift_vx=10.0, drift_vy=30.0)
         ast.update(1.0)
         assert ast.x == 110.0
@@ -136,6 +137,8 @@ class TestDataclass:
         import dataclasses
         fields = {f.name for f in dataclasses.fields(Asteroid)}
         assert "rotation" not in fields
+        # BLOQUE 64.A: hp field was removed (asteroids are indestructible)
+        assert "hp" not in fields
 
 
 # =====================================================================
@@ -148,11 +151,12 @@ class TestSpawnFactory:
             ast = spawn_asteroid(rng)
             assert 0 <= ast.variant <= 4, f"variant out of range: {ast.variant}"
 
-    def test_spawn_picks_scale_in_0_7_to_1_3(self) -> None:
+    def test_spawn_picks_scale_in_1_5_to_2_5(self) -> None:
+        """BLOQUE 64.A: scale range bumped to 1.5-2.5 (was 0.7-1.3)."""
         rng = random.Random(42)
         for _ in range(1000):
             ast = spawn_asteroid(rng)
-            assert 0.7 <= ast.scale <= 1.3, f"scale out of range: {ast.scale}"
+            assert 1.5 <= ast.scale <= 2.5, f"scale out of range: {ast.scale}"
 
     def test_spawn_radius_derived_from_scale(self) -> None:
         """radius = int(16 * scale), clamped to >= 8."""
@@ -180,12 +184,12 @@ class TestDraw:
     def test_draw_asteroid_does_not_crash(self) -> None:
         surf = pygame.Surface((320, 480))
         for v in range(5):
-            ast = Asteroid(x=100, y=50, radius=15, hp=2, variant=v, scale=1.0)
+            ast = Asteroid(x=100, y=50, radius=15, variant=v, scale=1.0)
             draw_asteroid(surf, ast)  # no exception
 
     def test_draw_asteroid_inactive_no_op(self) -> None:
         surf = pygame.Surface((320, 480))
-        ast = Asteroid(x=100, y=50, radius=15, hp=2)
+        ast = Asteroid(x=100, y=50, radius=15)
         ast.active = False
         # Should not crash, should not draw (no surface change at center)
         draw_asteroid(surf, ast)
@@ -203,17 +207,21 @@ class TestDraw:
 # Collision (preserved) (2 tests)
 # =====================================================================
 class TestCollisionPreserved:
-    def test_collision_unchanged_hit_method(self) -> None:
-        ast = Asteroid(x=100, y=50, radius=15, hp=2)
+    def test_collision_indestructible_hit_method(self) -> None:
+        """BLOQUE 64.A: regular asteroids are indestructible. hit() always
+        returns False and never marks the asteroid inactive."""
+        ast = Asteroid(x=100, y=50, radius=15)
         assert ast.hit(1) is False
-        assert ast.hp == 1
-        assert ast.hit(1) is True
-        assert ast.active is False
+        assert ast.active is True
+        # Multiple hits still don't destroy it
+        for _ in range(10):
+            ast.hit(1)
+        assert ast.active is True
 
     def test_collision_unchanged_is_off_screen(self) -> None:
-        ast = Asteroid(x=100, y=100, radius=15, hp=2)
+        ast = Asteroid(x=100, y=100, radius=15)
         assert ast.is_off_screen() is False
-        ast2 = Asteroid(x=100, y=600, radius=15, hp=2)
+        ast2 = Asteroid(x=100, y=600, radius=15)
         assert ast2.is_off_screen() is True
 
 
