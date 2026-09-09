@@ -159,28 +159,21 @@ def test_draw_goliath_falls_back_to_procedural_when_sprite_missing():
 
 
 # ---------------------------------------------------------------------------
-# BLOQUE 60 Task 10: Phase 2 red eye trail.
-# The Boss dataclass carries a list `_eye_trail_positions` that records the
-# boss's recent (x, y) as a ring buffer of length 8. `update_eye_trail()`
-# appends the current position and pops the oldest when the buffer exceeds 8.
+# BLOQUE 64.B: Phase 2 red eye trail was REMOVED. The Boss dataclass no
+# longer carries _eye_trail_positions and the runtime no longer calls
+# update_eye_trail(). The 6-state borderless sprite sheet replaces the
+# procedural eye-trail afterimage (BLOQUE 60 Task 10).
 # ---------------------------------------------------------------------------
-def test_eye_trail_initially_empty():
-    """A freshly constructed Boss has an empty eye-trail buffer."""
+def test_eye_trail_removed_in_bloque_64b():
+    """BLOQUE 64.B dropped the phase 2 eye-trail ring buffer."""
     from src.entities.enemies.boss import Boss
     b = Boss()
-    assert b._eye_trail_positions == []
-
-
-def test_eye_trail_records_position_on_update():
-    """Each call to update_eye_trail() appends the boss's current (x, y)."""
-    from src.entities.enemies.boss import Boss
-    b = Boss()
-    b.active = True
-    b.x = 100.0
-    b.y = 50.0
-    b.update_eye_trail()
-    assert len(b._eye_trail_positions) == 1
-    assert b._eye_trail_positions[0] == (100.0, 50.0)
+    assert not hasattr(b, "_eye_trail_positions"), (
+        "Boss._eye_trail_positions still present (BLOQUE 64.B leftover)"
+    )
+    assert not hasattr(b, "update_eye_trail"), (
+        "Boss.update_eye_trail still present (BLOQUE 64.B leftover)"
+    )
 
 
 # ---------------------------------------------------------------------------

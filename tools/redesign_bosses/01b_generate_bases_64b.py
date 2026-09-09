@@ -28,7 +28,7 @@ BASE_DIR = PROJECT_ROOT / "Assets" / "sprites" / "bosses" / "goliath" / "_base"
 
 # BLOQUE 64.B prompt header. BORDERLESS + TRANSPARENT. Locked palette.
 PROMPT_HEADER = (
-    "16-bit pixel art, top-down view (strictly perpendicular, no 3/4 angle), "
+    "16-bit pixel art, top-down view (strictly perpendicular, no angled perspective), "
     "strictly BORDERLESS, isolated on TRANSPARENT BACKGROUND (no black square, "
     "no dark frame, no border, no background scenery, no margin), sharp "
     "clean pixel edges, no anti-aliasing, no gradients, limited palette "

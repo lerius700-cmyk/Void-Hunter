@@ -113,22 +113,28 @@ class Boss:
     # When set and not complete, the boss follows this path instead of
     # the default sine oscillation. After completion, falls back to sin.
     bezier_path: "BezierPath | None" = None
-    # BLOQUE 60: animation state machine (5 states × 10 frames at 10 fps).
-    # States: idle | damage | phase2 | death | intro. Boss starts in
-    # "intro" on spawn; runtime switches to "idle" once intro completes.
-    animation_state: str = "idle"
+    # BLOQUE 64.B: animation state machine (6 states × 10 frames at 10 fps).
+    # States: phase1_idle | phase2_idle | javelin | laser | purple_bullet | death.
+    # Boss starts in "phase1_idle" on spawn (BLOQUE 64.B no longer uses
+    # "intro" — the new 6-state machine handles all in-fight states).
+    animation_state: str = "phase1_idle"
     animation_frame: int = 0
     animation_timer: float = 0.0
     ANIMATION_FRAME_DURATION: ClassVar[float] = 0.10  # 10 fps, 1.0s per loop
-    # BLOQUE 60: red eye trail (phase 2 only) — ring buffer of recent
-    # (x, y) boss positions. _draw_goliath() renders fading red dots
-    # from this list when phase >= 2.
-    _eye_trail_positions: list = field(default_factory=list)
     # BLOQUE 60: eye laser cooldown (phase 2 only) — decremented by
     # gameplay_runtime. When it hits 0 in phase 2, attack idx 9 fires
     # (a long red downward beam) and the cd is reset to 3.0s. Default
     # 3.0 so the first laser fires 3s after entering phase 2.
     eye_laser_cd: float = 3.0
+    # BLOQUE 64.B: per-attack animation timer. The runtime sets this when
+    # a non-idle attack animation begins; when it expires, the runtime
+    # restores the default idle (phase1_idle or phase2_idle based on
+    # current phase). Death is the exception — it never restores.
+    attack_anim_timer: float = 0.0
+    # BLOQUE 64.B: durations (seconds) for each non-idle attack anim.
+    JAVELIN_ANIM_S: float = 0.5
+    LASER_ANIM_S: float = 0.7
+    PURPLE_BULLET_ANIM_S: float = 0.4
 
     def on_spawn(self) -> None:
         self.on_phase_transition = 0
@@ -142,11 +148,12 @@ class Boss:
         self.vx = 0.0
         self.bezier_path = None  # BLOQUE 56: default to legacy sin motion
         self.vy = 0.0
-        # BLOQUE 60: reset animation state. Boss starts in "intro"; the
-        # runtime caller will switch to "idle" once the intro completes.
-        self.animation_state = "intro"
+        # BLOQUE 64.B: reset animation state. Boss starts in "phase1_idle";
+        # the runtime caller transitions to attack anims as they fire.
+        self.animation_state = "phase1_idle"
         self.animation_frame = 0
         self.animation_timer = 0.0
+        self.attack_anim_timer = 0.0
         # BLOQUE 60: reset the eye laser countdown. First laser fires 3s
         # after the boss enters phase 2 (the runtime only decrements it
         # when phase >= 2, so it stays at 3.0 in phase 1).
@@ -169,8 +176,16 @@ class Boss:
         return f"bosses/goliath/{self.animation_state}/frame_{self.animation_frame:02d}.png"
 
     def update_animation(self, dt: float) -> None:
-        """BLOQUE 60: advance the animation frame. Loops for idle/damage/
-        phase2; one-shot (holds last frame) for death/intro.
+        """BLOQUE 64.B: advance the animation frame.
+
+        - Looping anims (phase1_idle, phase2_idle, javelin, laser,
+          purple_bullet) wrap frame 9 → 0.
+        - One-shot anim ("death") holds at frame 9 forever.
+        - The 6th anim is "death" only; the other 5 all loop.
+
+        The runtime ticks ``attack_anim_timer`` separately — when an attack
+        anim's timer expires, the runtime restores the default idle
+        (phase1_idle or phase2_idle) via ``set_animation_state``.
         """
         if dt <= 0.0:
             return
@@ -178,19 +193,28 @@ class Boss:
         if self.animation_timer < self.ANIMATION_FRAME_DURATION:
             return
         self.animation_timer -= self.ANIMATION_FRAME_DURATION
-        if self.animation_state in ("death", "intro"):
+        if self.animation_state == "death":
             if self.animation_frame < 9:
                 self.animation_frame += 1
         else:
+            # All 5 non-death anims loop.
             self.animation_frame = (self.animation_frame + 1) % 10
 
-    def update_eye_trail(self) -> None:
-        """BLOQUE 60: record current position in the eye trail ring buffer.
-        Only call this when phase >= 2 (avoids wasted work in phase 1).
+    def set_animation_state(self, new_state: str) -> None:
+        """BLOQUE 64.B: switch the animation state and reset the frame.
+
+        Used by the runtime to map attack events to anims (javelin/laser/
+        purple_bullet/death) and to restore the default idle when an
+        attack anim expires.
+
+        No-op if ``new_state`` matches the current state (avoids
+        resetting the frame mid-attack).
         """
-        self._eye_trail_positions.append((self.x, self.y))
-        if len(self._eye_trail_positions) > 8:
-            self._eye_trail_positions.pop(0)
+        if new_state == self.animation_state:
+            return
+        self.animation_state = new_state
+        self.animation_frame = 0
+        self.animation_timer = 0.0
 
     def effective_speed(self) -> float:
         """BLOQUE 60: Phase 2 speeds up GOLIATH by 1.6x.
@@ -307,6 +331,23 @@ class Boss:
         self.fire_cd = cfg.attack_cooldown_s * cd_mult
         self.on_attack = idx
         return idx
+
+
+# BLOQUE 64.B: which anims loop (frame 9 wraps to 0) vs one-shot (hold at 9).
+# Exposed at module scope so tests can import them.
+LOOPING_ANIM_STATES = frozenset({
+    "phase1_idle", "phase2_idle", "javelin", "laser", "purple_bullet",
+})
+ONE_SHOT_ANIM_STATES = frozenset({"death"})
+ALL_GOLIATH_ANIM_STATES = frozenset({
+    "phase1_idle", "phase2_idle", "javelin", "laser", "purple_bullet", "death",
+})
+# Per-attack anim durations in seconds (BLOQUE 64.B).
+ATTACK_ANIM_DURATIONS_S: dict[str, float] = {
+    "javelin": 0.5,
+    "laser": 0.7,
+    "purple_bullet": 0.4,
+}
 
 
 class BossPool:

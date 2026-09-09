@@ -31,10 +31,12 @@ sys.path.insert(0, str(ROOT))
 from src.entities.enemies.boss import Boss, BossId  # noqa: E402
 
 
-def test_boss_starts_in_idle() -> None:
+def test_boss_starts_in_phase1_idle() -> None:
+    # BLOQUE 64.B: replaced "idle" with the 6-state machine
+    # (phase1_idle, phase2_idle, javelin, laser, purple_bullet, death).
     b = Boss()
     b.active = True
-    assert b.animation_state == "idle"
+    assert b.animation_state == "phase1_idle"
     assert b.animation_frame == 0
     assert b.animation_timer == 0.0
 
