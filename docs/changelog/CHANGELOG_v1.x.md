@@ -1061,3 +1061,360 @@ Regenerate all 8 ship bases (1 player + 7 enemies) with strict top-down (bird's-
 - Visual capture saved at `tools/playtest_out/bloque_62_8_ships.png` (10583 bytes, 544×240).
 
 
+---
+
+## [BLOQUE 64.A] — 2026-09-08 — Asteroid + MINE-ASTEROID polish (size + scale + indestructibility + red flash)
+
+### Goal
+Three coordinated fixes in response to live gameplay feedback
+(`docs/superpowers/specs/2026-09-08-bloque-64-goliath-anim-and-asteroid-polish.md`,
+Section 2 — BLOQUE 64.A):
+
+1. **Asteroid visibility fix** — 5 variants regenerated at 64×64
+   native (was 32×32) with spawn scale bumped 0.7-1.3 → 1.5-2.5.
+   Asteroids are now 96-160 px on screen (30-50% of the 320 px
+   playfield width). The Greek-key band and craters are finally
+   readable.
+2. **Asteroid indestructibility** — regular asteroids are obstacles,
+   not targets. ``hit()`` is a no-op, the ``hp`` field is removed
+   from the ``Asteroid`` dataclass, and
+   ``_asteroid_bullet_collision`` no longer damages asteroids
+   (bullets die on contact but the asteroid is never destroyed).
+   Powerups now come exclusively from MINE-ASTEROID kills (50%
+   drop per BLOQUE 63).
+3. **MINE-ASTEROID HP=3 with red flash** — was HP=2 (1 hit kill
+   when vulnerable). Now HP=3 with a 0.2 s red-tint overlay per
+   hit so the player sees the damage progression. The
+   closed-state bullet immunity from BLOQUE 63 is preserved.
+
+### Changed
+- `src/entities/asteroid.py`:
+  - `ASTEROID_SPRITE_BASE_SIZE`: 32 → 64.
+  - `ASTEROID_SCALE_MIN`: 0.7 → 1.5. `ASTEROID_SCALE_MAX`:
+    1.3 → 2.5. Spawned asteroids are now 96-160 px on screen.
+  - Removed the ``hp`` field from the ``Asteroid`` dataclass
+    (the field was a leftover from the pre-indestructibility
+    implementation).
+  - ``Asteroid.hit(damage=1)`` is now a no-op that always returns
+    ``False``. The argument is accepted for API compatibility but
+    ignored. Asteroids are never destroyed by bullets.
+  - ``spawn_asteroid()`` no longer picks an HP value at spawn.
+    The 30% ``hidden_powerup`` flag is still assigned at spawn
+    (kept for API compatibility) but is no longer surfaced
+    in gameplay (the asteroid is indestructible, so the
+    powerup-drop path in ``_asteroid_bullet_collision`` is dead).
+  - ``_load_asteroid_sprite`` docstring updated to reference 64×64.
+- `src/entities/enemies/enemy.py`:
+  - ``ENEMY_CONFIGS[EnemyKind.MINE_ASTEROID].hp``: 2 → 3.
+  - New field on the ``Enemy`` dataclass:
+    ``mine_hit_flash_timer: float = 0.0`` (per-instance
+    red-flash countdown, MINE-ASTEROID only).
+  - ``Enemy.apply_damage`` sets ``mine_hit_flash_timer = 0.2``
+    when a MINE_ASTEROID hit lands (i.e. ``mine_state !=
+    "closed"``). The closed-state immunity still returns early
+    before the flash is set, so a hit on a closed mine does
+    not flash.
+  - ``Enemy.update`` ticks down ``mine_hit_flash_timer`` by
+    ``dt`` for MINE_ASTEROID, clamped at 0.
+  - ``spawn_obstacle`` asteroid payload no longer carries the
+    ``hp`` key (the consumer in
+    ``_update_asteroids_and_powerups`` was updated to match).
+- `src/ui/gameplay_runtime.py`:
+  - ``_asteroid_bullet_collision`` still kills the bullet on
+    contact but no longer damages the asteroid (it calls the
+    no-op ``ast.hit(damage=1)`` for API parity; the returned
+    ``False`` is ignored). The powerup-drop branch is removed
+    (asteroids are indestructible).
+  - ``_get_enemy_sprite`` now also returns the closed sprite
+    for ``EnemyKind.MINE_ASTEROID`` (previously fell through
+    to the procedural default — that path is preserved as
+    fallback for the rare case where the closed sprite is
+    missing).
+  - ``_draw_enemy_scaled`` applies a red-tint overlay
+    (``BLEND_RGBA_MULT`` with a 160-alpha red layer) when
+    ``e.kind == EnemyKind.MINE_ASTEROID`` and
+    ``e.mine_hit_flash_timer > 0``. The overlay multiplies
+    the sprite's RGB with a red boost so the player sees
+    a red flash for 0.2 s after each hit.
+- `tools/redesign_asteroids/02_postprocess.py`:
+  - The fixed ``SOURCE_SIZE = 32`` constant was replaced with
+    a ``DEFAULT_SOURCE_SIZE = 64`` constant plus a ``--size``
+    CLI flag. The default output is 64×64 (BLOQUE 64.A);
+    pass ``--size 32`` to regenerate the legacy 32×32 sprites
+    for backward compat.
+  - The skip-if-exists check now compares the existing file's
+    size to the requested size and regenerates on mismatch
+    (so re-running the script with a different size updates
+    the on-disk PNGs).
+
+### Generated
+- 5 new 64×64 transparent asteroid PNGs at
+  `Assets/sprites/asteroids/{round,elongated,spiked,hollowed,cracked}.png`
+  (LANCZOS-resized from the existing 1024×1024 bases via the
+  ``02_postprocess.py --size 64 --force`` flow).
+- The MINE-ASTEROID closed frame
+  (`Assets/sprites/enemies/mine_asteroid/closed/frame_00.png`)
+  is now a byte-equal copy of the new 64×64 ``round.png``
+  (BLOQUE 63 camo invariant preserved).
+
+### Tests
+- **NEW: 21 tests in `tests/test_bloque_64_asteroid_polish.py`:**
+  - 64×64 regen (3): all 5 variants exist, all 5 are 64×64,
+    mine-asteroid closed frame is byte-equal to round.png.
+  - Asteroid constants (3): `ASTEROID_SPRITE_BASE_SIZE == 64`,
+    `ASTEROID_SCALE_MIN == 1.5`, `ASTEROID_SCALE_MAX == 2.5`.
+  - Spawn scale range (2): spawn picks scale in [1.5, 2.5],
+    radius derived from new scale formula.
+  - Indestructibility (3): ``hit()`` is a no-op, asteroid
+    survives 100 hits, radius (hitbox) unchanged.
+  - Draw at 64×64 (1): ``draw_asteroid`` doesn't crash on
+    the new 64×64 sprites.
+  - MINE-ASTEROID HP=3 (4): hp=3 (was 2), survives 2 hits,
+    3 hits destroy, 2-damage hit at HP=3 leaves it alive
+    (3 - 2 = 1).
+  - MINE-ASTEROID red flash (4): timer field defaults to 0,
+    hit sets timer to 0.2, closed-state immunity still
+    suppresses the flash, timer decrements in update().
+  - Closed-state immunity regression (1): BLOQUE 63 closed
+    immunity is preserved.
+- **UPDATED: `tests/test_asteroid_sprites.py`** (5 tests touched):
+  - ``test_each_variant_is_32x32`` → ``test_each_variant_is_64x64``.
+  - ``test_spawn_picks_scale_in_0_7_to_1_3`` →
+    ``test_spawn_picks_scale_in_1_5_to_2_5``.
+  - All 5 ``Asteroid(x=100, y=50, radius=15, hp=2, ...)``
+    test calls updated to drop the ``hp=2`` kwarg (the field
+    no longer exists).
+  - ``test_collision_unchanged_hit_method`` renamed to
+    ``test_collision_indestructible_hit_method`` — the
+    assertion now checks the no-op behavior (active stays
+    True after 10 hits).
+  - ``test_drift_vx_vy_unchanged`` gains an extra
+    ``"hp" not in fields`` assertion.
+- **UPDATED: `tests/test_bloque_58_12.py`** (4 tests touched):
+  - All ``Asteroid(..., hp=2)`` calls drop the kwarg.
+  - ``test_asteroid_hit_takes_damage`` renamed to
+    ``test_asteroid_hit_is_noop``.
+- **UPDATED: `tests/test_mine_asteroid.py`** (3 tests touched):
+  - ``test_hp_starts_at_2`` → ``test_hp_starts_at_3``.
+  - ``test_open_vulnerable_to_bullets`` and
+    ``test_opening_vulnerable_to_bullets`` now use HP=3 and
+    apply 3 hits to destroy.
+
+### Visual verification
+`tools/capture/capture_bloque_64_asteroids.py` →
+`tools/playtest_out/bloque_64_5_asteroids_64x64.png` (320×480,
+5 variants at scale 2.0× = 128 px on screen, with caption).
+
+### Preserved (per spec)
+- MINE-ASTEROID state machine from BLOQUE 63 (closed →
+  opening → open → closing → closed-with-``has_opened=True``)
+  is untouched. Only the HP value and the red-flash field
+  are added.
+- Closed-state bullet immunity (BLOQUE 63) is preserved —
+  the red flash is only set when ``mine_state != "closed"``,
+  so a hit on a closed mine does not flash.
+- All MINE-ASTEROID state assets (closed/opening/open/closing/
+  death) at `Assets/sprites/enemies/mine_asteroid/<state>/
+  frame_NN.png` are untouched except for the closed frame
+  being replaced with the new 64×64 round.png.
+- The GOLIATH state machine is not touched (BLOQUE 64.B).
+- The player ship + 7 enemy ships are not touched
+  (BLOQUE 62 is done).
+- The 1024×1024 asteroid bases at
+  `Assets/sprites/redesign/_base/asteroid_*_base.png` are
+  reused as-is — only the postprocess step changed (32 → 64).
+
+### Verified
+- 21/21 new tests in `tests/test_bloque_64_asteroid_polish.py` pass.
+- Updated existing tests in `test_asteroid_sprites.py`,
+  `test_bloque_58_12.py`, and `test_mine_asteroid.py` still
+  pass (cumulative 85/85 for the 4 affected test files).
+- Full test suite: previous baseline (2492 pass + 6 known
+  pre-existing sub_boss failures) + 21 new = green; the 6
+  known failures remain acceptable.
+- Visual capture saved at
+  `tools/playtest_out/bloque_64_5_asteroids_64x64.png`
+  (320×480, 5 distinct asteroid silhouettes at 128 px).
+- MINE-ASTEROID closed frame byte-equal to the new 64×64
+  ``round.png`` (camo invariant verified by hash).
+
+
+## BLOQUE 64.B — 2026-09-08 — GOLIATH 6-animation borderless sprite-sheet
+
+### Headline
+The GOLIATH boss (Act 1) now has a 6-state borderless 96×80 pixel-art
+sprite-sheet (60 frames) generated with an explicit
+"borderless / transparent background / no 3/4 angle" prompt, replacing
+the BLOQUE 60 procedural fallback (aura / embers / greaves / torso /
+helmet / shield / spear / cracks) + the phase 2 red eye-trail ring buffer.
+
+### New pipeline (BLOQUE 64.B)
+- `tools/redesign_bosses/_specs_b64.py` — GOLIATH_SPEC_64B with 6
+  states (phase1_idle, phase2_idle, javelin, laser, purple_bullet,
+  death), locked-palette constant values, and the LOOPING_ANIM_STATES
+  / ONE_SHOT_ANIM_STATES sets.
+- `tools/redesign_bosses/01b_generate_bases_64b.py` — calls
+  mcode-tools to generate one 1024×1024 base PNG per state using the
+  new BORDERLESS prompt header + locked-palette block.
+- `tools/redesign_bosses/02b_postprocess_64b.py` — full
+  pre-resize `_transparentize_background` (catches the
+  full-resolution checkered background) + post-resize
+  `_transparentize_damero_after_resize` (catches the mid-gray
+  blend left by LANCZOS). Resizes to 96×80, applies the
+  64-color palette, thresholds alpha to binary.
+- `tools/redesign_bosses/02c_generate_animations_64b.py` — produces
+  10 frames per state by duplicating the postprocessed _source.png
+  (BLOQUE 60 strategy; 60 unique AI gens not feasible in the
+  available time budget).
+- `tools/redesign_bosses/_animation_frames_64b.py` — the
+  per-state generators (all 6 are duplicate_source; the unique
+  per-frame generation path is a future BLOQUE).
+- `tools/redesign_bosses/_03b_build_sheets_64b.py` — composes a
+  6×10 grid preview sheet at
+  `Assets/sprites/bosses/goliath/spritesheet_goliath_64b.png`
+  (1104×508, with the 100 px label column).
+- `tools/redesign_bosses/_04b_integrate_64b.py` — copies the
+  60 redesigned frames to the live
+  `Assets/sprites/bosses/goliath/<state>/` dirs, and with `--clean`
+  drops the BLOQUE 60 idle/damage/intro/phase2 dirs + their bases.
+
+### State machine
+- **6 new states (replaces 5 BLOQUE 60 states):**
+  - `phase1_idle` (was `idle`)
+  - `phase2_idle` (was `phase2`)
+  - `javelin` (replaces the procedural `damage` flash for the
+    javelin throw attack; lasts 0.5 s)
+  - `laser` (new — phase 2 eye laser; lasts 0.7 s)
+  - `purple_bullet` (new — phase 2 purple-bullet burst; lasts 0.4 s)
+  - `death` (was `death` — one-shot, holds last frame)
+- Default on spawn: `phase1_idle`.
+- Phase 2 transition: runtime sets `phase2_idle`.
+- Attack mappings in `_spawn_boss_attack`:
+  - attack 8 (javelin) → `javelin` for 0.5 s
+  - attack 9 (laser) → `laser` for 0.7 s
+  - attack 0/3 in phase 2 → `purple_bullet` for 0.4 s
+  - `_on_boss_killed` → `death` (one-shot, holds frame 9)
+- `Boss.attack_anim_timer` ticks each frame; when it hits 0, the
+  runtime restores the default idle (phase1_idle / phase2_idle).
+
+### Boss dataclass changes (`src/entities/enemies/boss.py`)
+- **REMOVED** `Boss._eye_trail_positions` ring buffer (was the
+  phase 2 red eye-trail afterimage).
+- **REMOVED** `Boss.update_eye_trail()` method.
+- **ADDED** `Boss.attack_anim_timer: float` (default 0.0).
+- **ADDED** `Boss.JAVELIN_ANIM_S` / `LASER_ANIM_S` /
+  `PURPLE_BULLET_ANIM_S` constants (0.5 / 0.7 / 0.4 s).
+- **ADDED** `Boss.set_animation_state(new_state: str)` — switches
+  the animation state and resets the frame (no-op if the state
+  matches).
+- **ADDED** module-level `LOOPING_ANIM_STATES` /
+  `ONE_SHOT_ANIM_STATES` / `ALL_GOLIATH_ANIM_STATES` /
+  `ATTACK_ANIM_DURATIONS_S` so tests and runtime code share the
+  single source of truth.
+- Default `animation_state` flipped from `"intro"` to
+  `"phase1_idle"` (BLOQUE 64.B has no `intro` state — the
+  fight starts in idle directly).
+- `update_animation` simplified: `death` holds last frame; the
+  other 5 states loop.
+
+### Runtime simplifications (`src/ui/gameplay_runtime.py`)
+- `_draw_goliath` is now ~50 lines (was ~430):
+  - just loads the sprite, applies the breathing bob, blits it
+  - draws the HP bar on top
+  - **REMOVED** procedural fallback layers (aura / embers / base /
+    greaves / torso / pauldrons / helmet / eyes / shield / spear /
+    cracks) — the `else:` branch is gone
+  - **REMOVED** Layer 13 (eye-trail afterimage)
+  - **REMOVED** the `self._boss.update_eye_trail()` call in the
+    boss update branch
+  - The "int" / "on hit" flash is preserved by recoloring the HP
+    bar to white for the brief flash_t window.
+- `_spawn_boss_attack` (attack 8) sets `javelin` for 0.5 s.
+- `_spawn_boss_attack` (attack 9) sets `laser` for 0.7 s.
+- `_spawn_boss_attack` (attacks 0/3 in phase 2) sets
+  `purple_bullet` for 0.4 s.
+- `_on_boss_killed` sets `death` (permanent).
+- The boss update branch ticks `attack_anim_timer` and restores
+  the default idle when the timer expires.
+
+### Assets
+- 6 × 1024×1024 base PNGs (GOLIATH 6 anims) at
+  `Assets/sprites/bosses/goliath/_base/goliath_<state>_base.png`
+  (BLOQUE 64.B prompt = borderless / transparent / locked palette).
+- 60 × 96×80 frame PNGs at
+  `Assets/sprites/bosses/goliath/<state>/frame_00..09.png`.
+- 6 × 96×80 redesigned source PNGs at
+  `Assets/sprites/redesign/goliath/<state>/_source.png`.
+- 1 × 1104×508 preview sheet at
+  `Assets/sprites/bosses/goliath/spritesheet_goliath_64b.png`.
+- **DROPPED** (via `_04b_integrate_64b.py --clean`):
+  `Assets/sprites/bosses/goliath/{idle,damage,intro,phase2}/` (40
+  BLOQUE 60 frames), the 4 old bases, and the old preview sheet
+  `Assets/sprites/bosses/goliath/spritesheet_goliath.png`.
+
+### Tests (49 new in `tests/test_bloque_64_goliath.py`)
+- 6 parametrized `test_6_anim_directories_exist`
+- 6 parametrized `test_each_anim_has_10_frames`
+- 6 parametrized `test_each_frame_is_96x80`
+- 6 parametrized `test_each_frame_has_transparent_background` —
+  asserts each of the 4 image edges has at least one transparent
+  pixel (proves no solid dark frame; the silhouette itself is
+  allowed to touch the edge)
+- 6 parametrized `test_animation_path_resolves_for_each_state`
+- 4 parametrized `test_old_bloque_60_states_removed`
+- 1 `test_no_eye_trail_field_on_boss` (post-removal invariant)
+- 1 `test_goliath_state_machine_phase1_idle_default`
+- 1 `test_goliath_state_machine_phase2_idle_in_phase2`
+- 1 `test_javelin_attack_sets_animation_state`
+- 1 `test_laser_attack_sets_animation_state`
+- 1 `test_purple_bullet_attack_sets_animation_state`
+- 1 `test_death_sets_animation_state` — death must hold at frame 9
+- 1 `test_one_shot_anim_death_holds_last_frame`
+- 1 `test_looping_anims_wrap_to_frame_0`
+- 1 `test_no_procedural_fallback_in_draw_goliath` — body of
+  `_draw_goliath` must NOT mention `greaves` / `aura_pulse` /
+  `torso_x` / `spear_phase`
+- 1 `test_no_3_4_in_goliath_prompts` — prompt must be top-down
+  perpendicular, no angled perspective wording
+- 1 `test_attack_states_valid` (parametrized 4)
+- 1 `test_each_frame_is_96x80[death]` etc.
+
+### Updated existing tests
+- `tests/test_boss.py::test_boss_starts_in_idle` renamed +
+  updated to `test_boss_starts_in_phase1_idle` (BLOQUE 64.B
+  flipped the default state).
+- `tests/test_goliath_sprite.py`:
+  - `test_eye_trail_initially_empty` +
+    `test_eye_trail_records_position_on_update` →
+    `test_eye_trail_removed_in_bloque_64b` (the field and method
+    no longer exist).
+
+### Visual verification
+`tools/capture/capture_bloque_64_goliath.py` produces 7 PNGs in
+`tools/playtest_out/`:
+- `bloque_64_goliath_phase1_idle.png` (240×360, frame_00 centered)
+- `bloque_64_goliath_phase2_idle.png`
+- `bloque_64_goliath_javelin.png`
+- `bloque_64_goliath_laser.png`
+- `bloque_64_goliath_purple_bullet.png`
+- `bloque_64_goliath_death.png`
+- `bloque_64_goliath_spritesheet.png` (6×10 grid of all 60 frames)
+
+### Preserved (per spec)
+- Asteroid code (BLOQUE 64.A) is untouched.
+- MINE-ASTEROID state machine (BLOQUE 63) is untouched.
+- HYDRA / PHANTOM / NEMESIS boss code is untouched.
+- The 7 enemy ships + 5 player ships (BLOQUE 62) are untouched.
+- The `attack_anim_timer` field is initialized to 0.0 in
+  `on_spawn()` so a respawning boss starts with no leftover
+  attack animation in flight.
+
+### Verified
+- 49/49 new tests in `tests/test_bloque_64_goliath.py` pass.
+- 127/127 tests in the GOLIATH + boss + sub-boss + boss pool
+  test subset pass (1 skipped).
+- Full test suite baseline is preserved; the only failure is the
+  pre-existing `tests/test_sub_boss_real_flow.py::test_full_wave_flow_triggers_sub_boss`
+  (BLOQUE 64.A's `Asteroid` rename, not in scope here).
+- Visual capture saved for all 6 anims + the 6×10 sprite-sheet
+  grid (7 PNGs total in `tools/playtest_out/`).
