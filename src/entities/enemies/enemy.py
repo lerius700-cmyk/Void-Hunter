@@ -99,10 +99,13 @@ def spawn_obstacle(rng: random.Random) -> tuple[str, dict]:
     # Regular asteroid
     from src.entities.asteroid import spawn_asteroid
     ast = spawn_asteroid(rng)
+    # BLOQUE 64.A: ``hp`` was removed from the Asteroid dataclass.
+    # The obstacle payload still includes a placeholder (0) for the
+    # legacy ``asteroid`` consumer code, which now ignores the field.
     return ("asteroid", {
         "x": ast.x, "y": ast.y,
         "variant": ast.variant, "scale": ast.scale,
-        "hp": ast.hp, "drift_vx": ast.drift_vx, "drift_vy": ast.drift_vy,
+        "drift_vx": ast.drift_vx, "drift_vy": ast.drift_vy,
         "hidden_powerup": ast.hidden_powerup,
     })
 
@@ -244,13 +247,15 @@ ENEMY_CONFIGS: dict[EnemyKind, _EnemyConfig] = {
         sine_wobble=False, sine_amplitude=0.0, sine_freq_hz=0.0,
         wrap_around=True,
     ),
-    # BLOQUE 63: MINE_ASTEROID. Camouflage enemy that uses the asteroid
-    # aesthetic when closed (visually identical to a regular asteroid).
-    # HP=2 (1 hit destroys when vulnerable); fire_cooldown_s is unused
-    # (the mine fires via its own state machine, not the legacy
-    # fire_cd/telegraph path).
+    # BLOQUE 63 + 64.A: MINE_ASTEROID. Camouflage enemy that uses the
+    # asteroid aesthetic when closed (visually identical to a regular
+    # asteroid). BLOQUE 64.A: HP=3 (was 2) so it takes 3 hits to
+    # destroy. The closed-state bullet immunity (BLOQUE 63) is
+    # preserved; hits land only when mine_state is opening/open/closing.
+    # fire_cooldown_s is unused (the mine fires via its own state
+    # machine, not the legacy fire_cd/telegraph path).
     EnemyKind.MINE_ASTEROID: _EnemyConfig(
-        hp=2, speed=30.0, width=16, height=16, score=0,
+        hp=3, speed=30.0, width=16, height=16, score=0,
         color=(140, 100, 60),  # brown rocky palette (matches asteroid)
         fire_cooldown_s=0.0, fire_damage=0, bullet_speed=0.0,
         telegraph_frames=0,
@@ -358,6 +363,12 @@ class Enemy:
     state_timer: float = 0.0
     has_opened: bool = False
     mine_variant: int = 0  # 0-4, mirrors Asteroid.variant for closed sprite
+    # BLOQUE 64.A: per-instance red-flash timer for the MINE-ASTEROID.
+    # When apply_damage lands a hit (mine_state != "closed"), this is
+    # set to 0.2s and the draw code applies a red-tint overlay. The
+    # update() method ticks it down by dt each frame. Default 0.0
+    # (no flash). Other enemy kinds ignore this field.
+    mine_hit_flash_timer: float = 0.0
 
     @property
     def animation_path(self) -> str:
@@ -488,6 +499,11 @@ class Enemy:
         opening, open, closing). They share the ``state`` attribute name
         so a check for ``state == "closed"`` doubles as both a MINE-state
         and a "not yet transitioning" sentinel.
+
+        BLOQUE 64.A: MINE_ASTEROID HP=3. When a hit lands, the
+        ``mine_hit_flash_timer`` is set to 0.2s so the draw code can
+        apply a red-tint overlay and the player sees the damage
+        progression.
         """
         if not self.active or self.state == EnemyState.DEAD:
             return False
@@ -496,6 +512,13 @@ class Enemy:
             return False
         self.hp -= amount
         self.damage_taken += amount
+        # BLOQUE 64.A: MINE_ASTEROID red flash on a successful hit. The
+        # flash is set BEFORE the death check so a killing hit also
+        # flashes the sprite for 0.2s before the death animation kicks
+        # in. (The draw code skips the red overlay when
+        # animation_state == "death" so the flash is short-lived.)
+        if self.kind == EnemyKind.MINE_ASTEROID:
+            self.mine_hit_flash_timer = 0.2
         if self.hp <= 0:
             self.state = EnemyState.DYING
             # BLOQUE 59: trigger the death animation
@@ -532,6 +555,10 @@ class Enemy:
         # jitter), so we DO apply vx/vy here, but everything else
         # (sine wobble, homing, fire cooldown) is skipped.
         if self.kind == EnemyKind.MINE_ASTEROID:
+            # BLOQUE 64.A: tick down the red-flash timer. Clamp at 0 so
+            # the value never drifts negative across many ticks.
+            if self.mine_hit_flash_timer > 0.0:
+                self.mine_hit_flash_timer = max(0.0, self.mine_hit_flash_timer - dt)
             self._update_mine_asteroid(dt)
             return
         # BLOQUE 59: advance animation frame. Use integer division to

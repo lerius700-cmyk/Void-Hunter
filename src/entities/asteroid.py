@@ -1,4 +1,4 @@
-"""BLOQUE 58.12 + 61: Asteroid entity — brown rocky obstacles.
+"""BLOQUE 58.12 + 61 + 64.A: Asteroid entity — brown rocky obstacles.
 
 BLOQUE 58.12: Inspired by Star Fox 64's iconic striped asteroids. The
 Greek-key stripe pattern is part of the AI-generated sprite.
@@ -8,9 +8,16 @@ generated with mcode-tools (1024x1024 base → LANCZOS resize to 32x32).
 The procedural sprite generator was removed. Rotation was dropped to
 make MINE-ASTEROID camouflage (BLOQUE 63) work.
 
-Asteroids drift across the playfield at a constant slow speed, can be
-shot (1-3 HP), and some hide powerups (roguelike distribution: bomb,
-HP, weapon, score). 30% of asteroids hide a powerup.
+BLOQUE 64.A:
+  - Sprite size bumped 32x32 → 64x64 (more readable on screen).
+  - Spawn scale range bumped 0.7-1.3 → 1.5-2.5 (96-160 px on screen).
+  - Asteroids are now INDESTRUCTIBLE. ``hit()`` is a no-op that always
+    returns False. The MINE-ASTEROID is the only "asteroid-like" thing
+    the player can shoot (BLOQUE 63); regular asteroids are pure
+    obstacles the player must dodge.
+  - The ``hp`` field is removed from the ``Asteroid`` dataclass (it was
+    a leftover from the pre-BLOQUE 64.A implementation). The
+    ``spawn_asteroid`` factory no longer picks an HP value.
 
 Aesthetic: 8-bit rocky, brown palette (140, 100, 60 base), Greek-key
 stripe bands from Star Fox 64.
@@ -32,15 +39,17 @@ from src.core.settings import INTERNAL_H, INTERNAL_W
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-#: Directory containing the 5 AI-generated 32x32 asteroid PNGs
+#: Directory containing the 5 AI-generated 64x64 asteroid PNGs
 ASTEROID_SPRITES_DIR = Path(__file__).resolve().parent.parent.parent / "Assets" / "sprites" / "asteroids"
 #: Number of distinct asteroid variants
 NUM_ASTEROID_VARIANTS = 5
-#: Base sprite size (the 32x32 PNG is scaled by ast.scale at render time)
-ASTEROID_SPRITE_BASE_SIZE = 32
-#: Allowed scale range from spawn
-ASTEROID_SCALE_MIN = 0.7
-ASTEROID_SCALE_MAX = 1.3
+#: Base sprite size (the 64x64 PNG is scaled by ast.scale at render time).
+#: BLOQUE 64.A: 32 → 64 so the Greek-key stripe and craters are readable.
+ASTEROID_SPRITE_BASE_SIZE = 64
+#: Allowed scale range from spawn.
+#: BLOQUE 64.A: 0.7-1.3 → 1.5-2.5 (96-160 px on a 320x480 playfield).
+ASTEROID_SCALE_MIN = 1.5
+ASTEROID_SCALE_MAX = 2.5
 
 
 class PowerupKind(Enum):
@@ -64,21 +73,31 @@ POWERUP_WEIGHTS: dict[PowerupKind, int] = {
 
 @dataclass
 class Asteroid:
-    """A single rocky asteroid. Drifts down, can be shot or dodged."""
+    """A single rocky asteroid. Drifts down, can be dodged but not destroyed.
+
+    BLOQUE 64.A: the ``hp`` field was removed; ``hit()`` is a no-op that
+    always returns False. MINE-ASTEROID (the camouflaged enemy) is the
+    only asteroid-looking thing the player can shoot — regular asteroids
+    are pure obstacles.
+    """
     x: float
     y: float
     radius: int
-    hp: int
     drift_vx: float = 0.0   # horizontal drift speed (px/s)
     drift_vy: float = 30.0  # vertical drift speed (px/s, downward)
     # BLOQUE 61: removed rotation / rotation_speed. Asteroids are now
     # static sprites (no in-game rotation), making the MINE-ASTEROID
     # camouflage (BLOQUE 63) effective. The sprite itself is a
-    # 32x32 PNG loaded by variant.
+    # 64x64 PNG loaded by variant.
     variant: int = 0          # 0-4 index into the 5 AI-generated sprites
-    scale: float = 1.0        # 0.7-1.3 from spawn, applied to the 32x32 base
+    scale: float = 1.0        # 1.5-2.5 from spawn, applied to the 64x64 base
     # BLOQUE 58.12: which powerup this asteroid hides (if any).
     # None = no powerup. The kind is decided at spawn time.
+    # BLOQUE 64.A: kept for API compatibility (the field is no longer
+    # ever consumed because the asteroid is indestructible). The 30%
+    # powerup rate was effectively a "destroy an asteroid to get a
+    # powerup" feature; with indestructibility, that path is closed.
+    # Powerups now come from MINE-ASTEROID kills (50% drop per BLOQUE 63).
     hidden_powerup: Optional[PowerupKind] = None
     # Whether the powerup has already been dropped (one-shot).
     powerup_dropped: bool = False
@@ -91,11 +110,13 @@ class Asteroid:
         self.y += self.drift_vy * dt
 
     def hit(self, damage: int = 1) -> bool:
-        """Apply damage. Returns True if the asteroid was destroyed."""
-        self.hp -= damage
-        if self.hp <= 0:
-            self.active = False
-            return True
+        """BLOQUE 64.A: no-op (asteroids are indestructible).
+
+        ``damage`` is accepted for API compatibility with the old
+        bullet-collision code path but is ignored. Always returns False
+        (never destroyed).
+        """
+        del damage  # explicitly unused
         return False
 
     def is_off_screen(self) -> bool:
@@ -110,15 +131,19 @@ _ASTEROID_SPRITE_CACHE: dict[int, pygame.Surface] = {}
 
 
 def _load_asteroid_sprite(variant: int) -> pygame.Surface:
-    """Load (and cache) one of the 5 AI-generated 32x32 asteroid PNGs.
+    """Load (and cache) one of the 5 AI-generated 64x64 asteroid PNGs.
+
+    BLOQUE 64.A: 32x32 → 64x64. The sprite is cached on the module
+    level, so the first load does the I/O and subsequent draws return
+    the same Surface.
 
     Args:
         variant: 0-4 (round, elongated, spiked, hollowed, cracked).
 
     Returns:
-        A 32x32 pygame.Surface (RGBA, with the asteroid's silhouette
+        A 64x64 pygame.Surface (RGBA, with the asteroid's silhouette
         on a transparent background). If the variant is out of range
-        or the file is missing, returns a fallback 32x32 transparent
+        or the file is missing, returns a fallback 64x64 transparent
         Surface so callers don't crash.
     """
     if variant in _ASTEROID_SPRITE_CACHE:
@@ -222,10 +247,13 @@ def spawn_asteroid(
 ) -> Asteroid:
     """Spawn a single asteroid at random position (or override x/y).
 
-    30% of asteroids hide a powerup (the user wanted 'una que otra').
+    BLOQUE 64.A: the 30% powerup rate is preserved on the dataclass
+    field (kept for API compatibility) but is no longer surfaced in
+    gameplay because the asteroid is indestructible. Powerups now come
+    exclusively from MINE-ASTEROID kills (50% drop per BLOQUE 63).
 
-    BLOQUE 61: variant (0-4) and scale (0.7-1.3) are picked at spawn
-    time. radius is derived from scale: int(16 * scale) clamped to >= 8.
+    BLOQUE 64.A: scale range bumped to 1.5-2.5 (was 0.7-1.3). radius
+    is still derived from scale: int(16 * scale) clamped to >= 8.
     """
     if x < 0:
         x = rng.uniform(24, INTERNAL_W - 24)
@@ -234,12 +262,11 @@ def spawn_asteroid(
     variant = rng.randint(0, NUM_ASTEROID_VARIANTS - 1)
     scale = rng.uniform(ASTEROID_SCALE_MIN, ASTEROID_SCALE_MAX)
     radius = max(8, int(16 * scale))
-    hp = rng.choice([1, 2, 2, 3, 3])  # mostly 2-3 HP
     drift_vx = rng.uniform(-15, 15)
     drift_vy = rng.uniform(20, 50)
-    has_powerup = rng.random() < 0.30  # 30% of asteroids have a powerup
+    has_powerup = rng.random() < 0.30  # kept for API compat (not consumed)
     return Asteroid(
-        x=x, y=y, radius=radius, hp=hp,
+        x=x, y=y, radius=radius,
         drift_vx=drift_vx, drift_vy=drift_vy,
         variant=variant, scale=scale,
         hidden_powerup=(pick_random_powerup(rng) if has_powerup else None),
@@ -251,7 +278,7 @@ def draw_asteroid(target: pygame.Surface, ast: Asteroid) -> None:
     if not ast.active:
         return
     sprite = _load_asteroid_sprite(ast.variant)
-    # Apply scale (smoothscale once per draw — sprites are 32x32 so it's cheap)
+    # Apply scale (smoothscale once per draw — sprites are 64x64 so it's cheap)
     if ast.scale != 1.0:
         scaled_size = max(1, int(ASTEROID_SPRITE_BASE_SIZE * ast.scale))
         sprite = pygame.transform.smoothscale(sprite, (scaled_size, scaled_size))
