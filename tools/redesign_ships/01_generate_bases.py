@@ -24,11 +24,12 @@ from tools.redesign_ships._ship_specs import SHIPS, ShipSpec
 
 
 PROMPT_TEMPLATE = (
-    "16-bit pixel art, STRICT TOP-DOWN 3/4 PERSPECTIVE viewed from above and "
-    "behind the ship. The ship's NOSE points DOWN toward the bottom of the "
-    "image. WINGS spread OUT to the left and right sides of the image. "
-    "ENGINES at the TOP of the image (rear of ship). COCKPIT/CANOPY visible "
-    "on the upper body. Single isolated ship on pure black background. "
+    "16-bit pixel art, STRICT TOP-DOWN VIEW (perpendicular, no 3/4 angle) "
+    "viewed from directly above the ship. The ship's NOSE points DOWN "
+    "toward the bottom of the image. WINGS spread OUT to the left and "
+    "right sides of the image. ENGINES at the TOP of the image (rear of "
+    "ship). COCKPIT/CANOPY visible on the upper body. Single isolated "
+    "ship on pure black background. "
     "Sharp clean pixel edges, no anti-aliasing, no gradients, limited "
     "palette (max 8 colors), Metal Slug aesthetic. "
     "Character: {FILL}. "
