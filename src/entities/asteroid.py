@@ -1,23 +1,46 @@
-"""BLOQUE 58.12: Asteroid entity — brown rocky obstacles.
+"""BLOQUE 58.12 + 61: Asteroid entity — brown rocky obstacles.
 
-Inspired by Star Fox 64's iconic striped asteroids. The Greek-key stripe
-pattern is drawn procedurally (no asset needed). Asteroids drift across
-the playfield at a constant slow speed, can be shot (2-3 HP), and some
-hide powerups (roguelike distribution: bomb, HP, weapon, score).
+BLOQUE 58.12: Inspired by Star Fox 64's iconic striped asteroids. The
+Greek-key stripe pattern is part of the AI-generated sprite.
 
-Aesthetic: 8-bit rocky, brown palette (140, 100, 60 base).
+BLOQUE 61: All 5 asteroid variants are MINE-ASTEROID closed lookalikes
+generated with mcode-tools (1024x1024 base → LANCZOS resize to 32x32).
+The procedural sprite generator was removed. Rotation was dropped to
+make MINE-ASTEROID camouflage (BLOQUE 63) work.
+
+Asteroids drift across the playfield at a constant slow speed, can be
+shot (1-3 HP), and some hide powerups (roguelike distribution: bomb,
+HP, weapon, score). 30% of asteroids hide a powerup.
+
+Aesthetic: 8-bit rocky, brown palette (140, 100, 60 base), Greek-key
+stripe bands from Star Fox 64.
 """
 from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Optional
 
 import pygame
 
 from src.core.settings import INTERNAL_H, INTERNAL_W
+
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+#: Directory containing the 5 AI-generated 32x32 asteroid PNGs
+ASTEROID_SPRITES_DIR = Path(__file__).resolve().parent.parent.parent / "Assets" / "sprites" / "asteroids"
+#: Number of distinct asteroid variants
+NUM_ASTEROID_VARIANTS = 5
+#: Base sprite size (the 32x32 PNG is scaled by ast.scale at render time)
+ASTEROID_SPRITE_BASE_SIZE = 32
+#: Allowed scale range from spawn
+ASTEROID_SCALE_MIN = 0.7
+ASTEROID_SCALE_MAX = 1.3
 
 
 class PowerupKind(Enum):
@@ -48,8 +71,12 @@ class Asteroid:
     hp: int
     drift_vx: float = 0.0   # horizontal drift speed (px/s)
     drift_vy: float = 30.0  # vertical drift speed (px/s, downward)
-    rotation: float = 0.0  # current angle in degrees
-    rotation_speed: float = 5.0  # deg/s
+    # BLOQUE 61: removed rotation / rotation_speed. Asteroids are now
+    # static sprites (no in-game rotation), making the MINE-ASTEROID
+    # camouflage (BLOQUE 63) effective. The sprite itself is a
+    # 32x32 PNG loaded by variant.
+    variant: int = 0          # 0-4 index into the 5 AI-generated sprites
+    scale: float = 1.0        # 0.7-1.3 from spawn, applied to the 32x32 base
     # BLOQUE 58.12: which powerup this asteroid hides (if any).
     # None = no powerup. The kind is decided at spawn time.
     hidden_powerup: Optional[PowerupKind] = None
@@ -59,10 +86,9 @@ class Asteroid:
     active: bool = True
 
     def update(self, dt: float) -> None:
-        """Drift down + rotate."""
+        """Drift down. No rotation (BLOQUE 61)."""
         self.x += self.drift_vx * dt
         self.y += self.drift_vy * dt
-        self.rotation = (self.rotation + self.rotation_speed * dt) % 360.0
 
     def hit(self, damage: int = 1) -> bool:
         """Apply damage. Returns True if the asteroid was destroyed."""
@@ -78,87 +104,43 @@ class Asteroid:
 
 
 # ---------------------------------------------------------------------------
-# Procedural sprite generation
+# Sprite loader (BLOQUE 61)
 # ---------------------------------------------------------------------------
-# Brown palette for the rocky body
-_BROWN_BASE = (140, 100, 60)
-_BROWN_HI = (180, 140, 90)
-_BROWN_SH = (90, 60, 30)
-_BROWN_DEEP = (50, 30, 15)
+_ASTEROID_SPRITE_CACHE: dict[int, pygame.Surface] = {}
 
 
-def _make_asteroid_sprite(radius: int, rng: random.Random) -> pygame.Surface:
-    """Generate a procedural rocky asteroid sprite with Greek-key stripes.
+def _load_asteroid_sprite(variant: int) -> pygame.Surface:
+    """Load (and cache) one of the 5 AI-generated 32x32 asteroid PNGs.
 
-    The sprite is a square `2*radius x 2*radius` Surface with the rocky
-    outline drawn in circles and the Greek-key stripe pattern overlaid.
-    Cached by radius for reuse.
+    Args:
+        variant: 0-4 (round, elongated, spiked, hollowed, cracked).
+
+    Returns:
+        A 32x32 pygame.Surface (RGBA, with the asteroid's silhouette
+        on a transparent background). If the variant is out of range
+        or the file is missing, returns a fallback 32x32 transparent
+        Surface so callers don't crash.
     """
-    cache_key = ("asteroid_sprite", radius)
-    if cache_key in _SPRITE_CACHE:
-        return _SPRITE_CACHE[cache_key]
-    size = radius * 2 + 4
-    surf = pygame.Surface((size, size), pygame.SRCALPHA)
-    cx, cy = size // 2, size // 2
-    # 1. Rock outline: irregular polygon of points around the center
-    n_points = 12 + rng.randint(0, 4)
-    outline: list[tuple[int, int]] = []
-    for i in range(n_points):
-        a = (i / n_points) * 2 * math.pi
-        r = radius * (0.85 + rng.random() * 0.25)
-        x = int(cx + math.cos(a) * r)
-        y = int(cy + math.sin(a) * r)
-        outline.append((x, y))
-    # 2. Fill the rock with the base brown
-    pygame.draw.polygon(surf, _BROWN_BASE, outline)
-    # 3. Shading: darker bottom-right, lighter top-left
-    shade = pygame.Surface((size, size), pygame.SRCALPHA)
-    for i in range(radius, 0, -1):
-        a = int(15 * (i / radius))
-        pygame.draw.circle(shade, (*_BROWN_SH, a), (cx + 2, cy + 2), i)
-    surf.blit(shade, (0, 0))
-    # 4. Highlight: lighter top-left
-    hi = pygame.Surface((size, size), pygame.SRCALPHA)
-    for i in range(radius // 2, 0, -1):
-        a = int(20 * (1.0 - i / (radius / 2)))
-        pygame.draw.circle(hi, (*_BROWN_HI, a), (cx - 3, cy - 3), i)
-    surf.blit(hi, (0, 0))
-    # 5. Greek-key stripe pattern (BLOQUE 58.12 Star Fox 64 vibe)
-    # Draw 2-3 horizontal stripes with the iconic angular pattern.
-    n_stripes = 2 + rng.randint(0, 1)
-    for s in range(n_stripes):
-        # Stripe Y position (slightly off-center)
-        stripe_y = int(cy - radius * 0.5 + s * (radius * 0.55))
-        stripe_h = max(2, radius // 5)
-        # Stripe color: deep brown
-        pygame.draw.rect(
-            surf, _BROWN_DEEP,
-            (cx - radius, stripe_y, radius * 2, stripe_h),
-        )
-        # Greek-key "teeth" along the stripe (zig-zag pattern)
-        teeth_count = 5
-        tooth_w = (radius * 2) // (teeth_count * 2)
-        for t in range(teeth_count):
-            tx0 = cx - radius + t * (tooth_w * 2)
-            ty0 = stripe_y
-            ty1 = stripe_y + stripe_h
-            # Square tooth pointing up
-            pygame.draw.rect(
-                surf, _BROWN_DEEP,
-                (tx0, ty0, tooth_w, stripe_h // 2),
-            )
-            # Square tooth pointing down
-            pygame.draw.rect(
-                surf, _BROWN_DEEP,
-                (tx0 + tooth_w, ty1 - stripe_h // 2, tooth_w, stripe_h // 2),
-            )
-    # 6. Outline for visibility
-    pygame.draw.polygon(surf, _BROWN_SH, outline, 1)
-    _SPRITE_CACHE[cache_key] = surf
+    if variant in _ASTEROID_SPRITE_CACHE:
+        return _ASTEROID_SPRITE_CACHE[variant]
+    if not (0 <= variant < NUM_ASTEROID_VARIANTS):
+        # Out of range: return a transparent fallback
+        surf = pygame.Surface((ASTEROID_SPRITE_BASE_SIZE, ASTEROID_SPRITE_BASE_SIZE), pygame.SRCALPHA)
+        _ASTEROID_SPRITE_CACHE[variant] = surf
+        return surf
+    # Variant file names: round.png, elongated.png, spiked.png, hollowed.png, cracked.png
+    # Map variant index to filename via the same order as ASTEROIDS tuple
+    variant_names = ("round", "elongated", "spiked", "hollowed", "cracked")
+    fname = variant_names[variant]
+    path = ASTEROID_SPRITES_DIR / f"{fname}.png"
+    if not path.exists():
+        # File missing: return a transparent fallback
+        surf = pygame.Surface((ASTEROID_SPRITE_BASE_SIZE, ASTEROID_SPRITE_BASE_SIZE), pygame.SRCALPHA)
+        _ASTEROID_SPRITE_CACHE[variant] = surf
+        return surf
+    surf = pygame.image.load(str(path)).convert_alpha()
+    _ASTEROID_SPRITE_CACHE[variant] = surf
     return surf
-
-
-_SPRITE_CACHE: dict[tuple, pygame.Surface] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -241,31 +223,37 @@ def spawn_asteroid(
     """Spawn a single asteroid at random position (or override x/y).
 
     30% of asteroids hide a powerup (the user wanted 'una que otra').
+
+    BLOQUE 61: variant (0-4) and scale (0.7-1.3) are picked at spawn
+    time. radius is derived from scale: int(16 * scale) clamped to >= 8.
     """
     if x < 0:
         x = rng.uniform(24, INTERNAL_W - 24)
     if y < 0:
         y = rng.uniform(-80, 0)  # spawn just above the top
-    radius = rng.choice([12, 14, 16, 18, 20, 24])
+    variant = rng.randint(0, NUM_ASTEROID_VARIANTS - 1)
+    scale = rng.uniform(ASTEROID_SCALE_MIN, ASTEROID_SCALE_MAX)
+    radius = max(8, int(16 * scale))
     hp = rng.choice([1, 2, 2, 3, 3])  # mostly 2-3 HP
     drift_vx = rng.uniform(-15, 15)
     drift_vy = rng.uniform(20, 50)
-    rotation_speed = rng.uniform(-25, 25)
     has_powerup = rng.random() < 0.30  # 30% of asteroids have a powerup
     return Asteroid(
         x=x, y=y, radius=radius, hp=hp,
         drift_vx=drift_vx, drift_vy=drift_vy,
-        rotation_speed=rotation_speed,
+        variant=variant, scale=scale,
         hidden_powerup=(pick_random_powerup(rng) if has_powerup else None),
     )
 
 
 def draw_asteroid(target: pygame.Surface, ast: Asteroid) -> None:
-    """Draw a single asteroid at its current position with rotation."""
+    """Draw a single asteroid at its current position (no rotation)."""
     if not ast.active:
         return
-    sprite = _make_asteroid_sprite(ast.radius, random.Random(ast.x.__hash__()))
-    # Rotate the sprite
-    rotated = pygame.transform.rotate(sprite, ast.rotation)
-    rect = rotated.get_rect(center=(int(ast.x), int(ast.y)))
-    target.blit(rotated, rect)
+    sprite = _load_asteroid_sprite(ast.variant)
+    # Apply scale (smoothscale once per draw — sprites are 32x32 so it's cheap)
+    if ast.scale != 1.0:
+        scaled_size = max(1, int(ASTEROID_SPRITE_BASE_SIZE * ast.scale))
+        sprite = pygame.transform.smoothscale(sprite, (scaled_size, scaled_size))
+    rect = sprite.get_rect(center=(int(ast.x), int(ast.y)))
+    target.blit(sprite, rect)
