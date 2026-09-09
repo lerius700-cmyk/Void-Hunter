@@ -1970,3 +1970,131 @@ opens AT the moment of crossing, not after.
 - Touching GOLIATH (user said "olvida lo de goliath").
 
 
+## [BLOQUE 70] — 2026-09-09 — "100% mines" bug: Asteroid NameError silently swallowed by main loop
+
+### User's absolute requirement
+> "todos los asteroides son MINE-ASTEROIDs, no hay ninguno normal"
+
+User insisted (after 4 BLOQUEs claimed "done" — 63, 64.5, 66, 68, 69)
+that 100% of on-screen obstacles are MINE_ASTEROIDs and 0% are regular
+asteroids. This BLOQUE proves the user was 100% right and pinpoints
+the actual bug, which was NOT in the spawn ratio (that was 25/75 by
+RNG) but in the spawn EXECUTION.
+
+### The actual bug
+`GameplayRuntime.__init__` (line 236) does
+`from src.entities.asteroid import Asteroid, Powerup as AsteroidPowerup`
+inside the method body. That binds `Asteroid` as a local variable of
+`__init__` — it is NOT promoted to module scope.
+
+`_update_asteroids_and_powerups` (line 1701) constructs an `Asteroid()`
+in the `kind == "asteroid"` branch, but its own local import (line
+1679) only re-imports `Powerup, PowerupKind, spawn_asteroid,
+pick_random_powerup` — NOT `Asteroid`. So the moment a regular
+asteroid spawn is decided (the 75% intended branch), the function
+raises `NameError: name 'Asteroid' is not defined`.
+
+The `mine_asteroid` branch (25%) goes through the enemy pool, which
+doesn't touch `Asteroid()`, so mines spawn fine. Result: the user
+sees ONLY mines on screen, every spawn.
+
+### Why no test caught this
+- `test_spawn_obstacle_asteroid_path` in `tests/test_mine_asteroid.py`
+  tests `spawn_obstacle()` in isolation — it never reaches the
+  `Asteroid()` constructor in `gameplay_runtime.py`.
+- All end-to-end tests use a deterministic seeded RNG and exercise
+  only the `mine_asteroid` path.
+- `main.py` line 285-292 wraps `scene.update()` in a broad
+  `except Exception` that logs to `logs/crash.log` and CONTINUES
+  the game. This is "defensive" but masks fatal bugs as silent
+  failures.
+
+### Smoking gun
+`logs/crash.log` from a single 60s gameplay session contains 9 hits:
+```
+[  10.5s] SCENE ERROR: NameError: name 'Asteroid' is not defined
+  File "D:\AI\void-hunter\src\ui\gameplay_runtime.py", line 1701, in _update_asteroids_and_powerups
+    self._asteroids.append(Asteroid(
+                           ^^^^^^^^
+NameError: name 'Asteroid' is not defined
+```
+The cadence matches the spawn interval (3-5s) exactly.
+
+### Fix
+Add `Asteroid` to the local import tuple in
+`_update_asteroids_and_powerups` (`src/ui/gameplay_runtime.py:1679`):
+```python
+from src.entities.asteroid import (
+    Asteroid, Powerup, PowerupKind, spawn_asteroid, pick_random_powerup,
+)
+```
+
+This is a 1-line, 1-word change. The diff is:
+```diff
+-            Powerup, PowerupKind, spawn_asteroid, pick_random_powerup,
++            Asteroid, Powerup, PowerupKind, spawn_asteroid, pick_random_powerup,
+```
+
+### Verification (no excuses, no code-only analysis)
+1. **Empirical runtime test** — `tools/verify_spawn_ratio.py` runs the
+   actual `GameplayRuntime` for 60s with the production seed
+   `0xA57E2012`, wraps `spawn_obstacle` to log every call:
+   - **Before fix:** 0 asteroids / N mines (every regular spawn
+     crashed silently).
+   - **After fix:** 18 spawns in 60s = 4 mines (22%) + 14 asteroids
+     (78%). First 10 spawns include both kinds (mine, asteroid,
+     mine, asteroid, asteroid, asteroid, asteroid, asteroid, mine,
+     asteroid). 3 mines opened, 3 still alive at end (correct
+     MINE-ASTEROID behavior).
+
+2. **Two new regression tests** added to `tests/test_mine_asteroid.py`:
+   - `test_gameplay_runtime_asteroid_spawn_does_not_raise`:
+     monkey-patches `spawn_obstacle` to force 5 consecutive asteroid
+     spawns and asserts `self._asteroids` actually grows. **Would
+     have failed before the fix** with `NameError`.
+   - `test_gameplay_runtime_actual_75_25_ratio`: runs the real
+     runtime for 60s and asserts the mine ratio is within
+     `[0.15, 0.35]`.
+
+3. **Full test suite:** 2689 passed, 1 skipped, 6 pre-existing
+   failures (5 sub_boss + 1 Lissajous — no new regressions).
+   `test_mine_asteroid.py` grew from 42 to 44 tests.
+
+4. **.exe rebuilt and launched:** `dist/void-hunter.exe` 326 MB,
+   timestamp 2026-09-09 1:51:47 PM. Launched in dummy-SDL mode,
+   ran TITLE → CINEMATIC → GAMEPLAY for 4+ seconds. No NameError
+   in the new run (verified against `logs/crash.log`).
+
+5. **Git:** commit `24eaa57` on `master`, pushed to
+   `origin/master`. 3 files changed, 282 insertions(+), 1 deletion(-):
+   - `src/ui/gameplay_runtime.py` (+1 / -1)
+   - `tests/test_mine_asteroid.py` (+113)
+   - `tools/verify_spawn_ratio.py` (new, +168)
+
+### Why 4 previous BLOQUEs missed this
+- BLOQUE 63 introduced the MINE_ASTEROID. The `Asteroid` import was
+  already local-to-`__init__` (BLOQUE 58.12). Nobody added a
+  test that hits the 75% branch of the spawn decision.
+- BLOQUE 64.5 bumped the spawn fraction from 1/8 to 1/4. Still no
+  end-to-end test on the gameplay runtime.
+- BLOQUE 68 (3 root causes): the agent added drift velocity, fixed
+  the threshold check, and moved the cull. But the
+  `_update_asteroids_and_powerups` function was never instrumented
+  to assert that `self._asteroids` actually grows after a spawn.
+- BLOQUE 69: only changed the threshold value (200 → 120). Didn't
+  touch the spawn function.
+
+Every BLOQUE's test suite passed because every test stopped at
+`spawn_obstacle()` — none of them let the result flow into
+`self._asteroids.append(Asteroid(...))`.
+
+### What the user will see
+1. Boot the new `dist/void-hunter.exe`.
+2. Press PLAY.
+3. Asteroids now drift down (brown rocky sprites, 5 variants)
+   AT 3:1 RATIO TO MINES. Mines still drift down looking
+   identical (camouflage) but OPEN at y=120 (first quarter)
+   and start firing 3 bullets in a fan, 1Hz.
+4. The crash log no longer accumulates NameError entries.
+
+
