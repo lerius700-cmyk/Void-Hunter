@@ -1714,6 +1714,15 @@ class GameplayRuntime:
                             payload["x"], payload["y"],
                         )
                         if e is not None:
+                            # BLOQUE 68: apply drift velocity from the
+                            # payload. Without this, the mine was stuck
+                            # at the spawn y (vx=vy=0 by default) and
+                            # never reached OPENING_Y_THRESHOLD to
+                            # trigger the open cycle. Result: "static
+                            # asteroids" in gameplay because the mines
+                            # never came on screen.
+                            e.vx = payload.get("drift_vx", 0.0)
+                            e.vy = payload.get("drift_vy", 30.0)
                             # Pick a random asteroid variant for the
                             # closed-state visual (mirrors the 5
                             # asteroid variants so the camo is real).
@@ -5659,20 +5668,35 @@ class GameplayRuntime:
     def _draw_goliath(self, target: pygame.Surface, ox: int, oy: int) -> None:
         """BLOQUE 64.B: GOLIATH — biblical giant warrior visual.
 
-        BLOQUE 64.B simplified: just blit the redesigned borderless 96x80
-        sprite for the current animation state, with a small bob for life,
-        and the HP bar on top. All 60 frames (6 anims x 10 frames) are
-        borderless + transparent, so the previous procedural fallback
-        (aura / embers / greaves / torso / helmet / shield / spear /
-        cracks / eye trail) has been removed in favor of the AI-generated
-        sprites.
+        BLOQUE 64.B simplified: blit the redesigned borderless 96x80 sprite
+        for the current animation state and the HP bar on top.
+
+        BLOQUE 64.C: the procedural motion baked into each state's 10
+        frames is now the source of "alive" motion. The runtime applies a
+        very small per-state bob:
+          - phase1_idle / phase2_idle: 0.5 px (subtle global sway)
+          - javelin / laser / purple_bullet: 0.3 px (action is in the frame)
+          - death: 0 (corpse doesn't bob)
+
+        All 60 frames (6 anims x 10 frames) are borderless + transparent;
+        the previous procedural fallback (aura / embers / greaves / torso
+        / helmet / shield / spear / cracks / eye trail) was removed in
+        BLOQUE 64.B in favor of the AI-generated sprites.
         """
         if self._boss is None:
             return
         from src.ui.scenes import _load_sprite
         sprite = _load_sprite(self._boss.animation_path) if self._boss else None
-        # Subtle "breathing" bob so the giant feels alive
-        bob = math.sin(self._t * 1.0) * 1.5
+        # Per-state bob amplitude. The procedural frame motion is the main
+        # source of life; this is a tiny global sway on top.
+        anim = self._boss.animation_state if self._boss else "phase1_idle"
+        if anim == "death":
+            bob_amp = 0.0
+        elif anim in ("javelin", "laser", "purple_bullet"):
+            bob_amp = 0.3
+        else:  # phase1_idle, phase2_idle
+            bob_amp = 0.5
+        bob = math.sin(self._t * 1.0) * bob_amp
         cx = int(self._boss.x + ox)
         cy = int(self._boss.y + oy)
         vw, vh = 96, 80

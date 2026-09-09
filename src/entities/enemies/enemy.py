@@ -108,10 +108,21 @@ def spawn_obstacle(rng: random.Random) -> tuple[str, dict]:
     """
     from src.core.settings import INTERNAL_H, INTERNAL_W
     if rng.random() < MINE_SPAWN_FRACTION:
-        # MINE_ASTEROID — pick a starting x and y near the spawn line
+        # MINE_ASTEROID — pick a starting x, y, and DRIFT VELOCITY near
+        # the spawn line. Without drift, the mine would be stuck at the
+        # spawn y forever (vx=vy=0 by default on the Enemy dataclass)
+        # and would never reach OPENING_Y_THRESHOLD to trigger the open
+        # cycle. This was the bug that made MINE-ASTEROIDs "static" in
+        # gameplay: they were being spawned at y=-80..0 with no velocity
+        # and never appeared on screen.
         x = rng.uniform(24, INTERNAL_W - 24)
         y = rng.uniform(-80, 0)
-        return ("mine_asteroid", {"x": x, "y": y})
+        drift_vx = rng.uniform(-15, 15)  # same range as regular asteroids
+        drift_vy = rng.uniform(20, 50)   # downward drift, same as asteroids
+        return ("mine_asteroid", {
+            "x": x, "y": y,
+            "drift_vx": drift_vx, "drift_vy": drift_vy,
+        })
     # Regular asteroid
     from src.entities.asteroid import spawn_asteroid
     ast = spawn_asteroid(rng)
@@ -912,9 +923,28 @@ class Enemy:
         # Drift down (mimic asteroid motion)
         self.x += self.vx * dt
         self.y += self.vy * dt
+        # BLOQUE 68: cull off-screen BEFORE the state branches. The
+        # previous cull at the bottom of this function was dead code
+        # (every branch returned before reaching it). Mines that drift
+        # past the bottom of the playfield must be marked DEAD so the
+        # enemy pool removes them.
+        if self.y > INTERNAL_H + 32:
+            self.state = EnemyState.DEAD
+            return
         if self.mine_state == "closed":
-            if not self.has_opened and self.y < OPENING_Y_THRESHOLD:
-                # y < 200 = upper playfield, trigger open cycle
+            if not self.has_opened and self.y > 0.0 and self.y < OPENING_Y_THRESHOLD:
+                # BLOQUE 68: mine has drifted into the upper playfield
+                # (on screen AND above the threshold). The previous
+                # check `y < 200` was TRUE from the spawn position
+                # (y=-80..0, off-screen above) and the mine opened
+                # immediately on the first tick — but it was off-screen
+                # so the player never saw it open. The corrected check
+                # requires the mine to have actually entered the screen
+                # (y > 0) before opening. This is the bug that made
+                # MINE-ASTEROIDs "static" in gameplay from the user's
+                # perspective: they were opening off-screen above the
+                # playfield, drifting invisibly across, and getting
+                # culled before reaching the visible area.
                 self.mine_state = "open1"
                 self.state_timer = 0.0
             return
@@ -972,9 +1002,6 @@ class Enemy:
             else:
                 # Unknown state — bail out
                 return
-        # Cull off-screen (mirrors the regular cull in update())
-        if self.y > INTERNAL_H + 32:
-            self.state = EnemyState.DEAD
 
     def _fire_mine_bullets(self, pool: "ProjectilePool") -> None:
         """BLOQUE 63 + 65: spawn 3 BULLET_ENEMY_MINE bullets in a fan

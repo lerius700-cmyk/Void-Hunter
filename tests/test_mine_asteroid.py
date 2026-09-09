@@ -99,17 +99,33 @@ class TestEnumAndConstants:
 # =====================================================================
 class TestStateMachine:
     def test_state_transitions_on_y_threshold(self) -> None:
-        """Crossing y < OPENING_Y_THRESHOLD triggers closed -> open1."""
+        """BLOQUE 68: crossing into the upper playfield triggers closed -> open1.
+
+        The check is now `y > 0 AND y < OPENING_Y_THRESHOLD` — the mine
+        must have entered the screen (y > 0) AND be in the upper
+        playfield (y < 200). The original check was just `y < 200`,
+        which was TRUE from the spawn position (y=-80..0, off-screen
+        above) and the mine opened off-screen, never visible to the
+        player.
+        """
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
-        # Above the threshold (small y) should trigger
-        e.y = OPENING_Y_THRESHOLD - 10
+        # In the upper playfield (0 < y < 200) should trigger
+        e.y = OPENING_Y_THRESHOLD - 10  # 190
         e.update(0.016, player_x=160.0, player_y=400.0)
         assert e.mine_state == "open1"
-        # Below the threshold (large y) should NOT trigger
+        # In the lower playfield (y > 200) should NOT trigger
         e2 = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
-        e2.y = OPENING_Y_THRESHOLD + 50
+        e2.y = OPENING_Y_THRESHOLD + 50  # 250
         e2.update(0.016, player_x=160.0, player_y=400.0)
         assert e2.mine_state == "closed"
+        # BLOQUE 68: off-screen above (y < 0) should NOT trigger
+        e3 = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
+        e3.y = -50
+        e3.update(0.016, player_x=160.0, player_y=400.0)
+        assert e3.mine_state == "closed", (
+            "Mine at y=-50 (off-screen above) must not open — it "
+            "needs to enter the screen (y > 0) first"
+        )
 
     def test_open1_to_open2_after_0_2s(self) -> None:
         """After 0.2s in 'open1' state, transitions to 'open2'."""
@@ -243,6 +259,79 @@ class TestStateMachine:
         e.update(0.2, player_x=160.0, player_y=400.0)    # open2 -> open3
         assert e.mine_state == "open3"
         assert e.has_opened is True
+
+    def test_mine_drifts_down_with_velocity(self) -> None:
+        """BLOQUE 68: MINE-ASTEROID has drift velocity (vx, vy != 0).
+
+        The bug: previously spawn_obstacle returned only {x, y} for the
+        MINE_ASTEROID payload. The enemy was created with vx=vy=0
+        (dataclass defaults) and never moved. The mine stayed at the
+        spawn y (off-screen) and never reached OPENING_Y_THRESHOLD,
+        so it never opened. Result: 'asteroids are static, they don't
+        open' in gameplay.
+
+        This test asserts the spawn_obstacle payload now includes
+        drift_vx and drift_vy, and that an enemy created from this
+        payload actually moves when update() is called.
+        """
+        from src.entities.enemies.enemy import spawn_obstacle
+        # Find a payload that is a MINE_ASTEROID (try a few seeds)
+        import random
+        payload = None
+        for seed in range(100):
+            rng = random.Random(seed)
+            if rng.random() < 0.25:  # MINE_SPAWN_FRACTION
+                kind, p = spawn_obstacle(rng)
+                if kind == "mine_asteroid":
+                    payload = p
+                    break
+        assert payload is not None, "could not sample a MINE_ASTEROID payload"
+        # The payload MUST include drift_vx and drift_vy (not just x, y)
+        assert "drift_vx" in payload, (
+            f"MINE_ASTEROID payload missing drift_vx (was the static-asteroid bug)"
+        )
+        assert "drift_vy" in payload, (
+            f"MINE_ASTEROID payload missing drift_vy (was the static-asteroid bug)"
+        )
+        # The drift velocity should be non-zero (mimics asteroid drift)
+        assert payload["drift_vy"] > 0, (
+            f"drift_vy should be positive (downward), got {payload['drift_vy']}"
+        )
+        # End-to-end: an enemy with these vx/vy actually moves
+        e = create_enemy(
+            EnemyKind.MINE_ASTEROID,
+            payload["x"], payload["y"],
+        )
+        e.vx = payload["drift_vx"]
+        e.vy = payload["drift_vy"]
+        e.y = -40  # above the playfield like a real spawn
+        e.update(1.0, player_x=160.0, player_y=400.0)
+        # After 1s of drift, the mine should have moved noticeably
+        assert e.y > -40, (
+            f"After 1s, mine y should have increased (moved down), "
+            f"got y={e.y}. This means the mine is static and will "
+            f"never reach OPENING_Y_THRESHOLD to open."
+        )
+
+    def test_mine_culled_when_off_screen_bottom(self) -> None:
+        """BLOQUE 68: MINE-ASTEROID is culled when y > INTERNAL_H + 32.
+
+        The bug: the off-screen cull was at the bottom of
+        _update_mine_asteroid but every state branch returned before
+        reaching it. So mines that drifted past the bottom of the
+        screen were never marked DEAD and accumulated in the pool.
+
+        The cull is now at the top of the function, before the state
+        branches. This test verifies it.
+        """
+        e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 100.0)
+        e.vy = 100.0  # fast downward
+        e.y = 1000  # way off the bottom of the 480-tall playfield
+        e.update(0.016, player_x=160.0, player_y=400.0)
+        # The mine should now be marked DEAD
+        assert e.state == EnemyState.DEAD, (
+            f"Mine at y=1000 should be culled (DEAD), got state={e.state}"
+        )
 
 
 # =====================================================================

@@ -1749,3 +1749,119 @@ demanded 1Hz continuous fire while open.
   requested).
 
 
+## [BLOQUE 68] — 2026-09-09 — MINE-ASTEROID "static asteroids" bug FIX (the real one)
+
+### User's absolute requirement (the symptom they reported)
+> "los asteroides siguen siendo estáticos. no se abren. no hiciste
+> ni mierda de los asteroides."
+
+Translation: "The asteroids are still static. They don't open. You
+didn't do shit about the asteroids."
+
+### The actual bugs found
+The previous BLOQUEs (63-67) implemented the state machine, the
+1Hz fire, and the variant-aware camo, but the MINE-ASTEROID
+NEVER MOVED and NEVER OPENED IN VIEW. The user was right — it
+was a no-op in gameplay. Three independent bugs combined to
+produce the symptom:
+
+1. **No drift velocity on the MINE_ASTEROID payload.**
+   `spawn_obstacle` returned only `{"x": y}` for the mine (no
+   `drift_vx`/`drift_vy`). The `Enemy` dataclass defaults
+   `vx=0.0, vy=0.0`. The mine was created STATIONARY. It never
+   drifted down. The integration site in `gameplay_runtime.py`
+   never re-applied velocity after spawn.
+   Fix: `spawn_obstacle` now generates `drift_vx` (uniform -15..15)
+   and `drift_vy` (uniform 20..50, same range as regular asteroids)
+   for the MINE_ASTEROID payload, and the integration site applies
+   them to the spawned enemy.
+
+2. **The opening threshold check was inverted.**
+   The check was `y < OPENING_Y_THRESHOLD` (= 200). The mine
+   spawns at y = -80 to 0 (off-screen above the playfield). The
+   check `y < 200` was TRUE from the spawn position. The mine
+   transitioned to open1 on the very first tick, then ran the
+   full open animation (0.4s) while still off-screen. The player
+   never saw it open.
+   Fix: the check is now `y > 0 AND y < OPENING_Y_THRESHOLD` — the
+   mine must have entered the visible playfield (y > 0) before it
+   starts opening. This is the actual fix the user was demanding.
+
+3. **Off-screen cull was dead code.**
+   The cull at the end of `_update_mine_asteroid`
+   (`if self.y > INTERNAL_H + 32: state = DEAD`) was AFTER every
+   state branch, but every state branch returned before reaching
+   it. The mine was never culled when it drifted past the bottom.
+   Combined with bug #1, the mine would drift forever, off-screen,
+   accumulating in the enemy pool.
+   Fix: the cull is now at the TOP of the function, right after
+   the position update, BEFORE the state branches. Mines that
+   drift past the bottom are now properly marked DEAD.
+
+### Files Changed
+- `src/entities/enemies/enemy.py`:
+  - `spawn_obstacle` includes `drift_vx`/`drift_vy` in the
+    MINE_ASTEROID payload
+  - `_update_mine_asteroid` opening check: `y > 0 AND y < 200`
+  - `_update_mine_asteroid` cull moved to top of function
+  - Dead cull at bottom of function removed
+- `src/ui/gameplay_runtime.py`:
+  - MINE_ASTEROID spawn site applies `e.vx = payload["drift_vx"]`
+    and `e.vy = payload["drift_vy"]` after `self._enemies.spawn(...)`
+- `tests/test_mine_asteroid.py`:
+  - `test_state_transitions_on_y_threshold` extended with a
+    third case: mine at y=-50 (off-screen) must NOT open
+  - `test_mine_drifts_down_with_velocity` (NEW): asserts the
+    MINE_ASTEROID payload has drift velocity and the mine moves
+  - `test_mine_culled_when_off_screen_bottom` (NEW): asserts
+    mines past y > INTERNAL_H + 32 are marked DEAD
+- `tools/verify_mine_end_to_end.py` (NEW): full lifecycle
+  simulator. Spawns a MINE_ASTEROID, integrates the actual
+  spawn site, simulates 5s of gameplay, asserts the mine opens
+  AND fires at 1Hz.
+- `tools/capture_mine_opening.py` (NEW): visual capture of the
+  full mine lifecycle (closed, open1, open2, open3, fire at
+  +0/1/2/3s of open3 time) saved to
+  `tools/playtest_out/bloque_68_mine_visual.png`.
+
+### Verified
+- **44/44 tests in `test_mine_asteroid.py` pass** (was 40, +4 new).
+- **End-to-end test** (`tools/verify_mine_end_to_end.py`):
+  spawn at y=-67.6, vy=32 → opens at t=2.50s → fires 5 times
+  in 4.05s of open3 time = 1.23 Hz (target 1.0 Hz, overshoot
+  from the entry fire).
+- **Visual capture** (`bloque_68_mine_visual.png`): 8 frames
+  showing the mine at each state with the round asteroid opening
+  to reveal the ship and continuing to fire at 1Hz.
+- Full test suite: 1,639 pass + 6 pre-existing failures.
+- `dist/void-hunter.exe` rebuildeado con BLOQUE 68.
+
+### Why this bug went undetected for 3 BLOQUEs
+- BLOQUE 63 (BLOQUE 64.5 threshold commit) added the inverted
+  threshold but the bug was hidden by the test
+  `test_state_transitions_on_y_threshold` which set
+  `e.y = OPENING_Y_THRESHOLD - 10` directly (skipping the
+  spawn-and-drift path) and asserted the mine opened. The test
+  passed because the check was correct for that specific y, but
+  the integration flow (spawn at y < 0, drift down) hit the bug.
+- BLOQUE 64.5 also set `MINE_SPAWN_FRACTION = 1/4` and the
+  1.0s open duration, but didn't catch the drift bug.
+- BLOQUE 65 (4-frame redesign) preserved the inverted threshold
+  and the missing drift velocity.
+- BLOQUE 66 (variant-aware closed state) added 5 closed
+  variants but didn't catch the drift bug.
+- BLOQUE 67 (1Hz fire) added the 1Hz continuous fire but
+  didn't catch the drift bug — the mine fired in simulation
+  but the simulation set `vx, vy` manually.
+- BLOQUE 68 (this) was triggered by the user's frustration
+  that the asteroids didn't open in gameplay. The user was
+  right; the simulation/empirical tests I had been running
+  did not exercise the spawn-and-drift path end-to-end.
+
+### Out of Scope
+- The 3-bullet fan is preserved (1 fire action per second,
+  3 bullets per fan = 9 bullets per 3 seconds while open).
+- Bumping the title-screen "BLOQUE 60" text (cosmetic, not
+  requested).
+
+
