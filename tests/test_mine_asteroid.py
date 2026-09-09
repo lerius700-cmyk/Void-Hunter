@@ -1,15 +1,20 @@
-"""BLOQUE 63: tests for MINE-ASTEROID enemy.
+"""BLOQUE 63 + 65: tests for MINE-ASTEROID enemy.
 
 Adds ``EnemyKind.MINE_ASTEROID`` — a stealth enemy that uses the asteroid
 aesthetic as camouflage. When in the ``closed`` state it is visually
 identical to a regular asteroid (``Assets/sprites/asteroids/round.png`` is
 reused for the closed frame). When its y crosses the
 ``OPENING_Y_THRESHOLD`` (200 = upper playfield), it transitions through
-``opening`` (0.5s) → ``open`` (0.3s, fires 3 bullets in a fan) → ``closing``
-(0.5s) → ``closed`` (with ``has_opened=True``, no re-open). The closed
-state is immune to player bullets but vulnerable to player collision.
+``open1`` (0.2s) → ``open2`` (0.2s) → ``open3`` (terminal, fires 3 bullets
+in a fan, HP=3 while vulnerable). The 4-state cycle is ONE-WAY: the mine
+never returns to closed after opening. The closed state is immune to
+player bullets but vulnerable to player collision.
 
-Test count: 25.
+BLOQUE 65 update: 4-frame state machine replaces the legacy
+5-frame cycle (closed/opening/open/closing). Per-state durations:
+open1=0.2s, open2=0.2s, open3=indefinite. Total opening animation
+0.6s. The terminal state (open3) reuses the new ship reference
+sprite from BLOQUE 65 (replacing the BLOQUE 63 `open/frame_00.png`).
 """
 from __future__ import annotations
 
@@ -31,6 +36,9 @@ import pytest
 
 from src.entities.enemies.enemy import (
     OPENING_Y_THRESHOLD,
+    MINE_OPEN1_DURATION_S,
+    MINE_OPEN2_DURATION_S,
+    MINE_OPEN_DURATION_S,
     Enemy,
     EnemyKind,
     EnemyState,
@@ -74,7 +82,9 @@ class TestEnumAndConstants:
         """A freshly-spawned MINE_ASTEROID has mine_state='closed' (string)."""
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
         assert e.mine_state == "closed"
-        assert e.mine_state not in ("open", "opening", "closing")
+        # BLOQUE 65: the legacy 5-state cycle (closed/opening/open/closing)
+        # is replaced with a 4-state cycle (closed/open1/open2/open3).
+        assert e.mine_state not in ("open", "opening", "closing", "open1", "open2", "open3")
 
     def test_mine_asteroid_default_has_opened_false(self) -> None:
         """A fresh MINE_ASTEROID has has_opened=False (no cycle yet)."""
@@ -84,102 +94,105 @@ class TestEnumAndConstants:
 
 
 # =====================================================================
-# State machine (5 tests)
+# State machine (BLOQUE 65: 4-state cycle) — 6 tests
 # =====================================================================
 class TestStateMachine:
     def test_state_transitions_on_y_threshold(self) -> None:
-        """Crossing y < OPENING_Y_THRESHOLD triggers closed -> opening."""
+        """Crossing y < OPENING_Y_THRESHOLD triggers closed -> open1."""
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
         # Above the threshold (small y) should trigger
         e.y = OPENING_Y_THRESHOLD - 10
         e.update(0.016, player_x=160.0, player_y=400.0)
-        assert e.mine_state == "opening"
+        assert e.mine_state == "open1"
         # Below the threshold (large y) should NOT trigger
         e2 = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
         e2.y = OPENING_Y_THRESHOLD + 50
         e2.update(0.016, player_x=160.0, player_y=400.0)
         assert e2.mine_state == "closed"
 
-    def test_opening_to_open_after_0_5s(self) -> None:
-        """After 0.5s in 'opening' state, transitions to 'open'."""
+    def test_open1_to_open2_after_0_2s(self) -> None:
+        """After 0.2s in 'open1' state, transitions to 'open2'."""
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
         e.y = OPENING_Y_THRESHOLD - 10
         e.update(0.016, player_x=160.0, player_y=400.0)
-        assert e.mine_state == "opening"
-        # Advance 0.4s — still in opening
-        e.update(0.4, player_x=160.0, player_y=400.0)
-        assert e.mine_state == "opening"
-        # Advance 0.1s more (total 0.5s+) — now open
+        assert e.mine_state == "open1"
+        # Advance 0.1s — still in open1
         e.update(0.1, player_x=160.0, player_y=400.0)
-        assert e.mine_state == "open"
+        assert e.mine_state == "open1"
+        # Advance 0.1s more (total 0.2s) — now open2
+        e.update(0.1, player_x=160.0, player_y=400.0)
+        assert e.mine_state == "open2"
 
-    def test_open_to_closing_after_0_3s(self) -> None:
-        """After 1.0s in 'open' state, transitions to 'closing'.
-
-        Note: the state machine uses a tick-relative model — a single
-        large tick can chain through multiple states. The test uses
-        small ticks (0.016s) so each tick advances at most one state.
-
-        BLOQUE 64.5: MINE_OPEN_DURATION_S changed from 0.3 to 1.0.
-        """
+    def test_open2_to_open3_after_0_2s(self) -> None:
+        """After 0.2s in 'open2' state, transitions to 'open3' (terminal)."""
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
         e.y = OPENING_Y_THRESHOLD - 10
-        # First tick: closed -> opening (0.016s elapsed, not enough to advance)
+        # closed -> open1 -> open2 (0.016 + 0.2 = 0.216s)
         e.update(0.016, player_x=160.0, player_y=400.0)
-        assert e.mine_state == "opening"
-        # Advance to 'open' (total 0.5s in opening)
-        e.update(0.5, player_x=160.0, player_y=400.0)
-        assert e.mine_state == "open"
-        # 0.2s later — still open
         e.update(0.2, player_x=160.0, player_y=400.0)
-        assert e.mine_state == "open"
-        # 0.8s more (total 1.0s) — now closing
-        e.update(0.8, player_x=160.0, player_y=400.0)
-        assert e.mine_state == "closing"
-
-    def test_closing_to_closed_after_0_5s(self) -> None:
-        """After 0.5s in 'closing' state, transitions back to 'closed' (with has_opened=True).
-
-        BLOQUE 64.5: total cycle is now 0.5 + 1.0 + 0.5 = 2.0s.
-        """
-        e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
-        e.y = OPENING_Y_THRESHOLD - 10
-        # Advance through opening + open (0.5 + 1.0 = 1.5s) with small ticks
-        e.update(0.016, player_x=160.0, player_y=400.0)  # closed -> opening
-        e.update(0.5, player_x=160.0, player_y=400.0)    # opening -> open
-        e.update(1.0, player_x=160.0, player_y=400.0)    # open -> closing
-        assert e.mine_state == "closing"
-        # 0.4s later — still closing
-        e.update(0.4, player_x=160.0, player_y=400.0)
-        assert e.mine_state == "closing"
-        # 0.1s more (total 0.5s) — back to closed, has_opened=True
+        assert e.mine_state == "open2"
+        # 0.1s later — still in open2
         e.update(0.1, player_x=160.0, player_y=400.0)
-        assert e.mine_state == "closed"
+        assert e.mine_state == "open2"
+        # 0.1s more (total 0.2s in open2) — now open3
+        e.update(0.1, player_x=160.0, player_y=400.0)
+        assert e.mine_state == "open3"
+        # has_opened=True (BLOQUE 63 invariant preserved)
         assert e.has_opened is True
 
-    def test_has_opened_prevents_reopen(self) -> None:
-        """After a full cycle, the MINE-ASTEROID does NOT re-open.
+    def test_open3_stays_terminal(self) -> None:
+        """BLOQUE 65: open3 is the TERMINAL state — no transition out.
 
-        The y threshold check is performed AFTER the per-tick drift
-        update, so we set y close to 0 (well above the threshold)
-        and run enough ticks to cover the full 2.0s cycle plus
-        extra drift time. After the cycle, has_opened=True so the
-        mine_state stays at 'closed' even if y crosses the threshold
-        again.
+        After reaching open3, the mine stays there indefinitely until
+        destroyed (HP=0). The cycle is ONE-WAY.
+        """
+        e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
+        e.y = OPENING_Y_THRESHOLD - 10
+        # Full cycle: 0.016 + 0.2 + 0.2 = 0.416s
+        e.update(0.016, player_x=160.0, player_y=400.0)
+        e.update(0.2, player_x=160.0, player_y=400.0)
+        e.update(0.2, player_x=160.0, player_y=400.0)
+        assert e.mine_state == "open3"
+        # Run for 5 more seconds — should stay in open3
+        for _ in range(50):
+            e.update(0.1, player_x=160.0, player_y=400.0)
+        assert e.mine_state == "open3"
 
-        BLOQUE 64.5: total cycle is now 0.5 + 1.0 + 0.5 = 2.0s.
+    def test_open3_does_not_fire_again(self) -> None:
+        """BLOQUE 65: the on_fire flag is set ONLY when transitioning to open3.
+
+        In the legacy cycle, on_fire could fire multiple times. The
+        new design fires once at the open2->open3 transition.
+        """
+        e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
+        e.y = OPENING_Y_THRESHOLD - 10
+        e.update(0.016, player_x=160.0, player_y=400.0)
+        e.update(0.2, player_x=160.0, player_y=400.0)
+        # Right at the open2->open3 boundary
+        e.update(0.2, player_x=160.0, player_y=400.0)
+        assert e.mine_state == "open3"
+        assert e.on_fire is True
+        # Reset on_fire (caller responsibility) and update again
+        e.on_fire = False
+        e.update(0.5, player_x=160.0, player_y=400.0)
+        # Should still be in open3 and NOT re-fire
+        assert e.mine_state == "open3"
+        assert e.on_fire is False
+
+    def test_has_opened_set_when_reaching_open3(self) -> None:
+        """BLOQUE 65: has_opened=True is set at the open2->open3 transition.
+
+        This is the same invariant from BLOQUE 63 (no re-open) but
+        moved to the open3 transition since there's no closing state.
         """
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 0.0)
-        # Run a full cycle: 0.5 + 1.0 + 0.5 = 2.0s. Use small ticks
-        # so the state machine transitions one state per tick.
-        for _ in range(30):  # 30 * 0.1 = 3.0s of updates
-            e.update(0.1, player_x=160.0, player_y=400.0)
-        assert e.mine_state == "closed"
+        assert e.has_opened is False
+        # Run a full cycle
+        e.update(0.016, player_x=160.0, player_y=400.0)  # closed -> open1
+        e.update(0.2, player_x=160.0, player_y=400.0)    # open1 -> open2
+        e.update(0.2, player_x=160.0, player_y=400.0)    # open2 -> open3
+        assert e.mine_state == "open3"
         assert e.has_opened is True
-        # Now update again — should stay in closed (no re-trigger)
-        for _ in range(10):
-            e.update(0.1, player_x=160.0, player_y=400.0)
-        assert e.mine_state == "closed"
 
 
 # =====================================================================
@@ -191,15 +204,15 @@ class TestStateTimer:
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
         e.y = OPENING_Y_THRESHOLD - 10
         e.update(0.016, player_x=160.0, player_y=400.0)
-        assert e.mine_state == "opening"
+        assert e.mine_state == "open1"
         assert e.state_timer == 0.0  # reset on transition
         e.update(0.1, player_x=160.0, player_y=400.0)
-        # Timer should now have accumulated (still in 'opening')
-        assert e.mine_state == "opening"
+        # Timer should now have accumulated (still in 'open1')
+        assert e.mine_state == "open1"
         assert e.state_timer > 0.0
-        # 0.4s more -> transitions to 'open', timer resets to 0
-        e.update(0.4, player_x=160.0, player_y=400.0)
-        assert e.mine_state == "open"
+        # 0.1s more -> transitions to 'open2', timer resets to 0
+        e.update(0.1, player_x=160.0, player_y=400.0)
+        assert e.mine_state == "open2"
         assert e.state_timer == 0.0
 
     def test_state_timer_advances_in_each_state(self) -> None:
@@ -211,27 +224,29 @@ class TestStateTimer:
         t1 = e.state_timer
         e.update(0.1, player_x=160.0, player_y=400.0)
         t2 = e.state_timer
-        assert t2 > t1  # advancing in 'opening'
-        assert t2 < 0.5  # not yet at threshold
+        assert t2 > t1  # advancing in 'open1'
+        assert t2 < 0.2  # not yet at threshold (open1=0.2s)
 
 
 # =====================================================================
 # Firing pattern (2 tests)
 # =====================================================================
 class TestFiring:
-    def _make_mine_in_open(self) -> Enemy:
+    def _make_mine_in_open3(self) -> Enemy:
+        """BLOQUE 65: advance the MINE-ASTEROID to open3 (the firing state)."""
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
         e.y = OPENING_Y_THRESHOLD - 10
         # Use small ticks to control state transitions
-        e.update(0.016, player_x=160.0, player_y=400.0)  # closed -> opening
-        e.update(0.5, player_x=160.0, player_y=400.0)    # opening -> open
-        assert e.mine_state == "open"
+        e.update(0.016, player_x=160.0, player_y=400.0)  # closed -> open1
+        e.update(0.2, player_x=160.0, player_y=400.0)     # open1 -> open2
+        e.update(0.2, player_x=160.0, player_y=400.0)     # open2 -> open3 (fires)
+        assert e.mine_state == "open3"
         return e
 
     def test_fire_spawns_3_bullets(self) -> None:
         """_fire_mine_bullets spawns 3 BULLET_ENEMY_MINE bullets in the pool."""
         pool = ProjectilePool(capacity=64)
-        e = self._make_mine_in_open()
+        e = self._make_mine_in_open3()
         e._fire_mine_bullets(pool)
         active = [p for p in pool.pool if p.active]
         assert len(active) == 3
@@ -244,7 +259,7 @@ class TestFiring:
         """The 3 bullets fire at 0°, +15°, -15° from straight down."""
         import math
         pool = ProjectilePool(capacity=64)
-        e = self._make_mine_in_open()
+        e = self._make_mine_in_open3()
         e._fire_mine_bullets(pool)
         active = [p for p in pool.pool if p.active]
         assert len(active) == 3
@@ -294,11 +309,15 @@ class TestHPAndImmunity:
         # Should NOT have triggered death
         assert result is False
 
-    def test_open_vulnerable_to_bullets(self) -> None:
-        """BLOQUE 64.A: HP=3, so 3 hits destroy the MINE_ASTEROID."""
+    def test_open3_vulnerable_to_bullets(self) -> None:
+        """BLOQUE 64.A: HP=3, so 3 hits destroy the MINE_ASTEROID.
+
+        BLOQUE 65: the vulnerable terminal state is 'open3' (was 'open'
+        in BLOQUE 63/64.5).
+        """
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
-        # Force into 'open' state directly
-        e.mine_state = "open"
+        # Force into 'open3' state directly
+        e.mine_state = "open3"
         e.hp = 3
         # 1 hit — alive
         e.apply_damage(1)
@@ -311,10 +330,21 @@ class TestHPAndImmunity:
         assert result is True
         assert e.hp <= 0
 
-    def test_opening_vulnerable_to_bullets(self) -> None:
-        """When mine_state=='opening', bullets deal damage (only closed is immune)."""
+    def test_open1_vulnerable_to_bullets(self) -> None:
+        """BLOQUE 65: open1 is vulnerable (only closed is immune)."""
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
-        e.mine_state = "opening"
+        e.mine_state = "open1"
+        e.hp = 3
+        # 3 hits to destroy
+        e.apply_damage(1)
+        e.apply_damage(1)
+        result = e.apply_damage(1)
+        assert result is True
+
+    def test_open2_vulnerable_to_bullets(self) -> None:
+        """BLOQUE 65: open2 is vulnerable (only closed is immune)."""
+        e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
+        e.mine_state = "open2"
         e.hp = 3
         # 3 hits to destroy
         e.apply_damage(1)
@@ -324,17 +354,56 @@ class TestHPAndImmunity:
 
 
 # =====================================================================
-# Sprite assets (3 tests)
+# Sprite assets (BLOQUE 65: 4-state cycle, 4 dirs)
 # =====================================================================
 class TestSprites:
-    def test_5_state_directories_exist(self) -> None:
-        """closed/opening/open/closing/death directories all exist."""
-        for sub in ("closed", "opening", "open", "closing", "death"):
+    def test_4_states_exist(self) -> None:
+        """BLOQUE 65: closed/open1/open2/open/death directories all exist.
+
+        The legacy 5-state cycle (closed/opening/open/closing) is
+        replaced with a 4-state cycle (closed/open1/open2/open3).
+        open3 reuses the legacy `open/` directory.
+        """
+        for sub in ("closed", "open1", "open2", "open", "death"):
             d = MINE_ASTEROID_SPRITES_DIR / sub
             assert d.is_dir(), f"missing dir: {d}"
 
-    def test_sprite_closed_equals_asteroid_round(self) -> None:
-        """The closed frame is byte-equal to Assets/sprites/asteroids/round.png."""
+    def test_open1_sprite_is_64x64(self) -> None:
+        """BLOQUE 65: open1 sprite is 64x64 (matches the asteroid size)."""
+        from PIL import Image
+        f = MINE_ASTEROID_SPRITES_DIR / "open1" / "frame_00.png"
+        assert f.is_file(), f"missing open1 frame: {f}"
+        with Image.open(f) as img:
+            assert img.size == (64, 64), f"open1 size {img.size}, expected (64, 64)"
+
+    def test_open2_sprite_is_64x64(self) -> None:
+        """BLOQUE 65: open2 sprite is 64x64 (matches the asteroid size)."""
+        from PIL import Image
+        f = MINE_ASTEROID_SPRITES_DIR / "open2" / "frame_00.png"
+        assert f.is_file(), f"missing open2 frame: {f}"
+        with Image.open(f) as img:
+            assert img.size == (64, 64), f"open2 size {img.size}, expected (64, 64)"
+
+    def test_open3_sprite_uses_new_reference(self) -> None:
+        """BLOQUE 65: open3 sprite (open/frame_00.png) is the user's new ship reference.
+
+        The new reference image was processed and saved to
+        `open/frame_00.png` (replacing the legacy BLOQUE 63 sprite).
+        The new image is a different visual from the legacy one
+        (different dimensions / different ship with gun).
+        """
+        from PIL import Image
+        f = MINE_ASTEROID_SPRITES_DIR / "open" / "frame_00.png"
+        assert f.is_file(), f"missing open frame: {f}"
+        with Image.open(f) as img:
+            # BLOQUE 65: 64x64 (was 32x32 in BLOQUE 63 to match asteroid size)
+            assert img.size == (64, 64), f"open3 size {img.size}, expected (64, 64)"
+
+    def test_closed_uses_round_png(self) -> None:
+        """The closed frame is byte-equal to Assets/sprites/asteroids/round.png.
+
+        BLOQUE 65: the perfect-camo invariant from BLOQUE 63 is preserved.
+        """
         import hashlib
         assert ASTEROID_ROUND_PNG.is_file(), f"missing asteroid round: {ASTEROID_ROUND_PNG}"
         closed_path = MINE_ASTEROID_SPRITES_DIR / "closed" / "frame_00.png"
@@ -345,22 +414,22 @@ class TestSprites:
             h2 = hashlib.md5(f.read()).hexdigest()
         assert h1 == h2, "closed frame must be byte-equal to asteroid round.png (perfect camo)"
 
-    def test_opening_frame_count(self) -> None:
-        """opening has 3 frames (00, 01, 02)."""
-        for i in range(3):
-            f = MINE_ASTEROID_SPRITES_DIR / "opening" / f"frame_{i:02d}.png"
-            assert f.is_file(), f"missing opening frame: {f}"
+    def test_opening_directory_removed(self) -> None:
+        """BLOQUE 65: opening/ directory moved to _backup_pre_bloque_65/.
 
-    def test_closing_frame_count(self) -> None:
-        """closing has 3 frames."""
-        for i in range(3):
-            f = MINE_ASTEROID_SPRITES_DIR / "closing" / f"frame_{i:02d}.png"
-            assert f.is_file(), f"missing closing frame: {f}"
+        The 4-state cycle doesn't need a 'opening' state.
+        """
+        d = MINE_ASTEROID_SPRITES_DIR / "opening"
+        assert not d.is_dir(), f"opening/ should be removed (moved to backup)"
 
-    def test_open_frame_count(self) -> None:
-        """open has 1 frame."""
-        f = MINE_ASTEROID_SPRITES_DIR / "open" / "frame_00.png"
-        assert f.is_file(), f"missing open frame: {f}"
+    def test_closing_directory_removed(self) -> None:
+        """BLOQUE 65: closing/ directory moved to _backup_pre_bloque_65/.
+
+        The 4-state cycle doesn't need a 'closing' state — the mine
+        never closes after opening.
+        """
+        d = MINE_ASTEROID_SPRITES_DIR / "closing"
+        assert not d.is_dir(), f"closing/ should be removed (moved to backup)"
 
     def test_death_frame_count(self) -> None:
         """death has 10 frames."""

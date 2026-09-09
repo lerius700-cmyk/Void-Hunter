@@ -41,17 +41,26 @@ class EnemyKind(Enum):
     MINE_ASTEROID = "mine_asteroid"  # BLOQUE 63: asteroid camo enemy
 
 
-# BLOQUE 63: MINE-ASTEROID state machine constants.
+# BLOQUE 63 + 65: MINE-ASTEROID state machine constants.
 # OPENING_Y_THRESHOLD: the y-coordinate (in INTERNAL_W=320 / INTERNAL_H=480
 # playfield units) at which a closed MINE-ASTEROID begins to open. Per
 # spec: 200 = upper playfield, just below the spawn area. The threshold
 # is a named constant so it can be tuned in one place.
 OPENING_Y_THRESHOLD: int = 200
 
-# State durations in seconds.
-MINE_OPENING_DURATION_S: float = 0.5   # closed -> open transition
-MINE_OPEN_DURATION_S: float = 1.0      # fires 3 bullets in this window (BLOQUE 64.5: 0.3→1.0)
-MINE_CLOSING_DURATION_S: float = 0.5   # open -> closed transition
+# BLOQUE 65: per-state durations in seconds for the 4-state cycle
+# (closed -> open1 -> open2 -> open3). The opening sequence plays ONE
+# TIME (never returns to closed) — the mine stays in 'open3' and is
+# vulnerable until destroyed. The per-state duration is 0.2s, so the
+# total opening cycle is 0.6s. Per-state constants are exposed for
+# tunability and for tests that need to verify transition timing.
+MINE_OPEN1_DURATION_S: float = 0.2   # closed -> open1 transition (0.2s)
+MINE_OPEN2_DURATION_S: float = 0.2   # open1 -> open2 transition (0.2s)
+MINE_OPEN_DURATION_S: float = 0.6    # BLOQUE 65: total opening cycle (0.6s = 0.2+0.2+indefinite)
+                                     # Was 1.0 in BLOQUE 64.5 (was the duration of the legacy 'open' state).
+                                     # Kept as a public constant for backward-compat (e.g. test docs that
+                                     # still reference it). Equals MINE_OPEN1 + MINE_OPEN2.
+MINE_OPEN3_DURATION_S: float = float("inf")  # open3 is the terminal vulnerable state (no transition out)
 
 # Fan pattern for the 3 bullets fired in 'open' state.
 MINE_FAN_ANGLE_DEG: float = 15.0       # ±15° from straight down
@@ -247,11 +256,12 @@ ENEMY_CONFIGS: dict[EnemyKind, _EnemyConfig] = {
         sine_wobble=False, sine_amplitude=0.0, sine_freq_hz=0.0,
         wrap_around=True,
     ),
-    # BLOQUE 63 + 64.A: MINE_ASTEROID. Camouflage enemy that uses the
+    # BLOQUE 63 + 64.A + 65: MINE_ASTEROID. Camouflage enemy that uses the
     # asteroid aesthetic when closed (visually identical to a regular
     # asteroid). BLOQUE 64.A: HP=3 (was 2) so it takes 3 hits to
     # destroy. The closed-state bullet immunity (BLOQUE 63) is
-    # preserved; hits land only when mine_state is opening/open/closing.
+    # preserved; hits land only when mine_state is open1/open2/open3
+    # (BLOQUE 65 4-state cycle).
     # fire_cooldown_s is unused (the mine fires via its own state
     # machine, not the legacy fire_cd/telegraph path).
     EnemyKind.MINE_ASTEROID: _EnemyConfig(
@@ -355,10 +365,13 @@ class Enemy:
     animation_frame: int = 0
     animation_timer: float = 0.0
     ANIMATION_FRAME_DURATION: float = 0.08  # 10 frames at 12.5 FPS, ~80ms per frame
-    # BLOQUE 63: MINE_ASTEROID state machine. mine_state is one of
-    # "closed" | "opening" | "open" | "closing". Only used when
-    # kind == EnemyKind.MINE_ASTEROID. For other enemy kinds, these
-    # fields stay at their default values.
+    # BLOQUE 65: MINE_ASTEROID state machine. mine_state is one of
+    # "closed" | "open1" | "open2" | "open3". The 4-state cycle is
+    # closed -> open1 -> open2 -> open3 (each transition 0.2s; total
+    # opening 0.6s), then open3 is the TERMINAL vulnerable state
+    # (no transition out — the mine never closes after opening). Only
+    # used when kind == EnemyKind.MINE_ASTEROID. For other enemy kinds,
+    # these fields stay at their default values.
     mine_state: str = "closed"  # MINE_ASTEROID only
     state_timer: float = 0.0
     has_opened: bool = False
@@ -375,36 +388,31 @@ class Enemy:
         """BLOQUE 59: relative path under Assets/sprites/ for the current
         animation frame. Empty string if kind is not a redesigned enemy.
 
-        BLOQUE 63: MINE_ASTEROID uses a different directory layout
-        (state machine states closed/opening/open/closing/death, NOT the
-        standard idle/thrust/damage/death animations). Returns the
-        per-state sprite path for the current mine_state, picking the
-        frame index from state_timer.
+        BLOQUE 65: MINE_ASTEROID uses a 4-state cycle
+        (closed/open1/open2/open3). Each non-closed state is a single
+        static frame (no per-frame counter), so the frame index is
+        always 0 for those. The terminal state is open3 (the user's
+        new ship reference) which the mine stays in until destroyed.
         """
         kind_value = self.kind.value if hasattr(self.kind, "value") else str(self.kind)
         if kind_value == "sub_boss":
             return ""  # sub-boss keeps its own 4-direction sprites
         if kind_value == "mine_asteroid":
-            # State machine uses closed/opening/open/closing/death.
-            # The frame index inside each state is derived from
-            # state_timer (so we can render a smooth transition
-            # without needing a per-frame counter).
+            # BLOQUE 65: 4-state cycle closed/open1/open2/open3.
+            # Each state is a single static frame; the per-state sprite
+            # is loaded from the corresponding directory. The terminal
+            # state open3 reuses the legacy `open/` directory (now
+            # containing the user's new ship reference).
             state = self.mine_state
-            if state == "closed":
-                # Always frame 0 (we only have one closed frame — the
-                # asteroid lookalike reused from BLOQUE 61)
+            if state not in ("closed", "open1", "open2", "open3"):
                 idx = 0
-            elif state == "opening":
-                # 0.5s / 3 frames = ~0.166s per frame
-                idx = min(2, int(self.state_timer / 0.166))
-            elif state == "open":
-                idx = 0
-            elif state == "closing":
-                # Mirror of opening: 0.5s / 3 frames
-                idx = min(2, int(self.state_timer / 0.166))
-            else:
-                idx = 0
-            return f"enemies/mine_asteroid/{state}/frame_{idx:02d}.png"
+                return f"enemies/mine_asteroid/closed/frame_{idx:02d}.png"
+            if state == "open3":
+                # Terminal state: render the user's new ship reference
+                # (loaded from the legacy `open/` directory after the
+                # BLOQUE 65 swap).
+                return "enemies/mine_asteroid/open/frame_00.png"
+            return f"enemies/mine_asteroid/{state}/frame_00.png"
         return f"enemies/{kind_value}/{self.animation_state}/frame_{self.animation_frame:02d}.png"
 
     def on_spawn(self) -> None:
@@ -848,14 +856,19 @@ class Enemy:
         self.fire_cd = 0.5
 
     # -----------------------------------------------------------------------
-    # BLOQUE 63: MINE_ASTEROID state machine + firing
+    # BLOQUE 63 + 65: MINE_ASTEROID state machine + firing
     # -----------------------------------------------------------------------
     def _update_mine_asteroid(self, dt: float) -> None:
         """Advance the MINE_ASTEROID state machine: drift down like an
-        asteroid, transition through opening -> open -> closing based on
-        the timer. When transitioning to 'open', fires 3 bullets in a
+        asteroid, transition through open1 -> open2 -> open3 based on
+        the timer. When transitioning to 'open3', fires 3 bullets in a
         fan via _fire_mine_bullets (caller is responsible for spawning
         the actual ProjectilePool entries; this method only flips state).
+
+        BLOQUE 65: 4-state cycle (closed/open1/open2/open3) — the cycle
+        is ONE-WAY. Once the mine reaches 'open3', it stays there until
+        destroyed. Per-state durations: open1=0.2s, open2=0.2s, open3
+        is terminal. The opening sequence takes 0.6s total.
 
         Implementation note: the timer advances BEFORE the transition
         check, and a single large tick can chain through multiple
@@ -869,47 +882,44 @@ class Enemy:
         if self.mine_state == "closed":
             if not self.has_opened and self.y < OPENING_Y_THRESHOLD:
                 # y < 200 = upper playfield, trigger open cycle
-                self.mine_state = "opening"
+                self.mine_state = "open1"
                 self.state_timer = 0.0
             return
         # For non-closed states: advance timer, then check transition.
         # The loop caps at 4 iterations so a huge dt cannot spin the
         # state machine forever; the cap matches the maximum possible
-        # transitions (closed -> opening -> open -> closing -> closed).
-        # After each transition, we subtract the consumed time from
-        # the remaining time so a single large tick can chain through
-        # multiple states without over-accelerating.
+        # transitions (closed -> open1 -> open2 -> open3). After each
+        # transition, we subtract the consumed time from the remaining
+        # time so a single large tick can chain through multiple states
+        # without over-accelerating.
         remaining = dt
         for _ in range(4):
-            if self.mine_state == "opening":
+            if self.mine_state == "open1":
                 self.state_timer += remaining
-                if self.state_timer < MINE_OPENING_DURATION_S:
+                if self.state_timer < MINE_OPEN1_DURATION_S:
                     return
-                # Transition to 'open', consume the time it took
-                consumed = MINE_OPENING_DURATION_S - (self.state_timer - remaining)
-                remaining = max(0.0, self.state_timer - MINE_OPENING_DURATION_S)
+                # Transition to 'open2', consume the time it took
+                remaining = max(0.0, self.state_timer - MINE_OPEN1_DURATION_S)
                 self.state_timer = 0.0
-                self.mine_state = "open"
+                self.mine_state = "open2"
+                if remaining <= 0.0:
+                    return
+            elif self.mine_state == "open2":
+                self.state_timer += remaining
+                if self.state_timer < MINE_OPEN2_DURATION_S:
+                    return
+                # Transition to 'open3' (terminal). Fires 3 bullets in
+                # a fan via the integration site.
+                remaining = max(0.0, self.state_timer - MINE_OPEN2_DURATION_S)
+                self.state_timer = 0.0
+                self.mine_state = "open3"
+                self.has_opened = True  # mark cycle complete (BLOQUE 63 invariant)
                 self.on_fire = True
                 if remaining <= 0.0:
                     return
-            elif self.mine_state == "open":
-                self.state_timer += remaining
-                if self.state_timer < MINE_OPEN_DURATION_S:
-                    return
-                remaining = max(0.0, self.state_timer - MINE_OPEN_DURATION_S)
-                self.state_timer = 0.0
-                self.mine_state = "closing"
-                if remaining <= 0.0:
-                    return
-            elif self.mine_state == "closing":
-                self.state_timer += remaining
-                if self.state_timer < MINE_CLOSING_DURATION_S:
-                    return
-                remaining = max(0.0, self.state_timer - MINE_CLOSING_DURATION_S)
-                self.state_timer = 0.0
-                self.mine_state = "closed"
-                self.has_opened = True
+            elif self.mine_state == "open3":
+                # BLOQUE 65: terminal state. The mine stays in open3
+                # until destroyed (HP=0). No transition out.
                 return
             else:
                 # Unknown state — bail out
@@ -919,9 +929,10 @@ class Enemy:
             self.state = EnemyState.DEAD
 
     def _fire_mine_bullets(self, pool: "ProjectilePool") -> None:
-        """BLOQUE 63: spawn 3 BULLET_ENEMY_MINE bullets in a fan
+        """BLOQUE 63 + 65: spawn 3 BULLET_ENEMY_MINE bullets in a fan
         pattern (±15° from straight down, 80 px/s). Called by the
-        integration site when the MINE_ASTEROID transitions to 'open'.
+        integration site when the MINE_ASTEROID transitions to 'open3'
+        (was 'open' in BLOQUE 63).
 
         Imports are local to keep the module import graph clean.
         """
