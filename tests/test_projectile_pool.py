@@ -261,9 +261,14 @@ def test_pre_baked_frames_have_4_per_kind(pool: ProjectilePool) -> None:
     1-frame boss + laser kinds). 5 kinds × 4 + 1 extra (LASER) = 24
     surface keys (since BOSS and BOSS_LASER each alias all 4 frames to
     their single source frame, they still occupy 4 keys each).
+
+    BLOQUE 63: BULLET_ENEMY_MINE added as a 7th kind, so the cache now
+    holds 28 entries (7 kinds × 4 frames). All bullet kinds are
+    1-frame (alias to a single source frame), so each kind still
+    occupies 4 keys.
     """
-    # PLAYER, PLAYER_CHARGED, PLAYER_BEAM, ENEMY, BOSS, BOSS_LASER = 6 kinds
-    assert len(pool._frames) == 24
+    # PLAYER, PLAYER_CHARGED, PLAYER_BEAM, ENEMY, BOSS, BOSS_LASER, ENEMY_MINE = 7 kinds
+    assert len(pool._frames) == 28
 
 
 def test_bullet_kinds_have_correct_size(pool: ProjectilePool) -> None:
