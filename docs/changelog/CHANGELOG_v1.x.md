@@ -527,6 +527,59 @@ showing each pattern with visible leader glow ring.
 
 ---
 
+## [BLOQUE 61] — 2026-09-08 — Asteroid Visual Overhaul (5 MINE-ASTEROID variants)
+
+### Added
+- **5 AI-generated asteroid variants** (32×32 transparent PNGs) in `Assets/sprites/asteroids/`: `round`, `elongated`, `spiked`, `hollowed`, `cracked`. All are MINE-ASTEROID closed lookalikes (brown rocky body + Greek-key stripe band + 1-3 craters). The `round` variant is the canonical closed sprite reused by BLOQUE 63's MINE-ASTEROID enemy.
+- **AI generation pipeline** at `tools/redesign_asteroids/`: `_asteroid_specs.py` (5 prompt variants) + `01_generate_bases.py` (mcode-tools Matrix) + `02_postprocess.py` (PIL LANCZOS + `_transparentize_damero_after_resize` from `tools/redesign_ships/`).
+- **Sprite loader** `_load_asteroid_sprite(variant)` in `src/entities/asteroid.py`: lazy load + per-variant cache. Returns a fallback surface for out-of-range variants so the game never crashes on a bad index.
+- **20 new tests** in `tests/test_asteroid_sprites.py`: asset presence (5 PNGs at 32×32, transparent bg, 5 distinct), sprite loader (cache + invalid fallback), dataclass shape (no rotation, has variant+scale), spawn factory (variant in 0-4, scale in 0.7-1.3, radius derived from scale, 30% powerup drop), draw (no `pygame.transform.rotate` call), preserved collision + powerup API.
+- **Visual capture** at `tools/capture/capture_bloque_61_asteroids.py` → `tools/playtest_out/bloque_61_5_variants.png` (320×480, 5 asteroids spaced across playfield with labels).
+
+### Changed
+- `src/entities/asteroid.py` rewritten: procedural `_make_asteroid_sprite` REMOVED. `Asteroid` dataclass: `rotation` and `rotation_speed` fields REMOVED; `variant: int = 0` and `scale: float = 1.0` fields ADDED. `update()` no longer mutates rotation. `draw_asteroid()` uses `pygame.transform.smoothscale` (NOT rotate) to apply the per-spawn scale. `spawn_asteroid()` picks `variant=rng.randint(0, 4)` and `scale=rng.uniform(0.7, 1.3)`; `radius` is now derived as `int(16 * scale)` (clamped to ≥ 8) so collision math matches what the player sees.
+- `tests/test_bloque_58_12.py`: removed the procedural sprite tests (no longer applicable) and the rotation assertion in `test_asteroid_update_drifts`. New tests live in `tests/test_asteroid_sprites.py`.
+
+### Preserved (per spec)
+- Powerup drop rate (30%) and weighted distribution (BOMB 15 / HP 30 / WEAPON 20 / SCORE 35).
+- HP range (1-3) and drift behavior (`drift_vx` / `drift_vy`).
+- `PowerupKind` enum, `Powerup` dataclass, `pick_random_powerup()`, `hit()`, `is_off_screen()`.
+- GOLIATH boss, top-down ships, audio, scene manager, BGM, HUD — all untouched.
+- 2491 existing tests still pass (the new test file adds 23 tests for 100% pass rate in `test_asteroid_sprites.py`).
+
+### Pipeline
+- `tools/redesign_asteroids/01_generate_bases.py` calls `mcode-tools connector call connector__matrix__generate_image` for each of 5 variants → saves 1024×1024 base PNG to `Assets/sprites/redesign/_base/asteroid_<variant>_base.png` → logs `node_id` + prompt to `tools/redesign_asteroids/manifest.json`.
+- `tools/redesign_asteroids/02_postprocess.py` reuses the proven `_transparentize_background` + `_transparentize_damero_after_resize` helpers from `tools/redesign_ships/02_postprocess.py` via `importlib`. Crops bottom 15% (AI watermark), center-crops to square, LANCZOS resizes to 32×32, runs post-resize damero clean, thresholds alpha.
+
+### Visual verification
+- `tools/playtest_out/bloque_61_5_variants.png` confirms 5 visually distinct MINE-ASTEROID closed lookalikes side-by-side, with size variation from the per-spawn scale feature.
+
+---
+
+## [BLOQUE 61] — 2026-09-08 — Asteroid Visual Overhaul (5 AI Variants)
+
+### Added
+- 5 AI-generated 32×32 asteroid PNGs in `Assets/sprites/asteroids/`: `round`, `elongated`, `spiked`, `hollowed`, `cracked`. All are MINE-ASTEROID closed lookalikes (brown rocky body, Greek-key stripe band, 1-3 craters, mineral highlights). The `round` variant is the canonical MINE-ASTEROID and will be reused as the closed sprite for BLOQUE 63's MINE-ASTEROID enemy.
+- `_load_asteroid_sprite(variant)` lazy loader + cache in `src/entities/asteroid.py`
+- `tools/redesign_asteroids/01_generate_bases.py` (mcode-tools Matrix gen) + `02_postprocess.py` (LANCZOS resize + transparentize damero)
+- `tools/redesign_asteroids/asteroid_manifest.json` (5 base metadata entries)
+- `tools/capture/capture_bloque_61_asteroids.py` (320×480 visual verification: 5 variants in a row, labeled)
+- 23 new tests in `tests/test_asteroid_sprites.py` covering asset presence, sprite loader, dataclass shape, spawn factory, draw, collision, and powerup preservation
+
+### Changed
+- `src/entities/asteroid.py`: removed procedural `_make_asteroid_sprite` (BLOQUE 58.12) and removed `rotation` / `rotation_speed` fields. `Asteroid` now has `variant: int = 0` and `scale: float = 1.0` instead. `draw_asteroid` blits the AI sprite with smoothscale (no `pygame.transform.rotate` call anywhere in the asteroid path).
+- `spawn_asteroid` picks `variant=rng.randint(0, 4)` and `scale=rng.uniform(0.7, 1.3)`; `radius` is now `int(16 * scale)` clamped to >= 8.
+- 30% powerup drop rate and the BOMB/HP/WEAPON/SCORE distribution are preserved.
+
+### Removed
+- 1 procedural polygon-and-Greek-key generator in `src/entities/asteroid.py` (`_make_asteroid_sprite` and its sprite cache).
+
+### Notes
+- Drops in-game rotation to make the MINE-ASTEROID camouflage (BLOQUE 63) effective — closed state will be visually identical to a regular asteroid. If playtest reveals the static feel is jarring, a 1-2 px vertical bob can be added in a future polish pass.
+- The 5 base PNGs (~175 KB each, 1024×1024) live in `Assets/sprites/redesign/_base/asteroid_*_base.png` and are gitignored from `dist/`/`build/` outputs but tracked in source.
+
+---
+
 ## [v1.2.x] — 2026-09-XX — BLOQUE 58.next: Movement Expansion: Sacred Geometry & Fractal Symbolism
 
 ### Added
