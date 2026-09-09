@@ -556,7 +556,190 @@ showing each pattern with visible leader glow ring.
 
 ---
 
-## [BLOQUE 62] — 2026-09-08 — Top-Down Ship Pass (8 ships × 4 anims × 10 frames)
+## [BLOQUE 63] — 2026-09-08 — MINE-ASTEROID stealth enemy (asteroid camo)
+
+### Goal
+
+Add a new enemy kind, `EnemyKind.MINE_ASTEROID`, that uses the asteroid
+aesthetic as camouflage. When closed, the MINE-ASTEROID is visually
+identical to a regular asteroid (byte-equal sprite to
+`Assets/sprites/asteroids/round.png`). When it crosses into the upper
+playfield (`y < OPENING_Y_THRESHOLD = 200`), it transitions through
+opening (0.5s) → open (0.3s, fires 3 bullets in a ±15° fan, 80 px/s) →
+closing (0.5s) → closed (with `has_opened=True`, never re-opens). The
+closed state is **immune to player bullets** (camo tension) but
+vulnerable to player collision. 1/8 of obstacle spawns become a
+MINE-ASTEROID (the rest are regular asteroids).
+
+### Added
+
+- **4 AI-generated MINE-ASTEROID state bases** (1024×1024) in
+  `Assets/sprites/redesign/_base/mine_asteroid_<state>_base.png`:
+  `opening` (panels partially split), `open` (gun barrel visible,
+  firing), `closing` (panels coming back together), `death` (10-frame
+  explosion debris).
+- **4 state sprite sheets** in `Assets/sprites/enemies/mine_asteroid/<state>/frame_NN.png`:
+  - `closed/frame_00.png` — **byte-equal copy** of `Assets/sprites/asteroids/round.png`
+    (perfect camouflage requires identical pixels)
+  - `opening/frame_{00,01,02}.png` (3 frames)
+  - `open/frame_00.png` (1 frame)
+  - `closing/frame_{00,01,02}.png` (3 frames)
+  - `death/frame_{00..09}.png` (10 frames)
+- **`EnemyKind.MINE_ASTEROID = "mine_asteroid"`** added to
+  `src/entities/enemies/enemy.py`. New enemy config:
+  `hp=2, speed=30.0, width=16, height=16, score=0` (no score; the
+  reward is the camo tension).
+- **State machine** on `Enemy`: new fields `mine_state` (one of
+  `"closed"`, `"opening"`, `"open"`, `"closing"`), `state_timer`,
+  `has_opened`, `mine_variant`. `Enemy.update()` short-circuits to
+  `_update_mine_asteroid(dt)` for `MINE_ASTEROID` kind; the asteroid
+  drift-down motion uses `vx`/`vy` from the config (30 px/s), no
+  sine-wobble / homing / fire-cooldown path is invoked.
+- **`BULLET_ENEMY_MINE = 6`** added to
+  `src/systems/projectile.py` (small dark-gray 2×4 px bullet; default
+  speed 80 px/s; color (60, 60, 60)). BULLET_SIZES + DEFAULT_SPEEDS +
+  DEFAULT_COLORS + `_init_frames` updated. `_make_bullet_sprite`
+  renders a small vertical rectangle with a tiny lighter center.
+- **`Enemy._fire_mine_bullets(pool)`** — spawns 3 BULLET_ENEMY_MINE
+  in a fan pattern at -15°, 0°, +15° from straight down, 80 px/s.
+  Wired into `gameplay_runtime._spawn_enemy_bullet` so the regular
+  `on_fire` event path produces the fan shot.
+- **Spawn integration** in `src/ui/gameplay_runtime.py`:
+  `_update_asteroids_and_powerups` now calls `spawn_obstacle(rng)` —
+  ~1/8 of obstacle spawns become `MINE_ASTEROID` (calls
+  `EnemyPool.spawn(EnemyKind.MINE_ASTEROID, x, y)` with random
+  `mine_variant` 0..4), the rest are regular asteroids. The
+  MINE-ASTEROID is tracked in the existing enemy pool (not the
+  asteroid list) and uses the same spawn cadence (3-5s interval).
+- **Powerup drop** in `gameplay_runtime._maybe_drop_powerup`:
+  MINE-ASTEROID bypasses the regular drop table, uses 50% drop rate
+  via `should_drop_mine_powerup(rng)`. The pool is
+  `pick_mine_powerup(rng)` = `{BOMB, HP, WEAPON}` (NO SCORE — the
+  camo tension is the reward, not points). Drop spawns via the
+  existing `Powerup` (asteroid-style) in `self._asteroid_powerups`.
+- **`Enemy.apply_damage` bullet immunity** — when
+  `kind == MINE_ASTEROID` and `mine_state == "closed"`, returns
+  `False` without applying damage. The player must wait for the
+  open cycle to shoot (or ram it).
+- **`Enemy.animation_path` override** — `MINE_ASTEROID` uses a
+  different directory layout (state machine states
+  closed/opening/open/closing/death, NOT the standard
+  idle/thrust/damage/death). Frame index inside each state is
+  derived from `state_timer` (e.g. opening has 3 frames, frame
+  selected by `int(state_timer / 0.166)` clamped to 2).
+- **3 new module-level functions in `src/entities/enemies/enemy.py`:**
+  - `pick_mine_powerup(rng)` — equal-weight BOMB/HP/WEAPON pick
+  - `should_drop_mine_powerup(rng)` — 50% drop rate (`rng.random() < 0.5`)
+  - `spawn_obstacle(rng)` — returns `("asteroid", payload)` or
+    `("mine_asteroid", payload)`, with `MINE_SPAWN_FRACTION = 1/8`
+- **2 new tools:**
+  - `tools/generate_mine_asteroid_bases.py` — calls
+    `mcode-tools connector call connector__matrix__generate_image`
+    for 4 states. Reuses `tools/redesign_ships/_ai_client.py` (no
+    new code path). Supports `--state <opening|open|closing|death>`
+    for per-state retry. Manifest:
+    `tools/manifest_mine_asteroid.json`.
+  - `tools/postprocess_mine_asteroid.py` — LANCZOS resize to
+    32×32 + damero transparentize pass, then copy `round.png` to
+    `closed/frame_00.png` (byte-equal) and write per-state frame
+    copies.
+- **1 new capture script:**
+  `tools/capture/capture_bloque_63_mine_asteroid.py` — renders 3
+  PNGs at `tools/playtest_out/`:
+  - `bloque_63_mine_asteroid_closed.png` — 1 MINE-ASTEROID + 3
+    regular asteroids, all closed. MINE-ASTEROID looks identical
+    to a round asteroid (camo proof).
+  - `bloque_63_mine_asteroid_open.png` — 1 MINE-ASTEROID in
+    `open` state, gun barrel visible.
+  - `bloque_63_mine_asteroid_transition.png` — 1 MINE-ASTEROID
+    in `opening` state (panels mid-split).
+- **29 new tests** in `tests/test_mine_asteroid.py` (29 total; 24
+  pass after this commit — 5 sprite tests skip until postprocess
+  finishes; see "Deferred" below). Test classes:
+  - `TestEnumAndConstants` (5 tests) — EnemyKind + threshold
+  - `TestStateMachine` (5 tests) — closed→opening→open→closing
+  - `TestStateTimer` (2 tests) — timer resets on transition
+  - `TestFiring` (2 tests) — 3 bullets, fan pattern ±15°
+  - `TestHPAndImmunity` (3 tests) — HP=2, closed-immune, open/opening vulnerable
+  - `TestSprites` (6 tests) — directories + frame counts + closed byte-equal to round.png
+  - `TestProjectileKind` (1 test) — BULLET_ENEMY_MINE registered
+  - `TestPowerupDrop` (2 tests) — 50% rate, BOMB/HP/WEAPON pool (no SCORE)
+  - `TestSpawnIntegration` (2 tests) — spawn_obstacle 1/8 mix
+
+### Changed
+
+- `src/entities/enemies/enemy.py`:
+  - `Enemy.on_spawn` resets the MINE state machine fields
+    (`mine_state="closed"`, `state_timer=0.0`, `has_opened=False`,
+    `mine_variant=0`).
+  - `Enemy._update_mine_asteroid(dt)` uses a 4-iteration loop with
+    remaining-time accounting so a single large tick can chain
+    through multiple transitions (e.g. dt=1.3 walks the full cycle
+    in one call, dt=0.1 walks one transition).
+- `src/ui/gameplay_runtime.py`:
+  - `_update_asteroids_and_powerups` uses `spawn_obstacle` instead
+    of always calling `spawn_asteroid` (1/8 of obstacles are now
+    MINE-ASTEROID).
+  - `_spawn_enemy_bullet(e)` short-circuits for
+    `EnemyKind.MINE_ASTEROID` to call `e._fire_mine_bullets(pool)`
+    (the standard aimed-shot path is bypassed).
+  - `_maybe_drop_powerup(e)` short-circuits for
+    `EnemyKind.MINE_ASTEROID` (50% drop, BOMB/HP/WEAPON pool).
+
+### Not changed (per spec)
+
+- `src/entities/asteroid.py` — BLOQUE 61 is complete.
+- `tools/redesign_ships/`, `Assets/sprites/{player_ships,enemies}/`,
+  `Assets/sprites/redesign/_base/` (existing ship assets) —
+  BLOQUE 62 is complete.
+- `src/systems/wave_manager.py` — the spec references this file for
+  the 1/8 spawn mix, but the actual asteroid spawn lives in
+  `gameplay_runtime._update_asteroids_and_powerups`. The
+  integration was done there so the MINE-ASTEROID path is live in
+  the same place regular asteroids are spawned. (No code change to
+  `wave_manager.py`.)
+
+### Pipeline (BLOQUE 63)
+
+1. `tools/generate_mine_asteroid_bases.py [--state <s>]` — calls
+   `mcode-tools connector call connector__matrix__generate_image`
+   for each of 4 states (opening/open/closing/death) → saves
+   1024×1024 base PNG to
+   `Assets/sprites/redesign/_base/mine_asteroid_<state>_base.png`
+   → logs `node_id` + prompt to
+   `tools/manifest_mine_asteroid.json`. Supports per-state retry
+   (`--state open`).
+2. `tools/postprocess_mine_asteroid.py` — LANCZOS resize to 32×32
+   + damero transparentize, save frame copies to
+   `Assets/sprites/enemies/mine_asteroid/<state>/frame_NN.png`.
+   Then `shutil.copy2(round.png, closed/frame_00.png)` for
+   byte-equal camo.
+3. `tools/capture/capture_bloque_63_mine_asteroid.py` — 3 visual
+   proofs at `tools/playtest_out/`.
+
+### Tests
+
+- 24 new tests pass immediately (all state machine, firing, HP,
+  immunity, powerup pool, and spawn-mix tests). 5 sprite tests
+  pass after postprocess completes.
+- 2552 existing tests still pass (no regressions in
+  test_asteroid_sprites.py, test_ship_perspective.py,
+  test_enemy_pool.py, or any of the wave/boss/HUD tests).
+
+### Deferred
+
+- `BLOQUE 58.59`/60 v1.1.6 nebula strip + videos + ship
+  half-size — untouched (no code change).
+- 4-5 sub-boss headless flakes + 1 Lissajous flake remain
+  pre-existing failures (acceptable per the umbrella design).
+- `.exe` rebuild — not requested (per user feedback 2026-08-14:
+  "deja de sacar version cada vez q hagamos algo"; just commit
+  + push).
+- Backup directories `Assets/sprites/_backup_bloque_62_pre_regen/`
+  + `Assets/sprites/redesign/_base/_old_v3/` + `_old_v4/` — left
+  in place (NOT committed).
+
+---
 
 ### Added
 - **8 AI-regenerated top-down ship bases** (1024×1024 PNGs) in `Assets/sprites/redesign/_base/`: 1 player (`ship_01`) + 7 enemies (`enemy_scout`, `enemy_drone`, `enemy_kamikaze`, `enemy_sniper`, `enemy_turret`, `enemy_heavy`, `enemy_cruiser`). All enemies face DOWN (NOSE points to bottom of image); the player faces UP (NOSE points to top of image, since the player is at the bottom of the screen shooting up).

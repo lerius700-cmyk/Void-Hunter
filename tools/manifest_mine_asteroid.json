@@ -1,0 +1,36 @@
+{
+  "bases": {
+    "mine_asteroid_opening": {
+      "node_id": "439754881605936",
+      "prompt": "16-bit pixel art, single round asteroid in mid-open state, top-down view. A round brown rocky asteroid with a metal seam splitting open \u2014 the panels are partially separated revealing a small gun barrel inside. Background pure black, no shadows, no background details. Sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors: brown, dark brown, light brown, gray, dark gray, light gray, black, white). Metal Slug aesthetic.",
+      "state": "opening",
+      "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\mine_asteroid_opening_base.png",
+      "size_bytes": 225422,
+      "created_at": "2026-09-08T20:02:04"
+    },
+    "mine_asteroid_open": {
+      "node_id": "439754881605940",
+      "prompt": "16-bit pixel art, single open mine weapon, top-down view. A round brown rocky asteroid with the top panel fully open, revealing a small dark gun barrel pointing down. The asteroid body is symmetric with two opened panels (left and right) showing the gun. Background pure black, no shadows, no background details. Sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors: brown, dark brown, light brown, gray, dark gray, light gray, black, white). Metal Slug aesthetic.",
+      "state": "open",
+      "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\mine_asteroid_open_base.png",
+      "size_bytes": 450955,
+      "created_at": "2026-09-08T20:02:33"
+    },
+    "mine_asteroid_closing": {
+      "node_id": "439756832530665",
+      "prompt": "16-bit pixel art, single round asteroid in mid-close state, top-down view. A round brown rocky asteroid with panels coming back together after firing. A metal seam visible but panels are nearly rejoined. Background pure black, no shadows, no background details. Sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 8 colors: brown, dark brown, light brown, gray, dark gray, light gray, black, white). Metal Slug aesthetic.",
+      "state": "closing",
+      "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\mine_asteroid_closing_base.png",
+      "size_bytes": 404398,
+      "created_at": "2026-09-08T20:03:13"
+    },
+    "mine_asteroid_death": {
+      "node_id": "439758229979271",
+      "prompt": "16-bit pixel art, single asteroid explosion, top-down view. A round brown rocky asteroid exploding \u2014 body fragmented into 6-8 rocky debris pieces radiating outward, with a yellow-orange-white fireball at the center. Background pure black, no shadows, no background details. Sharp clean pixel edges, no anti-aliasing, no gradients, limited palette (max 10 colors: brown, dark brown, light brown, gray, dark gray, light gray, black, white, yellow, orange). Metal Slug aesthetic.",
+      "state": "death",
+      "out_path": "D:\\AI\\void-hunter\\Assets\\sprites\\redesign\\_base\\mine_asteroid_death_base.png",
+      "size_bytes": 343924,
+      "created_at": "2026-09-08T20:03:35"
+    }
+  }
+}

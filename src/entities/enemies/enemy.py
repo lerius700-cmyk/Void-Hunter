@@ -38,6 +38,73 @@ class EnemyKind(Enum):
     TURRET = "turret"
     CARRIER = "carrier"
     SUB_BOSS = "sub_boss"  # BLOQUE 50: mid-waves frenetic mini-boss
+    MINE_ASTEROID = "mine_asteroid"  # BLOQUE 63: asteroid camo enemy
+
+
+# BLOQUE 63: MINE-ASTEROID state machine constants.
+# OPENING_Y_THRESHOLD: the y-coordinate (in INTERNAL_W=320 / INTERNAL_H=480
+# playfield units) at which a closed MINE-ASTEROID begins to open. Per
+# spec: 200 = upper playfield, just below the spawn area. The threshold
+# is a named constant so it can be tuned in one place.
+OPENING_Y_THRESHOLD: int = 200
+
+# State durations in seconds.
+MINE_OPENING_DURATION_S: float = 0.5   # closed -> open transition
+MINE_OPEN_DURATION_S: float = 0.3      # fires 3 bullets in this window
+MINE_CLOSING_DURATION_S: float = 0.5   # open -> closed transition
+
+# Fan pattern for the 3 bullets fired in 'open' state.
+MINE_FAN_ANGLE_DEG: float = 15.0       # ±15° from straight down
+MINE_FAN_BULLET_SPEED: float = 80.0    # px/s
+
+# 50% powerup drop on destroy.
+MINE_POWERUP_DROP_RATE: float = 0.50
+
+# Fraction of obstacle spawns that become MINE-ASTEROID.
+# 1/8 = 0.125 per spec.
+MINE_SPAWN_FRACTION: float = 1.0 / 8.0
+
+
+def pick_mine_powerup(rng: random.Random) -> "PowerupKind":
+    """BLOQUE 63: pool of powerups MINE-ASTEROID can drop. Excludes
+    SCORE (the camo tension is the reward, not the points).
+
+    Equal-weight pick between BOMB / HP / WEAPON.
+    """
+    from src.entities.asteroid import PowerupKind
+    return rng.choice([PowerupKind.BOMB, PowerupKind.HP, PowerupKind.WEAPON])
+
+
+def should_drop_mine_powerup(rng: random.Random) -> bool:
+    """BLOQUE 63: 50% chance MINE-ASTEROID drops a powerup when destroyed."""
+    return rng.random() < MINE_POWERUP_DROP_RATE
+
+
+def spawn_obstacle(rng: random.Random) -> tuple[str, dict]:
+    """BLOQUE 63: spawn one obstacle. ~1/8 of obstacles are MINE_ASTEROID,
+    the rest are regular asteroids (caller picks variant/scale).
+
+    Returns:
+        ("asteroid", payload) where payload is a dict with x/y/variant/scale
+            keys suitable for constructing an Asteroid.
+        ("mine_asteroid", payload) where payload is a dict with x/y keys
+            suitable for constructing an Enemy(MINE_ASTEROID).
+    """
+    from src.core.settings import INTERNAL_H, INTERNAL_W
+    if rng.random() < MINE_SPAWN_FRACTION:
+        # MINE_ASTEROID — pick a starting x and y near the spawn line
+        x = rng.uniform(24, INTERNAL_W - 24)
+        y = rng.uniform(-80, 0)
+        return ("mine_asteroid", {"x": x, "y": y})
+    # Regular asteroid
+    from src.entities.asteroid import spawn_asteroid
+    ast = spawn_asteroid(rng)
+    return ("asteroid", {
+        "x": ast.x, "y": ast.y,
+        "variant": ast.variant, "scale": ast.scale,
+        "hp": ast.hp, "drift_vx": ast.drift_vx, "drift_vy": ast.drift_vy,
+        "hidden_powerup": ast.hidden_powerup,
+    })
 
 
 # Enemy state (FSM)
@@ -177,6 +244,18 @@ ENEMY_CONFIGS: dict[EnemyKind, _EnemyConfig] = {
         sine_wobble=False, sine_amplitude=0.0, sine_freq_hz=0.0,
         wrap_around=True,
     ),
+    # BLOQUE 63: MINE_ASTEROID. Camouflage enemy that uses the asteroid
+    # aesthetic when closed (visually identical to a regular asteroid).
+    # HP=2 (1 hit destroys when vulnerable); fire_cooldown_s is unused
+    # (the mine fires via its own state machine, not the legacy
+    # fire_cd/telegraph path).
+    EnemyKind.MINE_ASTEROID: _EnemyConfig(
+        hp=2, speed=30.0, width=16, height=16, score=0,
+        color=(140, 100, 60),  # brown rocky palette (matches asteroid)
+        fire_cooldown_s=0.0, fire_damage=0, bullet_speed=0.0,
+        telegraph_frames=0,
+        drop_powerup_pct=0.0, drop_bomb_pct=0.0, drop_1up_pct=0.0,  # handled by pick_mine_powerup
+    ),
 }
 
 
@@ -271,14 +350,50 @@ class Enemy:
     animation_frame: int = 0
     animation_timer: float = 0.0
     ANIMATION_FRAME_DURATION: float = 0.08  # 10 frames at 12.5 FPS, ~80ms per frame
+    # BLOQUE 63: MINE_ASTEROID state machine. mine_state is one of
+    # "closed" | "opening" | "open" | "closing". Only used when
+    # kind == EnemyKind.MINE_ASTEROID. For other enemy kinds, these
+    # fields stay at their default values.
+    mine_state: str = "closed"  # MINE_ASTEROID only
+    state_timer: float = 0.0
+    has_opened: bool = False
+    mine_variant: int = 0  # 0-4, mirrors Asteroid.variant for closed sprite
 
     @property
     def animation_path(self) -> str:
         """BLOQUE 59: relative path under Assets/sprites/ for the current
-        animation frame. Empty string if kind is not a redesigned enemy."""
+        animation frame. Empty string if kind is not a redesigned enemy.
+
+        BLOQUE 63: MINE_ASTEROID uses a different directory layout
+        (state machine states closed/opening/open/closing/death, NOT the
+        standard idle/thrust/damage/death animations). Returns the
+        per-state sprite path for the current mine_state, picking the
+        frame index from state_timer.
+        """
         kind_value = self.kind.value if hasattr(self.kind, "value") else str(self.kind)
         if kind_value == "sub_boss":
             return ""  # sub-boss keeps its own 4-direction sprites
+        if kind_value == "mine_asteroid":
+            # State machine uses closed/opening/open/closing/death.
+            # The frame index inside each state is derived from
+            # state_timer (so we can render a smooth transition
+            # without needing a per-frame counter).
+            state = self.mine_state
+            if state == "closed":
+                # Always frame 0 (we only have one closed frame — the
+                # asteroid lookalike reused from BLOQUE 61)
+                idx = 0
+            elif state == "opening":
+                # 0.5s / 3 frames = ~0.166s per frame
+                idx = min(2, int(self.state_timer / 0.166))
+            elif state == "open":
+                idx = 0
+            elif state == "closing":
+                # Mirror of opening: 0.5s / 3 frames
+                idx = min(2, int(self.state_timer / 0.166))
+            else:
+                idx = 0
+            return f"enemies/mine_asteroid/{state}/frame_{idx:02d}.png"
         return f"enemies/{kind_value}/{self.animation_state}/frame_{self.animation_frame:02d}.png"
 
     def on_spawn(self) -> None:
@@ -305,6 +420,11 @@ class Enemy:
         self.animation_state = "idle"
         self.animation_frame = 0
         self.animation_timer = 0.0
+        # BLOQUE 63: reset MINE_ASTEROID state machine
+        self.mine_state = "closed"
+        self.state_timer = 0.0
+        self.has_opened = False
+        self.mine_variant = 0
         # BLOQUE 58.6.4: sub-boss movement state is NOT reset here
         # because it persists across wrap-arounds (entry_count,
         # current_wall, etc. are needed for the next entry).
@@ -358,8 +478,21 @@ class Enemy:
         return pygame.Rect(int(self.x - w // 2), int(self.y - h // 2), w, h)
 
     def apply_damage(self, amount: int) -> bool:
-        """Returns True if this hit killed the enemy."""
+        """Returns True if this hit killed the enemy.
+
+        BLOQUE 63: MINE_ASTEROID is immune to player bullets when its
+        state == "closed" (camouflage — looks like a regular asteroid).
+        All other states (opening/open/closing) are vulnerable. Use
+        ``EnemyState`` for the legacy FSM states (DEAD/DYING/etc) and
+        ``self.state`` (a string) for the MINE_ASTEROID FSM (closed,
+        opening, open, closing). They share the ``state`` attribute name
+        so a check for ``state == "closed"`` doubles as both a MINE-state
+        and a "not yet transitioning" sentinel.
+        """
         if not self.active or self.state == EnemyState.DEAD:
+            return False
+        # BLOQUE 63: MINE_ASTEROID closed-state bullet immunity
+        if self.kind == EnemyKind.MINE_ASTEROID and self.mine_state == "closed":
             return False
         self.hp -= amount
         self.damage_taken += amount
@@ -390,6 +523,16 @@ class Enemy:
         transition back to idle when the animation completes.
         """
         if not self.active or dt <= 0.0 or self.state == EnemyState.DEAD:
+            return
+        # BLOQUE 63: MINE_ASTEROID state machine. Lives BEFORE the rest
+        # of update() so the MINE-ASTEROID never falls through to the
+        # straight-line drift / sine-wobble / homing code below (which
+        # would re-position it like a normal enemy). The MINE-ASTEROID
+        # uses the same vx/vy as an asteroid (drift down + lateral
+        # jitter), so we DO apply vx/vy here, but everything else
+        # (sine wobble, homing, fire cooldown) is skipped.
+        if self.kind == EnemyKind.MINE_ASTEROID:
+            self._update_mine_asteroid(dt)
             return
         # BLOQUE 59: advance animation frame. Use integer division to
         # avoid floating point drift (subtracting FRAME_DURATION in a
@@ -676,6 +819,106 @@ class Enemy:
             self.sb_turn_done = False
         # Reset fire cooldown so the re-entry feels threatening
         self.fire_cd = 0.5
+
+    # -----------------------------------------------------------------------
+    # BLOQUE 63: MINE_ASTEROID state machine + firing
+    # -----------------------------------------------------------------------
+    def _update_mine_asteroid(self, dt: float) -> None:
+        """Advance the MINE_ASTEROID state machine: drift down like an
+        asteroid, transition through opening -> open -> closing based on
+        the timer. When transitioning to 'open', fires 3 bullets in a
+        fan via _fire_mine_bullets (caller is responsible for spawning
+        the actual ProjectilePool entries; this method only flips state).
+
+        Implementation note: the timer advances BEFORE the transition
+        check, and a single large tick can chain through multiple
+        states by using the remaining time after each transition. This
+        is essential for the state machine to behave correctly under
+        variable timestep updates.
+        """
+        # Drift down (mimic asteroid motion)
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        if self.mine_state == "closed":
+            if not self.has_opened and self.y < OPENING_Y_THRESHOLD:
+                # y < 200 = upper playfield, trigger open cycle
+                self.mine_state = "opening"
+                self.state_timer = 0.0
+            return
+        # For non-closed states: advance timer, then check transition.
+        # The loop caps at 4 iterations so a huge dt cannot spin the
+        # state machine forever; the cap matches the maximum possible
+        # transitions (closed -> opening -> open -> closing -> closed).
+        # After each transition, we subtract the consumed time from
+        # the remaining time so a single large tick can chain through
+        # multiple states without over-accelerating.
+        remaining = dt
+        for _ in range(4):
+            if self.mine_state == "opening":
+                self.state_timer += remaining
+                if self.state_timer < MINE_OPENING_DURATION_S:
+                    return
+                # Transition to 'open', consume the time it took
+                consumed = MINE_OPENING_DURATION_S - (self.state_timer - remaining)
+                remaining = max(0.0, self.state_timer - MINE_OPENING_DURATION_S)
+                self.state_timer = 0.0
+                self.mine_state = "open"
+                self.on_fire = True
+                if remaining <= 0.0:
+                    return
+            elif self.mine_state == "open":
+                self.state_timer += remaining
+                if self.state_timer < MINE_OPEN_DURATION_S:
+                    return
+                remaining = max(0.0, self.state_timer - MINE_OPEN_DURATION_S)
+                self.state_timer = 0.0
+                self.mine_state = "closing"
+                if remaining <= 0.0:
+                    return
+            elif self.mine_state == "closing":
+                self.state_timer += remaining
+                if self.state_timer < MINE_CLOSING_DURATION_S:
+                    return
+                remaining = max(0.0, self.state_timer - MINE_CLOSING_DURATION_S)
+                self.state_timer = 0.0
+                self.mine_state = "closed"
+                self.has_opened = True
+                return
+            else:
+                # Unknown state — bail out
+                return
+        # Cull off-screen (mirrors the regular cull in update())
+        if self.y > INTERNAL_H + 32:
+            self.state = EnemyState.DEAD
+
+    def _fire_mine_bullets(self, pool: "ProjectilePool") -> None:
+        """BLOQUE 63: spawn 3 BULLET_ENEMY_MINE bullets in a fan
+        pattern (±15° from straight down, 80 px/s). Called by the
+        integration site when the MINE_ASTEROID transitions to 'open'.
+
+        Imports are local to keep the module import graph clean.
+        """
+        from src.systems.projectile import (
+            BULLET_ENEMY_MINE, OWNER_ENEMY, ProjectilePool,
+        )
+        import math
+        # Spawn 3 bullets at -15°, 0°, +15° from straight down
+        speed = MINE_FAN_BULLET_SPEED
+        for angle_deg in (-MINE_FAN_ANGLE_DEG, 0.0, MINE_FAN_ANGLE_DEG):
+            # 0° = straight down = positive y axis. pygame y is down.
+            # angle measured from straight down, +clockwise (right) = +x
+            rad = math.radians(angle_deg)
+            vx = speed * math.sin(rad)
+            vy = speed * math.cos(rad)
+            pool.spawn(
+                kind=BULLET_ENEMY_MINE,
+                x=self.x,
+                y=self.y,
+                vx=vx,
+                vy=vy,
+                damage=1,
+                owner=OWNER_ENEMY,
+            )
 
 
 def create_enemy(kind: EnemyKind, x: float, y: float) -> Enemy:

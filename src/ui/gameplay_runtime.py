@@ -1660,9 +1660,19 @@ class GameplayRuntime:
 
         Spawn cadence: 1 asteroid every 3-5 seconds while in waves.
         30% of asteroids hide a roguelike powerup (bomb/hp/weapon/score).
+
+        BLOQUE 63: 1/8 of obstacle spawns become a MINE_ASTEROID enemy
+        instead of a regular asteroid. MINE_ASTEROIDs look identical to
+        asteroids when closed (perfect camouflage), drift down at the
+        same speed, and open to fire 3 bullets when they reach the
+        upper playfield (y < 200). They live in the enemy pool, not the
+        asteroid list.
         """
         from src.entities.asteroid import (
             Powerup, PowerupKind, spawn_asteroid, pick_random_powerup,
+        )
+        from src.entities.enemies.enemy import (
+            EnemyKind, MINE_SPAWN_FRACTION, spawn_obstacle,
         )
         # Spawn timer (only spawn during waves, not during boss fight)
         if not self._is_boss and not self._level1_chain.sub_boss_pending:
@@ -1670,9 +1680,33 @@ class GameplayRuntime:
             spawn_interval = self._asteroid_rng.uniform(3.0, 5.0)
             if self._asteroid_spawn_timer >= spawn_interval:
                 self._asteroid_spawn_timer = 0.0
-                # Cap at 8 active asteroids
+                # Cap at 8 active asteroids (regular asteroids only;
+                # MINE_ASTEROIDs are tracked in the enemy pool and have
+                # their own cap from the EnemyPool capacity).
                 if len(self._asteroids) < 8:
-                    self._asteroids.append(spawn_asteroid(self._asteroid_rng))
+                    kind, payload = spawn_obstacle(self._asteroid_rng)
+                    if kind == "asteroid":
+                        self._asteroids.append(Asteroid(
+                            x=payload["x"], y=payload["y"],
+                            radius=max(8, int(16 * payload["scale"])),
+                            hp=payload["hp"],
+                            drift_vx=payload["drift_vx"],
+                            drift_vy=payload["drift_vy"],
+                            variant=payload["variant"],
+                            scale=payload["scale"],
+                            hidden_powerup=payload["hidden_powerup"],
+                        ))
+                    else:
+                        # mine_asteroid: spawn into the enemy pool
+                        e = self._enemies.spawn(
+                            EnemyKind.MINE_ASTEROID,
+                            payload["x"], payload["y"],
+                        )
+                        if e is not None:
+                            # Pick a random asteroid variant for the
+                            # closed-state visual (mirrors the 5
+                            # asteroid variants so the camo is real).
+                            e.mine_variant = self._asteroid_rng.randint(0, 4)
         else:
             # Reset timer so asteroids don't all spawn at once after sub-boss
             self._asteroid_spawn_timer = 0.0
@@ -1954,8 +1988,13 @@ class GameplayRuntime:
                 self._on_boss_killed()
 
     def _spawn_enemy_bullet(self, e: Enemy) -> None:
-        from src.entities.enemies.enemy import ENEMY_CONFIGS
+        from src.entities.enemies.enemy import ENEMY_CONFIGS, EnemyKind
         cfg = ENEMY_CONFIGS[e.kind]
+        # BLOQUE 63: MINE_ASTEROID fires a 3-bullet fan via its own
+        # state machine; the standard aimed-shot path is bypassed.
+        if e.kind == EnemyKind.MINE_ASTEROID:
+            e._fire_mine_bullets(self._bullets)
+            return
         if cfg.bullet_speed <= 0.0:
             return  # Kamikaze / Drone don't fire
         # Aimed shot (toward player)
@@ -3459,9 +3498,26 @@ class GameplayRuntime:
         BLOQUE 53c: gold rings have a separate fixed drop chance
         (GOLD_RING_DROP_CHANCE). They roll BEFORE the regular drop
         table so the player gets a steady supply.
+
+        BLOQUE 63: MINE_ASTEROID bypasses the regular table — it uses
+        a 50% drop rate and a pool of BOMB/HP/WEAPON (no SCORE, no
+        1UP). The camo tension is the reward, not the points.
         """
-        from src.entities.enemies.enemy import ENEMY_CONFIGS
+        from src.entities.enemies.enemy import (
+            ENEMY_CONFIGS, EnemyKind, should_drop_mine_powerup, pick_mine_powerup,
+        )
         from src.core.settings import GOLD_RING_DROP_CHANCE
+        # BLOQUE 63: MINE-ASTEROID powerup drop (50% rate, BOMB/HP/WEAPON pool)
+        if e.kind == EnemyKind.MINE_ASTEROID:
+            if should_drop_mine_powerup(random):
+                kind = pick_mine_powerup(random)
+                # Drop as asteroid-style powerup (the BOMB/HP/WEAPON
+                # system lives in self._asteroid_powerups, picked up
+                # by _player_pickup_powerups). Spawn via Powerup
+                # constructor from asteroid module.
+                from src.entities.asteroid import Powerup
+                self._asteroid_powerups.append(Powerup(x=e.x, y=e.y, kind=kind))
+            return
         cfg = ENEMY_CONFIGS.get(e.kind)
         if cfg is None:
             return

@@ -35,6 +35,7 @@ BULLET_PLAYER_BEAM = 4     # BLOQUE 30: L3 charged beam — BLOQUE 36: recolored
 BULLET_ENEMY = 2           # standard enemy shot
 BULLET_BOSS = 3            # boss shot, 1-frame anim (no flicker per spec)
 BULLET_BOSS_LASER = 5      # BLOQUE 60: GOLIATH Phase 2 eye laser (5x360 red beam)
+BULLET_ENEMY_MINE = 6      # BLOQUE 63: MINE-ASTEROID fan shot (small, dark gray)
 
 # Bullet owner
 OWNER_PLAYER = 0
@@ -59,6 +60,7 @@ BULLET_SIZES = {
     BULLET_ENEMY: (3, 5),              # was (4, 6)
     BULLET_BOSS: (6, 6),               # was (8, 8)
     BULLET_BOSS_LASER: (5, 360),       # BLOQUE 60: 5px wide, 360px tall red beam
+    BULLET_ENEMY_MINE: (2, 4),         # BLOQUE 63: small dark gray (gun color)
 }
 
 # Default speeds (px/s) per kind
@@ -69,6 +71,7 @@ DEFAULT_SPEEDS = {
     BULLET_ENEMY: 220.0,
     BULLET_BOSS: 240.0,
     BULLET_BOSS_LASER: 200.0,   # BLOQUE 60: slow, menacing downward beam
+    BULLET_ENEMY_MINE: 80.0,    # BLOQUE 63: slow (camouflaged enemy fire)
 }
 
 # Default colors per kind
@@ -79,6 +82,7 @@ DEFAULT_COLORS = {
     BULLET_ENEMY: (255, 100, 100),         # red-ish
     BULLET_BOSS: (220, 120, 255),          # purple-ish
     BULLET_BOSS_LASER: (255, 40, 40),      # BLOQUE 60: bright crimson red
+    BULLET_ENEMY_MINE: (60, 60, 60),       # BLOQUE 63: dark gray (gun barrel color)
 }
 
 
@@ -256,7 +260,7 @@ class ProjectilePool:
         for boss (no flicker), and a glow halo for charged.
         """
         for kind in (BULLET_PLAYER, BULLET_PLAYER_CHARGED, BULLET_PLAYER_BEAM,
-                     BULLET_ENEMY, BULLET_BOSS, BULLET_BOSS_LASER):
+                     BULLET_ENEMY, BULLET_BOSS, BULLET_BOSS_LASER, BULLET_ENEMY_MINE):
             w, h = BULLET_SIZES[kind]
             for frame in range(NUM_FRAMES):
                 if kind == BULLET_BOSS:
@@ -458,6 +462,21 @@ class ProjectilePool:
             pygame.draw.polygon(surf, color, star2)
             # White hot center
             pygame.draw.circle(surf, (255, 255, 255), (cx, cy), 1)
+        elif kind == BULLET_ENEMY_MINE:
+            # BLOQUE 63: small dark gray bullet (2x4 px). Tiny and
+            # unobtrusive — it's a stealth enemy's fire. Just a small
+            # vertical rectangle (the gun barrel pointing DOWN).
+            bullet_w = sw
+            bullet_h = sh
+            pygame.draw.rect(
+                surf, color,
+                (cx - bullet_w // 2, cy - bullet_h // 2, bullet_w, bullet_h),
+            )
+            # Tiny lighter center
+            pygame.draw.rect(
+                surf, (140, 140, 140),
+                (cx - bullet_w // 2, cy - bullet_h // 2, max(1, bullet_w // 2), bullet_h),
+            )
         elif kind == BULLET_BOSS_LASER:
             # BLOQUE 60: GOLIATH Phase 2 eye laser — straight red beam.
             # Visual: 5px wide, 360px tall red rectangle centered on (cx, cy).
