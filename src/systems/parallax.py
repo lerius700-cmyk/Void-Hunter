@@ -292,13 +292,16 @@ class ParallaxBackground:
 
     def draw(self, target: pygame.Surface) -> None:
         if self._tile_manager is not None:
+            # Tile mode: draw the tile as the backdrop. Stars + planets draw over.
             self._tile_manager.draw(target, scroll_y=self._strip_y_offset)
-            # Stars + planets still draw over the tile backdrop (continue below)
-        strip = self._strip_surfaces.get(self._strip_variant)
-        if strip is not None:
-            y = -self._strip_y_offset
-            target.blit(strip, (GALAXY_STRIP_X_OFFSET, int(y)))
-            target.blit(strip, (GALAXY_STRIP_X_OFFSET, int(y + GALAXY_STRIP_H)))
+        else:
+            # Strip mode: draw the galaxy strip centered (offset 80) so the 480-wide
+            # strip shows its middle 320 inside the 320-wide playfield.
+            strip = self._strip_surfaces.get(self._strip_variant)
+            if strip is not None:
+                y = -self._strip_y_offset
+                target.blit(strip, (GALAXY_STRIP_X_OFFSET, int(y)))
+                target.blit(strip, (GALAXY_STRIP_X_OFFSET, int(y + GALAXY_STRIP_H)))
         for s in self._stars:
             twinkle = 0.7 + 0.3 * math.sin(self._t * 2.0 + s.twinkle_phase)
             a = int(min(255, s.base_alpha * twinkle))
