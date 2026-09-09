@@ -293,8 +293,7 @@ class ParallaxBackground:
     def draw(self, target: pygame.Surface) -> None:
         if self._tile_manager is not None:
             self._tile_manager.draw(target, scroll_y=self._strip_y_offset)
-            # Stars + planets still draw over the tile backdrop
-            return  # skip the galaxy strip render below
+            # Stars + planets still draw over the tile backdrop (continue below)
         strip = self._strip_surfaces.get(self._strip_variant)
         if strip is not None:
             y = -self._strip_y_offset
