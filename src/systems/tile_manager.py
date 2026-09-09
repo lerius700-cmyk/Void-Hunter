@@ -45,6 +45,8 @@ class TileManager:
         """Draw the scrolling tile sequence to target.
 
         scroll_y in [0, 2880). The total scroll wraps modulo 2880.
+        Tiles are also tiled horizontally to cover the full target width
+        (in case the playfield is wider than TILE_W = 320).
         """
         h = self.get_height()
         scroll_y = scroll_y % h
@@ -54,7 +56,13 @@ class TileManager:
         # is at floor(scroll_y / 480).
         first_tile = int(scroll_y // self.TILE_H)
         y_in_first = scroll_y - first_tile * self.TILE_H
-        for offset in range(2):  # 2 tiles is enough to cover 480 px
+        target_w = target.get_width()
+        for offset in range(2):  # 2 vertical tiles is enough to cover 480 px
             tile_idx = (first_tile + offset) % self.NUM_TILES
             y_screen = int(-y_in_first + offset * self.TILE_H)
-            target.blit(self._tile_surfaces[tile_idx], (0, y_screen))
+            tile_surface = self._tile_surfaces[tile_idx]
+            # Tile horizontally to cover full target width
+            x = 0
+            while x < target_w:
+                target.blit(tile_surface, (x, y_screen))
+                x += self.TILE_W

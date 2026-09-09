@@ -63,3 +63,18 @@ def test_scroll_y_wraps_modulo_2880():
     # No assertion needed — must not raise for any scroll_y
     for sy in [0.0, 479.0, 480.0, 481.0, 1440.0, 2879.0, 2880.0, 5760.0, -1.0]:
         tm.draw(target, scroll_y=sy)
+
+
+def test_tile_manager_tiles_horizontally_for_wide_target():
+    """If the target is wider than TILE_W, the tile tiles to fill the width."""
+    from src.systems.tile_manager import TileManager
+    import pygame
+    pygame.init()
+    tiles_dir = Path(r"D:\AI\void-hunter\Assets\background\tiles\act1")
+    tm = TileManager(tiles_dir)
+    # Target 960x480 (3x the tile width)
+    target = pygame.Surface((960, 480))
+    tm.draw(target, scroll_y=0.0)
+    # Pixel at x=0, 320, 640 should all be tile color (the three tile copies)
+    assert target.get_at((0, 100))[0:3] == target.get_at((320, 100))[0:3]
+    assert target.get_at((320, 100))[0:3] == target.get_at((640, 100))[0:3]
