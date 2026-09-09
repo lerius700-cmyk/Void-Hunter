@@ -437,6 +437,75 @@ class TestSprites:
             f = MINE_ASTEROID_SPRITES_DIR / "death" / f"frame_{i:02d}.png"
             assert f.is_file(), f"missing death frame: {f}"
 
+    # ------------------------------------------------------------------
+    # BLOQUE 66: variant-aware closed state. The closed sprite is one of
+    # 5 variants matching the regular asteroid sprites (round, elongated,
+    # spiked, hollowed, cracked). mine_variant is set at spawn time by
+    # gameplay_runtime.py to a random 0-4.
+    # ------------------------------------------------------------------
+    def test_closed_loads_variant_0_path(self) -> None:
+        """BLOQUE 66: mine_variant=0 loads closed/frame_00.png (round)."""
+        e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
+        e.mine_variant = 0
+        e.mine_state = "closed"
+        assert e.animation_path == "enemies/mine_asteroid/closed/frame_00.png"
+
+    def test_closed_loads_variant_4_path(self) -> None:
+        """BLOQUE 66: mine_variant=4 loads closed/frame_04.png (cracked)."""
+        e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
+        e.mine_variant = 4
+        e.mine_state = "closed"
+        assert e.animation_path == "enemies/mine_asteroid/closed/frame_04.png"
+
+    def test_closed_clamps_out_of_range_variant(self) -> None:
+        """BLOQUE 66: variant > 4 clamps to 4 (cracked) — safety net."""
+        e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
+        e.mine_variant = 99
+        e.mine_state = "closed"
+        assert e.animation_path == "enemies/mine_asteroid/closed/frame_04.png"
+
+    def test_open1_open2_open3_ignore_variant(self) -> None:
+        """BLOQUE 66: only closed uses mine_variant. Other states use frame_00.
+
+        The intermediate and terminal states are hand-designed composites
+        (open1: thin crack, open2: wider gap with gun, open3: full ship).
+        These are not per-variant — the same composite is reused for any
+        mine_variant because the reveal animation is the same regardless
+        of which asteroid variant was being mimicked.
+        """
+        for v in (0, 2, 4):
+            e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
+            e.mine_variant = v
+            for st in ("open1", "open2"):
+                e.mine_state = st
+                assert e.animation_path == f"enemies/mine_asteroid/{st}/frame_00.png"
+            e.mine_state = "open3"
+            assert e.animation_path == "enemies/mine_asteroid/open/frame_00.png"
+
+    def test_closed_5_variants_all_exist(self) -> None:
+        """BLOQUE 66: 5 closed variant frames all exist on disk.
+
+        Required for variant-aware camouflage: each mine_variant 0..4
+        must have a sprite. If any variant is missing, the camo is
+        broken (the closed state would show a missing texture).
+        """
+        names = ("round", "elongated", "spiked", "hollowed", "cracked")
+        for i, name in enumerate(names):
+            f = MINE_ASTEROID_SPRITES_DIR / "closed" / f"frame_{i:02d}.png"
+            assert f.is_file(), f"missing closed variant {i} ({name}): {f}"
+            # Sanity: each variant is byte-equal to its asteroid source
+            import hashlib
+            src = ROOT / "Assets" / "sprites" / "asteroids" / f"{name}.png"
+            assert src.is_file(), f"missing asteroid source: {src}"
+            with open(f, "rb") as fp:
+                h_closed = hashlib.md5(fp.read()).hexdigest()
+            with open(src, "rb") as fp:
+                h_src = hashlib.md5(fp.read()).hexdigest()
+            assert h_closed == h_src, (
+                f"closed/frame_{i:02d}.png must be byte-equal to "
+                f"asteroids/{name}.png (perfect camo)"
+            )
+
 
 # =====================================================================
 # Projectile kind (1 test)

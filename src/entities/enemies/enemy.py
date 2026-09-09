@@ -412,6 +412,17 @@ class Enemy:
                 # (loaded from the legacy `open/` directory after the
                 # BLOQUE 65 swap).
                 return "enemies/mine_asteroid/open/frame_00.png"
+            if state == "closed":
+                # BLOQUE 66: variant-aware closed state. mine_variant is
+                # set at spawn time (gameplay_runtime.py) to mirror the
+                # 5 asteroid variants (round/elongated/spiked/hollowed/
+                # cracked). The closed sprite is a byte-level copy of
+                # the matching asteroid variant, so the camouflage is
+                # real — a player cannot distinguish a MINE_ASTEROID
+                # from a regular asteroid by variant. Out-of-range
+                # variants clamp to 4 (cracked) for safety.
+                v = max(0, min(4, int(self.mine_variant)))
+                return f"enemies/mine_asteroid/closed/frame_{v:02d}.png"
             return f"enemies/mine_asteroid/{state}/frame_00.png"
         return f"enemies/{kind_value}/{self.animation_state}/frame_{self.animation_frame:02d}.png"
 

@@ -36,12 +36,9 @@ class TileManager:
                 )
             # Note: .convert() requires an initialized display, so we keep
             # the surface in its source format. The draw() blit works fine.
-            # Rotate 180° per user request (BLOQUE 64.C round 4).
-            # The strip scrolls top-to-bottom as before; the tile content
-            # is visually flipped so e.g. tile_01's planet appears at the
-            # top instead of the bottom.
-            tile_surface = pygame.image.load(str(candidates[0]))
-            self._tile_surfaces.append(pygame.transform.rotate(tile_surface, 180))
+            # Tile loaded in its original AI-generated orientation.
+            # The strip scrolls top-to-bottom (BLOQUE 64.C round 5 revert).
+            self._tile_surfaces.append(pygame.image.load(str(candidates[0])))
 
     def get_height(self) -> int:
         return self.NUM_TILES * self.TILE_H

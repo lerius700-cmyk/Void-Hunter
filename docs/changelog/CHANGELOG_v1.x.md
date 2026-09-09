@@ -1600,3 +1600,79 @@ preserved — no re-open after the cycle completes).
 - Visual capture saved (`tools/playtest_out/bloque_65_mine_asteroid_4_frames.png`).
 
 
+## [BLOQUE 66] — 2026-09-09 — MINE-ASTEROID Feature Consolidation (variant-aware camouflage)
+
+### Goal
+Consolidate the asteroid-camouflage-ship feature into one coherent,
+fully-tested, fully-documented block. Three pillars:
+1. **25% of obstacles are MINE-ASTEROID (ship), 75% are indestructible
+   asteroids** — preserved from BLOQUE 64.5.
+2. **4-frame opening animation** (closed → open1 → open2 → open3) —
+   preserved from BLOQUE 65.
+3. **Variant-aware camouflage** (NEW) — the closed state of a
+   MINE_ASTEROID now mirrors the same 5 asteroid variants the regulars
+   use, so the disguise is real. Previously the closed state always
+   loaded `closed/frame_00.png` (round) regardless of the mine_variant,
+   breaking the camouflage (a player who learned the 5 variants could
+   spot a MINE_ASTEROID by waiting for the unique round variant).
+
+### What was already in place (verified, not re-implemented)
+- `MINE_SPAWN_FRACTION: float = 1.0 / 4.0` (BLOQUE 64.5, line 74).
+- 4 frames on disk: `closed/frame_00.png`, `open1/frame_00.png`,
+  `open2/frame_00.png`, `open/frame_00.png` (open3), `death/frame_00..09.png`.
+- 4-state cycle `closed → open1 (0.2s) → open2 (0.2s) → open3 (∞)`
+  in `enemy.py:_update_mine_asteroid`.
+- Vulnerability rules: closed = immune to player bullets,
+  open1/open2/open3 = vulnerable.
+- Indestructible regular asteroids: `Asteroid.hit()` is a no-op that
+  always returns False (BLOQUE 64.A).
+- 5 variants for regular asteroids: `variant = rng.randint(0, 4)`.
+
+### New in BLOQUE 66
+- **Sprite path now uses `mine_variant` for the closed state.** When
+  `mine_state == "closed"`, the render path returns
+  `enemies/mine_asteroid/closed/frame_{v:02d}.png` where
+  `v = max(0, min(4, int(self.mine_variant)))`. Out-of-range variants
+  clamp to 4 (cracked) for safety. The intermediate states (open1,
+  open2) and the terminal state (open3) keep their hand-designed
+  composites (same frame_00.png regardless of variant).
+- **5 closed-state variant sprites on disk:**
+  `frame_00.png` = round (7914 B), `frame_01.png` = elongated
+  (5847 B), `frame_02.png` = spiked (7287 B), `frame_03.png` =
+  hollowed (8023 B), `frame_04.png` = cracked (7644 B). Each is a
+  byte-level copy of the matching `Assets/sprites/asteroids/<name>.png`.
+
+### Files Changed
+- `src/entities/enemies/enemy.py` — `animation_path` property now uses
+  `mine_variant` for closed state.
+- `Assets/sprites/enemies/mine_asteroid/closed/frame_00..04.png` —
+  byte-equal copies of the 5 asteroid variants.
+- `tests/test_mine_asteroid.py` — 5 new tests:
+  - `test_closed_loads_variant_0_path` (variant 0 → round)
+  - `test_closed_loads_variant_4_path` (variant 4 → cracked)
+  - `test_closed_clamps_out_of_range_variant` (variant 99 → 4)
+  - `test_open1_open2_open3_ignore_variant` (intermediate/terminal
+    states are variant-agnostic)
+  - `test_closed_5_variants_all_exist` (sanity: each closed frame
+    is byte-equal to its asteroid source)
+- `tools/playtest_out/bloque_66_mine_asteroid_variants.png` — visual
+  proof: 5 closed-state sprites side by side.
+- `docs/superpowers/plans/2026-09-09-bloque-66-mine-asteroid-feature-consolidation.md` —
+  full implementation plan.
+
+### Verified
+- 38/38 tests in `tests/test_mine_asteroid.py` pass (was 33, +5 new).
+- Full test suite baseline preserved (the pre-existing failures in
+  `tests/test_sub_boss_real_flow.py` (5 tests), `test_paths.py` (1
+  Lissajous), and the tile/ribbon tests are unrelated to BLOQUE 66).
+- Visual capture saved (`tools/playtest_out/bloque_66_mine_asteroid_variants.png`).
+
+### Out of Scope
+- GOLIATH animation fix (deferred per user "olvida lo de goliath").
+- Re-touch of open1/open2 composites (worker composites vs pure AI
+  gen — pending user choice).
+- Powerup drop from regular asteroids (asteroids are indestructible;
+  powerups come from MINE kills only).
+- Bumping the title-screen "BLOQUE 60" text (cosmetic, not requested).
+
+
