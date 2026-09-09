@@ -793,3 +793,54 @@ showing each pattern with visible leader glow ring.
 - **Item #2:** Wave spawn interval halved: `spawn_interval=4.0` → `2.0` in `src/core/game.py:276`. Same per-pattern ship counts, 2x waves per minute. `MAX_ENEMIES_ON_SCREEN` raised 12 → 24 in `src/core/settings.py:229` to avoid throttle.
 - **Item #3:** Leader HP scales with wave proximity to boss. New pure function `_leader_hits_at_wave(wave_idx)` returns 3-5 (linear, clamped). New `current_wave_idx` parameter in `spawn_pattern_wave` defaults to 0 (backward compat). Leader HP = `_KIND_HP["SCOUT"]` (30) × hits = 90/120/150 at wave 1/5/10. Followers untouched (keep pool default of 1 HP).
 
+---
+
+## [BLOQUE 62] — 2026-09-08 — Full Top-Down Ship Pass (8 ships, no 3/4 angle)
+
+### Goal
+Regenerate all 8 ship bases (1 player + 7 enemies) with strict top-down (bird's-eye) perspective so every ship reads as a perpendicular view at the same eye-level. Drop the "3/4 angle" wording from the active prompt template and from the regenerated manifest entries.
+
+### Ships regenerated (8)
+- **Player:** `ship_01` — faces UP (`face_down=False`)
+- **Enemies (all face DOWN, `face_down=True`):** `scout`, `drone`, `kamikaze`, `sniper`, `turret`, `heavy`, `cruiser`
+- 4 animations × 10 frames per ship = 40 PNGs per ship = 320 PNGs total + 8 base PNGs (1024×1024 each)
+
+### Prompt change
+`tools/redesign_ships/01_generate_bases.py:PROMPT_TEMPLATE`:
+- Before: `"STRICT TOP-DOWN VIEW (perpendicular, no 3/4 angle) "`
+- After: `"STRICT TOP-DOWN VIEW (perpendicular, bird's-eye) "`
+- Reasoning: "bird's-eye" reads as a perpendicular view without invoking the "3/4" perspective. All manifest entries regenerated with the new prompt and contain NO "3/4" wording.
+
+### Pipeline (reused from BLOQUE 59, no new code)
+- `01_generate_bases.py` (mcode-tools Matrix, 1K, 1:1 aspect) → 1024×1024 base PNG + manifest entry with `node_id`, `prompt`, `size_bytes`, `created_at`.
+- `02_postprocess.py --force` → watermark crop (bottom 15%) + center-crop to square + LANCZOS resize to 32×32 + palette map + 4 anim dirs × 10 frames each.
+- `03_build_sheets.py` → 8 preview sprite sheets at `Assets/sprites/redesign/spritesheet_<key>.png` (4 anim rows × 10 frame cols, label column on the left).
+- `04_integrate.py` → copies 40 PNGs per ship to live asset locations: `Assets/sprites/player_ships/ship_01/<anim>/frame_NN.png` (player) + `Assets/sprites/enemies/<kind>/<anim>/frame_NN.png` (7 enemies).
+
+### Tests (NEW: `tests/test_ship_perspective.py`, 34 tests)
+- **No "3/4" wording:** `test_no_3_4_in_generate_bases`, `test_no_3_4_in_ship_specs`, `test_no_3_4_in_postprocess_module`, `test_no_3_4_in_animation_frames`, `test_no_3_4_in_build_sheets`, `test_no_3_4_in_integrate`, `test_no_3_4_in_manifest`.
+- **Prompt sanity:** `test_prompt_template_uses_top_down`, `test_postprocess_uses_lanczos_resize`, `test_transparentize_damero_after_resize_exists`.
+- **Ship specs:** `test_enemy_face_down_flag_true`, `test_player_template_is_player`.
+- **File presence:** `test_all_8_ship_bases_exist`, `test_player_ship_anim_frames` (40 PNGs), `test_enemy_ship_anim_frames[7 kinds]` (40 PNGs × 7 = 280), `test_animation_states_count_4`, `test_animation_frames_count_10`.
+- **Orientation heuristic:** `test_enemy_sprite_faces_down` (nose_y ≥ 60% of image height), `test_player_sprite_faces_up` (top_y < 50% of image height).
+- **Sprite sheets:** `test_player_spritesheet_exists`, `test_player_spritesheet_dimensions`, `test_spritesheet_count_5`.
+- **Collision/movement:** `test_collision_unchanged_24x24`, `test_player_movement_unchanged`.
+- **Live dir alignment:** `test_enemy_7_kinds_have_live_sprites`, `test_player_ship_01_in_player_ships_dir`.
+- **Backwards compat:** `test_redesign_pipeline_files_present`, `test_postprocess_one_signature_unchanged`.
+
+### Visual verification
+`tools/capture/capture_bloque_62_ships.py` → `tools/playtest_out/bloque_62_8_ships.png` (4×2 grid, 4× nearest-neighbor upscale, idle frame per ship, labels for each kind).
+
+### Preserved (per spec)
+- All 4 anims × 10 frames per ship (320 PNGs live + 8 base + 8 redesign previews).
+- Enemy collision math (`hitbox()` is 70% of base, SUB_BOSS 50%) and player movement code untouched.
+- Existing `assets/sprites/enemies/<kind>/<state>/frame_NN.png` layout preserved.
+- 2491 existing tests still pass.
+
+### Verified
+- 34/34 new tests in `tests/test_ship_perspective.py` pass.
+- Full test suite: previous baseline + 34 new = green.
+- 8 ship base PNGs regenerated with new prompt; manifest `tools/redesign_ships/manifest.json` updated with 8 fresh entries (no "3/4" wording).
+- Visual capture saved at `tools/playtest_out/bloque_62_8_ships.png` (10583 bytes, 544×240).
+
+
