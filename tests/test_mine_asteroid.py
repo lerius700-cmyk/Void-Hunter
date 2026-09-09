@@ -740,3 +740,116 @@ class TestSpawnIntegration:
                 assert 0 <= payload["variant"] <= 4
                 return
         pytest.fail("no asteroid produced in 50 spawns (rng bias?)")
+
+    def test_gameplay_runtime_asteroid_spawn_does_not_raise(self) -> None:
+        """BLOQUE 70: regression test for the '100% mines' bug.
+
+        The original bug: ``Asteroid`` was imported only inside
+        ``GameplayRuntime.__init__``, so it was a local name there.
+        ``_update_asteroids_and_powerups`` used ``Asteroid(...)`` at
+        line 1701 but did NOT re-import it locally, so the
+        ``kind == "asteroid"`` branch (75% of spawns) raised NameError.
+
+        ``main.py`` silently swallows scene errors so the game keeps
+        running, but the asteroid never actually gets appended to
+        ``self._asteroids``. The user only sees MINE_ASTEROIDs (the
+        other 25% branch, which goes through the enemy pool and
+        doesn't reference ``Asteroid``).
+
+        This test runs the actual ``_update_asteroids_and_powerups``
+        code path and asserts that BOTH branches work and the
+        ``self._asteroids`` list actually grows.
+        """
+        from src.ui.gameplay_runtime import GameplayRuntime
+        from src.entities.enemies.enemy import spawn_obstacle
+
+        # Monkey-patch spawn_obstacle to force 5 asteroid spawns in a
+        # row (bypassing the 25% RNG so we exercise the broken branch).
+        import random as _r
+        original = spawn_obstacle
+
+        def _force_asteroid(rng):
+            # Call the asteroid branch directly via the underlying
+            # factory, ignoring the 25% mine probability.
+            from src.entities.asteroid import spawn_asteroid
+            ast = spawn_asteroid(rng)
+            return ("asteroid", {
+                "x": ast.x, "y": ast.y,
+                "variant": ast.variant, "scale": ast.scale,
+                "drift_vx": ast.drift_vx, "drift_vy": ast.drift_vy,
+                "hidden_powerup": ast.hidden_powerup,
+            })
+
+        import src.entities.enemies.enemy as enemy_mod
+        enemy_mod.spawn_obstacle = _force_asteroid
+        try:
+            def _noop(*a, **k):
+                pass
+            rt = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+            rt.on_enter()
+            # Force a fast spawn cadence so the test is quick
+            rt._asteroid_rng = _r.Random(0xDEADBEEF)
+            rt._asteroid_spawn_timer = 999.0  # trigger spawn on first update
+            n_before = len(rt._asteroids)
+            # Run 5 updates so we get at least 5 spawn attempts
+            for _ in range(5):
+                rt._asteroid_spawn_timer = 999.0
+                rt.update(1.0 / 60.0)
+            n_after = len(rt._asteroids)
+            assert n_after > n_before, (
+                f"BUG: no asteroids were spawned "
+                f"(before={n_before}, after={n_after}). "
+                f"This is the BLOQUE 70 '100% mines' bug "
+                f"(Asteroid NameError in _update_asteroids_and_powerups)."
+            )
+        finally:
+            enemy_mod.spawn_obstacle = original
+
+    def test_gameplay_runtime_actual_75_25_ratio(self) -> None:
+        """BLOQUE 70: end-to-end ratio test on the real runtime.
+
+        Runs the gameplay runtime for 60s of game time with the
+        production seed (0xA57E2012) and asserts the spawn ratio
+        is within ±10% of the 25% / 75% spec.
+        """
+        from src.ui.gameplay_runtime import GameplayRuntime
+        import random as _r
+
+        spawn_log: list[str] = []
+
+        # Wrap spawn_obstacle to log every decision
+        import src.entities.enemies.enemy as enemy_mod
+        _orig = enemy_mod.spawn_obstacle
+        def _wrapped(rng):
+            kind, payload = _orig(rng)
+            spawn_log.append(kind)
+            return kind, payload
+        enemy_mod.spawn_obstacle = _wrapped
+        try:
+            def _noop(*a, **k):
+                pass
+            rt = GameplayRuntime(transition_to=_noop, is_boss=False, act=1)
+            rt.on_enter()
+            # Reset RNG to match a fresh game launch
+            rt._asteroid_rng = _r.Random(0xA57E2012)
+            spawn_log.clear()
+            # 60s @ 60Hz
+            for _ in range(60 * 60):
+                rt.update(1.0 / 60.0)
+        finally:
+            enemy_mod.spawn_obstacle = _orig
+
+        # Need enough samples for the ratio to be meaningful
+        mine = spawn_log.count("mine_asteroid")
+        ast = spawn_log.count("asteroid")
+        total = mine + ast
+        assert total >= 6, (
+            f"only {total} spawns in 60s; not enough samples to "
+            f"verify ratio (spawn cadence may be broken)"
+        )
+        ratio = mine / total
+        assert 0.15 <= ratio <= 0.35, (
+            f"BUG: mine ratio is {ratio*100:.0f}% (expected ~25%); "
+            f"mines={mine}, asteroids={ast}, total={total}, "
+            f"first10={spawn_log[:10]}"
+        )

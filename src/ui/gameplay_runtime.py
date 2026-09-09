@@ -1677,7 +1677,7 @@ class GameplayRuntime:
         asteroid list.
         """
         from src.entities.asteroid import (
-            Powerup, PowerupKind, spawn_asteroid, pick_random_powerup,
+            Asteroid, Powerup, PowerupKind, spawn_asteroid, pick_random_powerup,
         )
         from src.entities.enemies.enemy import (
             EnemyKind, MINE_SPAWN_FRACTION, spawn_obstacle,
