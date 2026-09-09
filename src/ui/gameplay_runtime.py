@@ -19,6 +19,7 @@ import math
 import os
 import random
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Tuple
 
 import pygame
@@ -193,11 +194,18 @@ class GameplayRuntime:
         # one of 4 variants (blue/green/yellow/violet, one per act).
         # The previous nebula_count / nebula_radius_* parameters are gone.
         from src.systems.parallax import ParallaxBackground
+        # TODO(BLOQUE 65+): when per-level runtime flags land, branch
+        # act==1 → use_tile_sequence=True (Asteroid Approach), otherwise
+        # keep the galaxy strip (acts 2-4). For now this is hardcoded to
+        # level 1 since gameplay_runtime is the level-1 path.
+        _tiles_dir = Path(__file__).resolve().parent.parent.parent / "Assets" / "background" / "tiles" / "act1"
         self._parallax_bg: "ParallaxBackground" = ParallaxBackground(
             width=INTERNAL_W, height=INTERNAL_H,
             rng_seed=0xC0FFEE58,
             stars_per_layer=8,   # sparse (was 50)
             spawn_planets=False, # no planets
+            use_tile_sequence=True,  # BLOQUE 64: level 1 "Asteroid Approach"
+            tiles_dir=_tiles_dir,
         )
         # Keep the old TilingImage as a fallback (in case the galaxy
         # panels aren't bundled).
