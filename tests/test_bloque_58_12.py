@@ -1,4 +1,11 @@
-"""BLOQUE 58.12: tests for Asteroid + Powerup system."""
+"""BLOQUE 58.12: tests for Asteroid + Powerup system.
+
+BLOQUE 61 update: the procedural ``_make_asteroid_sprite`` was removed
+in favor of 5 AI-generated 32x32 PNGs. The rotation field was also
+removed. Tests for those features were migrated to
+``tests/test_asteroid_sprites.py`` — this file now only covers the
+behavior that was preserved (drift, hit, off-screen, powerup drop, etc.).
+"""
 from __future__ import annotations
 
 import os
@@ -23,7 +30,6 @@ from src.entities.asteroid import (
     pick_random_powerup,
     spawn_asteroid,
     draw_asteroid,
-    _make_asteroid_sprite,
 )
 
 
@@ -45,8 +51,7 @@ class TestAsteroidBasics:
         ast = Asteroid(x=100, y=50, radius=15, hp=2, drift_vy=30.0)
         ast.update(1.0)
         assert ast.y == 80  # 50 + 30*1
-        # Rotation also advances
-        assert ast.rotation != 0.0
+        # BLOQUE 61: no rotation field — update() only advances x/y.
 
     def test_asteroid_hit_takes_damage(self) -> None:
         ast = Asteroid(x=100, y=50, radius=15, hp=2)
@@ -65,24 +70,6 @@ class TestAsteroidBasics:
         # Below the playfield
         ast2 = Asteroid(x=100, y=600, radius=15, hp=2)
         assert ast2.is_off_screen() is True
-
-
-# =====================================================================
-# Procedural sprite generation
-# =====================================================================
-class TestSpriteGeneration:
-    def test_asteroid_sprite_cached(self) -> None:
-        # Same radius -> same sprite
-        s1 = _make_asteroid_sprite(16, random.Random(1))
-        s2 = _make_asteroid_sprite(16, random.Random(2))  # different rng, but cache wins
-        assert s1 is s2  # cached
-
-    def test_asteroid_sprite_size(self) -> None:
-        sprite = _make_asteroid_sprite(20, random.Random(42))
-        # size = 2*radius + 4 = 44
-        w, h = sprite.get_size()
-        assert w == 44
-        assert h == 44
 
 
 # =====================================================================
