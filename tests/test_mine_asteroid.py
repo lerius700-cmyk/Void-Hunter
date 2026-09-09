@@ -71,8 +71,8 @@ class TestEnumAndConstants:
         assert EnemyKind.MINE_ASTEROID.value == "mine_asteroid"
 
     def test_opening_y_threshold_constant_200(self) -> None:
-        """OPENING_Y_THRESHOLD is exactly 200 (upper playfield, per spec)."""
-        assert OPENING_Y_THRESHOLD == 200
+        """BLOQUE 69: OPENING_Y_THRESHOLD is exactly 120 (first quarter, paired with yellow line)."""
+        assert OPENING_Y_THRESHOLD == 120
 
     def test_mine_asteroid_in_archetypes(self) -> None:
         """ENEMY_ARCHETYPES tuple includes 'mine_asteroid'."""
@@ -99,38 +99,63 @@ class TestEnumAndConstants:
 # =====================================================================
 class TestStateMachine:
     def test_state_transitions_on_y_threshold(self) -> None:
-        """BLOQUE 68: crossing into the upper playfield triggers closed -> open1.
+        """BLOQUE 69: crossing the yellow-line trigger (y >= 120) opens the mine.
 
-        The check is now `y > 0 AND y < OPENING_Y_THRESHOLD` — the mine
-        must have entered the screen (y > 0) AND be in the upper
-        playfield (y < 200). The original check was just `y < 200`,
-        which was TRUE from the spawn position (y=-80..0, off-screen
-        above) and the mine opened off-screen, never visible to the
-        player.
+        The check is `y > 0 AND y >= OPENING_Y_THRESHOLD` (>=, not >) — the
+        mine must have entered the screen (y > 0) AND reached the yellow
+        line at OPENING_Y_THRESHOLD (120). The check uses >= so the
+        mine opens the moment of crossing.
+
+        History:
+        - BLOQUE 63: `y < 200` (broken: opened off-screen).
+        - BLOQUE 68: `y > 0 AND y < 200` (worked but no visual cue).
+        - BLOQUE 69: `y > 0 AND y >= 120` (paired with visible yellow
+          line at the same y).
         """
+        # Case 1: y = OPENING_Y_THRESHOLD + 10 (130) — well below the
+        # yellow line, mine has crossed → must open.
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
-        # In the upper playfield (0 < y < 200) should trigger
-        e.y = OPENING_Y_THRESHOLD - 10  # 190
+        e.y = OPENING_Y_THRESHOLD + 10  # 130
         e.update(0.016, player_x=160.0, player_y=400.0)
-        assert e.mine_state == "open1"
-        # In the lower playfield (y > 200) should NOT trigger
+        assert e.mine_state == "open1", (
+            f"Mine at y=130 (below the yellow line) must open, "
+            f"got mine_state={e.mine_state}"
+        )
+        # BLOQUE 68: off-screen above (y < 0) should NOT trigger.
         e2 = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
-        e2.y = OPENING_Y_THRESHOLD + 50  # 250
+        e2.y = -50
         e2.update(0.016, player_x=160.0, player_y=400.0)
-        assert e2.mine_state == "closed"
-        # BLOQUE 68: off-screen above (y < 0) should NOT trigger
-        e3 = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
-        e3.y = -50
-        e3.update(0.016, player_x=160.0, player_y=400.0)
-        assert e3.mine_state == "closed", (
+        assert e2.mine_state == "closed", (
             "Mine at y=-50 (off-screen above) must not open — it "
             "needs to enter the screen (y > 0) first"
+        )
+        # BLOQUE 69: y=119 (just ABOVE the line) should NOT trigger.
+        # The mine is in the "warning" zone — visible on screen but
+        # still above the line (not yet crossed). The check `y >= 120`
+        # is FALSE (119 < 120) so the mine stays closed.
+        e3 = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
+        e3.y = 119
+        e3.update(0.016, player_x=160.0, player_y=400.0)
+        assert e3.mine_state == "closed", (
+            "Mine at y=119 (just above the yellow line) must stay closed — "
+            "the threshold check is `y >= 120`, not `y > 120`"
+        )
+        # BLOQUE 69: y=120 (AT the line) should trigger.
+        # This is the moment of crossing. The check `y >= 120` is TRUE
+        # (120 >= 120) so the mine transitions to open1.
+        e4 = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
+        e4.y = 120
+        e4.update(0.016, player_x=160.0, player_y=400.0)
+        assert e4.mine_state == "open1", (
+            "Mine at y=120 (crossing the yellow line) must open — "
+            "the threshold check is `y >= 120` so the moment of "
+            "crossing triggers the open transition"
         )
 
     def test_open1_to_open2_after_0_2s(self) -> None:
         """After 0.2s in 'open1' state, transitions to 'open2'."""
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
-        e.y = OPENING_Y_THRESHOLD - 10
+        e.y = OPENING_Y_THRESHOLD + 10  # BLOQUE 69: 130 (above the yellow line)
         e.update(0.016, player_x=160.0, player_y=400.0)
         assert e.mine_state == "open1"
         # Advance 0.1s — still in open1
@@ -143,7 +168,7 @@ class TestStateMachine:
     def test_open2_to_open3_after_0_2s(self) -> None:
         """After 0.2s in 'open2' state, transitions to 'open3' (terminal)."""
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
-        e.y = OPENING_Y_THRESHOLD - 10
+        e.y = OPENING_Y_THRESHOLD + 10  # BLOQUE 69: 130 (above the yellow line)
         # closed -> open1 -> open2 (0.016 + 0.2 = 0.216s)
         e.update(0.016, player_x=160.0, player_y=400.0)
         e.update(0.2, player_x=160.0, player_y=400.0)
@@ -164,7 +189,7 @@ class TestStateMachine:
         destroyed (HP=0). The cycle is ONE-WAY.
         """
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
-        e.y = OPENING_Y_THRESHOLD - 10
+        e.y = OPENING_Y_THRESHOLD + 10  # BLOQUE 69: 130 (above the yellow line)
         # Full cycle: 0.016 + 0.2 + 0.2 = 0.416s
         e.update(0.016, player_x=160.0, player_y=400.0)
         e.update(0.2, player_x=160.0, player_y=400.0)
@@ -188,7 +213,7 @@ class TestStateMachine:
         True approximately 2-3 times during that span (1Hz ± noise).
         """
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
-        e.y = OPENING_Y_THRESHOLD - 10
+        e.y = OPENING_Y_THRESHOLD + 10  # BLOQUE 69: 130 (above the yellow line)
         e.update(0.016, player_x=160.0, player_y=400.0)
         e.update(0.2, player_x=160.0, player_y=400.0)
         e.update(0.2, player_x=160.0, player_y=400.0)
@@ -225,14 +250,15 @@ class TestStateMachine:
         to open3, then every 1s thereafter.
         """
         # Spawn above the threshold so the mine stays closed while
-        # we verify it doesn't fire.
-        e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, OPENING_Y_THRESHOLD + 50)
+        # we verify it doesn't fire. BLOQUE 69: y must be < 120 (above
+        # the yellow line on screen) to stay closed.
+        e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
         # closed (above threshold — no transition)
         e.update(0.5, player_x=160.0, player_y=400.0)
         assert e.mine_state == "closed"
         assert e.on_fire is False
-        # open1 (move into the threshold zone)
-        e.y = OPENING_Y_THRESHOLD - 10
+        # open1 (move into the trigger zone, y >= 120)
+        e.y = OPENING_Y_THRESHOLD + 10  # BLOQUE 69: 130 (below the yellow line)
         e.update(0.05, player_x=160.0, player_y=400.0)
         assert e.mine_state == "open1"
         assert e.on_fire is False
@@ -251,7 +277,9 @@ class TestStateMachine:
         This is the same invariant from BLOQUE 63 (no re-open) but
         moved to the open3 transition since there's no closing state.
         """
-        e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 0.0)
+        # BLOQUE 69: spawn at y=130 (above the yellow line) so the
+        # mine opens on the first update.
+        e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 130.0)
         assert e.has_opened is False
         # Run a full cycle
         e.update(0.016, player_x=160.0, player_y=400.0)  # closed -> open1
@@ -341,7 +369,7 @@ class TestStateTimer:
     def test_state_timer_resets_on_transition(self) -> None:
         """state_timer resets to 0.0 each time the state changes."""
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
-        e.y = OPENING_Y_THRESHOLD - 10
+        e.y = OPENING_Y_THRESHOLD + 10  # BLOQUE 69: 130 (above the yellow line)
         e.update(0.016, player_x=160.0, player_y=400.0)
         assert e.mine_state == "open1"
         assert e.state_timer == 0.0  # reset on transition
@@ -357,7 +385,7 @@ class TestStateTimer:
     def test_state_timer_advances_in_each_state(self) -> None:
         """state_timer advances inside each non-closed state."""
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
-        e.y = OPENING_Y_THRESHOLD - 10
+        e.y = OPENING_Y_THRESHOLD + 10  # BLOQUE 69: 130 (above the yellow line)
         e.update(0.0, player_x=160.0, player_y=400.0)
         e.update(0.1, player_x=160.0, player_y=400.0)
         t1 = e.state_timer
@@ -374,7 +402,7 @@ class TestFiring:
     def _make_mine_in_open3(self) -> Enemy:
         """BLOQUE 65: advance the MINE-ASTEROID to open3 (the firing state)."""
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
-        e.y = OPENING_Y_THRESHOLD - 10
+        e.y = OPENING_Y_THRESHOLD + 10  # BLOQUE 69: 130 (above the yellow line)
         # Use small ticks to control state transitions
         e.update(0.016, player_x=160.0, player_y=400.0)  # closed -> open1
         e.update(0.2, player_x=160.0, player_y=400.0)     # open1 -> open2

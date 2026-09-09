@@ -1865,3 +1865,108 @@ produce the symptom:
   requested).
 
 
+## [BLOQUE 69] — 2026-09-09 — MINE-ASTEROID first-quarter trigger (y=120)
+
+### User's absolute requirement
+> "apenas las naves camufladas pasen esa linea, se abren"
+
+The user provided a reference image with a yellow horizontal line at
+the first quarter of the playfield. They clarified that the line is
+IMAGINARY — it is NOT rendered in the game. It is purely a reference
+for WHERE the trigger threshold should be. The threshold moves to
+y=120 (= 480/4, the first quarter of the 480-tall playfield).
+
+> "la linea amarilla solo era una referencia"
+> "no seas tan imbecil de agregarla al juego"
+> "solo era una linea que debe ser imaginaria"
+
+The previous threshold (200, BLOQUE 68) was "upper playfield" but
+lacked a clear reference point. BLOQUE 69 puts the trigger at the
+first quarter (120/480 = 0.25), which is a memorable, easy-to-explain
+position: "the mine opens when it reaches the first quarter of the
+map". The check is now `y > 0 AND y >= 120` (>= not >) so the mine
+opens AT the moment of crossing, not after.
+
+### Files Changed
+- `src/entities/enemies/enemy.py`:
+  - `OPENING_Y_THRESHOLD: int = 120` (was 200 in BLOQUE 68)
+  - Opening check: `y > 0 AND y >= OPENING_Y_THRESHOLD` (was
+    `y > 0 AND y < 200` in BLOQUE 68). The check now uses `>=` so
+    the mine opens AT y=120, not after.
+  - Docstring updated to reflect the first-quarter semantics.
+- `tests/test_mine_asteroid.py`:
+  - `test_opening_y_threshold_constant_200` → asserts `== 120`
+  - `test_state_transitions_on_y_threshold` extended with cases
+    for y=119 (closed, just above the trigger) and y=120 (open1,
+    at the trigger). The case for "below the trigger" was changed
+    from y=190 to y=130 to use the new threshold.
+  - 8 other tests updated: they used `e.y = OPENING_Y_THRESHOLD - 10`
+    (now 110, below the new threshold) which would no longer open
+    the mine. Changed to `OPENING_Y_THRESHOLD + 10` (130, above
+    the new threshold) so the tests still verify the open
+    transition.
+  - `test_has_opened_set_when_reaching_open3` was using `e.y = 0.0`
+    (off-screen); changed to `e.y = 130.0` so the mine opens.
+  - `test_closed_open1_open2_do_not_fire` was spawning at
+    `OPENING_Y_THRESHOLD + 50` (now 170, above threshold → opens
+    on first update). Changed to spawn at y=50 (above the line,
+    closed) per the new semantics.
+- `tools/capture_bloque_69_mine_with_line.py` (NEW): visual
+  evidence capture. Shows the mine in closed (round asteroid) ABOVE
+  y=120, then transitioning through open1 → open3 once it crosses
+  y=120. The capture draws a DASHED LABEL OVERLAY (not a real line
+  in the game) at the trigger position so the user can verify the
+  mine opens AT y=120. Saved to
+  `tools/playtest_out/bloque_69_mine_with_line.png`.
+- `tools/verify_mine_end_to_end.py`: docstring updated to reflect
+  the new threshold (200 → 120).
+
+### Verified
+- **42/42 tests in `test_mine_asteroid.py` pass** (no new tests;
+  the existing tests were updated for the new threshold).
+- **End-to-end test** (`tools/verify_mine_end_to_end.py`):
+  spawn at y=-67.6, vy=32 → opens at t=6.25s, y=121.5 → fires
+  5 times in 4.00s of open3 time = 1.25 Hz (target 1.0 Hz, with
+  the expected entry-fire overshoot).
+- **State trace**: closed → open1 at t=5.85s, y=121.5; open1 →
+  open2 at t=6.05s; open2 → open3 at t=6.25s. Confirms `y >= 120`
+  triggers AT y=120.
+- **Visual capture** (`bloque_69_mine_with_line.png`): 7 frames
+  showing the mine at y=−68 (off-screen, closed) → y=81 (closed,
+  above trigger) → y=120 (closed, just before crossing) → y=121
+  (open1, AT trigger) → y=134 (open3, just opened) → y=166
+  (open3 +1s) → y=230 (open3 +2s). Dashed label overlay marks
+  the trigger position (NOT a real line in the game).
+- Full test suite: 1,637 pass + 6 pre-existing failures (5 sub_boss
+  + 1 Lissajous) — no new regressions.
+- `dist/void-hunter.exe` rebuildeado con BLOQUE 69 (TBD).
+
+### What is NOT in the game (per user)
+- **NO visible yellow line.** The yellow line in the reference
+  image was just a visual cue for where the trigger is. The
+  trigger is purely behavioral: at y >= 120, the mine opens. There
+  are no `YELLOW_LINE_*` constants, no `_draw_yellow_line` method,
+  and no line rendering in `gameplay_runtime.py`. Verified by
+  grep — `YELLOW_LINE` only appears in commented-out historical
+  references, never in active code.
+- **NO `tests/test_yellow_line.py`.** The file was created during
+  a first pass but deleted when the user clarified the line is
+  imaginary.
+
+### Why this is the right fix
+- The user asked for a memorable, easy-to-explain trigger position.
+  "First quarter of the map" is one of the most natural reference
+  points in a vertical shmup (y=120/480 = 0.25).
+- The check uses `>=` so the open transition fires AT y=120, not
+  after. This is the moment-of-crossing semantics: as soon as the
+  mine's y position reaches or passes 120, it opens.
+- All other behavior is preserved: 25% spawn, 1Hz continuous fire
+  in open3, 4-frame animation cycle, HP=3, closed=immune, etc.
+
+### Out of Scope
+- A visible line in the game (user said NO).
+- Bumping the title-screen "BLOQUE 60" text (cosmetic, not
+  requested).
+- Touching GOLIATH (user said "olvida lo de goliath").
+
+

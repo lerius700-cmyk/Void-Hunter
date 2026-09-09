@@ -5,7 +5,7 @@ This simulates the full lifecycle:
 1. spawn_obstacle returns a MINE_ASTEROID payload (with drift_vx, drift_vy)
 2. The enemy is created and drift velocity is applied (gameplay_runtime.py:1720-1722)
 3. The enemy drifts down at vy=20-50 px/s
-4. After ~6-8 seconds, the mine reaches y < 200 (OPENING_Y_THRESHOLD) and opens
+4. After ~6-8 seconds, the mine reaches y >= 120 (OPENING_Y_THRESHOLD) and opens
 5. The mine fires a 3-bullet fan on entry to open3, then every 1s
 
 If any of these steps fail, the test fails loudly. This is the

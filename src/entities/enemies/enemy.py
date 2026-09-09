@@ -41,12 +41,21 @@ class EnemyKind(Enum):
     MINE_ASTEROID = "mine_asteroid"  # BLOQUE 63: asteroid camo enemy
 
 
-# BLOQUE 63 + 65: MINE-ASTEROID state machine constants.
+# BLOQUE 63 + 65 + 69: MINE-ASTEROID state machine constants.
 # OPENING_Y_THRESHOLD: the y-coordinate (in INTERNAL_W=320 / INTERNAL_H=480
 # playfield units) at which a closed MINE-ASTEROID begins to open. Per
-# spec: 200 = upper playfield, just below the spawn area. The threshold
-# is a named constant so it can be tuned in one place.
-OPENING_Y_THRESHOLD: int = 200
+# the user's spec, this is the "first quarter" of the 480-tall
+# playfield (120/480 = 0.25). The threshold is a NAMED constant (not
+# a magic number) so it can be tuned in one place. There is NO visible
+# line in the game — the threshold is a behavioral marker, not a
+# drawn element. The check uses `>=` (not `>`) so the mine opens AT
+# the moment of crossing, not after.
+#
+# BLOQUE 69: 120 = first quarter (was 200 in BLOQUE 68, which was
+# "upper playfield" but lacked a clear visual reference). The user
+# said the line in the reference image was a "first quarter"
+# indication, so 120/480 = 0.25 = "first quarter" of the map.
+OPENING_Y_THRESHOLD: int = 120
 
 # BLOQUE 65: per-state durations in seconds for the 4-state cycle
 # (closed -> open1 -> open2 -> open3). The opening sequence plays ONE
@@ -932,19 +941,26 @@ class Enemy:
             self.state = EnemyState.DEAD
             return
         if self.mine_state == "closed":
-            if not self.has_opened and self.y > 0.0 and self.y < OPENING_Y_THRESHOLD:
-                # BLOQUE 68: mine has drifted into the upper playfield
-                # (on screen AND above the threshold). The previous
-                # check `y < 200` was TRUE from the spawn position
-                # (y=-80..0, off-screen above) and the mine opened
-                # immediately on the first tick — but it was off-screen
-                # so the player never saw it open. The corrected check
-                # requires the mine to have actually entered the screen
-                # (y > 0) before opening. This is the bug that made
-                # MINE-ASTEROIDs "static" in gameplay from the user's
-                # perspective: they were opening off-screen above the
-                # playfield, drifting invisibly across, and getting
-                # culled before reaching the visible area.
+            if not self.has_opened and self.y > 0.0 and self.y >= OPENING_Y_THRESHOLD:
+                # BLOQUE 69: the check is now `y >= OPENING_Y_THRESHOLD`
+                # (>=, not >). The threshold (120) is the "first
+                # quarter" of the 480-tall playfield. The check uses
+                # >= so the mine opens AT the moment of crossing, not
+                # after. There is NO visible line in the game — the
+                # threshold is a behavioral marker.
+                #
+                # BLOQUE 68 history:
+                # - The original check was `y < 200`. The mine spawns
+                #   at y=-80..0 (off-screen above), so the check was
+                #   TRUE from the spawn position and the mine opened
+                #   immediately on the first tick — but it was off-screen
+                #   so the player never saw it open.
+                # - The corrected check (`y > 0 AND y < 200`) required
+                #   the mine to enter the visible playfield before
+                #   opening. This worked but the threshold (200) was
+                #   high (~42% down the map).
+                # - BLOQUE 69 lowers the threshold to 120 (1/4 of the
+                #   map, "first quarter") per the user's spec.
                 self.mine_state = "open1"
                 self.state_timer = 0.0
             return
