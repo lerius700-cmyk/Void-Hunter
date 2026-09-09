@@ -198,6 +198,8 @@ class ParallaxBackground:
         height: int = INTERNAL_H,
         rng_seed: int | None = 42,
         stars_per_layer: int = STARS_PER_LAYER_DEFAULT,
+        use_tile_sequence: bool = False,
+        tiles_dir: Path | None = None,
         spawn_planets: bool = True,
     ) -> None:
         """BLOQUE 58.15: star layers + scrolling galaxy strip + planet.
@@ -229,6 +231,13 @@ class ParallaxBackground:
         # Render the initial strip eagerly
         self._get_or_render_strip(self._strip_variant)
         self._init_stars()
+        # BLOQUE 64: tile sequence mode (level 1 "Asteroid Approach")
+        self._tile_manager: Optional[object] = None
+        if use_tile_sequence:
+            if tiles_dir is None:
+                raise ValueError("use_tile_sequence=True requires tiles_dir=Path(...)")
+            from src.systems.tile_manager import TileManager
+            self._tile_manager = TileManager(tiles_dir)
 
     def set_theme(self, name: str) -> None:
         """BLOQUE 58.15: theme change picks the matching strip variant."""
@@ -282,6 +291,10 @@ class ParallaxBackground:
                 self._planet_timer = self._rng.uniform(PLANET_SPAWN_MIN_S, PLANET_SPAWN_MAX_S)
 
     def draw(self, target: pygame.Surface) -> None:
+        if self._tile_manager is not None:
+            self._tile_manager.draw(target, scroll_y=self._strip_y_offset)
+            # Stars + planets still draw over the tile backdrop
+            return  # skip the galaxy strip render below
         strip = self._strip_surfaces.get(self._strip_variant)
         if strip is not None:
             y = -self._strip_y_offset
