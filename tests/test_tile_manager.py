@@ -78,3 +78,26 @@ def test_tile_manager_tiles_horizontally_for_wide_target():
     # Pixel at x=0, 320, 640 should all be tile color (the three tile copies)
     assert target.get_at((0, 100))[0:3] == target.get_at((320, 100))[0:3]
     assert target.get_at((320, 100))[0:3] == target.get_at((640, 100))[0:3]
+
+
+def test_tile_manager_rotates_tiles_180():
+    """Per user request, each tile is visually rotated 180° at load time."""
+    from src.systems.tile_manager import TileManager
+    from PIL import Image
+    import pygame
+    pygame.init()
+    tiles_dir = Path(r"D:\AI\void-hunter\Assets\background\tiles\act1")
+    tm = TileManager(tiles_dir)
+    # Compare a pixel at (x, y) of the loaded surface vs the source PNG.
+    # If rotated 180, pixel(x, y) in surface should equal pixel(W-x, H-y) in source.
+    raw = Image.open(tiles_dir / "tile_01_atmosphere_exit.png")
+    raw_w, raw_h = raw.size
+    # Sample a few pixels: the rotated surface at (0, 0) should match raw at (W-1, H-1).
+    src_pixel_tl = raw.getpixel((0, 0))
+    src_pixel_br = raw.getpixel((raw_w - 1, raw_h - 1))
+    loaded_pixel_tl = tm._tile_surfaces[0].get_at((0, 0))[:3]
+    loaded_pixel_br = tm._tile_surfaces[0].get_at((raw_w - 1, raw_h - 1))[:3]
+    # The surface's top-left should match the source's bottom-right.
+    assert src_pixel_br == loaded_pixel_tl, f"Expected {src_pixel_br}, got {loaded_pixel_tl}"
+    # And the surface's bottom-right should match the source's top-left.
+    assert src_pixel_tl == loaded_pixel_br, f"Expected {src_pixel_tl}, got {loaded_pixel_br}"
