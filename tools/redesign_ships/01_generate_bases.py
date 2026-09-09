@@ -24,7 +24,7 @@ from tools.redesign_ships._ship_specs import SHIPS, ShipSpec
 
 
 PROMPT_TEMPLATE = (
-    "16-bit pixel art, STRICT TOP-DOWN VIEW (perpendicular, no 3/4 angle) "
+    "16-bit pixel art, STRICT TOP-DOWN VIEW (perpendicular, bird's-eye) "
     "viewed from directly above the ship. The ship's NOSE points DOWN "
     "toward the bottom of the image. WINGS spread OUT to the left and "
     "right sides of the image. ENGINES at the TOP of the image (rear of "
