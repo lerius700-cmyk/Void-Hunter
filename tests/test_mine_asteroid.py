@@ -114,11 +114,13 @@ class TestStateMachine:
         assert e.mine_state == "open"
 
     def test_open_to_closing_after_0_3s(self) -> None:
-        """After 0.3s in 'open' state, transitions to 'closing'.
+        """After 1.0s in 'open' state, transitions to 'closing'.
 
         Note: the state machine uses a tick-relative model — a single
         large tick can chain through multiple states. The test uses
         small ticks (0.016s) so each tick advances at most one state.
+
+        BLOQUE 64.5: MINE_OPEN_DURATION_S changed from 0.3 to 1.0.
         """
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
         e.y = OPENING_Y_THRESHOLD - 10
@@ -131,18 +133,21 @@ class TestStateMachine:
         # 0.2s later — still open
         e.update(0.2, player_x=160.0, player_y=400.0)
         assert e.mine_state == "open"
-        # 0.1s more (total 0.3s) — now closing
-        e.update(0.1, player_x=160.0, player_y=400.0)
+        # 0.8s more (total 1.0s) — now closing
+        e.update(0.8, player_x=160.0, player_y=400.0)
         assert e.mine_state == "closing"
 
     def test_closing_to_closed_after_0_5s(self) -> None:
-        """After 0.5s in 'closing' state, transitions back to 'closed' (with has_opened=True)."""
+        """After 0.5s in 'closing' state, transitions back to 'closed' (with has_opened=True).
+
+        BLOQUE 64.5: total cycle is now 0.5 + 1.0 + 0.5 = 2.0s.
+        """
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 50.0)
         e.y = OPENING_Y_THRESHOLD - 10
-        # Advance through opening + open (0.5 + 0.3 = 0.8s) with small ticks
+        # Advance through opening + open (0.5 + 1.0 = 1.5s) with small ticks
         e.update(0.016, player_x=160.0, player_y=400.0)  # closed -> opening
-        e.update(0.5, player_x=160.0, player_y=400.0)  # opening -> open
-        e.update(0.3, player_x=160.0, player_y=400.0)  # open -> closing
+        e.update(0.5, player_x=160.0, player_y=400.0)    # opening -> open
+        e.update(1.0, player_x=160.0, player_y=400.0)    # open -> closing
         assert e.mine_state == "closing"
         # 0.4s later — still closing
         e.update(0.4, player_x=160.0, player_y=400.0)
@@ -157,15 +162,17 @@ class TestStateMachine:
 
         The y threshold check is performed AFTER the per-tick drift
         update, so we set y close to 0 (well above the threshold)
-        and run enough ticks to cover the full 1.3s cycle plus
+        and run enough ticks to cover the full 2.0s cycle plus
         extra drift time. After the cycle, has_opened=True so the
         mine_state stays at 'closed' even if y crosses the threshold
         again.
+
+        BLOQUE 64.5: total cycle is now 0.5 + 1.0 + 0.5 = 2.0s.
         """
         e = create_enemy(EnemyKind.MINE_ASTEROID, 100.0, 0.0)
-        # Run a full cycle: 0.5 + 0.3 + 0.5 = 1.3s. Use small ticks
+        # Run a full cycle: 0.5 + 1.0 + 0.5 = 2.0s. Use small ticks
         # so the state machine transitions one state per tick.
-        for _ in range(20):  # 20 * 0.1 = 2.0s of updates
+        for _ in range(30):  # 30 * 0.1 = 3.0s of updates
             e.update(0.1, player_x=160.0, player_y=400.0)
         assert e.mine_state == "closed"
         assert e.has_opened is True
@@ -404,16 +411,16 @@ class TestPowerupDrop:
 # =====================================================================
 class TestSpawnIntegration:
     def test_spawn_mixes_with_asteroids(self) -> None:
-        """spawn_obstacle produces ~1/8 MINE_ASTEROID (BLOQUE 63 spec)."""
+        """spawn_obstacle produces ~1/4 MINE_ASTEROID (BLOQUE 64.5: 1/8 → 1/4)."""
         from src.entities.enemies.enemy import spawn_obstacle
         rng = random.Random(0xCAFE)
         results = {"asteroid": 0, "mine_asteroid": 0}
         for _ in range(2000):
             kind, _payload = spawn_obstacle(rng)
             results[kind] = results.get(kind, 0) + 1
-        # ~1/8 should be mine_asteroid, ~7/8 should be asteroid
+        # ~1/4 should be mine_asteroid, ~3/4 should be asteroid
         ratio = results.get("mine_asteroid", 0) / 2000
-        assert 0.10 <= ratio <= 0.16, f"mine_asteroid ratio {ratio} not in [0.10, 0.16] (expected ~0.125)"
+        assert 0.20 <= ratio <= 0.30, f"mine_asteroid ratio {ratio} not in [0.20, 0.30] (expected ~0.25)"
 
     def test_spawn_obstacle_asteroid_path(self) -> None:
         """spawn_obstacle's 'asteroid' branch returns a valid asteroid dict."""
