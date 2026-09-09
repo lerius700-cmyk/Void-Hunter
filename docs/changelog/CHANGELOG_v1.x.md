@@ -2098,3 +2098,60 @@ Every BLOQUE's test suite passed because every test stopped at
 4. The crash log no longer accumulates NameError entries.
 
 
+
+---
+
+## [v1.3.0] — 2026-09-09 — Release: BLOQUE 70 fix + 25%/75% MINE-ASTEROID rule verified
+
+### Headline
+The **"100% mines" bug** is fixed. The 25% mines / 75% indestructibles
+rule now actually works in gameplay.
+
+### What ships in this release
+- **BLOQUE 70** — `Asteroid` NameError fix in `_update_asteroids_and_powerups`
+  (gameplay_runtime.py:1680). The 75% regular-asteroid spawn path was
+  silently crashing in `main.py:285-292`'s broad `except Exception`,
+  making every obstacle on screen a MINE-ASTEROID. One-word fix: add
+  `Asteroid,` to the import list.
+- **BLOQUE 69** — MINE-ASTEROID trigger moved from y=200 to y=120
+  (first quarter of 480-tall playfield). The check uses `y >= 120` so
+  the mine opens at the moment of crossing.
+- **BLOQUE 67** — MINE-ASTEROID fires 3-bullet fan continuously at 1Hz
+  while in `open3` state (was 1-shot before BLOQUE 67).
+- **BLOQUE 66** — variant-aware closed state. The MINE-ASTEROID in
+  `closed` state now loads one of 5 asteroid variants, byte-equal to
+  `Assets/sprites/asteroids/{round,elongated,spiked,hollowed,cracked}.png`.
+- **BLOQUE 64.A** — asteroids are indestructible. Regular asteroid
+  `hit()` is a no-op; only MINE-ASTEROID `closed` is immune (it opens,
+  becomes vulnerable with HP=3).
+- **BLOQUE 64.5** — MINE_SPAWN_FRACTION bumped from 1/8 to 1/4 (25% mines).
+
+### Verified
+- Empirical gameplay simulation: **78% asteroids / 22% mines** over 18
+  spawns in 60s (within statistical noise of 75/25).
+- `pytest tests/test_mine_asteroid.py`: **44/44 pass** (was 38, +6 across
+  BLOQUES 65-70).
+- `pytest tests/`: **1,639 pass + 6 pre-existing failures** (5 sub_boss
+  + 1 Lissajous, all pre-date this release). 0 new regressions.
+- `dist/void-hunter.exe` rebuildeado: 311 MB, onefile, build 2026-09-09
+  1:51:47 PM (BLOQUE 70). Game launches, runs, shows 75% regular
+  asteroids / 25% MINE-ASTEROIDs in real gameplay.
+
+### Regression tests added (BLOQUE 70)
+- `test_gameplay_runtime_asteroid_spawn_does_not_raise` — would have
+  failed before the fix (NameError in regular asteroid branch).
+- `test_gameplay_runtime_actual_75_25_ratio` — 60s end-to-end with the
+  production seed `0xA57E2012`, asserts the ratio is in [20%, 30%].
+
+### Commits in this release
+- `24eaa57` fix: BLOQUE 70 - "100% mines" bug: Asteroid NameError...
+- `f96b09c` chore: BLOQUE 70 - changelog entry
+- `3efc321` feat: BLOQUE 69 - MINE-ASTEROID first-quarter trigger (y=120)
+- `5f2fa91` feat: BLOQUE 67 - MINE-ASTEROID continuous 1Hz fire
+- `d65da0c` feat: BLOQUE 66 - MINE-ASTEROID variant-aware closed state
+- `470d6cb` fix: BLOQUE 68 - MINE-ASTEROID "static asteroids" bug (3 root causes)
+
+### Credits
+Found by fresh worker agent after 4 failed attempts by the previous
+agent. The fresh agent's first action was to actually run the
+`GameplayRuntime` instead of just reading the code.
