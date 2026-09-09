@@ -61,7 +61,11 @@ class TileManager:
         target_w = target.get_width()
         for offset in range(2):  # 2 vertical tiles is enough to cover 480 px
             tile_idx = (first_tile + offset) % self.NUM_TILES
-            y_screen = int(-y_in_first + offset * self.TILE_H)
+            # BLOQUE 64.C round 6: invert y_screen so tiles flow NORTH -> SOUTH
+            # (top of screen down to bottom). Previously y_screen = -y_in_first
+            # which made tiles exit at the top (south -> north). Now they exit
+            # at the bottom (north -> south), matching classic shmup scroll.
+            y_screen = int(y_in_first - offset * self.TILE_H)
             tile_surface = self._tile_surfaces[tile_idx]
             # Tile horizontally to cover full target width
             x = 0
