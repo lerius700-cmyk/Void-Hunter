@@ -50,7 +50,7 @@ OPENING_Y_THRESHOLD: int = 200
 
 # State durations in seconds.
 MINE_OPENING_DURATION_S: float = 0.5   # closed -> open transition
-MINE_OPEN_DURATION_S: float = 0.3      # fires 3 bullets in this window
+MINE_OPEN_DURATION_S: float = 1.0      # fires 3 bullets in this window (BLOQUE 64.5: 0.3→1.0)
 MINE_CLOSING_DURATION_S: float = 0.5   # open -> closed transition
 
 # Fan pattern for the 3 bullets fired in 'open' state.
@@ -62,7 +62,7 @@ MINE_POWERUP_DROP_RATE: float = 0.50
 
 # Fraction of obstacle spawns that become MINE-ASTEROID.
 # 1/8 = 0.125 per spec.
-MINE_SPAWN_FRACTION: float = 1.0 / 8.0
+MINE_SPAWN_FRACTION: float = 1.0 / 4.0  # BLOQUE 64.5: 1/8 → 1/4 (25%, antes 12.5%)
 
 
 def pick_mine_powerup(rng: random.Random) -> "PowerupKind":
