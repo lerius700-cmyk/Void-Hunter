@@ -2166,3 +2166,137 @@ rule now actually works in gameplay.
 Found by fresh worker agent after 4 failed attempts by the previous
 agent. The fresh agent's first action was to actually run the
 `GameplayRuntime` instead of just reading the code.
+
+
+---
+
+## [v1.4.0] — 2026-09-10 — Release: BLOQUE 71 + 71.1 + 71.2 — Asteroid/enemy hit feedback (white flash) + "blancuscas" bugfix
+
+### Headline
+The **"blancuscas" bug** is fixed. Asteroids and MINE-ASTEROIDs now flash
+a clean, shape-aware 70%-opaque white silhouette on hit (preserving the
+original sprite underneath), and the hit flash decrements correctly for
+all enemy kinds (not just MINE-ASTEROID), so the flash no longer sticks
+permanently white after a single bullet impact.
+
+### What ships in this release
+- **BLOQUE 71** — `Asteroid.hit()` now sets `hit_timer = 0.15` and
+  returns False (BLOQUE 64.A indestructible preserved). `Enemy` gains a
+  `hit_timer` field + a `hit()` method that delegates to `apply_damage()`
+  for non-MINE kinds. MINE-ASTEROID `hit_timer` in all 4 states; open3
+  replaces the old red flash with white for consistency. New SFX
+  `asteroid_hit` (short noise burst, 0.05s, vol 0.3) in
+  `src/audio/synth.py` SFX_CATALOG.
+- **BLOQUE 71.1 (refinement)** — the per-pixel palette-swap flash is
+  replaced with a **shape-aware 70% white silhouette overlay** built
+  from the original sprite's alpha mask. Applied uniformly to
+  asteroid + MINE + SCOUT + CRUISER + HEAVY in `_draw_enemy_scaled`.
+  New constant `HIT_FLASH_OPACITY = 0.70` in `src/core/settings.py`
+  and new helper `_build_white_flash_overlay(sprite, opacity)` in
+  `src/entities/asteroid.py`.
+- **BLOQUE 71.2 (bugfix)** — **the "blancuscas" bug**. Root cause:
+  `hit_timer` decrement was only in the MINE-ASTEROID branch of
+  `Enemy.update()`. Fix: moved decrement to the top of `update()` so
+  SCOUT/CRUISER/HEAVY/MINE all flash and recover correctly.
+- **Defensive `NoneType` guard** (commit `daafd04`):
+  `self._level1_chain is not None` in `_update_asteroids_and_powerups`
+  prevents NameError when `GameplayRuntime()` is constructed directly
+  (e.g. in tests).
+
+### Visual verification
+- `tools/playtest_out/bloque_71_asteroid_flash_01.png` — 5 distinct
+  sprites (asteroid + MINE + CRUISER + SCOUT leader) all in mid-flash,
+  70% white overlay visible above the original silhouette.
+- `tools/playtest_out/bloque_71_1_patterns_visible.png` — 12 enemies
+  after 6s, 100% non-black pixels (regression-proof: flash clears
+  fully when `hit_timer` reaches 0).
+
+### Verified
+- `pytest tests/test_enemy_hit_timer.py tests/test_asteroid_hit_flash.py
+  tests/test_mine_hit_flash.py tests/test_audio_asteroid_hit.py`:
+  **24/24 pass** (16 new in BLOQUE 71 + 8 in BLOQUE 71.1 + 71.2).
+- E2E 60s without `NameError` in `logs/crash.log` (verified via
+  `tools/verify_bloque_71_e2e.py`).
+- User confirmed visually: game launched with `main.py --patterns 42`,
+  played ~5 min, reached sub-boss trigger at 110s, no white-stuck
+  enemies. "blancuscas" bug fixed.
+- Full test suite: 1,630 / 1,630 pass excluding 2 files with pre-existing
+  errors not related to this release (test_asteroid_sprites.py uses
+  uninitialized pygame.display; test_bloque_64_goliath.py has a known
+  pre-existing failure documented in the BLOQUE 64.B entry). 0 new
+  regressions.
+
+### Files changed in this release
+- `src/entities/asteroid.py` — `_build_white_flash_overlay(sprite, opacity)`
+  helper + 70% overlay rendering
+- `src/entities/enemies/enemy.py` — `hit_timer` field, `hit()` method
+  delegating to `apply_damage()`, decrement moved to top of `update()`
+- `src/audio/synth.py` — `asteroid_hit` SFX entry in SFX_CATALOG
+- `src/core/settings.py` — `HIT_FLASH_OPACITY = 0.70` constant;
+  `WINDOW_TITLE` bumped to `v1.4.0 (BLOQUE 71)`
+- `src/ui/gameplay_runtime.py` — `_draw_enemy_scaled` uses the
+  shape-aware 70% white overlay; defensive `self._level1_chain is not
+  None` guard in `_update_asteroids_and_powerups` (commit `daafd04`)
+- `tests/test_asteroid_hit_flash.py` (NEW, 9 tests) — shape-preservation
+  + 70% alpha assertion + 4 enemy kinds
+- `tests/test_mine_hit_flash.py` (NEW, 6 tests) — 4-state timer +
+  decrement behavior
+- `tests/test_enemy_hit_timer.py` (NEW, 6 tests) — SCOUT/CRUISER/HEAVY
+  decrement + MINE regression guard
+- `tests/test_audio_asteroid_hit.py` (NEW, 5 tests) — dispatch safety
+  against `AudioEngine.play_sfx`
+- `Assets/sounds/asteroid_hit.wav` (NEW) — short noise burst, 0.05s
+- `tools/verify_bloque_71_e2e.py` (NEW) — 60s end-to-end without
+  NameError
+- `docs/superpowers/specs/2026-09-09-asteroid-hit-and-powerup-system-design.md`
+  (NEW) — full spec for BLOQUE 71 (deferred BLOQUE 72 to v1.5.0)
+- `docs/superpowers/plans/2026-09-09-asteroid-hit-and-powerup-system.md`
+  (NEW) — 20-task plan
+- `docs/superpowers/sessions/2026-09-10-session-checklist.md` (NEW) —
+  session checklist documenting the bug + fix + verification
+
+### GOLIATH revert (release prep)
+Working tree had a partially-applied top-down zenith GOLIATH redesign
+(from BLOQUE 64.C-64.D experiments) that overwrote the BLOQUE 64.B
+3rd-person 6-anim borderless sprite-sheet. Reverted
+`Assets/sprites/bosses/goliath/` to HEAD (`562eb58`) before this
+release. The 64.C work-in-progress is preserved at
+`Assets/sprites/_backup_64C_pre_topdown/` (60 per-frame PNGs + 19 AI
+base renders) and the redesign prototypes are at
+`Assets/sprites/redesign/goliath/` for future iteration.
+
+### Working tree cleanup
+41 transient files moved to `_trash_2026-09-10/` (ad-hoc status logs,
+diagnostic 1-offs, BLOQUE 64C capture scripts) with a manifest at
+`_trash_2026-09-10_MANIFEST.md` documenting the move. The substantive
+work (BLOQUE 71 + 71.1 + 71.2 + 71.2 fix) is committed; only WIP
+experimental scripts and status dumps were moved. Safe to `rm -rf
+_trash_2026-09-10/` after a few days post-release.
+
+### Commits in this release
+- `851a061` docs: update session checklist with BLOQUE 71.2 fix (blancuscas bug)
+- `545228f` fix(BLOQUE 71.2): decrement hit_timer for all enemy kinds, not just MINE
+- `7584b5e` (parent of release branch — BLOQUE 71.1 + earlier 71 work)
+- `daafd04` fix: defensive NoneType guard on _level1_chain in update loop
+- `b43455a` BLOQUE 71.1 e2e (patterns visible)
+- `4bc2a2c` BLOQUE 71.1 e2e (visual capture)
+- `fbce13b` BLOQUE 71.1 e2e (initial)
+- `b8abd5b` BLOQUE 71.1: shape-aware 70% white overlay (asteroid + MINE)
+- `a17acbf` BLOQUE 71: 4 enemy kinds unified flash
+- `b1b4a9a` BLOQUE 71: MINE 4-state hit_timer
+- `bfbf8ed` BLOQUE 71: tests
+- `737bf1c` BLOQUE 71: 70% opacity
+- `c498ca6` BLOQUE 71: hit_timer field
+- `8ee59d5` BLOQUE 71: visual + SFX
+- `9cf6939` BLOQUE 71: spec + plan
+- `c22320c` BLOQUE 71: spec + plan
+- `127f3f4` BLOQUE 71: 20-task plan
+- `5fa7a95` BLOQUE 71: asteroid hit feedback spec
+- `07dc8c0` BLOQUE 71: spec
+
+### Deferred to v1.5.0
+- **BLOQUE 72 (4-weapon powerup system)** — spec + 20-task plan are
+  on disk; implementation paused for v1.4.0 to ship first. Adds
+  thick shot (A), laser (S), flamethrower (D), double blue laser (F)
+  + RMB input handler + mouse wheel cycling + 4 new bullets + 4 new
+  powerup icons + 4 new SFX.
