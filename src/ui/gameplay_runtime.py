@@ -2252,7 +2252,14 @@ class GameplayRuntime:
                 if not e.active or e.state.name == "DEAD":
                     continue
                 if pr.colliderect(e.hitbox()):
-                    killed = e.apply_damage(p.damage)
+                    # BLOQUE 71: call the new hit() API which sets
+                    # hit_timer (white flash) for ALL enemy kinds and
+                    # applies the MINE-ASTEROID state-aware damage
+                    # logic (closed/open1/open2 immune, open3
+                    # vulnerable). For other enemy kinds, hit()
+                    # delegates to apply_damage() with the same
+                    # return value semantics.
+                    killed = e.hit(damage=p.damage)
                     # BLOQUE 58.10: exaggerated spark particles on bullet
                     # hit. Was 8 sparks + 3 shrapnel, now a layered impact:
                     #   - 14 SPARKS (bright white-hot hits)
@@ -5018,11 +5025,14 @@ class GameplayRuntime:
                            shx: int, shy: int) -> None:
         """BLOQUE 58.48: prefer PNG sprite over procedural code.
 
-        BLOQUE 64.A: applies a red-tint overlay on MINE_ASTEROID when
-        ``mine_hit_flash_timer > 0``. The overlay multiplies the RGB
-        channels with a red boost so the closed/open sprite flashes
-        red for 0.2s after a hit lands (the player sees the damage
-        progression).
+        BLOQUE 71: MINE_ASTEROID now flashes WHITE (palette-swap
+        overlay) when ``hit_timer > 0``, replacing the BLOQUE 64.A
+        red-tint overlay. The white flash is consistent with regular
+        Asteroid.hit() and Player hit feedback. The legacy
+        ``mine_hit_flash_timer`` field is still set in apply_damage
+        for back-compat with BLOQUE 64.A tests, but the render no
+        longer reads it (the brief explicitly says the OLD red flash
+        logic in MINE open3 is REMOVED).
         """
         scale = self._ship_scale_enemy
         sprite = self._get_enemy_sprite(e)
@@ -5037,15 +5047,16 @@ class GameplayRuntime:
                 white.fill((255, 255, 255, 200))
                 tinted.blit(white, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
                 sprite = tinted
-            # BLOQUE 64.A: MINE-ASTEROID red flash on a successful hit.
-            # The overlay is a half-strength red layer that multiplies
-            # the sprite's RGB (R channel boosted). The result reads
-            # as a red tint, not a flat red rectangle.
-            if e.kind == EnemyKind.MINE_ASTEROID and e.mine_hit_flash_timer > 0.0:
+            # BLOQUE 71: MINE-ASTEROID white flash via hit_timer.
+            # Replaces the BLOQUE 64.A red-tint overlay. The flash
+            # applies in ALL 4 MINE states (closed/open1/open2/open3)
+            # so the player sees a consistent visual whenever the mine
+            # is hit, regardless of whether the hit damages the mine.
+            if e.kind == EnemyKind.MINE_ASTEROID and e.hit_timer > 0.0:
                 tinted = sprite.copy()
-                red = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
-                red.fill((255, 60, 60, 160))
-                tinted.blit(red, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+                white = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
+                white.fill((255, 255, 255, 200))
+                tinted.blit(white, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
                 sprite = tinted
             scaled = pygame.transform.scale(
                 sprite, (int(w * scale), int(h * scale)),

@@ -41,7 +41,7 @@ class EnemyKind(Enum):
     MINE_ASTEROID = "mine_asteroid"  # BLOQUE 63: asteroid camo enemy
 
 
-# BLOQUE 63 + 65 + 69: MINE-ASTEROID state machine constants.
+# BLOQUE 63 + 65 + 69 + 71: MINE-ASTEROID state machine constants.
 # OPENING_Y_THRESHOLD: the y-coordinate (in INTERNAL_W=320 / INTERNAL_H=480
 # playfield units) at which a closed MINE-ASTEROID begins to open. Per
 # the user's spec, this is the "first quarter" of the 480-tall
@@ -56,6 +56,19 @@ class EnemyKind(Enum):
 # said the line in the reference image was a "first quarter"
 # indication, so 120/480 = 0.25 = "first quarter" of the map.
 OPENING_Y_THRESHOLD: int = 120
+
+# BLOQUE 71: named string constants for the 4 MINE-ASTEROID states
+# (the state machine uses string values for readability in
+# gameplay_runtime.py logs and render code). closed/open1/open2
+# are immune to damage (BLOQUE 71: hits still trigger a white
+# flash, but no HP is taken). open3 is the terminal vulnerable
+# state (HP=3, 3 hits to destroy). The constants are exported so
+# tests can refer to them symbolically instead of using bare
+# strings.
+MINE_ASTEROID_CLOSED: str = "closed"
+MINE_ASTEROID_OPEN1: str = "open1"
+MINE_ASTEROID_OPEN2: str = "open2"
+MINE_ASTEROID_OPEN3: str = "open3"
 
 # BLOQUE 65: per-state durations in seconds for the 4-state cycle
 # (closed -> open1 -> open2 -> open3). The opening sequence plays ONE
@@ -408,7 +421,20 @@ class Enemy:
     # set to 0.2s and the draw code applies a red-tint overlay. The
     # update() method ticks it down by dt each frame. Default 0.0
     # (no flash). Other enemy kinds ignore this field.
+    # BLOQUE 71: superseded by ``hit_timer`` (white flash). Kept for
+    # back-compat with the existing BLOQUE 64.A tests
+    # (test_bloque_64_asteroid_polish.py). New code should set
+    # ``hit_timer`` instead.
     mine_hit_flash_timer: float = 0.0
+    # BLOQUE 71: per-instance white-flash timer. Set by ``hit()`` to
+    # HIT_FLASH_DURATION_S so the render code can apply a white
+    # palette-swap overlay. Decremented by dt in update(). Default 0.0
+    # (no flash). Used by all enemy kinds (for consistency with
+    # regular Asteroid.hit() and Player hit feedback) but currently
+    # only the MINE-ASTEROID has a render branch that reads it (the
+    # other enemies still use the legacy red flash via
+    # ``mine_hit_flash_timer`` — see gameplay_runtime.py).
+    hit_timer: float = 0.0
     # BLOQUE 67: cooldown until the next fan fires in open3. Set to 0
     # on spawn (so the first fire happens immediately on entry to
     # open3) and reset to MINE_FIRE_INTERVAL_S after each fire. Other
@@ -542,6 +568,45 @@ class Enemy:
         h = int(cfg.height * scale)
         return pygame.Rect(int(self.x - w // 2), int(self.y - h // 2), w, h)
 
+    def hit(self, damage: int = 1) -> bool:
+        """BLOQUE 71: new public API for "this enemy was hit by a bullet".
+        Returns True if this hit killed the enemy.
+
+        Sets ``self.hit_timer = HIT_FLASH_DURATION_S`` for visual flash
+        feedback in ALL cases. MINE-ASTEROID behavior:
+          - closed/open1/open2: immune. hit_timer is set but no damage
+            is taken. Returns False.
+          - open3: vulnerable. hit_timer is set AND ``hp`` is decremented
+            by ``damage``. Returns True if HP reached 0 (killed),
+            False otherwise.
+
+        Other enemy kinds: hit_timer is set for consistency, then
+        ``apply_damage(damage)`` is called (which decrements HP and
+        may kill the enemy). This ensures every hit in the game
+        produces a visible flash, regardless of the enemy kind.
+
+        Design note: ``hit()`` is a thin wrapper over ``apply_damage``
+        for non-MINE kinds. The split is intentional — BLOQUE 71
+        standardizes the hit-API surface (every entity has a
+        ``hit(damage)`` method that returns a bool), while
+        ``apply_damage`` remains the internal damage pipeline.
+        """
+        from src.core.settings import HIT_FLASH_DURATION_S
+        self.hit_timer = HIT_FLASH_DURATION_S
+        if self.kind == EnemyKind.MINE_ASTEROID:
+            # MINE-ASTEROID: closed/open1/open2 are immune; only open3
+            # takes damage. The hit_timer is already set above so the
+            # player gets visual feedback even on immune hits.
+            if self.mine_state != MINE_ASTEROID_OPEN3:
+                return False
+            self.hp -= damage
+            if self.hp <= 0:
+                self.alive = False
+                return True
+            return False
+        # Other enemy kinds: defer to the existing apply_damage path
+        return self.apply_damage(damage)
+
     def apply_damage(self, amount: int) -> bool:
         """Returns True if this hit killed the enemy.
 
@@ -613,6 +678,12 @@ class Enemy:
             # the value never drifts negative across many ticks.
             if self.mine_hit_flash_timer > 0.0:
                 self.mine_hit_flash_timer = max(0.0, self.mine_hit_flash_timer - dt)
+            # BLOQUE 71: tick down the white-flash timer. Clamp at 0
+            # for the same reason as mine_hit_flash_timer. The two
+            # timers are independent (set by different code paths) and
+            # can run in parallel without conflict.
+            if self.hit_timer > 0.0:
+                self.hit_timer = max(0.0, self.hit_timer - dt)
             self._update_mine_asteroid(dt)
             return
         # BLOQUE 59: advance animation frame. Use integer division to
