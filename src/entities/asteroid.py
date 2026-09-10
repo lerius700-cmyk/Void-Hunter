@@ -296,20 +296,45 @@ def draw_asteroid(target: pygame.Surface, ast: Asteroid) -> None:
 
 
 # ---------------------------------------------------------------------------
+# BLOQUE 71.1: shape-aware hit flash render (replaces palette-swap)
+# ---------------------------------------------------------------------------
+def _build_white_flash_overlay(sprite: pygame.Surface, opacity: float) -> pygame.Surface:
+    """Build a white-tinted silhouette of `sprite` at `opacity` (0..1).
+
+    The overlay matches `sprite`'s alpha mask exactly (only non-transparent
+    pixels get white). The overlay's per-pixel alpha is `sprite.alpha * opacity`,
+    so the original sprite shows through at `(1 - opacity)` strength.
+
+    Result: instead of a fully-white square, the player sees the original
+    sprite with a translucent white wash on top — the SHAPE of the object
+    is preserved and visible, not replaced.
+    """
+    w, h = sprite.get_size()
+    overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+    # Use the sprite's actual per-pixel alpha so the overlay is shape-aware.
+    for x in range(w):
+        for y in range(h):
+            r, g, b, a = sprite.get_at((x, y))
+            if a == 0:
+                continue
+            overlay.set_at((x, y), (255, 255, 255, int(a * opacity)))
+    return overlay
+
+
+# ---------------------------------------------------------------------------
 # BLOQUE 71: hit flash render (palette-swap to white)
 # ---------------------------------------------------------------------------
+# Kept for back-compat with the T1 fix (which removed the old palette-swap body
+# but kept this stub around). The actual flash is now built via
+# `_build_white_flash_overlay` + blit. Nothing else should reference this.
 _WHITE_FLASH_LUT: dict[tuple[int, int, int], tuple[int, int, int]] = {}
 
 
 def _build_white_flash_lut() -> None:
-    """BLOQUE 71: lazy-init flag for the white flash path.
+    """BLOQUE 71.1: deprecated. The flash is now built via the overlay helper.
 
-    The actual recoloring happens inline in `draw_asteroid_with_hit_flash`
-    (every non-transparent pixel → pure white). This function exists only
-    as a one-time init hook called when the first asteroid flashes. The
-    LUT itself stays empty by design: an empty LUT means "no color is in
-    the preserve set", so the consumer's `if (r,g,b) in _WHITE_FLASH_LUT`
-    check is always False and every pixel is recolored.
+    This function remains for back-compat with code that imports the symbol
+    (none after the refactor). The LUT is unused.
     """
     global _WHITE_FLASH_LUT
     if _WHITE_FLASH_LUT is not None:
@@ -318,12 +343,16 @@ def _build_white_flash_lut() -> None:
 
 
 def draw_asteroid_with_hit_flash(target: pygame.Surface, ast: "Asteroid") -> None:
-    """BLOQUE 71: draw the asteroid, applying white palette-swap if hit_timer > 0.
+    """BLOQUE 71.1: draw the asteroid, applying a 70% white flash overlay if hit_timer > 0.
 
-    If hit_timer is 0, behaves identically to draw_asteroid. If > 0,
-    renders a palette-swapped version where non-brown colors are white.
+    If hit_timer is 0, behaves identically to draw_asteroid (full sprite).
+    If > 0, draws the original sprite first, then a 70%-opaque white
+    silhouette on top. The overlay respects the sprite's alpha mask, so
+    the result is the SHAPE of the asteroid (not a white square), with
+    the original sprite still visible underneath at 30%.
     The flash decays as hit_timer decrements toward 0.
     """
+    from src.core.settings import HIT_FLASH_OPACITY
     if not ast.active:
         return
     sprite = _load_asteroid_sprite(ast.variant)
@@ -331,31 +360,12 @@ def draw_asteroid_with_hit_flash(target: pygame.Surface, ast: "Asteroid") -> Non
         scaled_size = max(1, int(ASTEROID_SPRITE_BASE_SIZE * ast.scale))
         sprite = pygame.transform.smoothscale(sprite, (scaled_size, scaled_size))
 
+    rect = sprite.get_rect(center=(int(ast.x), int(ast.y)))
     if ast.hit_timer > 0.0:
-        # BLOQUE 71: palette swap. Use a one-shot surface copy with
-        # per-pixel recolor. For 8-bit pixelart this is cheap.
-        _build_white_flash_lut()
-        flash_surf = sprite.copy()
-        # Convert per-pixel: black/transparent → unchanged, brown → unchanged,
-        # everything else → white. Iterate per pixel (sprite is ≤ 160×160).
-        w, h = flash_surf.get_size()
-        # Use a locked pixel array for speed
-        try:
-            px = pygame.PixelArray(flash_surf)
-            for x in range(w):
-                for y in range(h):
-                    r, g, b, a = flash_surf.unmap_rgb(px[x, y])
-                    if a == 0:
-                        continue
-                    if (r, g, b) in _WHITE_FLASH_LUT:
-                        continue  # preserved
-                    px[x, y] = (255, 255, 255, a) if a < 255 else (255, 255, 255)
-            del px
-        except (pygame.error, AttributeError):
-            # Fallback: blit original if PixelArray fails
-            pass
-        rect = flash_surf.get_rect(center=(int(ast.x), int(ast.y)))
-        target.blit(flash_surf, rect)
+        # 1. Draw the original sprite so the shape is visible underneath.
+        target.blit(sprite, rect)
+        # 2. Build a shape-aware white silhouette at 70% opacity and overlay it.
+        overlay = _build_white_flash_overlay(sprite, HIT_FLASH_OPACITY)
+        target.blit(overlay, rect)
     else:
-        rect = sprite.get_rect(center=(int(ast.x), int(ast.y)))
         target.blit(sprite, rect)

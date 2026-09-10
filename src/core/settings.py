@@ -317,3 +317,4 @@ FPS_TARGET_STRESS: int = 90
 # BLOQUE 71: hit feedback duration for asteroids and ships
 # ---------------------------------------------------------------------------
 HIT_FLASH_DURATION_S: float = 0.15
+HIT_FLASH_OPACITY: float = 0.70  # 0..1; lower = more original sprite shows through

@@ -5027,45 +5027,52 @@ class GameplayRuntime:
                            shx: int, shy: int) -> None:
         """BLOQUE 58.48: prefer PNG sprite over procedural code.
 
-        BLOQUE 71: MINE_ASTEROID now flashes WHITE (palette-swap
-        overlay) when ``hit_timer > 0``, replacing the BLOQUE 64.A
-        red-tint overlay. The white flash is consistent with regular
-        Asteroid.hit() and Player hit feedback. The legacy
-        ``mine_hit_flash_timer`` field is still set in apply_damage
-        for back-compat with BLOQUE 64.A tests, but the render no
-        longer reads it (the brief explicitly says the OLD red flash
-        logic in MINE open3 is REMOVED).
+        BLOQUE 71.1: hit-flash overlay is now SHAPE-AWARE (follows the
+        sprite's silhouette, not a square) at 70% opacity. The original
+        sprite is drawn first so the player sees the ship's actual
+        shape, then a 70%-opaque white wash on top. The result is the
+        SHAPE of the enemy with a translucent white tint — not a
+        solid white square.
+
+        Two flash sources combine: the legacy BLOQUE 30 ``_enemy_flash``
+        dict (set by collisions/handling for any enemy) and the BLOQUE 71
+        ``e.hit_timer`` field (set by ``Enemy.hit()`` for any kind; for
+        MINE_ASTEROID it's set in all 4 states per the BLOQUE 71 spec).
         """
+        from src.core.settings import HIT_FLASH_OPACITY
         scale = self._ship_scale_enemy
         sprite = self._get_enemy_sprite(e)
         if sprite is not None:
-            # Optional hit-flash overlay (BLOQUE 30 visual feedback)
+            # BLOQUE 71.1: shape-aware 70% white flash overlay if either
+            # flash source is active. Both timers can be set independently.
             flash_t = self._enemy_flash.get(id(e), 0.0)
+            mine_flash = (e.kind == EnemyKind.MINE_ASTEROID and e.hit_timer > 0.0)
+            generic_flash = e.hit_timer > 0.0  # any enemy with hit_timer
             w, h = sprite.get_size()
-            if flash_t > 0.0:
-                # Tint white by blending with a white surface
-                tinted = sprite.copy()
-                white = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
-                white.fill((255, 255, 255, 200))
-                tinted.blit(white, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
-                sprite = tinted
-            # BLOQUE 71: MINE-ASTEROID white flash via hit_timer.
-            # Replaces the BLOQUE 64.A red-tint overlay. The flash
-            # applies in ALL 4 MINE states (closed/open1/open2/open3)
-            # so the player sees a consistent visual whenever the mine
-            # is hit, regardless of whether the hit damages the mine.
-            if e.kind == EnemyKind.MINE_ASTEROID and e.hit_timer > 0.0:
-                tinted = sprite.copy()
-                white = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
-                white.fill((255, 255, 255, 200))
-                tinted.blit(white, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
-                sprite = tinted
-            scaled = pygame.transform.scale(
-                sprite, (int(w * scale), int(h * scale)),
-            )
-            blit_x = int(e.x + shx) - scaled.get_width() // 2
-            blit_y = int(e.y + shy) - scaled.get_height() // 2
-            target.blit(scaled, (blit_x, blit_y))
+            if flash_t > 0.0 or mine_flash or generic_flash:
+                # 1. Draw the original sprite so the shape is visible underneath.
+                scaled_base = pygame.transform.scale(
+                    sprite, (int(w * scale), int(h * scale))
+                )
+                base_rect = scaled_base.get_rect(
+                    center=(int(e.x + shx), int(e.y + shy))
+                )
+                target.blit(scaled_base, base_rect)
+                # 2. Build a shape-aware white silhouette at 70% opacity
+                #    (using the original sprite, pre-scale) and overlay it.
+                from src.entities.asteroid import _build_white_flash_overlay
+                overlay = _build_white_flash_overlay(sprite, HIT_FLASH_OPACITY)
+                scaled_overlay = pygame.transform.scale(
+                    overlay, (int(w * scale), int(h * scale))
+                )
+                target.blit(scaled_overlay, base_rect)
+            else:
+                scaled = pygame.transform.scale(
+                    sprite, (int(w * scale), int(h * scale)),
+                )
+                blit_x = int(e.x + shx) - scaled.get_width() // 2
+                blit_y = int(e.y + shy) - scaled.get_height() // 2
+                target.blit(scaled, (blit_x, blit_y))
         else:
             # Fallback: scratch + procedural code
             scratch = self._enemy_scratch
