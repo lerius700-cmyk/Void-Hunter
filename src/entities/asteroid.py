@@ -302,24 +302,18 @@ _WHITE_FLASH_LUT: dict[tuple[int, int, int], tuple[int, int, int]] = {}
 
 
 def _build_white_flash_lut() -> None:
-    """BLOQUE 71: lazy-build a palette LUT that maps non-black colors to white.
+    """BLOQUE 71: lazy-init flag for the white flash path.
 
-    Black (0,0,0) and the brown rocky base (140,100,60) and its close
-    variants are preserved. Everything else collapses to pure white.
+    The actual recoloring happens inline in `draw_asteroid_with_hit_flash`
+    (every non-transparent pixel → pure white). This function exists only
+    as a one-time init hook called when the first asteroid flashes. The
+    LUT itself stays empty by design: an empty LUT means "no color is in
+    the preserve set", so the consumer's `if (r,g,b) in _WHITE_FLASH_LUT`
+    check is always False and every pixel is recolored.
     """
     global _WHITE_FLASH_LUT
-    if _WHITE_FLASH_LUT:
+    if _WHITE_FLASH_LUT is not None:
         return
-    # Colors that should NOT flash (background-like, transparent edge)
-    preserve = {
-        (0, 0, 0),
-        (140, 100, 60),
-        (110, 80, 50),
-        (170, 130, 80),
-        (60, 40, 30),
-        (200, 160, 110),
-    }
-    # All other colors → white (255, 255, 255)
     _WHITE_FLASH_LUT = {}
 
 
@@ -340,7 +334,6 @@ def draw_asteroid_with_hit_flash(target: pygame.Surface, ast: "Asteroid") -> Non
     if ast.hit_timer > 0.0:
         # BLOQUE 71: palette swap. Use a one-shot surface copy with
         # per-pixel recolor. For 8-bit pixelart this is cheap.
-        from src.core.settings import HIT_FLASH_DURATION_S
         _build_white_flash_lut()
         flash_surf = sprite.copy()
         # Convert per-pixel: black/transparent → unchanged, brown → unchanged,
