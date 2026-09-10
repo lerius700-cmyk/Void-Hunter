@@ -599,13 +599,24 @@ class Enemy:
             # player gets visual feedback even on immune hits.
             if self.mine_state != MINE_ASTEROID_OPEN3:
                 return False
-            self.hp -= damage
-            if self.hp <= 0:
+            # BLOQUE 71 fix round 1: delegate the MINE open3 kill to
+            # apply_damage() so the canonical death pipeline runs
+            # (state=DYING, animation_state="death", on_death=True).
+            # The previous direct `self.alive = False` shortcut skipped
+            # the death animation, leaving the MINE disappearing without
+            # an explosion. We also set alive=False to keep the
+            # ``test_mine_open3_destroyed_at_zero_hp`` test assertion
+            # (``e.alive is False``) and to preserve the historical
+            # contract that a killed enemy has ``alive == False``.
+            destroyed = self.apply_damage(damage)
+            if destroyed:
                 self.alive = False
-                return True
-            return False
+            return destroyed
         # Other enemy kinds: defer to the existing apply_damage path
-        return self.apply_damage(damage)
+        destroyed = self.apply_damage(damage)
+        if destroyed:
+            self.alive = False
+        return destroyed
 
     def apply_damage(self, amount: int) -> bool:
         """Returns True if this hit killed the enemy.
