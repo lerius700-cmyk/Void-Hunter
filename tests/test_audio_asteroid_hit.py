@@ -65,3 +65,23 @@ def test_asteroid_hit_wav_file_exists():
     wav_path = root / "Assets" / "sounds" / "asteroid_hit.wav"
     assert wav_path.exists(), f"Missing {wav_path}"
     assert wav_path.stat().st_size > 0, f"{wav_path} is empty"
+
+
+def test_asteroid_hit_dispatch_via_audio_engine():
+    """BLOQUE 71 fix: the actual runtime dispatch path.
+
+    The previous dispatch-safety test only called ``render_sfx`` (a pure
+    buffer-render function that is null-safe for unknown names by design).
+    It did not exercise ``AudioEngine.play_sfx`` — the function the game
+    actually calls when an asteroid hits the player. This test guards
+    that real path.
+
+    ``play_sfx`` returns ``True`` if the SFX was dispatched to the mixer,
+    or ``False`` if the mixer is unavailable / the name is unknown. Both
+    outcomes are valid; the key invariant is **no exception is raised**.
+    """
+    engine = synth.AudioEngine()
+    result = engine.play_sfx("asteroid_hit", volume=0.3)
+    assert isinstance(result, bool), (
+        f"play_sfx must return bool, got {type(result).__name__}"
+    )
