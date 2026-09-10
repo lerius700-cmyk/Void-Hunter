@@ -1683,7 +1683,9 @@ class GameplayRuntime:
             EnemyKind, MINE_SPAWN_FRACTION, spawn_obstacle,
         )
         # Spawn timer (only spawn during waves, not during boss fight)
-        if not self._is_boss and not self._level1_chain.sub_boss_pending:
+        # Defensive: _level1_chain is None until on_enter() runs; if update() is
+        # called before on_enter, treat it as "no sub-boss pending" (no spawns).
+        if not self._is_boss and self._level1_chain is not None and not self._level1_chain.sub_boss_pending:
             self._asteroid_spawn_timer = getattr(self, "_asteroid_spawn_timer", 0.0) + dt
             spawn_interval = self._asteroid_rng.uniform(3.0, 5.0)
             if self._asteroid_spawn_timer >= spawn_interval:
