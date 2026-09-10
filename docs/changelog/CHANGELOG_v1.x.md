@@ -7,6 +7,16 @@
 **Total tests:** 1,103 passing
 **Ãšltima revisiÃ³n:** 2026-08-15 16:18 PM
 
+## BLOQUE 71 â€” Asteroid Hit Feedback (2026-09-09)
+
+- `Asteroid.hit()` now sets `hit_timer = 0.15` and returns False (BLOQUE 64.A indestructible preserved).
+- Visual: palette-swap white flash render in `draw_asteroid_with_hit_flash()`.
+- MINE-ASTEROID `hit_timer` in all 4 states; open3 replaces red flash with white for consistency. New `Enemy.hit()` method delegates to `apply_damage()` for non-MINE kinds (preserves death animation pipeline).
+- New SFX: `asteroid_hit` (short noise burst, 0.05s, vol 0.3) in `src/audio/synth.py` SFX_CATALOG. Generated WAV at `Assets/sounds/asteroid_hit.wav`.
+- 5 tests in `tests/test_asteroid_hit_flash.py`, 6 in `tests/test_mine_hit_flash.py`, 5 in `tests/test_audio_asteroid_hit.py` (incl. dispatch safety test against `AudioEngine.play_sfx`).
+- E2E 60s without `NameError` in `logs/crash.log` (verified via `tools/verify_bloque_71_e2e.py`).
+- Visual capture: `tools/playtest_out/bloque_71_asteroid_flash_01.png`.
+
 **Versioning policy (2026-08-15):** v1.0 stays as the bootstrap baseline. v1.1 is the consolidated release with the procedural patterns system + recent polish BLOQUES. v1.2 â†’ v1.27 moved to `archive/_legacy_releases/` (kept for history).
 
 ---
@@ -2101,30 +2111,30 @@ Every BLOQUE's test suite passed because every test stopped at
 
 ---
 
-## [v1.3.0] — 2026-09-09 — Release: BLOQUE 70 fix + 25%/75% MINE-ASTEROID rule verified
+## [v1.3.0] ï¿½ 2026-09-09 ï¿½ Release: BLOQUE 70 fix + 25%/75% MINE-ASTEROID rule verified
 
 ### Headline
 The **"100% mines" bug** is fixed. The 25% mines / 75% indestructibles
 rule now actually works in gameplay.
 
 ### What ships in this release
-- **BLOQUE 70** — `Asteroid` NameError fix in `_update_asteroids_and_powerups`
+- **BLOQUE 70** ï¿½ `Asteroid` NameError fix in `_update_asteroids_and_powerups`
   (gameplay_runtime.py:1680). The 75% regular-asteroid spawn path was
   silently crashing in `main.py:285-292`'s broad `except Exception`,
   making every obstacle on screen a MINE-ASTEROID. One-word fix: add
   `Asteroid,` to the import list.
-- **BLOQUE 69** — MINE-ASTEROID trigger moved from y=200 to y=120
+- **BLOQUE 69** ï¿½ MINE-ASTEROID trigger moved from y=200 to y=120
   (first quarter of 480-tall playfield). The check uses `y >= 120` so
   the mine opens at the moment of crossing.
-- **BLOQUE 67** — MINE-ASTEROID fires 3-bullet fan continuously at 1Hz
+- **BLOQUE 67** ï¿½ MINE-ASTEROID fires 3-bullet fan continuously at 1Hz
   while in `open3` state (was 1-shot before BLOQUE 67).
-- **BLOQUE 66** — variant-aware closed state. The MINE-ASTEROID in
+- **BLOQUE 66** ï¿½ variant-aware closed state. The MINE-ASTEROID in
   `closed` state now loads one of 5 asteroid variants, byte-equal to
   `Assets/sprites/asteroids/{round,elongated,spiked,hollowed,cracked}.png`.
-- **BLOQUE 64.A** — asteroids are indestructible. Regular asteroid
+- **BLOQUE 64.A** ï¿½ asteroids are indestructible. Regular asteroid
   `hit()` is a no-op; only MINE-ASTEROID `closed` is immune (it opens,
   becomes vulnerable with HP=3).
-- **BLOQUE 64.5** — MINE_SPAWN_FRACTION bumped from 1/8 to 1/4 (25% mines).
+- **BLOQUE 64.5** ï¿½ MINE_SPAWN_FRACTION bumped from 1/8 to 1/4 (25% mines).
 
 ### Verified
 - Empirical gameplay simulation: **78% asteroids / 22% mines** over 18
@@ -2138,9 +2148,9 @@ rule now actually works in gameplay.
   asteroids / 25% MINE-ASTEROIDs in real gameplay.
 
 ### Regression tests added (BLOQUE 70)
-- `test_gameplay_runtime_asteroid_spawn_does_not_raise` — would have
+- `test_gameplay_runtime_asteroid_spawn_does_not_raise` ï¿½ would have
   failed before the fix (NameError in regular asteroid branch).
-- `test_gameplay_runtime_actual_75_25_ratio` — 60s end-to-end with the
+- `test_gameplay_runtime_actual_75_25_ratio` ï¿½ 60s end-to-end with the
   production seed `0xA57E2012`, asserts the ratio is in [20%, 30%].
 
 ### Commits in this release
