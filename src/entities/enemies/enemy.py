@@ -677,6 +677,13 @@ class Enemy:
         """
         if not self.active or dt <= 0.0 or self.state == EnemyState.DEAD:
             return
+        # BLOQUE 71.2: tick down the white-flash timer for ALL enemy kinds
+        # (MINE + SCOUT + CRUISER + HEAVY). Previously this decrement was
+        # only inside the MINE_ASTEROID branch below, which caused
+        # non-MINE enemies to stay "blancuscas" (white overlay 70%) for
+        # the rest of the run because their hit_timer never decremented.
+        if self.hit_timer > 0.0:
+            self.hit_timer = max(0.0, self.hit_timer - dt)
         # BLOQUE 63: MINE_ASTEROID state machine. Lives BEFORE the rest
         # of update() so the MINE-ASTEROID never falls through to the
         # straight-line drift / sine-wobble / homing code below (which
@@ -685,16 +692,12 @@ class Enemy:
         # jitter), so we DO apply vx/vy here, but everything else
         # (sine wobble, homing, fire cooldown) is skipped.
         if self.kind == EnemyKind.MINE_ASTEROID:
-            # BLOQUE 64.A: tick down the red-flash timer. Clamp at 0 so
-            # the value never drifts negative across many ticks.
+            # BLOQUE 64.A: tick down the red-flash timer (legacy MINE
+            # red flash, kept for back-compat with BLOQUE 64.A tests).
+            # The white hit_timer decrement has been moved to the top
+            # of update() so it applies to all enemy kinds.
             if self.mine_hit_flash_timer > 0.0:
                 self.mine_hit_flash_timer = max(0.0, self.mine_hit_flash_timer - dt)
-            # BLOQUE 71: tick down the white-flash timer. Clamp at 0
-            # for the same reason as mine_hit_flash_timer. The two
-            # timers are independent (set by different code paths) and
-            # can run in parallel without conflict.
-            if self.hit_timer > 0.0:
-                self.hit_timer = max(0.0, self.hit_timer - dt)
             self._update_mine_asteroid(dt)
             return
         # BLOQUE 59: advance animation frame. Use integer division to
