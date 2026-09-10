@@ -10,10 +10,11 @@
 ## BLOQUE 71 — Asteroid Hit Feedback (2026-09-09)
 
 - `Asteroid.hit()` now sets `hit_timer = 0.15` and returns False (BLOQUE 64.A indestructible preserved).
-- Visual: palette-swap white flash render in `draw_asteroid_with_hit_flash()`.
+- Visual: shape-aware white flash at 70% opacity (original sprite visible underneath, not replaced). `draw_asteroid_with_hit_flash()` draws the sprite then a 70%-opaque white silhouette overlay following the sprite's alpha mask.
 - MINE-ASTEROID `hit_timer` in all 4 states; open3 replaces red flash with white for consistency. New `Enemy.hit()` method delegates to `apply_damage()` for non-MINE kinds (preserves death animation pipeline).
+- **BLOQUE 71.1 (refinement)**: all enemy flashes (MINE-ASTEROID + SCOUT/CRUISER/HEAVY) now use the same shape-aware 70% overlay, replacing the previous `BLEND_RGBA_ADD` square at 200/255 alpha. New constant `HIT_FLASH_OPACITY = 0.70` in `src/core/settings.py`. New helper `_build_white_flash_overlay(sprite, opacity)` in `src/entities/asteroid.py`.
 - New SFX: `asteroid_hit` (short noise burst, 0.05s, vol 0.3) in `src/audio/synth.py` SFX_CATALOG. Generated WAV at `Assets/sounds/asteroid_hit.wav`.
-- 5 tests in `tests/test_asteroid_hit_flash.py`, 6 in `tests/test_mine_hit_flash.py`, 5 in `tests/test_audio_asteroid_hit.py` (incl. dispatch safety test against `AudioEngine.play_sfx`).
+- 7 tests in `tests/test_asteroid_hit_flash.py` (incl. shape-preservation + 70% alpha assertion), 6 in `tests/test_mine_hit_flash.py`, 5 in `tests/test_audio_asteroid_hit.py` (incl. dispatch safety test against `AudioEngine.play_sfx`).
 - E2E 60s without `NameError` in `logs/crash.log` (verified via `tools/verify_bloque_71_e2e.py`).
 - Visual capture: `tools/playtest_out/bloque_71_asteroid_flash_01.png`.
 
