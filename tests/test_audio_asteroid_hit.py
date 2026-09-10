@@ -82,6 +82,8 @@ def test_asteroid_hit_dispatch_via_audio_engine():
     """
     engine = synth.AudioEngine()
     result = engine.play_sfx("asteroid_hit", volume=0.3)
-    assert isinstance(result, bool), (
-        f"play_sfx must return bool, got {type(result).__name__}"
+    assert result is True, (
+        f"play_sfx('asteroid_hit') must return True (dispatched), "
+        f"got {result!r} — SFX is likely missing from the catalog or "
+        f"the dummy SDL mixer could not initialize"
     )
