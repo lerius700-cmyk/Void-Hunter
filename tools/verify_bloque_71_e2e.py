@@ -80,6 +80,22 @@ def main() -> int:
     else:
         print(f"Spawned CRUISER at (160, 320)")
 
+    # Spawn 1 SCOUT as a WAVE-PATTERN LEADER at (240, 280). The leader's
+    # is_leader flag drives a different draw color in _draw_enemy_scaled
+    # (BLOQUE 58.10) and, when a PatternRuntime is active, a glow ring.
+    # In the e2e (no active pattern runtime) only the body flash + the
+    # color difference apply.
+    scout = runtime._enemies.spawn(EnemyKind.SCOUT, 240.0, 280.0)
+    if scout is None:
+        print("WARNING: enemy pool exhausted; cannot spawn SCOUT leader")
+    else:
+        scout.is_leader = True
+        # Bump HP to a leader-appropriate value so the flash render doesn't
+        # accidentally destroy it during the 60s loop.
+        scout.hp = 30
+        scout.max_hp = 30
+        print(f"Spawned SCOUT leader at (240, 280), HP=30, is_leader=True")
+
     # 60s simulation at 60fps
     print("Running 60s e2e at 60fps...")
     start = time.perf_counter()
@@ -106,6 +122,11 @@ def main() -> int:
     if cruiser is not None:
         cruiser.hit_timer = 0.10
         print(f"CRUISER hit_timer set to 0.10 (mid-flash)")
+
+    # Force mid-flash on SCOUT leader
+    if scout is not None:
+        scout.hit_timer = 0.10
+        print(f"SCOUT leader hit_timer set to 0.10 (mid-flash)")
 
     # Render and capture
     target.fill((0, 0, 0))
