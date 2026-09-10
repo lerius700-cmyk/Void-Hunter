@@ -2016,21 +2016,21 @@ def test_thick_slot_has_ammo(runtime):
 
 def test_fire_thick_consumes_one_ammo(runtime):
     initial = runtime._weapon_slots[0].ammo
-    runtime._fire_weapon_slot()
+    runtime._fire_thick(runtime._weapon_slots[0])
     assert runtime._weapon_slots[0].ammo == initial - 1
 
 
 def test_fire_thick_no_ammo_does_nothing(runtime):
     runtime._weapon_slots[0].ammo = 0
     bullets_before = sum(1 for b in runtime._bullets.pool if b.active)
-    runtime._fire_weapon_slot()
+    runtime._fire_thick(runtime._weapon_slots[0])
     bullets_after = sum(1 for b in runtime._bullets.pool if b.active)
     assert bullets_before == bullets_after
 
 
 def test_fire_thick_spawns_one_bullet(runtime):
     bullets_before = sum(1 for b in runtime._bullets.pool if b.active and b.owner == 0)  # OWNER_PLAYER = 0
-    runtime._fire_weapon_slot()
+    runtime._fire_thick(runtime._weapon_slots[0])
     bullets_after = sum(1 for b in runtime._bullets.pool if b.active and b.owner == 0)
     assert bullets_after == bullets_before + 1
 ```
@@ -2040,7 +2040,7 @@ def test_fire_thick_spawns_one_bullet(runtime):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_thick_shot.py -v`
-Expected: FAIL with `AttributeError: 'GameplayRuntime' object has no attribute '_fire_weapon_slot'`.
+Expected: FAIL with `AttributeError: 'GameplayRuntime' object has no attribute '_fire_thick'`.
 
 - [ ] **Step 3: Add BULLET_THICK to projectile.py**
 
@@ -2056,45 +2056,11 @@ Add a corresponding entry in any bullet-kind-to-properties lookup. Find the exis
 
 In `src/audio/sfx.py`, add the `shoot_thick` event following the existing pattern (similar to Task 3 Step 4).
 
-- [ ] **Step 5: Add _fire_thick + _fire_weapon_slot method**
+- [ ] **Step 5: Add _fire_thick method (dispatch deferred to T17)**
 
-In `src/ui/gameplay_runtime.py`, add a method:
+In `src/ui/gameplay_runtime.py`, add only the `_fire_thick` method. The slot-lookup dispatch and the `_find_next_filled_slot` helper are added in T17 (RMB handler task) to avoid referencing methods that don't exist yet (T13-T15 introduce `_fire_laser`/`_fire_flamethrower`/`_fire_double_laser`).
 
 ```python
-def _fire_weapon_slot(self) -> None:
-    """BLOQUE 72: fire the currently selected weapon slot.
-    If active slot is empty, auto-cycle to next filled.
-    """
-    # Try active first
-    slot = self._weapon_slots[self._weapon_active_idx]
-    if slot.is_empty:
-        # Auto-cycle
-        new_idx = self._find_next_filled_slot(self._weapon_active_idx)
-        if new_idx is None:
-            return
-        self._weapon_active_idx = new_idx
-        slot = self._weapon_slots[new_idx]
-    # Dispatch
-    if slot.weapon_id == "thick":
-        self._fire_thick(slot)
-    elif slot.weapon_id == "laser":
-        self._fire_laser(slot)
-    elif slot.weapon_id == "flame":
-        self._fire_flamethrower(slot)
-    elif slot.weapon_id == "double":
-        self._fire_double_laser(slot)
-
-
-def _find_next_filled_slot(self, start_idx: int) -> int | None:
-    """Return the next index with ammo, wrapping around."""
-    n = len(self._weapon_slots)
-    for offset in range(1, n + 1):
-        idx = (start_idx + offset) % n
-        if not self._weapon_slots[idx].is_empty:
-            return idx
-    return None
-
-
 def _fire_thick(self, slot) -> None:
     """BLOQUE 72: fire 1 thick shot (big orange bullet, 2x damage)."""
     if slot.consume(1) < 1:
@@ -2242,14 +2208,9 @@ def _fire_laser(self, slot) -> None:
 
 In `src/audio/sfx.py`, add the `laser_hum` event.
 
-- [ ] **Step 5: Hook _tick_weapon_laser into update()**
+- [ ] **Step 5: (NO update() hook — deferred to T17)**
 
-In `GameplayRuntime.update()`, after the existing tick logic, add:
-
-```python
-if self._mouse_r_held:
-    self._tick_weapon_laser(dt)
-```
+The per-frame `if self._mouse_r_held: self._tick_weapon_laser(dt)` dispatch is added in T17 (RMB handler task) along with the consolidated dispatch for the other continuous weapons (flame, double). T13 only introduces the `_tick_weapon_laser` method itself.
 
 - [ ] **Step 6: Run test to verify it passes**
 
@@ -2359,17 +2320,9 @@ For spawning the actual bullet, follow the existing pattern in `_spawn_player_bu
 
 In `src/audio/sfx.py`, add `flame_loop` event.
 
-- [ ] **Step 5: Hook into update()**
+- [ ] **Step 5: (NO update() hook — deferred to T17)**
 
-```python
-if self._mouse_r_held:
-    if self._weapon_slots[self._weapon_active_idx].weapon_id == "flame":
-        self._tick_weapon_flamethrower(dt)
-    elif self._weapon_slots[self._weapon_active_idx].weapon_id == "laser":
-        self._tick_weapon_laser(dt)
-```
-
-(Refactor to a single dispatch helper if cleaner.)
+T14 only introduces the `_tick_weapon_flamethrower` method. The per-frame `if self._mouse_r_held` dispatch is consolidated with the other continuous weapons in T17.
 
 - [ ] **Step 6: Run test to verify it passes**
 
@@ -2492,19 +2445,9 @@ def _fire_double_laser(self, slot) -> None:
 
 In `src/audio/sfx.py`, add `shoot_double` event.
 
-- [ ] **Step 5: Hook into update()**
+- [ ] **Step 5: (NO update() hook — deferred to T17)**
 
-```python
-if self._mouse_r_held:
-    weapon_id = self._weapon_slots[self._weapon_active_idx].weapon_id
-    if weapon_id == "laser":
-        self._tick_weapon_laser(dt)
-    elif weapon_id == "flame":
-        self._tick_weapon_flamethrower(dt)
-    elif weapon_id == "double":
-        self._tick_weapon_double_laser(dt)
-    # thick is single-shot on RMB down (not continuous)
-```
+T15 only introduces the `_tick_weapon_double_laser` method. The per-frame dispatch in `update()` is added in T17 (RMB handler task) and consolidates the dispatch for all continuous weapons (laser, flame, double).
 
 - [ ] **Step 6: Run test to verify it passes**
 
@@ -2712,9 +2655,67 @@ def test_rmb_no_fire_when_all_empty(runtime):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_rmb_dispatch.py -v`
-Expected: FAIL with `AttributeError` (no `_fire_weapon_slot` yet) or old rapid-fire behavior.
+Expected: FAIL with `AttributeError: 'GameplayRuntime' object has no attribute '_fire_weapon_slot'`.
 
-- [ ] **Step 3: Replace rapid fire dispatch in event handler**
+- [ ] **Step 3: Add _fire_weapon_slot dispatch (deferred from T12)**
+
+In `src/ui/gameplay_runtime.py`, add the slot-lookup dispatch and helper. This wires the active slot to the per-weapon firing method:
+
+```python
+def _fire_weapon_slot(self) -> None:
+    """BLOQUE 72: fire the currently selected weapon slot.
+    If active slot is empty, auto-cycle to next filled.
+    """
+    # Try active first
+    slot = self._weapon_slots[self._weapon_active_idx]
+    if slot.is_empty:
+        # Auto-cycle
+        new_idx = self._find_next_filled_slot(self._weapon_active_idx)
+        if new_idx is None:
+            return
+        self._weapon_active_idx = new_idx
+        slot = self._weapon_slots[new_idx]
+    # Dispatch
+    if slot.weapon_id == "thick":
+        self._fire_thick(slot)
+    elif slot.weapon_id == "laser":
+        self._fire_laser(slot)
+    elif slot.weapon_id == "flame":
+        self._fire_flamethrower(slot)
+    elif slot.weapon_id == "double":
+        self._fire_double_laser(slot)
+
+
+def _find_next_filled_slot(self, start_idx: int) -> int | None:
+    """Return the next index with ammo, wrapping around."""
+    n = len(self._weapon_slots)
+    for offset in range(1, n + 1):
+        idx = (start_idx + offset) % n
+        if not self._weapon_slots[idx].is_empty:
+            return idx
+    return None
+```
+
+(For thick, the test expects 1 ammo per fire call. The continuous weapons' per-frame `_tick_*` methods handle ammo drain; `_fire_weapon_slot` just plays the SFX and registers the "active" state for them.)
+
+- [ ] **Step 4: Add the per-frame update() hook for continuous weapons**
+
+In `GameplayRuntime.update()`, after the existing tick logic, add:
+
+```python
+# BLOQUE 72: continuous weapons tick while RMB is held
+if self._mouse_r_held:
+    weapon_id = self._weapon_slots[self._weapon_active_idx].weapon_id
+    if weapon_id == "laser":
+        self._tick_weapon_laser(dt)
+    elif weapon_id == "flame":
+        self._tick_weapon_flamethrower(dt)
+    elif weapon_id == "double":
+        self._tick_weapon_double_laser(dt)
+    # thick is single-shot on RMB down, not continuous
+```
+
+- [ ] **Step 5: Replace rapid fire dispatch in event handler**
 
 In `src/ui/gameplay_runtime.py`, find the RMB handler (around line 712-715). Replace the rapid-fire path with `_fire_weapon_slot()`:
 
@@ -2728,22 +2729,16 @@ if self._mouse_r_held:
     self._fire_weapon_slot()
 ```
 
-(For thick, the test expects 1 ammo per fire call. The continuous weapons (laser/flame/double) are handled by `_tick_*` in the per-frame update — not by the discrete RMB event. So `_fire_weapon_slot` is responsible for the discrete fire (thick) and the SFX trigger for continuous weapons.)
-
-- [ ] **Step 4: Refactor _fire_weapon_slot for thick vs continuous**
-
-The current `_fire_weapon_slot` (from Task 12) handles all 4 weapons. Make sure thick consumes 1 ammo and fires 1 bullet per call. For continuous weapons, the per-frame tick handles ammo drain; the call just plays the SFX and registers the "active" state.
-
-- [ ] **Step 5: Run test to verify it passes**
+- [ ] **Step 6: Run test to verify it passes**
 
 Run: `pytest tests/test_rmb_dispatch.py -v`
 Expected: PASS for all 3 tests.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/ui/gameplay_runtime.py tests/test_rmb_dispatch.py
-git commit -m "feat: BLOQUE 72 — RMB fires selected weapon slot, auto-cycle on empty"
+git commit -m "feat: BLOQUE 72 — RMB dispatch + per-frame continuous weapons + auto-cycle"
 ```
 
 ---
