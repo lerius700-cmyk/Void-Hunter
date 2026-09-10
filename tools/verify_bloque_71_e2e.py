@@ -72,6 +72,14 @@ def main() -> int:
         return 1
     print(f"Spawned MINE at (160, 200)")
 
+    # Spawn 1 CRUISER (leader ship) at (160, 320) — large enough to show
+    # the shape-aware flash clearly.
+    cruiser = runtime._enemies.spawn(EnemyKind.CRUISER, 160.0, 320.0)
+    if cruiser is None:
+        print("WARNING: enemy pool exhausted; cannot spawn CRUISER")
+    else:
+        print(f"Spawned CRUISER at (160, 320)")
+
     # 60s simulation at 60fps
     print("Running 60s e2e at 60fps...")
     start = time.perf_counter()
@@ -93,6 +101,11 @@ def main() -> int:
             e.hit_timer = 0.10
             print(f"MINE hit_timer set to 0.10 (mid-flash)")
             break
+
+    # Force mid-flash on CRUISER (leader)
+    if cruiser is not None:
+        cruiser.hit_timer = 0.10
+        print(f"CRUISER hit_timer set to 0.10 (mid-flash)")
 
     # Render and capture
     target.fill((0, 0, 0))
