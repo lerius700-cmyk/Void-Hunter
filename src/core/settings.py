@@ -312,3 +312,8 @@ MIXER_BITS: int = 16
 COVERAGE_GATE: float = 0.35               # 5% en BLOQUE 0 → 35% al release
 FPS_TARGET_NORMAL: int = 120
 FPS_TARGET_STRESS: int = 90
+
+# ---------------------------------------------------------------------------
+# BLOQUE 71: hit feedback duration for asteroids and ships
+# ---------------------------------------------------------------------------
+HIT_FLASH_DURATION_S: float = 0.15

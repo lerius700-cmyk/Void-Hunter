@@ -79,6 +79,9 @@ class Asteroid:
     always returns False. MINE-ASTEROID (the camouflaged enemy) is the
     only asteroid-looking thing the player can shoot — regular asteroids
     are pure obstacles.
+
+    BLOQUE 71: ``hit()`` now sets ``hit_timer`` for visual feedback
+    (palette-swap white flash) but still returns False (indestructible).
     """
     x: float
     y: float
@@ -103,20 +106,26 @@ class Asteroid:
     powerup_dropped: bool = False
     # Whether this asteroid is active (drawn + collision).
     active: bool = True
+    # BLOQUE 71: white flash on hit (palette-swap render when > 0)
+    hit_timer: float = 0.0
 
     def update(self, dt: float) -> None:
-        """Drift down. No rotation (BLOQUE 61)."""
+        """Drift down. No rotation (BLOQUE 61). BLOQUE 71: tick hit_timer."""
         self.x += self.drift_vx * dt
         self.y += self.drift_vy * dt
+        if self.hit_timer > 0.0:
+            self.hit_timer = max(0.0, self.hit_timer - dt)
 
     def hit(self, damage: int = 1) -> bool:
-        """BLOQUE 64.A: no-op (asteroids are indestructible).
+        """BLOQUE 64.A + 71: set hit_timer for visual flash, return False.
 
-        ``damage`` is accepted for API compatibility with the old
-        bullet-collision code path but is ignored. Always returns False
-        (never destroyed).
+        ``damage`` is accepted for API compatibility but is ignored.
+        Always returns False (never destroyed). The hit_timer triggers
+        a brief white palette-swap in the renderer.
         """
-        del damage  # explicitly unused
+        del damage
+        from src.core.settings import HIT_FLASH_DURATION_S
+        self.hit_timer = HIT_FLASH_DURATION_S
         return False
 
     def is_off_screen(self) -> bool:
@@ -284,3 +293,76 @@ def draw_asteroid(target: pygame.Surface, ast: Asteroid) -> None:
         sprite = pygame.transform.smoothscale(sprite, (scaled_size, scaled_size))
     rect = sprite.get_rect(center=(int(ast.x), int(ast.y)))
     target.blit(sprite, rect)
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 71: hit flash render (palette-swap to white)
+# ---------------------------------------------------------------------------
+_WHITE_FLASH_LUT: dict[tuple[int, int, int], tuple[int, int, int]] = {}
+
+
+def _build_white_flash_lut() -> None:
+    """BLOQUE 71: lazy-build a palette LUT that maps non-black colors to white.
+
+    Black (0,0,0) and the brown rocky base (140,100,60) and its close
+    variants are preserved. Everything else collapses to pure white.
+    """
+    global _WHITE_FLASH_LUT
+    if _WHITE_FLASH_LUT:
+        return
+    # Colors that should NOT flash (background-like, transparent edge)
+    preserve = {
+        (0, 0, 0),
+        (140, 100, 60),
+        (110, 80, 50),
+        (170, 130, 80),
+        (60, 40, 30),
+        (200, 160, 110),
+    }
+    # All other colors → white (255, 255, 255)
+    _WHITE_FLASH_LUT = {}
+
+
+def draw_asteroid_with_hit_flash(target: pygame.Surface, ast: "Asteroid") -> None:
+    """BLOQUE 71: draw the asteroid, applying white palette-swap if hit_timer > 0.
+
+    If hit_timer is 0, behaves identically to draw_asteroid. If > 0,
+    renders a palette-swapped version where non-brown colors are white.
+    The flash decays as hit_timer decrements toward 0.
+    """
+    if not ast.active:
+        return
+    sprite = _load_asteroid_sprite(ast.variant)
+    if ast.scale != 1.0:
+        scaled_size = max(1, int(ASTEROID_SPRITE_BASE_SIZE * ast.scale))
+        sprite = pygame.transform.smoothscale(sprite, (scaled_size, scaled_size))
+
+    if ast.hit_timer > 0.0:
+        # BLOQUE 71: palette swap. Use a one-shot surface copy with
+        # per-pixel recolor. For 8-bit pixelart this is cheap.
+        from src.core.settings import HIT_FLASH_DURATION_S
+        _build_white_flash_lut()
+        flash_surf = sprite.copy()
+        # Convert per-pixel: black/transparent → unchanged, brown → unchanged,
+        # everything else → white. Iterate per pixel (sprite is ≤ 160×160).
+        w, h = flash_surf.get_size()
+        # Use a locked pixel array for speed
+        try:
+            px = pygame.PixelArray(flash_surf)
+            for x in range(w):
+                for y in range(h):
+                    r, g, b, a = flash_surf.unmap_rgb(px[x, y])
+                    if a == 0:
+                        continue
+                    if (r, g, b) in _WHITE_FLASH_LUT:
+                        continue  # preserved
+                    px[x, y] = (255, 255, 255, a) if a < 255 else (255, 255, 255)
+            del px
+        except (pygame.error, AttributeError):
+            # Fallback: blit original if PixelArray fails
+            pass
+        rect = flash_surf.get_rect(center=(int(ast.x), int(ast.y)))
+        target.blit(flash_surf, rect)
+    else:
+        rect = sprite.get_rect(center=(int(ast.x), int(ast.y)))
+        target.blit(sprite, rect)
