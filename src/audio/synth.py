@@ -147,6 +147,9 @@ SFX_CATALOG: dict[str, _SfxSpec] = {
     "missile_lock":           _SfxSpec("missile_lock", Voice.SQUARE, 2000, 0, 0.005, 0.05, 0.0, 0.05, 0.10, "Homing lock-on", 0.4),
     "missile_fire":           _SfxSpec("missile_fire", Voice.SAW, 400, -200, 0.005, 0.10, 0.0, 0.10, 0.20, "Homing missile launch", 0.5),
     "screen_shake_thump":     _SfxSpec("screen_shake_thump", Voice.NOISE, 60, 0, 0.002, 0.08, 0.0, 0.10, 0.18, "Trauma shake thump", 0.5),
+    # BLOQUE 71 Task 3: brief noise burst for bullet→asteroid hit feedback.
+    # Short percussive tick (~0.05s) that pairs with the white-flash visual.
+    "asteroid_hit":           _SfxSpec("asteroid_hit", Voice.NOISE, 0, 0, 0.002, 0.02, 0.0, 0.03, 0.05, "Asteroid hit feedback", 0.3),
     # BLOQUE_STELLAR_HORIZON_AUDIO: per-ship thruster loops.
     # Each ship (player + 6 enemy kinds) gets a unique continuous
     # loop that loops forever while alive. The ThrusterManager applies

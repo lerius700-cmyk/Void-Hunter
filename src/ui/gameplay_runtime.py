@@ -1774,8 +1774,10 @@ class GameplayRuntime:
                     # indestructible. The ``ast.hit()`` call is now a
                     # no-op (always returns False) and the powerup-drop
                     # path is dead. Keep the structure for clarity.
+                    # BLOQUE 71 Task 3: audio feedback for the hit.
                     b.active = False
                     ast.hit(damage=1)
+                    self._play_sfx("asteroid_hit", volume=0.3)
                     break  # asteroid can be hit by 1 bullet per tick
 
     def _asteroid_player_collision(self) -> None:
