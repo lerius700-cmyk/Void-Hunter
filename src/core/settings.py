@@ -19,6 +19,15 @@ WINDOW_H: int = INTERNAL_H * DEFAULT_SCALE
 WINDOW_TITLE: str = "VOID HUNTER v1.4.0 (BLOQUE 71)"
 
 # ---------------------------------------------------------------------------
+# BLOQUE 72: weapon powerup system
+# ---------------------------------------------------------------------------
+WEAPON_PICKUP_AMMO: int = 30
+MAX_AMMO_THICK: int = 100
+MAX_AMMO_LASER: int = 200
+MAX_AMMO_FLAME: int = 50
+MAX_AMMO_DOUBLE: int = 150
+
+# ---------------------------------------------------------------------------
 # Frame timing — 120 FPS lock
 # ---------------------------------------------------------------------------
 FPS_TARGET: int = 120
