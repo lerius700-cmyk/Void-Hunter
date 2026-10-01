@@ -3939,7 +3939,11 @@ class GameplayRuntime:
         if self._enemies_spawned_total > 0:
             ratio = min(1.0, self._scoring.kills / self._enemies_spawned_total)
         self._hud.draw(target, self._player, self._weapon, self._scoring,
-                       t=self._t, kill_ratio=ratio)
+                       t=self._t, kill_ratio=ratio,
+                       # BLOQUE 72 T9: weapon slot inventory HUD
+                       weapon_slots=self._weapon_slots,
+                       weapon_active_idx=self._weapon_active_idx,
+                       weapon_pop_anim=self._weapon_pop_anim)
         # BLOQUE 58.8: pattern indicator banner (top center)
         if self._use_procedural_patterns and self._active_pattern_kind_label:
             font = pygame.font.Font(None, 18)
