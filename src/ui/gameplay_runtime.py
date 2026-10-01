@@ -400,6 +400,28 @@ class GameplayRuntime:
         # BLOQUE 26: even more polish
         self._bomb_flash: float = 0.0  # 0..1 white flash on the player after bomb use
 
+        # BLOQUE 72 T6: 4-weapon powerup system. The player carries 4
+        # fixed weapon slots (A/S/D/F), each backed by a WeaponSlot
+        # dataclass (src/entities/weapon_slot.py). All start empty;
+        # pickups (T7-T8) fill them, RMB (T-N input remap) consumes them.
+        # `_weapon_active_idx` indexes the currently-selected slot;
+        # mouse wheel cycles it (T-N). `_weapon_pop_anim` ticks down the
+        # HUD pop-up scale animation (used by T8 + T9 HUD).
+        from src.entities.weapon_slot import WeaponSlot
+        from src.core.settings import (
+            WEAPON_PICKUP_AMMO,
+            MAX_AMMO_THICK, MAX_AMMO_LASER, MAX_AMMO_FLAME, MAX_AMMO_DOUBLE,
+        )
+        del WEAPON_PICKUP_AMMO  # consumed by T8 (_apply_powerup_weapon)
+        self._weapon_slots: list[WeaponSlot] = [
+            WeaponSlot("A", "thick",  0, MAX_AMMO_THICK),
+            WeaponSlot("S", "laser",  0, MAX_AMMO_LASER),
+            WeaponSlot("D", "flame",  0, MAX_AMMO_FLAME),
+            WeaponSlot("F", "double", 0, MAX_AMMO_DOUBLE),
+        ]
+        self._weapon_active_idx: int = 0
+        self._weapon_pop_anim: dict[str, float] = {"A": 0.0, "S": 0.0, "D": 0.0, "F": 0.0}
+
     def _play_sfx(self, name: str, volume: float = 1.0) -> None:
         if self._audio is not None:
             self._audio.play_sfx(name, volume)
