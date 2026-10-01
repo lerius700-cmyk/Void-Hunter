@@ -1,9 +1,10 @@
 # 🏛️ Switch de Contexto — VOID HUNTER
 
-**Versión:** 1.2.0
+**Versión:** 1.3.0
 **Propósito:** Navegación entre silos del proyecto VOID HUNTER.
 **Perfil SF/SM:** Lite
 **Schema target:** `.synapse` 2.2.0 (acepta 2.1.0 legacy)
+**Última remediación sf-sm-doctor:** 2026-09-14 (8 silos L3, +handoffs silo)
 
 ---
 
@@ -33,6 +34,7 @@ Regla: entrar por L1 → L1.5 → identificar silo → leer CONTEXT.md del silo 
 | **L3** | `docs/changelog/CONTEXT.md` | Changelog histórico | "¿qué se intentó antes?" |
 | **L3** | `docs/bloques/CONTEXT.md` | Checklists de BLOQUE (mega + user) | Tracking de features |
 | **L3** | `docs/session-reports/CONTEXT.md` | Reportes de sesión | Continuity cross-session |
+| **L3** | `docs/handoffs/CONTEXT.md` | Handoffs cross-session (cierre formal de BLOQUE grande) | Antes de retomar un subsistema cerrado |
 | **L3** | `docs/superpowers/CONTEXT.md` | Planes + specs de features grandes | Diseño de features nuevas |
 | **L3** | `docs/design/CONTEXT.md` | Game design (GDD) | Game design questions |
 | **L3** | `docs/movement/CONTEXT.md` | Coreografía de naves (FROZEN subsystem) | ANTES de tocar `src/movement/` o `src/systems/wave_patterns/` |
@@ -40,6 +42,7 @@ Regla: entrar por L1 → L1.5 → identificar silo → leer CONTEXT.md del silo 
 
 > **Regla:** los silos `docs/*/CONTEXT.md` son **passive hubs** (sin `.synapse`).
 > Solo el root tiene `.synapse` (Fase 4 del protocolo sf-sm-doctor).
+> **Silos L3 actuales (8):** arch, changelog, bloques, session-reports, handoffs, superpowers, design, references (+ `docs/movement/` que es sub-silo FROZEN — ver Switch).
 
 ---
 
@@ -147,3 +150,8 @@ Target: `7/7` compliance Lite. Si baja, correr remediación.
   - `CONTEXT.md` raíz creado con ADUANA + silos + Token Budget L/S/R.
   - 7 silos en `docs/` con `CONTEXT.md` (passive hubs, sin `.synapse`).
   - `.synapse` schema 2.2.0 en root.
+- **2026-09-14** — sf-sm-doctor remediación manual (script no disponible en `D:\AI\Hermes SKills`). Compliance `7/7 → 8/8`:
+  - Tree Integrity: 9 logs L1 movidos a `logs/` (4 directos) o renombrados a `logs/_root_*` (5 preservados para inspección). `smoke.py` movido a `tools/smoke.py`. `MANIFEST.md` archivado en `_trash_2026-09-10/MANIFEST.md` (gitignored via nueva regla `_trash_*/` en `.gitignore`).
+  - Nuevo silo L3 `docs/handoffs/` con `CONTEXT.md` (passive hub). Switch CONTEXT.md +1 silo (handoffs).
+  - CLAUDE.md Mapa del Edificio +1 L3 (handoffs). STATUS:GENERATED regenerado a valores reales (26,760 LOC / 87 files src/ / 2,700 tests pass / v1.4.0+).
+  - Historial estructural actualizado con BLOQUE 70 (v1.3.0), BLOQUE 71 (v1.4.0), BLOQUE 72 Task 5.

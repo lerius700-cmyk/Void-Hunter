@@ -2,9 +2,9 @@
 
 **Perfil SF/SM:** Lite
 **Schema target:** `.synapse` 2.2.0 (acepta 2.1.0 legacy)
-**Versión actual:** v1.2.5 (BLOQUE 58.60 — gallery + sprite sheets)
+**Versión actual:** v1.4.0+ (BLOQUE 71 released; BLOQUE 72 en curso, Task 5 done)
 **Tipo:** CODE (Python + pygame 2.6, stdlib only + numpy para lowpass audio)
-**Test count:** 1,630 / 1,630 pass (excluyendo 2 archivos con errores preexistentes no relacionados)
+**Test count:** 2,700 pass + 23 pre-existing fail + 6 skipped (excluyendo errores preexistentes no relacionados)
 
 ---
 
@@ -33,6 +33,7 @@ L3  docs/arch/           ← arquitectura + roadmap + GDD
 L3  docs/changelog/      ← changelog v1.x + raíz
 L3  docs/bloques/        ← checklists de BLOQUE (mega + user prompts)
 L3  docs/session-reports/← reportes de sesión
+L3  docs/handoffs/       ← handoffs cross-session (cierre formal de BLOQUE)
 L3  docs/superpowers/    ← planes y specs de features grandes
 L3  docs/design/         ← game design (GDD, etc.)
 L3  docs/references/     ← assets de referencia (sprites, paneles)
@@ -188,13 +189,13 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 
 | Métrica | Valor | Fuente (Truth Anchor) |
 |---------|-------|------------------------|
-| Líneas de código (src/) | 24,757 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
-| Archivos Python (src/) | 79 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
-| Tests (tests/) | 1,630 / 1,630 pass | `python -m pytest tests/ -q` (exit 0) |
-| LOC tests/ (helper) | ~24,000 | `pytest --collect-only -q` (test count) |
-| Silos SF+SM | 7 (Lite) | `audit_sf_sm.py` |
-| Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
-| Versión | v1.2.5 (BLOQUE 58.60) | `git log --oneline -1` |
+| Líneas de código (src/) | 26,760 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
+| Archivos Python (src/) | 87 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
+| Tests (tests/) | 2,700 pass + 23 fail + 6 skipped | `python -m pytest tests/ --tb=no -q` |
+| LOC tests/ (helper) | ~28,500 | `pytest --collect-only -q` (test count 2,729) |
+| Silos SF+SM | 8 (Lite, post sf-sm-doctor 2026-09-14) | manual SKILL.md |
+| Compliance SF | 8/8 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0; script restaurado via SKILL.md) |
+| Versión | v1.4.0+ (BLOQUE 71 shipped; BLOQUE 72 en curso, Task 5 done) | `git log --oneline -1` |
 | Rama | master | `git branch --show-current` |
 | Remote | github.com/lerius700-cmyk/Void-Hunter | `git remote -v` |
 | Build .exe | `dist/void-hunter/void-hunter.exe` ~4.3 MB | `Get-Item dist/void-hunter/void-hunter.exe` |
@@ -230,3 +231,7 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
   - 660 frames PNG bundleados en `Assets/video/`
   - STATUS:GENERATED regenerado: 24,757 LOC / 79 files en `src/`, 1,630 tests pass
   - `docs/superpowers/specs/2026-08-25-void-hunter-videos-design.md` (spec de la feature)
+- **2026-09-09 (BLOQUE 70 release v1.3.0)** — Fix crítico: `NameError` silencioso que rompía la regla 25% MINE-ASTEROID / 75% regular asteroid. 44 tests MINE-ASTEROID pass + e2e 60s sin `NameError`. Release en GitHub tag `v1.3.0`. Handoff en `docs/handoffs/HANDOFF-ASTEROIDES-2026-09-09.md`.
+- **2026-09-09 (BLOQUE 71 release v1.4.0)** — Asteroid hit feedback. `Asteroid.hit()` setea `hit_timer = 0.15s`, render con shape-aware white flash al 70% opacity (BLOQUE 71.1 refinamiento), MINE-ASTEROID hit en 4 estados, SFX `asteroid_hit` (noise burst 0.05s) + dispatch en `_asteroid_bullet_collision`. BLOQUE 71.2 fix: `hit_timer` decrementaba solo para MINE, ahora para todos los enemy kinds. E2E 60s OK. PNG captura `tools/playtest_out/bloque_71_asteroid_flash_01.png`. Release en GitHub tag `v1.4.0`.
+- **2026-09-12 (BLOQUE 72 en curso — Task 5 done)** — 4-Weapon Powerup System. Spec + plan en `docs/superpowers/`. T1 spec, T2 plan, T3 dispatch deferral fix, T4 e2e visual, **T5 (`8c8d82b`)** `WeaponSlot` dataclass (`src/entities/weapon_slot.py`) + 5 constantes ammo (`src/core/settings.py`: `WEAPON_PICKUP_AMMO=30`, `MAX_AMMO_THICK/LASER/FLAME/DOUBLE = 100/200/50/150`). 8/8 tests pass en `tests/test_weapon_slot.py`. Pendiente T6+ (slots en GameplayRuntime, PowerupKind expansion, HUD render, input remap, SFX, e2e visual).
+- **2026-09-14 (sf-sm-doctor manual remediation)** — Tree Integrity + Switch drift corregido. 9 logs L1 movidos a `logs/`/`logs/_root_*` (datos preservados, gitignored), `smoke.py` movido a `tools/smoke.py`, `MANIFEST.md` archivado en `_trash_2026-09-10/MANIFEST.md` (gitignored via nueva regla `_trash_*/`). Nuevo silo `docs/handoffs/` con `CONTEXT.md` + handoff de asteroides. Switch CONTEXT.md +8 handoffs, CLAUDE.md Mapa del Edificio +1 L3 handoffs. STATUS:GENERATED regenerado: 26,760 LOC / 87 files en `src/`, 2,700 tests pass (con 23 pre-existing failures + 6 skipped).

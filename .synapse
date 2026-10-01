@@ -1,11 +1,11 @@
 {
   "synapse_version": "2.2.0",
-  "last_verification_utc": "2026-08-25T23:30:00Z",
+  "last_verification_utc": "2026-09-14T00:00:00Z",
   "system_status": "healthy",
   "active_bridges": {},
   "short_term_memory": {
-    "current_objective": "BLOQUE 58.59 (videos cinemáticos: V1-S/V2-S standalone mp4 + V1-G/V2-G in-game) + BLOQUE 58.60 (sprite sheet generator + in-game gallery con GALLERY_SPRITE/GALLERY_VIDEO states). Hotkeys S (ships) y V (videos) en TitleScene. 4 videos + 5 spritesheets entregados. Listo para próximo BLOQUE.",
-    "last_successful_action": "sf-sm-doctor manual (script no disponible — D:\\AI\\Hermes SKills removido): actualicé CLAUDE.md métricas (24,757 LOC / 79 files / 1,630 tests), CONTEXT.md (Bridges Externos con nuevos comandos video_gen + build_sprite_sheet), .synapse (BLOQUE 58.59 + 58.60).",
+    "current_objective": "Remediación sf-sm-doctor 2026-09-14 (Lite perfil, post v1.4.0): drift corregido — 9 logs + smoke.py + MANIFEST movidos a silos correctos, silo docs/handoffs/ declarado en Switch, _trash_*/ agregado a .gitignore. Tree Integrity L1: 20 → 10 archivos. Sin commit (regla DEBE preguntar).",
+    "last_successful_action": "setup-project-sf-sm skill aplicado como auditoría+remediación (script audit_sf_sm.py no disponible — versión manual siguiendo SKILL.md). Movimientos: 4 logs directos a logs/, 5 logs L1 renombrados a logs/_root_* (preservando datos — son gitignored), smoke.py → tools/smoke.py, MANIFEST → _trash_2026-09-10/MANIFEST.md. Docs: docs/handoffs/CONTEXT.md creado, CONTEXT.md Switch +8 handoffs, CLAUDE.md Mapa del Edificio +1 L3 handoffs. .gitignore +_trash_*/.",
     "active_context_pointers": ["CLAUDE.md", "CONTEXT.md", "docs/arch/CONTEXT.md", "docs/changelog/CONTEXT.md", "docs/superpowers/specs/2026-08-25-void-hunter-videos-design.md"],
     "critical_blockers": "ninguno"
   },

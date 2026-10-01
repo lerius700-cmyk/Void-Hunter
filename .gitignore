@@ -71,6 +71,9 @@ release/_backup_old_releases/
 
 .superpowers/
 
+# Transient trash from release prep (kept locally for inspection, never committed)
+_trash_*/
+
 # Generated sprite intermediates (1024x1024 source images before
 # post-processing into the final 16-bit pixel-art PNGs). The final
 # sprites in stellar_horizon/assets/sprites/*.png ARE tracked.
