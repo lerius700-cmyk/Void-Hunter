@@ -4,8 +4,23 @@
 **Repositorio:** https://github.com/lerius700-cmyk/Void-Hunter
 **Stack:** Python 3.11 + pygame 2.6 (sin numpy/scipy, stdlib math only)
 **Total código:** ~30,000 líneas en 130+ archivos Python
-**Total tests:** 1,103 passing
-**Última revisión:** 2026-08-15 16:18 PM
+**Total tests:** 2,721 passing
+**Última revisión:** 2026-09-14 (BLOQUE 72.A cierre)
+
+## BLOQUE 72.A — 4-Weapon Slot System (State + HUD) (2026-09-14)
+
+- **PowerupKind expansion** (`src/entities/asteroid.py`): single `WEAPON` replaced by 4 distinct kinds — `THICK` (A, max 100 ammo), `LASER` (S, max 200), `FLAME` (D, max 50), `DOUBLE` (F, max 150). `POWERUP_WEIGHTS` redistributed (sum=100): BOMB=15, HP=30, 4 weapons × 8 = 32, SCORE=23.
+- **`pick_mine_powerup`** (`src/entities/enemies/enemy.py`): MINE-ASTEROID drop pool expanded from 3 kinds (BOMB/HP/WEAPON) to 6 kinds (BOMB/HP/THICK/LASER/FLAME/DOUBLE). SCORE excluded by design.
+- **`WeaponSlot` dataclass** (`src/entities/weapon_slot.py`, NEW): letter, weapon_id, ammo, max_ammo. Methods `is_empty`, `add_ammo` (caps at max, excess dropped), `consume` (clamps at current ammo).
+- **Ammo constants** (`src/core/settings.py`): `WEAPON_PICKUP_AMMO=30`, `MAX_AMMO_THICK/LASER/FLAME/DOUBLE=100/200/50/150`.
+- **Player state** (`src/ui/gameplay_runtime.py`): `self._weapon_slots` (4 items, A/S/D/F), `self._weapon_active_idx=0`, `self._weapon_pop_anim` dict (HUD pop animation timers).
+- **Pickup dispatch** (`_apply_asteroid_powerup` in `gameplay_runtime.py`): the asteroid path's powerup application. Replaces old dead `elif kind == PowerupKind.WEAPON:` branch (which referenced the now-removed enum member). Routes THICK/LASER/FLAME/DOUBLE to `_apply_powerup_weapon` helper.
+- **Bug fix (critical, discovered during T8)**: there were TWO `_apply_powerup` methods in `GameplayRuntime` — the asteroid path (BLOQUE 58.12, line 1834) and the ring system (line 3679). Python silently overrode the asteroid path with the later ring definition, so MINE-ASTEROID powerup pickups have been no-ops since BLOQUE 58.12. Renamed the asteroid method to `_apply_asteroid_powerup` to avoid the override.
+- **HUD slot rendering** (`src/ui/hud.py`): 4 boxes 12×12 px in bottom-center. Empty: dark bg `(30,20,30)`. Filled: weapon color (orange/green/red-orange/cyan). Selected: white outline 2 px. Pop animation: scale 1.0→1.4→1.0 over 0.2 s after pickup. Selection pulse: ±5 % at 0.5 Hz. Letter (A/S/D/F) drawn centered in filled slots (black on color). Ammo count below each filled slot (white).
+- **31 new tests**: 8 `test_weapon_slot.py`, 6 `test_runtime_weapon_slots.py`, 4 `test_powerup_4weapons.py`, 7 `test_apply_powerup_4weapons.py`, 4 `test_hud_slots.py`. Total 2,721 pass + 23 pre-existing fail + 6 skipped.
+- **Test regressions updated** (per pitfall 12 Lerius rule): `test_asteroid_sprites.py::test_powerup_kind_enum_unchanged` updated to new 7-kind enum; `test_bloque_58_12.py::test_distribution_roughly_matches_weights` SCORE range adjusted 250-450 → 130-330 (weight 35 → 23); `test_mine_asteroid.py::test_powerup_pool_excludes_score` updated to 6-kind pool. All with ADR comments.
+- **E2E verification**: 60 s simulation at 60 fps via `tools/verify_bloque_72a_e2e.py` with 5 pickups cycling THICK/LASER/FLAME/DOUBLE/THICK across 50 s. Final state: A=60 (stacked), S=30, D=30, F=30. pop_anim decayed to 0 in all 4 letters after 60 s. No crash log. Visual captures at `tools/playtest_out/bloque_72a_slots_{empty,filled_1,filled_2,filled_4}.png` — pixel-sampled colors match `WEAPON_COLORS` per slot.
+- **Pending BLOQUE 73+** (Fase B + C): the 4 weapons still have no firing function, no procedural sprites, no SFX. RMB does not consume ammo yet, mouse wheel does not cycle `_weapon_active_idx` yet. This commit closes the state + HUD layer; Fase B adds firing + assets + SFX.
 
 ## BLOQUE 71 — Asteroid Hit Feedback (2026-09-09)
 
