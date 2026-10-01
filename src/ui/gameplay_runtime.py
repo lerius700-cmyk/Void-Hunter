@@ -412,7 +412,7 @@ class GameplayRuntime:
             WEAPON_PICKUP_AMMO,
             MAX_AMMO_THICK, MAX_AMMO_LASER, MAX_AMMO_FLAME, MAX_AMMO_DOUBLE,
         )
-        del WEAPON_PICKUP_AMMO  # consumed by T8 (_apply_powerup_weapon)
+        # WEAPON_PICKUP_AMMO se queda en module scope para _apply_powerup_weapon (T8)
         self._weapon_slots: list[WeaponSlot] = [
             WeaponSlot("A", "thick",  0, MAX_AMMO_THICK),
             WeaponSlot("S", "laser",  0, MAX_AMMO_LASER),
@@ -1820,19 +1820,45 @@ class GameplayRuntime:
                 ast.x -= 20 if dx > 0 else -20
 
     def _player_pickup_powerups(self) -> None:
-        """BLOQUE 58.12: player collects asteroid-powerups."""
+        """BLOQUE 58.12: player collects asteroid-powerups.
+
+        BLOQUE 72 T8: dispatches to ``_apply_asteroid_powerup`` (renamed
+        from ``_apply_powerup`` to avoid override by the ring-system's
+        same-named method at line ~3679).
+        """
         for p in self._asteroid_powerups:
             if not p.active:
                 continue
             dx = self._player.x - p.x
             dy = self._player.y - p.y
             if dx * dx + dy * dy <= 18 * 18:
-                # Apply the powerup
-                self._apply_powerup(p.kind)
+                # Apply the asteroid powerup (BLOQUE 72 T8: renamed).
+                self._apply_asteroid_powerup(p.kind)
                 p.active = False
 
-    def _apply_powerup(self, kind) -> None:
-        """BLOQUE 58.12: apply a powerup effect to the player."""
+    def _apply_asteroid_powerup(self, kind) -> None:
+        """BLOQUE 58.12 + 72 T8: apply an ASTEROID powerup effect to the player.
+
+        Note: there are TWO powerup systems in this class:
+          - ASTEROID system (this method): triggered by ``_player_pickup_powerups``
+            from ``self._asteroid_powerups`` (MINE-ASTEROID drops). Uses
+            ``PowerupKind`` enum (BOMB, HP, THICK, LASER, FLAME, DOUBLE, SCORE).
+          - RING system (``_apply_powerup`` at line ~3679): triggered by
+            ``_spawn_powerup`` for gold ring pickups from killed enemies.
+            Uses string constants like ``POWERUP_BOMB = "bomb"``.
+
+        Naming this method ``_apply_asteroid_powerup`` (instead of
+        ``_apply_powerup``) prevents Python from silently overwriting it
+        with the later ring-system definition — the asteroid pickup
+        path now dispatches to this method explicitly via
+        ``_player_pickup_powerups``.
+
+        BLOQUE 72 T8: the old single ``PowerupKind.WEAPON`` branch (which
+        bumped ``self._weapon.level`` and did nothing visible) is replaced
+        by a 4-kind dispatch to ``_apply_powerup_weapon``. The dead
+        ``elif kind == PowerupKind.WEAPON:`` branch (which referenced the
+        now-removed enum member) is gone.
+        """
         from src.entities.asteroid import PowerupKind
         if kind == PowerupKind.BOMB:
             # +1 bomb (BLOQUE 53a bomb system). Use weapon_system for bombs.
@@ -1841,17 +1867,44 @@ class GameplayRuntime:
             # +30 HP, capped at max
             max_hp = self._player.max_hp if hasattr(self._player, "max_hp") else 100
             self._player.hp = min(max_hp, self._player.hp + 30)
-        elif kind == PowerupKind.WEAPON:
-            # Upgrade weapon level (simple: +1, capped)
-            cur_level = getattr(self._weapon, "level", 0) if hasattr(self, "_weapon") else 0
-            # The weapon system has its own logic; we just bump a flag.
-            # (Most simple: just call _weapon.upgrade() if it exists.)
-            if hasattr(self._weapon, "level"):
-                self._weapon.level = min(getattr(self._weapon, "level", 0) + 1, 2)
+        elif kind in (
+            PowerupKind.THICK,
+            PowerupKind.LASER,
+            PowerupKind.FLAME,
+            PowerupKind.DOUBLE,
+        ):
+            # BLOQUE 72 T8: route weapon powerup to its slot (A/S/D/F).
+            self._apply_powerup_weapon(kind)
         elif kind == PowerupKind.SCORE:
             # +500 score
             if hasattr(self, "_scoring"):
                 self._scoring.score = getattr(self._scoring, "score", 0) + 500
+
+    def _apply_powerup_weapon(self, kind) -> None:
+        """BLOQUE 72 T8: apply a weapon powerup to its slot.
+
+        Empty slot: fill to WEAPON_PICKUP_AMMO (30 by default).
+        Filled slot: stack to max_ammo (excess silently dropped per
+        ``WeaponSlot.add_ammo`` contract).
+
+        Also triggers the HUD pop-up animation timer on the slot's
+        letter key (consumed by the T9 HUD slot renderer).
+        """
+        from src.entities.asteroid import PowerupKind
+        from src.core.settings import WEAPON_PICKUP_AMMO
+        slot_index = {
+            PowerupKind.THICK:  0,
+            PowerupKind.LASER:  1,
+            PowerupKind.FLAME:  2,
+            PowerupKind.DOUBLE: 3,
+        }.get(kind)
+        if slot_index is None:
+            return
+        slot = self._weapon_slots[slot_index]
+        slot.add_ammo(WEAPON_PICKUP_AMMO)
+        # HUD pop-up scale animation duration (consumed by T9 HUD render).
+        # 0.2s matches the spec's `WEAPON_SLOT_POP_DURATION_S`.
+        self._weapon_pop_anim[slot.letter] = 0.2
 
     def _attach_wave_path(
         self,
@@ -3021,6 +3074,14 @@ class GameplayRuntime:
         slowmo_factor = self._slowmo.get_factor()
         effective_dt = dt * slowmo_factor
         self._t += effective_dt
+        # BLOQUE 72 T8: tick the HUD weapon-slot pop-up animation timers.
+        # Each tick decays the timer; T9 HUD reads them to scale the
+        # slot box from 1.0 -> 1.4 -> 1.0 during the 0.2s window.
+        for letter in self._weapon_pop_anim:
+            if self._weapon_pop_anim[letter] > 0.0:
+                self._weapon_pop_anim[letter] = max(
+                    0.0, self._weapon_pop_anim[letter] - effective_dt,
+                )
         # BLOQUE 58.11: game time advances in REAL dt (not effective_dt
         # with slowmo) so the Tron trail's hit cooldown ages correctly
         # even during hitstop / slowmo.
