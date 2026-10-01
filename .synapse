@@ -1,12 +1,12 @@
 {
   "synapse_version": "2.2.0",
-  "last_verification_utc": "2026-09-14T00:00:00Z",
+  "last_verification_utc": "2026-09-14T22:00:00Z",
   "system_status": "healthy",
   "active_bridges": {},
   "short_term_memory": {
-    "current_objective": "Remediación sf-sm-doctor 2026-09-14 (Lite perfil, post v1.4.0): drift corregido — 9 logs + smoke.py + MANIFEST movidos a silos correctos, silo docs/handoffs/ declarado en Switch, _trash_*/ agregado a .gitignore. Tree Integrity L1: 20 → 10 archivos. Sin commit (regla DEBE preguntar).",
-    "last_successful_action": "setup-project-sf-sm skill aplicado como auditoría+remediación (script audit_sf_sm.py no disponible — versión manual siguiendo SKILL.md). Movimientos: 4 logs directos a logs/, 5 logs L1 renombrados a logs/_root_* (preservando datos — son gitignored), smoke.py → tools/smoke.py, MANIFEST → _trash_2026-09-10/MANIFEST.md. Docs: docs/handoffs/CONTEXT.md creado, CONTEXT.md Switch +8 handoffs, CLAUDE.md Mapa del Edificio +1 L3 handoffs. .gitignore +_trash_*/.",
-    "active_context_pointers": ["CLAUDE.md", "CONTEXT.md", "docs/arch/CONTEXT.md", "docs/changelog/CONTEXT.md", "docs/superpowers/specs/2026-08-25-void-hunter-videos-design.md"],
+    "current_objective": "BLOQUE 72 en curso (T6 done `e2cd03a`): player state ahora carga 4 weapon slots vacíos (A/S/D/F = thick/laser/flame/double) con `_weapon_active_idx=0` y `_weapon_pop_anim` dict. Próximo: T7 PowerupKind expansion (WEAPON → 4 kinds), T8 _apply_powerup_weapon, T9 HUD slot render, T10 BLOQUE 72.A e2e + visual.",
+    "last_successful_action": "BLOQUE 72 T6 RED→GREEN: tests/test_runtime_weapon_slots.py (6 tests) escritos primero (RED: AttributeError), state agregado a GameplayRuntime.__init__ (GREEN: 6/6 pass). Suite completa: 2,706 pass + 23 pre-existing fail + 6 skipped (era 2,700; +6 sin regresiones).",
+    "active_context_pointers": ["CLAUDE.md", "CONTEXT.md", "docs/arch/CONTEXT.md", "docs/changelog/CONTEXT.md", "docs/handoffs/HANDOFF-BLOQUE-71-72-2026-09-12.md", "docs/superpowers/plans/2026-09-09-asteroid-hit-and-powerup-system.md"],
     "critical_blockers": "ninguno"
   },
   "neural_load": {
@@ -17,12 +17,14 @@
     "navegar_a_bloque_n": "git log --oneline | grep 'BLOQUE N' | head -1 → leer commit message → docs/changelog/CHANGELOG_v1.x.md",
     "regenerar_nebula_sprites": "python tools/process_galaxy_sprites_v2.py",
     "verificar_pause_music": "python tools/test_music_continuous_lowpass.py",
-    "correr_tests": "python -m pytest tests/ -q",
+    "correr_tests": "python -m pytest tests/ --tb=no -q",
     "auditar_sf_sm": "(script removido de D:\\AI\\Hermes SKills — restaurar o actualizar path) — alternativa manual: revisar CLAUDE.md STATUS:GENERATED, CONTEXT.md L/S/R, .synapse",
     "mover_archivos_a_silo": "python tools/apply_sf_sm_deep_fix.py (idempotente — chequea si ya están movidos)",
     "generar_video_title": "python tools/video_gen/gen_v1_title.py (output: output/frames/v1_draft* + release/videos/void_hunter_title_v1*.mp4)",
     "generar_video_zoom": "python tools/video_gen/gen_v2_zoom.py (output: output/frames/v2_draft* + release/videos/void_hunter_zoom_v1*.mp4)",
     "generar_spritesheet_nave": "python tools/build_sprite_sheet.py [1-5] (output: Assets/sprites/player_ships/ship_0N_spritesheet.png)",
-    "smoke_test_videos": "python tools/test_video_integration.py (headless, valida VideoPlayer + scenes)"
+    "smoke_test_videos": "python tools/test_video_integration.py (headless, valida VideoPlayer + scenes)",
+    "test_weapon_slot_unit": "python -m pytest tests/test_weapon_slot.py -v (BLOQUE 72 T5)",
+    "test_weapon_slot_runtime": "python -m pytest tests/test_runtime_weapon_slots.py -v (BLOQUE 72 T6)"
   }
 }
