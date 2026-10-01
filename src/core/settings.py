@@ -26,6 +26,9 @@ MAX_AMMO_THICK: int = 100
 MAX_AMMO_LASER: int = 200
 MAX_AMMO_FLAME: int = 50
 MAX_AMMO_DOUBLE: int = 150
+# BLOQUE 73 Fase C: RMB fire rate (10 shots/sec default; Fase B may
+# differentiate per weapon via a per-weapon fire rate constant).
+WEAPON_FIRE_COOLDOWN_S: float = 0.1
 
 # ---------------------------------------------------------------------------
 # Frame timing — 120 FPS lock

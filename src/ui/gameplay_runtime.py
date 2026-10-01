@@ -411,6 +411,7 @@ class GameplayRuntime:
         from src.core.settings import (
             WEAPON_PICKUP_AMMO,
             MAX_AMMO_THICK, MAX_AMMO_LASER, MAX_AMMO_FLAME, MAX_AMMO_DOUBLE,
+            WEAPON_FIRE_COOLDOWN_S,
         )
         # WEAPON_PICKUP_AMMO se queda en module scope para _apply_powerup_weapon (T8)
         self._weapon_slots: list[WeaponSlot] = [
@@ -421,6 +422,13 @@ class GameplayRuntime:
         ]
         self._weapon_active_idx: int = 0
         self._weapon_pop_anim: dict[str, float] = {"A": 0.0, "S": 0.0, "D": 0.0, "F": 0.0}
+        # BLOQUE 73 Fase C: RMB weapon fire state.
+        #   _weapon_fire_request: True while RMB is firing (consumed by Fase B
+        #     fire functions to spawn bullets).
+        #   _weapon_fire_cooldown: seconds remaining until next shot allowed.
+        self._weapon_fire_request: bool = False
+        self._weapon_fire_cooldown: float = 0.0
+        del WEAPON_FIRE_COOLDOWN_S  # used in _fire_active_weapon at call-time
 
     def _play_sfx(self, name: str, volume: float = 1.0) -> None:
         if self._audio is not None:
@@ -655,10 +663,17 @@ class GameplayRuntime:
             self._mouse_r_held = False
         # BLOQUE 34: shooting controls
         #   LMB held = input_fire (charge shot, release fires)
-        #   RMB held = input_rapid_fire (continuous L1, no charge)
-        # These are independent — you can RMB-spam while LMB charges.
+        #   BLOQUE 73 Fase C: RMB held = fire active weapon from slot
+        #     (consumes ammo via _fire_active_weapon). Replaces the old
+        #     rapid-fire L1 behavior. LMB still does charge shot as before.
         self._player.input_fire = self._mouse_held
-        self._player.input_rapid_fire = self._mouse_r_held
+        self._player.input_rapid_fire = False  # BLOQUE 73 Fase C: legacy disabled
+        # BLOQUE 73 Fase C: RMB weapon fire tick (consume ammo at fire rate).
+        # The actual bullets are spawned by Fase B (src/entities/projectile.py)
+        # when _weapon_fire_request is True — for now Fase C just decrements
+        # ammo so the player sees the slot count drop while holding RMB.
+        if self._mouse_r_held and self._weapon_fire_cooldown <= 0.0:
+            self._fire_active_weapon()
         # BLOQUE 58.8.1/58.8.2/58.8.3: shift = DASH (click, < 0.28s) or PROPULSION (hold).
         # Process all events in a single pass so we don't miss KEYUP.
         for event in pygame.event.get():
@@ -682,6 +697,22 @@ class GameplayRuntime:
                 elif event.key == pygame.K_ESCAPE:
                     from src.core.scene_manager import GameState
                     self._transition_to(GameState.PAUSE)
+                # BLOQUE 73 Fase C: keys 1/2/3/4 select weapon slot directly.
+                elif event.key == pygame.K_1:
+                    self._select_weapon_slot(0)  # A
+                elif event.key == pygame.K_2:
+                    self._select_weapon_slot(1)  # S
+                elif event.key == pygame.K_3:
+                    self._select_weapon_slot(2)  # D
+                elif event.key == pygame.K_4:
+                    self._select_weapon_slot(3)  # F
+            elif event.type == pygame.MOUSEWHEEL:
+                # BLOQUE 73 Fase C: mouse wheel cycles active slot.
+                # event.y > 0 = scroll up = next slot; event.y < 0 = prev.
+                if event.y > 0:
+                    self._cycle_weapon_slot(+1)
+                elif event.y < 0:
+                    self._cycle_weapon_slot(-1)
             elif event.type == pygame.KEYUP:
                 if event.key == pygame.K_LSHIFT:
                     # BLOQUE 58.8.1: if shift was released quickly (click),
@@ -1906,6 +1937,56 @@ class GameplayRuntime:
         # 0.2s matches the spec's `WEAPON_SLOT_POP_DURATION_S`.
         self._weapon_pop_anim[slot.letter] = 0.2
 
+    # ------------------------------------------------------------------
+    # BLOQUE 73 Fase C: weapon slot input (wheel cycling + keys + RMB)
+    # ------------------------------------------------------------------
+    def _cycle_weapon_slot(self, direction: int) -> None:
+        """Cycle ``_weapon_active_idx`` by ``direction`` (+1 or -1).
+
+        Wraps around at both ends: from 0 with direction=-1 -> 3 (F),
+        from 3 with direction=+1 -> 0 (A). Empty weapon_slots list is
+        a safe no-op (defensive — should never happen in practice).
+        """
+        n = len(self._weapon_slots)
+        if n == 0:
+            return
+        self._weapon_active_idx = (self._weapon_active_idx + direction) % n
+
+    def _select_weapon_slot(self, idx: int) -> None:
+        """Set ``_weapon_active_idx`` to ``idx`` if in range; else no-op.
+
+        Out-of-range indices (negative or >= len) are ignored. Used by
+        keys 1/2/3/4 (slots 0/1/2/3).
+        """
+        if 0 <= idx < len(self._weapon_slots):
+            self._weapon_active_idx = idx
+
+    def _fire_active_weapon(self) -> bool:
+        """Try to fire the active weapon. Consumes 1 ammo, sets cooldown.
+
+        Returns:
+            True if a shot was fired (active slot had ammo), False if
+            the slot was empty (no-op).
+
+        Side effects:
+            - Decrements active slot ammo by 1 (via WeaponSlot.consume).
+            - Sets ``_weapon_fire_request = True`` (consumed by Fase B
+              fire functions in ``src/entities/projectile.py`` to spawn
+              the actual bullet).
+            - Sets ``_weapon_fire_cooldown = WEAPON_FIRE_COOLDOWN_S``
+              (0.1s default = 10 shots/sec).
+        """
+        if not self._weapon_slots:
+            return False
+        slot = self._weapon_slots[self._weapon_active_idx]
+        if slot.is_empty:
+            return False
+        slot.consume(1)
+        self._weapon_fire_request = True
+        from src.core.settings import WEAPON_FIRE_COOLDOWN_S
+        self._weapon_fire_cooldown = WEAPON_FIRE_COOLDOWN_S
+        return True
+
     def _attach_wave_path(
         self,
         e: "Enemy",
@@ -3082,6 +3163,13 @@ class GameplayRuntime:
                 self._weapon_pop_anim[letter] = max(
                     0.0, self._weapon_pop_anim[letter] - effective_dt,
                 )
+        # BLOQUE 73 Fase C: tick the RMB weapon fire cooldown. Decays in
+        # scaled time (matches pop_anim above). When the cooldown reaches
+        # 0, the next _read_input call may fire again if RMB is held.
+        if self._weapon_fire_cooldown > 0.0:
+            self._weapon_fire_cooldown = max(
+                0.0, self._weapon_fire_cooldown - effective_dt,
+            )
         # BLOQUE 58.11: game time advances in REAL dt (not effective_dt
         # with slowmo) so the Tron trail's hit cooldown ages correctly
         # even during hitstop / slowmo.
