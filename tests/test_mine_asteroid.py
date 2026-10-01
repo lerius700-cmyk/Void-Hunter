@@ -691,14 +691,28 @@ class TestProjectileKind:
 # =====================================================================
 class TestPowerupDrop:
     def test_powerup_pool_excludes_score(self) -> None:
-        """The powerup pool for MINE_ASTEROID excludes SCORE (only BOMB/HP/WEAPON)."""
+        """The powerup pool for MINE_ASTEROID excludes SCORE.
+
+        BLOQUE 72 T7: pool expanded from {BOMB, HP, WEAPON} (3 kinds) to
+        {BOMB, HP, THICK, LASER, FLAME, DOUBLE} (6 kinds). SCORE is still
+        excluded — the camo tension is the reward, not the points.
+        """
         # The pool is implemented in a function: pick_mine_powerup
         from src.entities.enemies.enemy import pick_mine_powerup
-        # Sample 200 picks — verify all are BOMB/HP/WEAPON
+        # BLOQUE 72: actualizado de (BOMB, HP, WEAPON) a la pool de 6 kinds.
+        expected_pool = (
+            PowerupKind.BOMB,
+            PowerupKind.HP,
+            PowerupKind.THICK,
+            PowerupKind.LASER,
+            PowerupKind.FLAME,
+            PowerupKind.DOUBLE,
+        )
+        # Sample 200 picks — verify all are in the 6-kind pool (no SCORE).
         rng = random.Random(0xBEEF)
         kinds = [pick_mine_powerup(rng) for _ in range(200)]
         for kind in kinds:
-            assert kind in (PowerupKind.BOMB, PowerupKind.HP, PowerupKind.WEAPON), \
+            assert kind in expected_pool, \
                 f"unexpected kind in pool: {kind}"
 
     def test_50_percent_powerup_drop(self) -> None:
