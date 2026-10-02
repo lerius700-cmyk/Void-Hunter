@@ -126,12 +126,18 @@ def test_rmb_fire_sets_fire_request_flag(runtime: GameplayRuntime) -> None:
 
 
 def test_rmb_fire_respects_cooldown(runtime: GameplayRuntime) -> None:
-    """After firing, _weapon_fire_cooldown must be set so rapid calls don't fire."""
-    from src.core.settings import WEAPON_FIRE_COOLDOWN_S
+    """After firing, _weapon_fire_cooldown must be set so rapid calls don't fire.
+
+    BLOQUE 73 Fase B: each weapon has its own cooldown now (THICK 0.20s,
+    LASER 0.10s, FLAME 0.07s, DOUBLE 0.125s). The single WEAPON_FIRE_COOLDOWN_S
+    constant is no longer the source of truth — the per-weapon fire
+    function sets it. We just verify that the cooldown is > 0 after a
+    successful fire, which is sufficient to gate re-fire.
+    """
     runtime._apply_asteroid_powerup(PowerupKind.THICK)
     runtime._fire_active_weapon()
     assert runtime._weapon_slots[0].ammo == 29
-    assert runtime._weapon_fire_cooldown == WEAPON_FIRE_COOLDOWN_S
+    assert runtime._weapon_fire_cooldown > 0.0  # any positive value blocks re-fire
 
 
 def test_rmb_fire_consumes_from_correct_slot(runtime: GameplayRuntime) -> None:

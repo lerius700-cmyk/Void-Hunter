@@ -1929,6 +1929,10 @@ class GameplayRuntime:
 
         Also triggers the HUD pop-up animation timer on the slot's
         letter key (consumed by the T9 HUD slot renderer).
+
+        BLOQUE 73 Fase B: auto-switches the active slot to the picked-up
+        weapon so the player can immediately RMB-fire it. Player can
+        still manually cycle via mouse wheel / keys 1-4.
         """
         from src.entities.asteroid import PowerupKind
         from src.core.settings import WEAPON_PICKUP_AMMO
@@ -1945,6 +1949,9 @@ class GameplayRuntime:
         # HUD pop-up scale animation duration (consumed by T9 HUD render).
         # 0.2s matches the spec's `WEAPON_SLOT_POP_DURATION_S`.
         self._weapon_pop_anim[slot.letter] = 0.2
+        # Auto-switch: the picked-up weapon becomes active so RMB fires it
+        # immediately. Player can cycle back via wheel / 1-4 if they prefer.
+        self._weapon_active_idx = slot_index
 
     # ------------------------------------------------------------------
     # BLOQUE 73 Fase C: weapon slot input (wheel cycling + keys + RMB)
@@ -1971,30 +1978,140 @@ class GameplayRuntime:
             self._weapon_active_idx = idx
 
     def _fire_active_weapon(self) -> bool:
-        """Try to fire the active weapon. Consumes 1 ammo, sets cooldown.
+        """Try to fire the active weapon. Consumes 1 ammo + spawns bullets.
+
+        BLOQUE 73 Fase B: dispatches to per-weapon fire function based on
+        ``slot.weapon_id``. Each weapon has its own bullet pattern AND
+        its own cooldown (THICK slow 5/sec, LASER 10/sec, FLAME fast
+        ~14/sec, DOUBLE medium 8/sec).
 
         Returns:
             True if a shot was fired (active slot had ammo), False if
-            the slot was empty (no-op).
+            the slot was empty OR the cooldown is still active.
 
         Side effects:
             - Decrements active slot ammo by 1 (via WeaponSlot.consume).
-            - Sets ``_weapon_fire_request = True`` (consumed by Fase B
-              fire functions in ``src/entities/projectile.py`` to spawn
-              the actual bullet).
-            - Sets ``_weapon_fire_cooldown = WEAPON_FIRE_COOLDOWN_S``
-              (0.1s default = 10 shots/sec).
+            - Spawns bullets via _fire_thick / _fire_laser / _fire_flame
+              / _fire_double based on weapon_id.
+            - Sets ``_weapon_fire_cooldown`` to the weapon-specific value.
+            - Sets ``_weapon_fire_request = True`` (legacy flag for
+              any external consumer; the actual bullet spawn happens
+              inline here in Fase B).
         """
         if not self._weapon_slots:
+            return False
+        # Cooldown gate: if RMB was fired too recently, no-op.
+        if self._weapon_fire_cooldown > 0.0:
             return False
         slot = self._weapon_slots[self._weapon_active_idx]
         if slot.is_empty:
             return False
         slot.consume(1)
         self._weapon_fire_request = True
-        from src.core.settings import WEAPON_FIRE_COOLDOWN_S
-        self._weapon_fire_cooldown = WEAPON_FIRE_COOLDOWN_S
+        # Dispatch by weapon_id to per-weapon fire function.
+        if slot.weapon_id == "thick":
+            self._fire_thick()
+        elif slot.weapon_id == "laser":
+            self._fire_laser()
+        elif slot.weapon_id == "flame":
+            self._fire_flame()
+        elif slot.weapon_id == "double":
+            self._fire_double()
         return True
+
+    # ------------------------------------------------------------------
+    # BLOQUE 73 Fase B: per-weapon fire functions (THICK/LASER/FLAME/DOUBLE)
+    # ------------------------------------------------------------------
+    # Each function spawns bullets at the player's muzzle position in
+    # the player's nose direction, with weapon-specific pattern + cooldown.
+    # The bullet kind is BULLET_PLAYER (existing) for now — Phase B+ can
+    # introduce per-weapon BULLET_* kinds + procedural sprites.
+    #
+    # Cooldowns per weapon:
+    #   THICK:  0.20s = 5 shots/sec (slow, heavy)
+    #   LASER:  0.10s = 10 shots/sec (medium, beam-like)
+    #   FLAME:  0.07s = ~14 shots/sec (fast, cone)
+    #   DOUBLE: 0.125s = 8 shots/sec (medium, parallel pair)
+    # ------------------------------------------------------------------
+    def _bullet_speed(self, mult: float = 1.0) -> float:
+        """Base bullet speed for weapon fire (px/s). Scaled by mult."""
+        from src.core.settings import INTERNAL_H
+        # Bullets cross the screen in ~0.75s at 1.0x speed.
+        return (INTERNAL_H / 0.75) * mult
+
+    def _fire_thick(self) -> None:
+        """THICK: 1 big slow bullet, pierce=1, cooldown 0.20s (5/sec)."""
+        import math
+        nose_rad = math.radians(self._player.nose_angle)
+        bx = self._player.x + math.sin(nose_rad) * 12.0
+        by = self._player.y - math.cos(nose_rad) * 12.0
+        speed = self._bullet_speed(0.75)
+        vx = math.sin(nose_rad) * speed
+        vy = -math.cos(nose_rad) * speed
+        self._bullets.spawn(
+            BULLET_PLAYER, bx, by, vx, vy,
+            damage=3, owner=OWNER_PLAYER,
+            pierce=1, has_trail=True, trail_color=(255, 160, 60),
+        )
+        self._weapon_fire_cooldown = 0.20
+
+    def _fire_laser(self) -> None:
+        """LASER: 1 fast pierce bullet, pierce=3, cooldown 0.10s (10/sec)."""
+        import math
+        nose_rad = math.radians(self._player.nose_angle)
+        bx = self._player.x + math.sin(nose_rad) * 12.0
+        by = self._player.y - math.cos(nose_rad) * 12.0
+        speed = self._bullet_speed(1.5)
+        vx = math.sin(nose_rad) * speed
+        vy = -math.cos(nose_rad) * speed
+        self._bullets.spawn(
+            BULLET_PLAYER, bx, by, vx, vy,
+            damage=1, owner=OWNER_PLAYER,
+            pierce=3, has_trail=True, trail_color=(80, 255, 120),
+        )
+        self._weapon_fire_cooldown = 0.10
+
+    def _fire_flame(self) -> None:
+        """FLAME: 3-bullet fan spread, fast, cooldown 0.07s (~14/sec)."""
+        import math
+        nose_rad = math.radians(self._player.nose_angle)
+        bx = self._player.x + math.sin(nose_rad) * 12.0
+        by = self._player.y - math.cos(nose_rad) * 12.0
+        speed = self._bullet_speed(1.2)
+        spread = math.radians(15.0)
+        for i in range(3):
+            a = -spread / 2 + (spread * i / 2)
+            vx = math.sin(nose_rad + a) * speed
+            vy = -math.cos(nose_rad + a) * speed
+            self._bullets.spawn(
+                BULLET_PLAYER, bx, by, vx, vy,
+                damage=1, owner=OWNER_PLAYER,
+                pierce=0, has_trail=True, trail_color=(255, 100, 40),
+            )
+        self._weapon_fire_cooldown = 0.07
+
+    def _fire_double(self) -> None:
+        """DOUBLE: 2 parallel bullets side-by-side, medium, cooldown 0.125s."""
+        import math
+        nose_rad = math.radians(self._player.nose_angle)
+        # Muzzle offset perpendicular to nose direction (for left/right).
+        perp_x = -math.cos(nose_rad)  # 90° CCW
+        perp_y = -math.sin(nose_rad)
+        bx_center = self._player.x + math.sin(nose_rad) * 12.0
+        by_center = self._player.y - math.cos(nose_rad) * 12.0
+        offset = 5.0  # distance between bullets perpendicular to nose
+        speed = self._bullet_speed(1.0)
+        vx = math.sin(nose_rad) * speed
+        vy = -math.cos(nose_rad) * speed
+        for sign in (-1, +1):
+            bx = bx_center + perp_x * offset * sign
+            by = by_center + perp_y * offset * sign
+            self._bullets.spawn(
+                BULLET_PLAYER, bx, by, vx, vy,
+                damage=2, owner=OWNER_PLAYER,
+                pierce=0, has_trail=True, trail_color=(100, 220, 255),
+            )
+        self._weapon_fire_cooldown = 0.125
 
     def _attach_wave_path(
         self,
