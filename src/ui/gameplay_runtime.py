@@ -2054,6 +2054,7 @@ class GameplayRuntime:
             pierce=1, has_trail=True, trail_color=(255, 160, 60),
         )
         self._weapon_fire_cooldown = 0.20
+        self._play_sfx("shoot_thick", volume=0.6)
 
     def _fire_laser(self) -> None:
         """LASER: 1 fast pierce bullet, pierce=3, cooldown 0.10s (10/sec)."""
@@ -2070,6 +2071,7 @@ class GameplayRuntime:
             pierce=3, has_trail=True, trail_color=(80, 255, 120),
         )
         self._weapon_fire_cooldown = 0.10
+        self._play_sfx("laser_hum", volume=0.4)
 
     def _fire_flame(self) -> None:
         """FLAME: 3-bullet fan spread, fast, cooldown 0.07s (~14/sec)."""
@@ -2089,6 +2091,7 @@ class GameplayRuntime:
                 pierce=0, has_trail=True, trail_color=(255, 100, 40),
             )
         self._weapon_fire_cooldown = 0.07
+        self._play_sfx("flame_loop", volume=0.3)
 
     def _fire_double(self) -> None:
         """DOUBLE: 2 parallel bullets side-by-side, medium, cooldown 0.125s."""
@@ -2112,6 +2115,7 @@ class GameplayRuntime:
                 pierce=0, has_trail=True, trail_color=(100, 220, 255),
             )
         self._weapon_fire_cooldown = 0.125
+        self._play_sfx("shoot_double", volume=0.5)
 
     def _attach_wave_path(
         self,
