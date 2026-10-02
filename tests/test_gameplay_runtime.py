@@ -89,12 +89,18 @@ def test_player_can_shoot():
 
 
 def test_charge_release_spawns_charged_bullet():
-    from src.systems.projectile import BULLET_PLAYER_CHARGED
+    # BLOQUE 73 Phase A (Approach A): the contract here CHANGED.
+    # Old: LMB charge release spawns BULLET_PLAYER_CHARGED (pierce + glow).
+    # New: LMB always fires basic BULLET_PLAYER, regardless of charge_time.
+    # The charge state machine (player.py) still tracks charge_time for
+    # the visual charge ring, but charge no longer affects bullet kind.
+    # Charge-special bullets (L1/L2/L3 with pierce, beam, etc.) are gone.
+    from src.systems.projectile import BULLET_PLAYER
     rt = _make_runtime()
     rt._player.wants_to_charge_release = True
     rt._player.charge_time = 0.6  # past L1 threshold
     rt._handle_firing(1.0 / 120.0)
-    bullets = [b for b in rt._bullets.pool if b.active and b.kind == BULLET_PLAYER_CHARGED]
+    bullets = [b for b in rt._bullets.pool if b.active and b.kind == BULLET_PLAYER]
     assert len(bullets) >= 1
 
 
@@ -807,16 +813,29 @@ def test_muzzle_flash_decays_to_zero():
 
 
 def test_charge_release_flash_triggered_on_charge_fire():
-    """A charged shot should set _charge_release_flash."""
+    """A charged shot should set _charge_release_flash.
+
+    BLOQUE 73 Phase A (Approach A): REMOVED. Charge no longer triggers
+    a special flash + shockwave because all LMB shots are basic bullets
+    now (charge is purely visual via the charge ring on the player).
+    If you want shockwaves / flashes, pickup a weapon and RMB-fire.
+    """
+    # rt = _make_runtime()
+    # rt._player.state = rt._player.state.__class__.CHARGE
+    # rt._player.charge_time = 1.6
+    # rt._player.wants_to_charge_release = True
+    # rt._handle_firing(0.016)
+    # assert rt._charge_release_flash > 0.0
+    # assert len(rt._shockwaves) >= 1
+    # Replaced with: assert no flash is set on charge release (charge
+    # release is not visually distinct anymore).
     rt = _make_runtime()
-    # Force the weapon to want a charge release at L3
     rt._player.state = rt._player.state.__class__.CHARGE  # type: ignore[attr-defined]
-    rt._player.charge_time = 1.6  # beyond L3 threshold
+    rt._player.charge_time = 1.6
     rt._player.wants_to_charge_release = True
     rt._handle_firing(0.016)
-    # _charge_release_flash should be set (0.7) and a shockwave spawned
-    assert rt._charge_release_flash > 0.0
-    assert len(rt._shockwaves) >= 1
+    assert rt._charge_release_flash == 0.0
+    assert len(rt._shockwaves) == 0
 
 
 def test_charge_release_flash_decays():

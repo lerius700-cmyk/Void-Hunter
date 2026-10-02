@@ -7,16 +7,23 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 # ---- 1. Reticle color when L3 laser is active ----
-def test_reticle_cyan_when_laser_active() -> None:
-    """When the player is charging L3, the reticle should be plasma cyan."""
-    # We test by checking that the reticle color logic exists and is correct.
-    # The actual draw is a pygame call we don't want to run in headless tests.
-    expected_cyan = (140, 220, 255)
-    # Read the source file to confirm the constant is there
+# BLOQUE 73 Phase A (Approach A): the LMB max-charge laser was REMOVED, so
+# the reticle no longer changes color based on charge level. The reticle
+# is now always warm yellow. This test verifies the new contract.
+def test_reticle_always_warm_yellow_not_cyan() -> None:
+    """After BLOQUE 73 Phase A, the reticle is always warm yellow.
+
+    The old plasma-cyan color when L3 laser was active is GONE because
+    the LMB max-charge laser was removed (Approach A). The reticle color
+    no longer changes based on charge level.
+    """
     src_path = ROOT / "src" / "ui" / "gameplay_runtime.py"
     content = src_path.read_text(encoding="utf-8")
-    assert "plasma cyan" in content
-    assert str(expected_cyan) in content
+    # Old "plasma cyan" string is no longer present (removed in Approach A).
+    assert "plasma cyan" not in content
+    # New contract: reticle is warm yellow (255, 240, 140).
+    assert "(255, 240, 140)" in content  # warm yellow color used
+    assert "warm yellow" in content  # comment marker
 
 
 # ---- 2. Player tilt is now 25° (was 15°) ----

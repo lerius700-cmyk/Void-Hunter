@@ -754,17 +754,18 @@ class GameplayRuntime:
     # Firing
     # ------------------------------------------------------------------
     def _handle_firing(self, dt: float) -> None:
-        # BLOQUE 37: L3 max charge is now a continuous laser (not discrete bullets)
-        current_charge = self._player.get_charge_level()
-        self._update_continuous_laser(dt, current_charge)
-        # Charge release (player.wants_to_charge_release)
-        if self._player.wants_to_charge_release:
-            charge_level = self._player.get_charge_level()
-            if charge_level == 0:
-                charge_level = 1
-            self._weapon.request_fire(charge_level=charge_level)
-        # Normal fire
-        elif self._player.wants_to_shoot:
+        # BLOQUE 73 Phase A (Approach A): LMB is now a basic-bullet backup.
+        # The old LMB max-charge laser was REMOVED because it competed with
+        # the pickup weapon identity (RMB = fire weapon from slot active).
+        # The player's charge state machine (player.py) still tracks
+        # charge_time for the visual charge ring, but we ignore the
+        # charge level here and always fire at L1 (charge_level=0).
+        # The dead methods ``_update_continuous_laser`` /
+        # ``_draw_continuous_laser`` / ``_laser_apply_damage`` are kept
+        # for reference but no longer called from the gameplay loop.
+        if (self._player.wants_to_charge_release
+                or self._player.wants_to_shoot):
+            # LMB always fires basic bullet regardless of charge_time.
             self._weapon.request_fire(charge_level=0)
         # BLOQUE 39: Bomb → spawn a homing missile (replaces screen-clear)
         # BLOQUE 58.26 FIX: the bomb is consumed in player.update (which
@@ -782,10 +783,10 @@ class GameplayRuntime:
                 BombBurst(self._player.x, self._player.y)
             )
             self._player.wants_to_bomb = False
-        # Charge SFX: rising pitch as charge level increases
-        if current_charge > self._last_charge_level:
-            self._play_sfx("charge_loop", volume=0.5)
-        self._last_charge_level = current_charge
+        # Charge SFX: REMOVED in BLOQUE 73 Phase A. The old charge loop
+        # SFX was tied to charge level which no longer affects bullets.
+        # The charge visual ring still works in player.draw() for
+        # gameplay feedback, but we no longer play SFX on charge changes.
         fire_now, special_now, charge_level = self._weapon.consume_pending()
         if fire_now or special_now:
             # BLOQUE 38: tag the shot with its source so the muzzle flash
@@ -812,9 +813,13 @@ class GameplayRuntime:
     # ------------------------------------------------------------------
     def _update_continuous_laser(self, dt: float, current_charge: int) -> None:
         """L3 max charge while LMB held → render a continuous plasma beam
-        that damages enemies in its path (no individual bullet spawns).
 
-        Replaces the BLOQUE 30 discrete-beam approach (0.08s spawn loop).
+        DEPRECATED (BLOQUE 73 Phase A, Approach A): the LMB max-charge laser
+        was removed because it conflicted with the BLOQUE 72.A pickup
+        weapon identity (RMB now fires the weapon from the active slot).
+        This method is kept for reference and for the existing test
+        suite (``tests/test_gameplay_runtime.py::test_continuous_laser_*``)
+        but is NO LONGER CALLED from ``_handle_firing``.
         """
         from src.core.settings import (
             LASER_DAMAGE_PER_TICK, LASER_HIT_RADIUS_PX, LASER_MAX_RANGE_PX,
@@ -975,6 +980,10 @@ class GameplayRuntime:
 
     def _draw_continuous_laser(self, target: pygame.Surface, ox: int, oy: int) -> None:
         """BLOQUE 37: multi-layer plasma beam from muzzle to endpoint.
+
+        DEPRECATED (BLOQUE 73 Phase A, Approach A): see
+        ``_update_continuous_laser`` deprecation note. Kept for reference
+        and test suite compatibility; not called from ``draw()``.
 
         Drawn on a per-pixel-alpha surface and blitted on top of the player,
         so the line is visible regardless of the parent surface's alpha mode.
@@ -4003,7 +4012,10 @@ class GameplayRuntime:
             self._draw_player_scaled(target, shx, shy)
         # BLOQUE 37: continuous L3 laser (drawn on top of player so it appears
         # to emerge from the muzzle).
-        self._draw_continuous_laser(target, shx, shy)
+        # BLOQUE 73 Phase A: REMOVED. The LMB max-charge laser conflicted
+        # with the BLOQUE 72.A pickup weapon identity (RMB now fires the
+        # active weapon). Method kept for reference but not called.
+        # self._draw_continuous_laser(target, shx, shy)
         # BLOQUE 47: aim reticle (drawn last so it sits on top of everything)
         if not self._player.is_dead:
             self._draw_reticle(target, shx, shy)
@@ -4445,12 +4457,10 @@ class GameplayRuntime:
         if mx < 4 or mx > INTERNAL_W - 4 or my < 4 or my > INTERNAL_H - 4:
             return
         # Color: cyan when laser is active, otherwise warm yellow
-        if self._player.state == PlayerState.CHARGE and self._player.get_charge_level() >= 3:
-            color = (140, 220, 255)  # plasma cyan
-            core_color = (220, 245, 255)
-        else:
-            color = (255, 240, 140)  # warm yellow
-            core_color = (255, 255, 220)
+        # BLOQUE 73 Phase A: laser-aware color removed (laser deprecated).
+        # Reticle always warm yellow.
+        color = (255, 240, 140)  # warm yellow
+        core_color = (255, 255, 220)
         # Outer ring (subtle, for depth)
         pygame.draw.circle(target, (color[0] // 2, color[1] // 2, color[2] // 2), (mx, my), 8, 1)
         # 4 tick marks (cross pattern, 4px each direction, 2px gap)
