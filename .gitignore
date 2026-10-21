@@ -83,3 +83,37 @@ stellar_horizon/assets/sprites/_gen_*.png
 # post-processed into 96x80 frames by 02_postprocess.py). Not committed —
 # regenerate with `python tools/redesign_bosses/01_generate_bases.py`.
 Assets/sprites/bosses/goliath/_base/
+
+# BLOQUE 67+ session debug logs
+*.pytest_*.txt
+*.smoke_*.txt
+*.finalverify.txt
+*.shield_*.txt
+*.diff_*.txt
+*.main_smoke.txt
+.tests_*.txt
+tests_*.txt
+tests_dbg.txt
+tests_full.txt
+tests_run.txt
+tests_baseline.txt
+
+# BLOQUE 67+ temp artifacts
+tmp_*.json
+output/
+.Trash
+.Trash/
+
+# BLOQUE 67+ one-off capture artefacts (Mavis session debug files)
+luffy_*.png
+
+# BLOQUE 67+ task-step debug logs (left over from agent runs)
+.task*_step*.out
+.task*_step*_dbg*.out
+
+# BLOQUE 67+ local github token (must NEVER be committed)
+github_token.txt
+github_token
+
+# BLOQUE 67+ boss-sprite backplate leftover dirs
+Assets/sprites/bosses/goliath/_backplate/
