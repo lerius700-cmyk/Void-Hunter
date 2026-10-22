@@ -238,10 +238,73 @@ def _cmd_stress(duration: int) -> int:
     return 0
 
 
-def _cmd_play(duration: int) -> int:
-    """Default mode: launch the game window. Auto-exits after duration sec."""
+def _cmd_play(duration: int, boss: str | None = None, act: int | None = None) -> int:
+    """Default mode: launch the game window. Auto-exits after duration sec.
+
+    BLOQUE 73.5: ``boss``/``act`` used to print "full integration in next
+    BLOQUE" and run the normal game from the title screen, so ``--boss
+    goliath`` — the flag every dev-loop note in the repo recommends — never
+    actually reached the boss. Walk the real scene chain instead:
+    TITLE -> ACT_INTRO -> GAMEPLAY -> BOSS_INTRO -> BOSS_FIGHT.
+    """
     from src.core.game import Game
+    from src.core.scene_manager import GameState
+
     game = Game()
+
+    if boss is not None:
+        # Jump straight into the fight. transition_to validates against
+        # VALID_TRANSITIONS, so walk the legal chain rather than forcing
+        # BOSS_FIGHT from TITLE. Each hop calls the target scene's
+        # on_enter, which is what actually builds the boss.
+        #
+        # The runtime picks the boss from the act number, so map the boss
+        # NAME to its act before the scene is constructed. GOLIATH is
+        # act 1's boss; HYDRA act 2; PHANTOM and NEMESIS act 3.
+        _BOSS_ACT = {
+            "goliath": 1,
+            "hydra": 2,
+            "phantom": 3,
+            "nemesis": 3,
+        }
+        act = _BOSS_ACT.get(boss.lower())
+        if act is None:
+            print(f"VOID HUNTER: unknown boss {boss!r}; "
+                  f"expected one of {sorted(_BOSS_ACT)}", file=sys.stderr)
+            return 2
+        # Re-register BOSS_FIGHT for the requested act: Game.__init__
+        # hardcodes act=1, and the act is what selects the boss.
+        from src.ui.scenes import BossFightScene
+
+        game.scenes.register_scene(
+            GameState.BOSS_FIGHT,
+            BossFightScene(
+                game.scenes.transition_to,
+                act=act,
+                audio=game.audio,
+                get_session_score=game._get_session_score,
+                set_session_score=game._set_session_score,
+            ),
+        )
+        for state in (
+            GameState.ACT_INTRO,
+            GameState.GAMEPLAY,
+            GameState.BOSS_INTRO,
+            GameState.BOSS_FIGHT,
+        ):
+            try:
+                game.scenes.transition_to(state)
+            except Exception as exc:  # noqa: BLE001
+                print(f"VOID HUNTER: could not enter {state.value}: {exc}",
+                      file=sys.stderr)
+                break
+        print(f"VOID HUNTER: jumped to {boss.upper()} (act {act})")
+    elif act is not None:
+        try:
+            game.scenes.transition_to(GameState.ACT_INTRO)
+        except Exception as exc:  # noqa: BLE001
+            print(f"VOID HUNTER: could not enter act {act}: {exc}", file=sys.stderr)
+        print(f"VOID HUNTER: jumped to act {act}")
     # Wrap run() to honor --duration
     import pygame
     import time
@@ -400,10 +463,11 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_stress(args.duration)
 
     if args.act is not None or args.boss is not None:
-        # BLOQUE 9/10: jump to specific act/boss. For now, route to play.
-        # Future BLOQUE will wire up the per-act wave + boss intro sequence.
-        print(f"VOID HUNTER: --act {args.act} --boss {args.boss} (full integration in next BLOQUE; running main game for {args.duration}s)")
-        return _cmd_play(args.duration)
+        # BLOQUE 73.5: this used to print "full integration in next BLOQUE"
+        # and run the normal game, so --boss never reached the boss at all.
+        # _cmd_play now walks TITLE -> ACT_INTRO -> GAMEPLAY -> BOSS_INTRO
+        # -> BOSS_FIGHT and lands in the actual fight.
+        return _cmd_play(args.duration, boss=args.boss, act=args.act)
 
     if args.profile:
         return _cmd_play(args.duration)

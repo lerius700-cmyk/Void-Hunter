@@ -186,6 +186,14 @@ SDL_VIDEODRIVER=dummy python -m pytest tests/ -q
 # Run with headless rendering (no window)
 SDL_VIDEODRIVER=dummy python main.py --easy
 
+# Jump straight to a boss fight — this is the dev loop for GOLIATH work.
+# NOTE: the flag is --boss, not --boss-test (that name never existed on
+# master; older notes in docs/superpowers/ still say so and are wrong).
+python main.py --boss goliath --easy --scale 2 --duration 60
+
+# Jump to an act
+python main.py --act 1 --easy --duration 60
+
 # Capture a frame
 python tools/capture/capture_sub_boss.py
 # → tools/playtest_out/sub_boss_v1.40.png
@@ -197,7 +205,7 @@ pyinstaller build.spec --clean --noconfirm
 
 **Quality gates:**
 - 1,630 / 1,630 tests passing on the current code paths
-  (~25 pre-existing failures: pygame uninit in `test_asteroid_sprites.py`, sub_boss order-dependent, Lissajous, GOLIATH frame duplicates from BLOQUE 64.B strategy — all predate v1.4.0)
+  (~25 pre-existing failures: pygame uninit in `test_asteroid_sprites.py`, sub_boss order-dependent, Lissajous — all predate v1.4.0)
 - 0 numpy/scipy imports in the game runtime (numpy allowed only in `apply_lowpass_to_wav` for the pause lowpass, per BLOQUE 58.14)
 - Internal coordinates 320×480; display scaling done in `Game._present()`
 - Windowed mode (never fullscreen, never terminal)

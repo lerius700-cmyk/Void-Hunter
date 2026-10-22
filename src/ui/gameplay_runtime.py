@@ -2321,6 +2321,15 @@ class GameplayRuntime:
             else:
                 # Normal boss behavior (sine oscillation)
                 self._boss.update(dt)
+                # BLOQUE 73.5: advance the sprite animation. Boss.update()
+                # moves the entity but never touched animation_frame, and
+                # Boss.update_animation() — added in BLOQUE 64.B for
+                # exactly this — had no caller anywhere in src/. So
+                # animation_frame stayed pinned at 0 for the whole fight:
+                # GOLIATH held one pose no matter which of the 60 frames it
+                # was supposed to be showing. This is the last reason the
+                # boss looked like a still image.
+                self._boss.update_animation(dt)
                 # BLOQUE 64.B: tick the attack anim timer. When an attack
                 # anim (javelin/laser/purple_bullet) expires, restore the
                 # default idle (phase1_idle in phase 1, phase2_idle in
