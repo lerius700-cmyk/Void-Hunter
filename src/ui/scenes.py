@@ -226,6 +226,15 @@ def get_sprite_arm_anchor(name: str) -> tuple[int, int]:
         return fallback
     col = sum(p[0] for p in hits) / len(hits)
     row = sum(p[1] for p in hits) / len(hits)
+    # BLOQUE 73.3 sanity clamp. The brass signature also fires on small
+    # highlights elsewhere (a pauldron rivet, the javelin's iron tip, the
+    # helmet crest). Those land far from the body centre, so reject any
+    # match outside a box around the canvas anchor — the plate is always
+    # on the torso, never at the sprite's extremities. Without this, the
+    # oval jumped to col 66 (off the body) in purple_bullet/f00 and to
+    # col 28 (inside the torso) in javelin/f03.
+    col = min(max(col, _GOLIATH_ANCHOR_X - 6), _GOLIATH_ANCHOR_X + 6)
+    row = min(max(row, _GOLIATH_ANCHOR_Y - 8), _GOLIATH_ANCHOR_Y + 8)
     anchor = (int(round(col)), int(round(row)))
     _sprite_arm_anchor_cache[name] = anchor
     return anchor
