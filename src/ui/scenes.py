@@ -464,6 +464,9 @@ class TitleScene(Scene):
             self._bg.update(dt)
         # "PRESS ANY KEY" or mouse click → start (BLOQUE 58.59: goes to CINEMATIC)
         # BLOQUE 58.60: S = sprite sheet gallery, V = video gallery.
+        # BLOQUE 73.6: 1-4 / arrows cycle the background variant (the
+        # choice is stored on the Game and applied by Cinematic / ActIntro
+        # / Gameplay when those scenes enter).
         for event in pygame.event.get(pygame.KEYDOWN):
             if event.key in (
                 pygame.K_LSHIFT, pygame.K_RSHIFT,
@@ -476,6 +479,30 @@ class TitleScene(Scene):
                 return
             if event.key == pygame.K_v:
                 self._transition_to(GameState.GALLERY_VIDEO)
+                return
+            from src.systems.parallax import _STRIP_VARIANT_THEMES
+            variants = len(_STRIP_VARIANT_THEMES)
+            delta = 0
+            if event.key in (pygame.K_1,):
+                delta = 0 - self._game.bg_variant_idx
+            elif event.key in (pygame.K_2,):
+                delta = 1 - self._game.bg_variant_idx
+            elif event.key in (pygame.K_3,):
+                delta = 2 - self._game.bg_variant_idx
+            elif event.key in (pygame.K_4,):
+                delta = 3 - self._game.bg_variant_idx
+            elif event.key in (pygame.K_LEFT, pygame.K_a):
+                delta = -1
+            elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                delta = 1
+            if delta:
+                self._game.bg_variant_idx = (self._game.bg_variant_idx + delta) % variants
+                self._bg_variant_label_t = 1.2  # seconds the label stays on screen
+                # Apply the change to the legacy parallax fallback if
+                # the video is missing. Gameplay reads the choice from
+                # the Game object when its scene enters.
+                if self._bg is not None:
+                    self._bg.set_theme(_STRIP_VARIANT_THEMES[self._game.bg_variant_idx])
                 return
             self._transition_to(GameState.CINEMATIC)
             return
@@ -506,6 +533,34 @@ class TitleScene(Scene):
         # BLOQUE 58.60: gallery hotkey hints in the bottom-left
         gallery = font2.render("S: SHIPS  V: VIDEOS", True, (110, 130, 160))
         target.blit(gallery, (4, INTERNAL_H - gallery.get_height() - 2))
+        # BLOQUE 73.6: bg variant selector. The 4 themes are blue_void,
+        # teal, gold_amber, purple_dusk. Show the current name above the
+        # gallery hint, briefly, after the user changes it. The legacy
+        # parallax fallback also picks up the choice immediately so the
+        # preview is visible even when the video is showing.
+        from src.systems.parallax import _STRIP_VARIANT_THEMES
+        game = getattr(self, "_game", None)
+        idx = game.bg_variant_idx if game is not None else 3
+        # Render a permanent small line so the user can see the keys.
+        keys_hint = font2.render("1-4 / LEFT-RIGHT: BG THEME", True, (110, 130, 160))
+        target.blit(keys_hint, (4, INTERNAL_H - keys_hint.get_height() * 2 - 4))
+        # Render the current selection, optionally with a fade after a change.
+        if not hasattr(self, "_bg_variant_label_t"):
+            self._bg_variant_label_t = 0.0
+        if self._bg_variant_label_t > 0.0:
+            self._bg_variant_label_t = max(0.0, self._bg_variant_label_t - dt)
+        label_alpha = 255 if self._bg_variant_label_t > 0 else 180
+        label_color = (255, 240, 140) if self._bg_variant_label_t > 0 else (180, 180, 200)
+        theme_name = _STRIP_VARIANT_THEMES[idx].replace("_", " ").upper()
+        label = font2.render(f"BG: {theme_name}  (1-4)", True, label_color)
+        # Fade the label when not actively changing.
+        if label_alpha < 255:
+            label.set_alpha(label_alpha)
+        # Apply the live variant to the legacy parallax fallback so the
+        # preview reflects the choice even with the video up.
+        if self._bg is not None:
+            self._bg.set_theme(_STRIP_VARIANT_THEMES[idx])
+        _center_blit(target, label, 175)
 
     def _draw_demo_ships(self, target: pygame.Surface) -> None:
         """BLOQUE 58.47: draw demo ships using the REAL ship sprites
@@ -970,6 +1025,19 @@ class GameplayScene(Scene):
 
     def on_enter(self) -> None:
         self._rt.on_enter()
+        # BLOQUE 73.6: apply the user-chosen background variant (set on
+        # the title screen via 1-4 / arrows). on_enter fires every time
+        # the scene becomes active, so the latest choice always wins,
+        # even when the user backed out of the pause menu or just changed
+        # the variant in the title and stepped straight into gameplay.
+        # The default is 3 = purple_dusk, matching the procedural
+        # backdrop the user approved.
+        game = getattr(self, "_game", None)
+        if game is not None:
+            from src.systems.parallax import _STRIP_VARIANT_THEMES
+            idx = max(0, min(len(_STRIP_VARIANT_THEMES) - 1, game.bg_variant_idx))
+            if self._rt._parallax_bg is not None:
+                self._rt._parallax_bg.set_theme(_STRIP_VARIANT_THEMES[idx])
         # BLOQUE 58.45: switch to the gameplay soundtrack (loop).
         # BLOQUE 58.6x: don't restart if already playing. on_enter fires
         # every time we return to gameplay (after sub-boss kill, after
@@ -1319,6 +1387,17 @@ class BossFightScene(Scene):
         self._rt = GameplayRuntime(transition_to, is_boss=True, act=act, audio=audio)
 
     def on_enter(self) -> None:
+        # BLOQUE 73.6: apply the user-chosen background variant before
+        # any runtime tick draws a frame, so the boss arena shows the
+        # variant selected on the title (or the default purple_dusk if
+        # --boss skipped the title).
+        game = getattr(self, "_game", None)
+        if game is not None:
+            from src.systems.parallax import _STRIP_VARIANT_THEMES
+            idx = max(0, min(len(_STRIP_VARIANT_THEMES) - 1, game.bg_variant_idx))
+            bg = getattr(self._rt, "_bg", None)
+            if bg is not None:
+                bg.set_theme(_STRIP_VARIANT_THEMES[idx])
         self._rt.on_enter()
         # BLOQUE 58.46: override the fresh scoring system with the player's
         # accumulated score from gameplay so the HUD doesn't reset to 0.

@@ -161,6 +161,13 @@ class Game:
             self.audio = None
         self.easy: bool = easy  # BLOQUE 28: easy mode flag
         self.scenes: SceneManager = SceneManager()
+        # BLOQUE 73.6: user-selected parallax strip variant for the
+        # gameplay background. 0=blue, 1=teal, 2=gold_amber, 3=purple_dusk.
+        # Default 3 (purple_dusk) so the screen reads as the purple
+        # procedural backdrop the user approved. The Title scene offers
+        # 1-4 / arrows to change it before the cinematica plays; Cinematic
+        # / ActIntro / Gameplay pick up the selection here on entry.
+        self.bg_variant_idx: int = 3
         # BLOQUE 58.8: if --patterns was passed, enable procedural
         # patterns on the gameplay scene.
         import os as _os
@@ -253,7 +260,15 @@ class Game:
             except StateError:
                 pass  # invalid transition; ignore for now
 
-        self.scenes.register_scene(GameState.TITLE, TitleScene(transition_to))
+        # BLOQUE 73.6: every scene gets a back-reference to the Game so it
+        # can read shared settings (e.g. bg_variant_idx) without coupling
+        # through the SceneManager. The SceneManager itself does not hold
+        # the Game — it stays a state-only structure.
+        def _register_with_back_ref(state: GameState, scene: Scene) -> None:
+            scene._game = self  # type: ignore[attr-defined]
+            self.scenes.register_scene(state, scene)
+
+        _register_with_back_ref(GameState.TITLE, TitleScene(transition_to))
         # BLOQUE 58.59: cinematic ship zoom between TITLE and ACT_INTRO.
         self.scenes.register_scene(GameState.CINEMATIC, CinematicScene(transition_to))
         # BLOQUE 58.60: gallery scenes (sprite sheets + videos) accessible
@@ -263,7 +278,7 @@ class Game:
         self.scenes.register_scene(GameState.ACT_INTRO, ActIntroScene(transition_to, act=1))
         # BLOQUE 58.46: pass session_score callbacks so the score carries
         # over between gameplay, boss, and act_cleared scenes.
-        self.scenes.register_scene(
+        _register_with_back_ref(
             GameState.GAMEPLAY,
             GameplayScene(transition_to, audio=self.audio,
                           set_session_score=self._set_session_score),
@@ -280,7 +295,7 @@ class Game:
         # on_enter, which re-initialized pygame.mixer and re-baked all
         # SFX + BGM (~1.2s freeze) right when the wave cleared.
         self.scenes.register_scene(GameState.BOSS_INTRO, BossIntroScene(transition_to, audio=self.audio))
-        self.scenes.register_scene(
+        _register_with_back_ref(
             GameState.BOSS_FIGHT,
             BossFightScene(transition_to, act=1, audio=self.audio,
                            get_session_score=self._get_session_score,
