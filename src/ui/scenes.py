@@ -134,6 +134,103 @@ def _load_sprite(name: str) -> Optional[pygame.Surface]:
     return surf
 
 
+# ---------------------------------------------------------------------------
+# BLOQUE 73.2: GOLIATH sprite measurement helpers (ported from BLOQUE 66)
+# ---------------------------------------------------------------------------
+# BLOQUE 66.3 canvas anchor: all GOLIATH frames are 96x80 and the design
+# intent is for the body silhouette to be centred around (col 48, row 40).
+# Frames whose body leans (javelin/frame_03 is dx=+20) are re-aligned so
+# the visible body, not the canvas, lands on the world anchor.
+_GOLIATH_ANCHOR_X = 48
+_GOLIATH_ANCHOR_Y = 40
+
+# Caches. Both are keyed by the sprite's path-relative name, matching
+# `_load_sprite`. Cleared by tests that swap sprite files at runtime.
+_sprite_centroid_cache: dict[str, tuple[int, int]] = {}
+_sprite_arm_anchor_cache: dict[str, tuple[int, int]] = {}
+
+
+def get_sprite_centroid_offset(name: str) -> tuple[int, int]:
+    """(dx, dy) that aligns the sprite's alpha-weighted centroid on (48, 40).
+
+    Computed once per sprite at first call and cached. Returns (0, 0) for
+    sprites whose metadata is unavailable (missing file, missing alpha, or
+    an empty silhouette) so callers degrade to a plain centred blit instead
+    of raising.
+    """
+    if name in _sprite_centroid_cache:
+        return _sprite_centroid_cache[name]
+    surf = _load_sprite(name)
+    if surf is None:
+        _sprite_centroid_cache[name] = (0, 0)
+        return (0, 0)
+    w, h = surf.get_size()
+    sum_a = sum_x = sum_y = 0
+    for y in range(h):
+        for x in range(w):
+            a = surf.get_at((x, y))[3]
+            if a == 0:
+                continue
+            sum_a += a
+            sum_x += x * a
+            sum_y += y * a
+    if sum_a == 0:
+        _sprite_centroid_cache[name] = (0, 0)
+        return (0, 0)
+    cx = sum_x / sum_a
+    cy = sum_y / sum_a
+    offset = (
+        int(round(_GOLIATH_ANCHOR_X - cx)),
+        int(round(_GOLIATH_ANCHOR_Y - cy)),
+    )
+    _sprite_centroid_cache[name] = offset
+    return offset
+
+
+def get_sprite_arm_anchor(name: str) -> tuple[int, int]:
+    """Sprite-local (col, row) of GOLIATH's shield plate.
+
+    GOLIATH's sprite already carries a brass shield disc on his left arm.
+    That disc is the anchor the runtime's translucent oval is mounted on,
+    so the plate the player sees and the hitbox the bullets test are the
+    same object.
+
+    Located by colour, not by canvas edge: the brass plate reads as a warm
+    high-luminance cluster (R high, G mid-high, B low) inside the gold
+    armour, and it is reliably the ONLY such cluster in the sprite. The
+    right edge of the silhouette is the javelin shaft, which would put the
+    oval off the body.
+
+    Returns the canvas anchor for an empty or missing sprite, and caches
+    per sprite path.
+    """
+    if name in _sprite_arm_anchor_cache:
+        return _sprite_arm_anchor_cache[name]
+    surf = _load_sprite(name)
+    fallback = (_GOLIATH_ANCHOR_X, _GOLIATH_ANCHOR_Y)
+    if surf is None:
+        _sprite_arm_anchor_cache[name] = fallback
+        return fallback
+    w, h = surf.get_size()
+    hits: list[tuple[int, int]] = []
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = surf.get_at((x, y))
+            if a == 0:
+                continue
+            # Brass plate signature: warm, bright, blue-poor.
+            if r > 185 and g > 145 and b < 130 and r > b + 70:
+                hits.append((x, y))
+    if not hits:
+        _sprite_arm_anchor_cache[name] = fallback
+        return fallback
+    col = sum(p[0] for p in hits) / len(hits)
+    row = sum(p[1] for p in hits) / len(hits)
+    anchor = (int(round(col)), int(round(row)))
+    _sprite_arm_anchor_cache[name] = anchor
+    return anchor
+
+
 # Map enemy kind value → sprite PNG filename (BLOQUE 58.47)
 _ENEMY_SPRITE_FILES: dict[str, str] = {
     "scout":    "enemy_scout.png",
