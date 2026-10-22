@@ -2440,11 +2440,31 @@ class GameplayRuntime:
             # the eye_laser_cd timer (every 3s in phase 2), NOT by
             # select_attack()'s random pool — see the dedicated tick in
             # the boss update branch.
+            #
+            # BLOQUE 73.4 (ported from 66.4l): the beam used to spawn at
+            # a fixed boss.y + 30. A pixel scan of the sprite's red eye
+            # puts it at sprite row 18 in phase1_idle and row 22 in
+            # javelin/laser — so the beam started 2-6 px BELOW the eye
+            # every frame, reading as if it came from the chest. Anchor it
+            # to the per-frame eye instead, using the same blit origin
+            # _draw_goliath applies to the sprite.
             from src.systems.projectile import spawn_boss_laser
+            laser_x = self._boss.x
+            laser_y = self._boss.y + 30
+            if self._boss.id == BossId.GOLIATH:
+                from src.ui.scenes import (
+                    get_sprite_centroid_offset,
+                    get_sprite_eye_anchor,
+                )
+                path = self._boss.animation_path
+                eye_col, eye_row = get_sprite_eye_anchor(path)
+                cdx, cdy = get_sprite_centroid_offset(path)
+                laser_x = int(self._boss.x) - 48 + cdx + eye_col
+                laser_y = int(self._boss.y) - 40 + cdy + eye_row
             spawn_boss_laser(
                 self._bullets,
-                x=self._boss.x,
-                y=self._boss.y + 30,  # just below the boss hitbox
+                x=laser_x,
+                y=laser_y,
                 owner="goliath",
             )
             # BLOQUE 64.B: trigger the "laser" anim for 0.7s
@@ -2722,8 +2742,18 @@ class GameplayRuntime:
         if self._boss_shield_laser_t > 0.0:
             return
         sx, sy = _goliath_shield_center(self)
-        sr = GOLIATH_SHIELD_R
-        shield_rect = pygame.Rect(int(sx - sr), int(sy - sr), sr * 2, sr * 2)
+        # BLOQUE 73.4: the hitbox must be the oval's own bounding box, not
+        # a square from the radius. GOLIATH_SHIELD_R is 11, which matches
+        # RX, but the oval is 11x17 — so a square 22x22 rect left the top
+        # and bottom 6 px of the visible shield non-colliding. Bullets
+        # passed straight through a shield the player could plainly see.
+        #
+        # The +1 on each axis is not slack: pygame.Rect is half-open, so
+        # a rect of width 2*RX excludes the pixel at exactly +RX. Without
+        # it, the oval's leftmost and rightmost rim pixels fell outside.
+        hx = max(GOLIATH_SHIELD_R, GOLIATH_SHIELD_RX) + 1
+        hy = max(GOLIATH_SHIELD_R, GOLIATH_SHIELD_RY) + 1
+        shield_rect = pygame.Rect(int(sx - hx), int(sy - hy), hx * 2, hy * 2)
         for p in self._bullets.pool:
             if not p.active or p.owner != OWNER_PLAYER:
                 continue

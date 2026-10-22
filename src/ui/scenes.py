@@ -148,6 +148,53 @@ _GOLIATH_ANCHOR_Y = 40
 # `_load_sprite`. Cleared by tests that swap sprite files at runtime.
 _sprite_centroid_cache: dict[str, tuple[int, int]] = {}
 _sprite_arm_anchor_cache: dict[str, tuple[int, int]] = {}
+_sprite_eye_anchor_cache: dict[str, tuple[int, int]] = {}
+
+
+def get_sprite_eye_anchor(name: str) -> tuple[int, int]:
+    """BLOQUE 66.4l (ported in 73.4): sprite-local (col, row) of the eye.
+
+    The eye laser used to start at a constant offset from the boss anchor
+    (sprite row 24), but a pixel scan of the red eye shows it sits at row 18
+    in phase1_idle and row 22 in javelin/laser -- so the beam started 2-6 px
+    BELOW the eye every frame, reading as if it came from the chest.
+
+    Locating the eye per frame means the beam starts where the player can
+    see the eye, in every animation. The eye is the sprite's saturated
+    red pixels inside the head band; we take their centroid.
+
+    The eye anchor is NOT centroid-corrected: it is a sprite-local pixel
+    position, so the caller adds the same centroid shift the sprite blit
+    uses. See `_draw_eye_laser`.
+    """
+    if name in _sprite_eye_anchor_cache:
+        return _sprite_eye_anchor_cache[name]
+
+    surf = _load_sprite(name)
+    if surf is None:
+        _sprite_eye_anchor_cache[name] = (48, 20)
+        return (48, 20)
+    w, h = surf.get_size()
+
+    # Saturated red inside the head band (rows 0..29, body columns).
+    eye = [
+        (px, py)
+        for py in range(min(30, h))
+        for px in range(24, min(70, w))
+        if surf.get_at((px, py))[3] > 32
+        and surf.get_at((px, py))[0] > 170
+        and surf.get_at((px, py))[0] - surf.get_at((px, py))[1] > 70
+    ]
+    if not eye:
+        _sprite_eye_anchor_cache[name] = (48, 20)
+        return (48, 20)
+
+    anchor = (
+        int(round(sum(p[0] for p in eye) / len(eye))),
+        int(round(sum(p[1] for p in eye) / len(eye))),
+    )
+    _sprite_eye_anchor_cache[name] = anchor
+    return anchor
 
 
 def get_sprite_centroid_offset(name: str) -> tuple[int, int]:
