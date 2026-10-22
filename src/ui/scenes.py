@@ -926,6 +926,165 @@ _ENEMY_DRAWERS.update({
 })
 
 
+# BLOQUE 73.7: MainMenuScene — appears AFTER the cinematica, before any
+# wave fires. Three options:
+#   NEW GAME     -> ACT_INTRO  (the regular flow)
+#   BOSS TIME    -> BOSS_INTRO  (skip directly to the GOLIATH arena)
+#   BACKGROUND   -> submenu with two background modes
+#     SPACE VOID       (0): sparse starfield, no procedural strip
+#     ASTEROID NEBULA  (1): the rich purple procedural strip (default)
+# Up/Down navigates; Enter activates; Esc returns to TITLE.
+class MainMenuScene(Scene):
+    """BLOQUE 73.7: post-cinematic main menu (NEW GAME / BOSS TIME / BACKGROUND)."""
+
+    # Top-level menu items.
+    _ITEMS_TOP = ("NEW GAME", "BOSS TIME", "BACKGROUND")
+    # Background submenu items. The order matches the image the user
+    # provided: space void first, asteroid nebula second.
+    _ITEMS_BG = ("SPACE VOID", "ASTEROID NEBULA")
+
+    def __init__(self, transition_to: "TransitionFn") -> None:
+        self._transition_to = transition_to
+        self._t: float = 0.0
+        # 0 = NEW GAME, 1 = BOSS TIME, 2 = BACKGROUND
+        self._cursor: int = 0
+        # "top" (root menu) or "bg" (background submenu)
+        self._layer: str = "top"
+        # 0 = SPACE VOID, 1 = ASTEROID NEBULA — when the submenu is open
+        self._bg_cursor: int = 1
+        self._last_action: Optional[str] = None  # for the bottom hint
+
+    def on_enter(self) -> None:
+        self._t = 0.0
+        self._cursor = 0
+        self._layer = "top"
+        # When re-entering (e.g. after the background submenu), make sure
+        # the cursor lands on the user's previous choice so the menu feels
+        # consistent.
+        game = getattr(self, "_game", None)
+        if game is not None and hasattr(game, "bg_mode"):
+            self._bg_cursor = int(game.bg_mode) if game.bg_mode in (0, 1) else 1
+
+    def _items(self) -> tuple[str, ...]:
+        return self._ITEMS_BG if self._layer == "bg" else self._ITEMS_TOP
+
+    def _selected_label(self) -> str:
+        return self._items()[self._cursor if self._layer == "top" else self._bg_cursor]
+
+    def on_exit(self) -> None:
+        pass
+
+    def update(self, dt: float) -> None:
+        self._t += dt
+        for event in pygame.event.get(pygame.KEYDOWN):
+            if event.key in (
+                pygame.K_LSHIFT, pygame.K_RSHIFT,
+                pygame.K_LCTRL, pygame.K_RCTRL,
+                pygame.K_LALT, pygame.K_RALT,
+            ):
+                continue
+            # Submenu keys must be intercepted BEFORE the top-level 1-2-3
+            # keys, otherwise K_1/K_2 here would jump to NEW GAME / BOSS TIME
+            # instead of toggling the background mode.
+            if self._layer == "bg":
+                if event.key == pygame.K_1:
+                    self._bg_cursor = 0; self._apply_bg(); return
+                if event.key == pygame.K_2:
+                    self._bg_cursor = 1; self._apply_bg(); return
+                if event.key in (pygame.K_DOWN, pygame.K_s):
+                    self._cursor_down(); return
+                if event.key in (pygame.K_UP, pygame.K_w):
+                    self._cursor_up(); return
+                if event.key == pygame.K_RETURN:
+                    self._apply_bg(); return
+                if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                    self._cancel(); return
+            else:
+                if event.key in (pygame.K_DOWN, pygame.K_s):
+                    self._cursor_down(); return
+                if event.key in (pygame.K_UP, pygame.K_w):
+                    self._cursor_up(); return
+                if event.key == pygame.K_RETURN:
+                    self._activate(); return
+                if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                    self._cancel(); return
+                if event.key == pygame.K_1:
+                    self._cursor = 0; self._activate(); return
+                if event.key == pygame.K_2:
+                    self._cursor = 1; self._activate(); return
+                if event.key == pygame.K_3:
+                    self._cursor = 2; self._activate(); return
+        for event in pygame.event.get(pygame.MOUSEBUTTONDOWN):
+            self._activate()
+
+    # -- menu navigation helpers --------------------------------------
+    def _cursor_down(self) -> None:
+        items = self._items()
+        idx = (self._bg_cursor if self._layer == "bg" else self._cursor) + 1
+        self._cursor, self._bg_cursor = self._advance(idx, items)
+
+    def _cursor_up(self) -> None:
+        items = self._items()
+        idx = (self._bg_cursor if self._layer == "bg" else self._cursor) - 1
+        self._cursor, self._bg_cursor = self._advance(idx, items)
+
+    def _advance(self, raw: int, items: tuple[str, ...]) -> tuple[int, int]:
+        n = len(items)
+        if self._layer == "bg":
+            return self._cursor, raw % n
+        return raw % n, self._bg_cursor
+
+    def _activate(self) -> None:
+        if self._layer == "bg":
+            self._apply_bg()
+            return
+        choice = self._ITEMS_TOP[self._cursor]
+        if choice == "NEW GAME":
+            self._transition_to(GameState.ACT_INTRO)
+        elif choice == "BOSS TIME":
+            self._transition_to(GameState.BOSS_INTRO)
+        elif choice == "BACKGROUND":
+            self._layer = "bg"
+
+    def _apply_bg(self) -> None:
+        game = getattr(self, "_game", None)
+        if game is not None and hasattr(game, "bg_mode"):
+            game.bg_mode = self._bg_cursor
+        self._layer = "top"
+
+    def _cancel(self) -> None:
+        if self._layer == "bg":
+            self._layer = "top"
+        else:
+            self._transition_to(GameState.TITLE)
+
+    def draw(self, target: pygame.Surface) -> None:
+        # Subtle dim background so the menu reads as a separate screen.
+        veil = pygame.Surface((INTERNAL_W, INTERNAL_H), pygame.SRCALPHA)
+        veil.fill((0, 0, 0, 160))
+        target.blit(veil, (0, 0))
+        items = self._items()
+        active_idx = self._bg_cursor if self._layer == "bg" else self._cursor
+        title = "BACKGROUND" if self._layer == "bg" else "VOID HUNTER"
+        title_font = pygame.font.Font(None, 40)
+        item_font = pygame.font.Font(None, 28)
+        hint_font = pygame.font.Font(None, 18)
+        title_surf = title_font.render(title, True, (255, 240, 140))
+        _center_blit(target, title_surf, 120)
+        base_y = 200
+        for i, label in enumerate(items):
+            color = (255, 240, 140) if i == active_idx else (200, 200, 220)
+            prefix = ">" if i == active_idx else " "
+            text = f"{prefix} {label}"
+            surf = item_font.render(text, True, color)
+            _center_blit(target, surf, base_y + i * 36)
+        hint_text = "ARROWS: NAVIGATE   ENTER: SELECT   ESC: BACK"
+        if self._layer == "bg":
+            hint_text = "ARROWS: NAVIGATE   1-2: PICK   ESC: BACK"
+        hint = hint_font.render(hint_text, True, (160, 160, 180))
+        _center_blit(target, hint, 430)
+
+
 # BLOQUE 58.59: CinematicScene plays the ship zoom video (V2-G) between
 # TITLE and ACT_INTRO. Plays once (10s). ESC skips to ACT_INTRO. When the
 # video finishes naturally, also transitions to ACT_INTRO.
@@ -957,7 +1116,7 @@ class CinematicScene(Scene):
             self._video.update(dt)
             if self._video.is_finished():
                 self._finished = True
-        # ESC = skip the cinematic and go straight to ACT_INTRO
+        # ESC = skip the cinematic and go straight to the post-cinematic menu
         for event in pygame.event.get(pygame.KEYDOWN):
             if event.key == pygame.K_ESCAPE:
                 self._finished = True
@@ -965,7 +1124,10 @@ class CinematicScene(Scene):
         if self._t > 15.0:
             self._finished = True
         if self._finished:
-            self._transition_to(GameState.ACT_INTRO)
+            # BLOQUE 73.7: chain into the main menu (NEW GAME / BOSS TIME
+            # / BACKGROUND) rather than straight to ACT_INTRO. The menu
+            # handles the NEW GAME → ACT_INTRO edge itself.
+            self._transition_to(GameState.MENU)
 
     def draw(self, target: pygame.Surface) -> None:
         if self._video is not None:

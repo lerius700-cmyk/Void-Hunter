@@ -4065,27 +4065,28 @@ class GameplayRuntime:
         _render_t0 = _time.perf_counter()
         # Background
         # BLOQUE 58.6w: split backgrounds by scene type.
-        #   - Waves + sub-boss: galaxy scroll (3 panels stacked)
         #   - Boss fight: pixel art TilingImage ("imagen fondo del juego.jpg")
-        # Falls back to parallax stars if neither image is bundled.
+        #   - Waves + sub-boss: 0 = space void (sparse parallax), 1 = asteroid
+        #     nebula (rich ScrollingGalaxyBackground strip).
+        # The bg_mode is on the Game; GameplayScene.on_enter pulls it from
+        # the user's title-menu choice (default 1 = nebula).
+        game = getattr(self, "_game", None)
+        bg_mode = getattr(game, "bg_mode", 1) if game is not None else 1
         if self._is_boss:
-            # Boss fight: pixel art TilingImage
             if self._tiling_bg is not None and self._tiling_bg.is_ready:
                 self._tiling_bg.draw(target)
-            else:
-                if self._bg is not None:
-                    self._bg.draw(target)
+            elif self._bg is not None:
+                self._bg.draw(target)
+        elif bg_mode == 0:
+            # SPACE VOID: only the sparse parallax starfield.
+            if self._parallax_bg is not None:
+                self._parallax_bg.draw(target)
         else:
-            # BLOQUE 58.14.4: gameplay SKIPS the legacy 6-small-nebula
-            # background (self._bg is None now). The parallax 2-large
-            # below is the primary background. The user said the
-            # previous 4-5 visible nebulas "no tienen logica".
-            pass  # black is the default target fill
-        # BLOQUE 58.12: sparse parallax stars drawn ON TOP of black.
-        # This is the primary "moving" background — its stars drift
-        # top→bottom at varying speeds, giving a sense of forward motion.
-        if not self._is_boss and self._parallax_bg is not None:
-            self._parallax_bg.draw(target)
+            # ASTEROID NEBULA: the rich procedural strip.
+            if self._galaxy_bg is not None and self._galaxy_bg.is_ready:
+                self._galaxy_bg.draw(target)
+            elif self._tiling_bg is not None:
+                self._tiling_bg.draw(target)
         # BLOQUE 25: ambient drift particles in background
         self._draw_ambient_dust(target)
         # Shake offset

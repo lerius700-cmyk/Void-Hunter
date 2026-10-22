@@ -34,13 +34,18 @@ class GameState(Enum):
     GALLERY_VIDEO = "gallery_video"
     # Overlay state (not in main sequence, pushed onto stack)
     PAUSE = "pause"
+    # BLOQUE 73.7: post-cinematic main menu (NEW GAME / BOSS TIME / BACKGROUND).
+    # Lives between CINEMATIC and ACT_INTRO so the user picks the path
+    # before any waves fire.
+    MENU = "menu"
 
 
 # Valid transitions: from_state -> set of allowed to_states
 VALID_TRANSITIONS: dict[GameState, set[GameState]] = {
     GameState.TITLE: {GameState.CINEMATIC, GameState.ACT_INTRO, GameState.CREDITS,
                       GameState.GALLERY_SPRITE, GameState.GALLERY_VIDEO},  # BLOQUE 58.59 + 58.60
-    GameState.CINEMATIC: {GameState.ACT_INTRO, GameState.TITLE},
+    GameState.CINEMATIC: {GameState.MENU, GameState.ACT_INTRO, GameState.TITLE},
+    GameState.MENU: {GameState.ACT_INTRO, GameState.BOSS_INTRO, GameState.TITLE},  # NEW GAME / BOSS TIME / BACK
     GameState.GALLERY_SPRITE: {GameState.TITLE, GameState.GALLERY_VIDEO},  # BLOQUE 58.60
     GameState.GALLERY_VIDEO: {GameState.TITLE, GameState.GALLERY_SPRITE},  # BLOQUE 58.60
     GameState.ACT_INTRO: {GameState.GAMEPLAY, GameState.TITLE},

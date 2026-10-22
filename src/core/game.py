@@ -28,6 +28,7 @@ from src.ui.scenes import (
     CreditsScene,
     GameOverScene,
     GameplayScene,
+    MainMenuScene,  # BLOQUE 73.7
     PauseScene,
     SubBossIntroScene,  # BLOQUE 50
     TitleScene,
@@ -168,6 +169,15 @@ class Game:
         # 1-4 / arrows to change it before the cinematica plays; Cinematic
         # / ActIntro / Gameplay pick up the selection here on entry.
         self.bg_variant_idx: int = 3
+        # BLOQUE 73.7: background mode for the in-game backdrop.
+        # 0 = "space void" — only the sparse ParallaxBackground starfield
+        #     (the look the user got on v1.4.0 with --boss), no procedural
+        #     asteroid nebula, no planets.
+        # 1 = "asteroid nebula" — the rich ScrollingGalaxyBackground strip
+        #     the user saw on v1.4.0 in the regular title flow.
+        # Default 1 because the v1.4.0 ship was a nebula game and the
+        # user's screenshots in this session were that look.
+        self.bg_mode: int = 1
         # BLOQUE 58.8: if --patterns was passed, enable procedural
         # patterns on the gameplay scene.
         import os as _os
@@ -271,6 +281,11 @@ class Game:
         _register_with_back_ref(GameState.TITLE, TitleScene(transition_to))
         # BLOQUE 58.59: cinematic ship zoom between TITLE and ACT_INTRO.
         self.scenes.register_scene(GameState.CINEMATIC, CinematicScene(transition_to))
+        # BLOQUE 73.7: post-cinematic main menu. The CinematicScene
+        # chains here, and from here the user picks NEW GAME / BOSS TIME
+        # / BACKGROUND. MenuScene reads/writes bg_mode and bg_variant_idx
+        # on self._game.
+        _register_with_back_ref(GameState.MENU, MainMenuScene(transition_to))
         # BLOQUE 58.60: gallery scenes (sprite sheets + videos) accessible
         # from the title screen via S / V keys.
         self.scenes.register_scene(GameState.GALLERY_SPRITE, GallerySpriteScene(transition_to))
