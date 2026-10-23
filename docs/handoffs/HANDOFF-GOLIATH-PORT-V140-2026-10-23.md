@@ -211,7 +211,26 @@ Aprobadas por el usuario en BLOQUE 66.4o. El port las copió **sin modificar**.
 
 ---
 
-## 7. Cómo continuar
+## 7. Decisión de integración (2026-10-23)
+
+El usuario eligió, sobre las opciones de `superpowers:finishing-a-development-branch`:
+
+- **Rama preservada tal cual.** NO se mergeó a `master`, NO se hizo push, NO se abrió
+  PR, NO se borró la rama ni el worktree.
+- **No se buildeó el `.exe` ni el zip de release.** La release se decide después.
+
+Motivo de no mergear: `master` está **39 commits** por encima de la base `d70b8da` y ya
+incluye estas features en su forma v1.6.3. Un merge haría 3-way merge desde `d70b8da`,
+conflictuaría en `scenes.py` / `gameplay_runtime.py` / `game.py` / `main.py` y
+revertiría trabajo más nuevo de `master` en esos archivos. La rama queda lista para
+publicar una release **desde la línea v1.4.0**.
+
+`master` quedó **intacto**: `a40fdaf`, working tree limpio, sus 8 commits sin pushear
+sin tocar.
+
+---
+
+## 8. Cómo continuar
 
 ```powershell
 cd F:\AI\MM\void-hunter\.worktrees\bloquec-67-goliath-port
