@@ -4,6 +4,34 @@
 **Destinatario**: agente implementador con contexto limpio.
 **Autor del prompt**: Mavis (sesión 2026-10-20/22).
 **Fecha**: 2026-10-22.
+**Revisado**: 2026-10-23 (BLOQUE 73.8) — ver "⚠️ BLOQUE 73.8" abajo.
+
+---
+
+## 🧭 CÓMO ARRANCAR (leer esto primero)
+
+**No arranques a portar.** Leé estos 3 documentos en este orden:
+
+| # | Documento | Para qué |
+|---|---|---|
+| 1 | **Este spec** (8 dimensiones) | Qué implementar, en qué orden, con qué gates |
+| 2 | `docs/handoffs/HANDOFF-GOLIATH-MENU-2026-10-23.md` | **Por qué**: la historia de los 4 bugs apilados de GOLIATH, las constantes sagradas, y lo que NO hay que tocar |
+| 3 | `docs/changelog/CHANGELOG_v1.x.md` | Qué se intentó antes y falló |
+
+**Commits que necesitás** (en `github.com/lerius700-cmyk/Void-Hunter`):
+
+| Commit | Qué trae |
+|---|---|
+| `ac53596` | Los 60 frames de GOLIATH (BLOQUE 65) |
+| `0837a86` | **El óvalo aprobado** — constantes `DX=-11, DY=6, R=11, RX=11, RY=17` |
+| `ed13dab` | GOLIATH final (escudo + polish) |
+| `7bd4906` | **BLOQUE 73.8** — el fix que hace funcionar el selector de fondo + sus 5 tests de píxeles |
+
+> ⚠️ **`7bd4906` no es opcional.** Sin él, el port reproduce un defecto que
+> ya se publicó: en v1.6.3 el selector de fondo del menú era **inerte** en
+> gameplay. Detalle y código exacto en "Background modes" más abajo.
+
+**Base**: `v1.4.0` = `d70b8da`. **No mergees** las historias (divergen).
 
 ---
 
@@ -161,6 +189,14 @@ contiene todos los píxeles del borde del óvalo visible.
 | `src/ui/scenes.py` | `MainMenuScene` | **73.7** |
 | `src/core/game.py` | `bg_mode: int` | **73.7** |
 | `src/ui/gameplay_runtime.py` | branch de render por `bg_mode` | **73.7** |
+| `src/ui/scenes.py` | `GameplayScene.on_enter()` inyecta `_game` al runtime | **73.8** (`7bd4906`) |
+| `src/ui/gameplay_runtime.py` | modo 1 = galaxy **+ parallax encima** | **73.8** (`7bd4906`) |
+| `tests/test_bg_mode_render.py` | 5 tests de píxeles del selector de fondo | **73.8** (`7bd4906`) |
+
+> **BLOQUE 73.8 (`7bd4906`)** corrige un defecto que hizo **inerte** la
+> feature en v1.6.3: `GameplayRuntime` no es un `Scene`, así que nunca
+> recibió el back-ref `_game` → `bg_mode` quedaba clavado en 1. Portar
+> estas tres filas **no es opcional**.
 
 ### Main Menu — flujo de estados
 
@@ -265,12 +301,56 @@ elif bg_mode == 0:
     self._parallax_bg.draw(target)
 else:
     self._galaxy_bg.draw(target)
+    self._parallax_bg.draw(target)   # ← las sparkles ENCIMA (BLOQUE 73.8)
 ```
+
+> ⚠️ **CORREGIDO 2026-10-23 (BLOQUE 73.8).** El snippet original de este
+> spec **omitía** el segundo `draw()` del modo 1, dejando la nebula sin su
+> capa de parallax — contradiciendo su propia tabla de arriba
+> ("+ parallax encima") y las release notes de v1.6.3. Portar la versión
+> corregida.
+
+### Cómo llega `bg_mode` al runtime (BLOQUE 73.8 — NO OLVIDAR)
+
+> ⚠️ **Este es el bug que hizo inerte la feature en v1.6.3.** Sin esto el
+> port reproduce el defecto y las dos release notes mienten.
+
+`GameplayRuntime` **no es un `Scene`**, así que **no** recibe el back-ref
+`_game` que `_register_with_back_ref()` inyecta a las escenas. Si el
+runtime lo lee sin que nadie se lo pase, siempre da `None` → `bg_mode`
+siempre vale el default `1` → la rama `bg_mode == 0` es **código muerto**
+y elegir SPACE VOID no cambia un píxel.
+
+`src/ui/scenes.py` → `GameplayScene.on_enter()`:
+
+```python
+def on_enter(self) -> None:
+    # BLOQUE 73.8: el runtime NO es un Scene, no recibe el back-ref
+    # _game por sí solo. Sin esto, bg_mode queda clavado en 1.
+    self._rt._game = getattr(self, "_game", None)
+    self._rt.on_enter()
+    ...
+```
+
+Y en `GameplayRuntime.draw()`:
+
+```python
+game = getattr(self, "_game", None)
+bg_mode = getattr(game, "bg_mode", 1) if game is not None else 1
+```
+
+**Prueba de que funciona** (de `tests/test_bg_mode_render.py`): con
+`bg_mode=0` y `bg_mode=1` deben diferir **>50% de los bytes** del frame.
+Medido en v1.6.3 roto: ~0%. Medido con el fix: **93.99%**.
 
 **⚠️ BUG HISTÓRICO A NO REPETIR**: en v1.6.0 el `ScrollingGalaxyBackground`
 se llamaba en `update()` pero **nunca en `draw()`**. El strip se animaba y
 los píxeles se descartaban. Al portar a v1.4.0, **verificar que `draw()`
 esté en el path de render** con un test que compare píxeles con/sin strip.
+
+> El spec de BLOQUE 73.6 ya pedía ese test de píxeles y nunca se escribió;
+> por eso el defecto pasó dos releases. Ahora existe
+> `tests/test_bg_mode_render.py` — **portarlo** (Gate 8).
 
 ---
 
@@ -436,19 +516,50 @@ Script de la Dimensión 5. Expected: `frames con margen <2px: 0`.
 
 **Gate 6 — Suite de GOLIATH verde**
 ```powershell
-python -m pytest tests/ -k "boss or goliath or shield or javelin" --ignore=tests/test_paths_legacy.py -q
+python -m pytest tests/ -k "boss or goliath or shield or javelin" --ignore=tests/test_paths_legacy.py --tb=no
 ```
 Baseline v1.4.0 + port: ~196 passed. **Si baja, es regresión.**
 
+> **No agregar `-q`.** `pyproject.toml` ya define `addopts = "-q --strict-markers
+> --tb=short"`. Un `-q` extra produce `-qq`, que **silencia la línea de
+> resumen**: se ven los puntitos pero nunca el `N passed`. Usar `--tb=no`.
+
 **Gate 7 — Menú navegable**
 ```powershell
-python -m pytest tests/test_main_menu_scene.py -q
+python -m pytest tests/test_main_menu_scene.py --tb=no
 # 10 passed
 ```
 
 **Gate 8 — Los 2 fondos se ven distintos**
-Renderizar con `bg_mode=0` y `bg_mode=1` y comparar capturas. Si se ven
-iguales, el bug del strip sin `draw()` está presente.
+
+> ⚠️ **Corregido 2026-10-23.** Esta gate era manual ("comparar capturas") y
+> en v1.6.3 el selector de fondo se publicó **inerte**: el menú escribía
+> `Game.bg_mode` pero `GameplayRuntime` —que no es un `Scene`— nunca
+> recibió el back-ref `_game`, así que `bg_mode` quedaba clavado en 1 y
+> ambos modos renderizaban idénticos. La gate manual no lo detectó porque
+> nunca se ejecutó de forma automatizada.
+
+Ahora es **automatizada**. Portar `tests/test_bg_mode_render.py` desde
+`7bd4906` (5 tests de píxeles) y correr:
+
+```powershell
+python -m pytest tests/test_bg_mode_render.py --tb=no
+# 5 passed
+```
+
+Si el test falla con *"bg_mode 0 and bg_mode 1 rendered identical frames"*,
+el back-ref no está inyectado. Ver "Background modes" más abajo para el
+código exacto.
+
+**Gate 8b — Composición del modo 1 (parallax encima)**
+```powershell
+python -m pytest tests/test_bg_mode_render.py -k "nebula_is_richer" --tb=no
+# 1 passed
+```
+El modo 1 debe dibujar `_galaxy_bg` **y** `_parallax_bg` encima. El
+spec lo pide explícitamente en la tabla de abajo ("+ parallax encima");
+si el port mueve el `draw()` del parallax dentro de la rama `bg_mode == 0`,
+el gate falla.
 
 **Gate 9 — Build limpio**
 ```powershell
@@ -466,9 +577,15 @@ python -m PyInstaller build.spec --clean --noconfirm
 | `test_goliath_pixel_mask_hitbox.py` | hitbox pixel-perfect |
 | `test_shield_plate_is_oval_not_circle` | **el óvalo NO es un círculo** (guarda la proporción RX:RY) |
 | `test_shield_hitbox_matches_visual` | **el rect de hitbox contiene todo el óvalo visible** |
+| `test_bg_mode_render.py` | **BLOQUE 73.8** — 5 tests de píxeles: el selector de fondo realmente cambia el render |
 
 El último es el que más valor tiene: si alguien "optimiza" el hitbox a un
 círculo más chico, ese test falla y vuelve el bug de "disparar al vacío".
+
+> `test_bg_mode_render.py` viene de `7bd4906`, no de `ed13dab`. Sin él el
+> port puede publicar un selector de fondo inerte y nadie se entera —
+> exactamente lo que pasó en v1.6.3. Es el test que el spec de BLOQUE 73.6
+> exigía y que nunca existió.
 
 ---
 
@@ -489,7 +606,9 @@ círculo más chico, ese test falla y vuelve el bug de "disparar al vacío".
 | 9 | Portar `get_sprite_eye_anchor` + fix del láser del ojo | Gate 6 |
 | 10 | Portar los tests desde `ed13dab` | Gate 6 |
 | 11 | Agregar `GameState.MENU` + `MainMenuScene` + `bg_mode` | Gate 7 |
-| 12 | Branch de render por `bg_mode` (con el fix del `draw()`) | Gate 8 |
+| 11b | **Inyectar `_game` al runtime** (BLOQUE 73.8) — sin esto `bg_mode` queda clavado en 1 | Gate 8 |
+| 12 | Branch de render por `bg_mode` (con el fix del `draw()` **y el parallax encima en modo 1**) | Gate 8, 8b |
+| 12b | **Portar `tests/test_bg_mode_render.py`** (5 tests de píxeles) | Gate 8, 8b |
 | 13 | Capturas visuales | Gate 5, 8 |
 | 14 | Build + `--check` | Gate 9 |
 | 15 | Commit + tag + release | — |
@@ -500,10 +619,15 @@ círculo más chico, ese test falla y vuelve el bug de "disparar al vacío".
 1. dist/void-hunter.exe                          (~423 MB, onefile)
 2. dist/VoidHunter-v1.5.0-win64.zip
 3. Código commiteado en la rama bloquec-67-goliath-port
-4. tests/ — los portados + los nuevos del menú
+4. tests/ — los portados + los nuevos del menú + **`test_bg_mode_render.py`** (Gate 8)
 5. tools/playtest_out/ — capturas de evidencia
 6. docs/KNOWN_ISSUES.md actualizado
 ```
+
+> La release que salga de este port **no debe** anunciarse como "v1.5.0": ese
+> número ya está usado. Elegir la siguiente versión libre. Y si anunciás
+> el selector de fondo, verificá Gate 8 antes — v1.6.3 lo anunció
+> funcionando y no funcionaba.
 
 ### Checklist de cierre (para el usuario)
 
