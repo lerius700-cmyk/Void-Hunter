@@ -170,6 +170,29 @@ el back-ref `_game` → elThemes del boss arena no se aplicaba y quedaba el defa
 (`blue_void`) en vez del `purple_dusk` elegido. **Arreglo en el port:** se inyecta
 `_game` también en la escena re-registrada.
 
+### 5.3 El cache del lowpass ensuciaba el working tree con 64 MB
+
+`src/audio/music.py` escribe la copia filtrada del gameplay track **en el mismo
+directorio del asset fuente**:
+
+```
+Assets/keep kept - Lerius - soundtrack gameplay_lp<hz>.wav
+```
+
+Son ~64 MB por cutoff y es un **cache regenerable, no fuente**. Como `master` lo
+commiteó por accidente (commit `30dd5df` — el propio mensaje lo admite: *"left out of
+git by accident - one `git clean -fdx` away from being gone"*), el archivo reaparecía en
+el working tree después de cada corrida de tests.
+
+**Arreglo en el port:** regla `Assets/*_lp*.wav` en `.gitignore`. Los `.wav` ya
+trackeados (`gameplay.wav`, `_lp600.wav`) no se ven afectados — gitignore no aplica a
+archivos ya trackeados.
+
+> Nota: `master` tiene el `lp8000.wav` **trackeado**, así que la regla no aplica ahí.
+> Si querés sacarlo de `master` en otro momento, es `git rm --cached` de ese archivo.
+> La release lo define `GAMEPLAY_TRACK = "keep kept - Lerius - soundtrack gameplay.wav"`,
+> que sí está en el repo — el `lp8000` no lo referencia nadie.
+
 ---
 
 ## 6. Constantes sagradas — NO tocar
