@@ -122,6 +122,14 @@ Assets/sprites/bosses/goliath/spritesheet_goliath.png
 # Kept locally for inspection; never committed.
 _archive_*/
 
+# BLOQUE 67: lowpass filter cache. src/audio/music.py writes the filtered
+# copy NEXT TO the source asset (Assets/keep kept - Lerius - soundtrack
+# gameplay_lp<hz>.wav) and reuses it if present. It is a regenerable cache,
+# ~64 MB per cutoff — not source. master committed one by accident (30dd5df),
+# which is why a stray 64 MB file kept reappearing in the working tree
+# after every test run.
+Assets/*_lp*.wav
+
 # BLOQUE 73.8: isolated worktrees for agent work (superpowers:using-git-worktrees).
 # MUST stay ignored: an unignored worktree dir gets committed wholesale.
 .worktrees/
