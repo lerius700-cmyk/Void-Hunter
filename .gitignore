@@ -71,6 +71,9 @@ release/_backup_old_releases/
 
 .superpowers/
 
+# Transient trash from release prep (kept locally for inspection, never committed)
+_trash_*/
+
 # Generated sprite intermediates (1024x1024 source images before
 # post-processing into the final 16-bit pixel-art PNGs). The final
 # sprites in stellar_horizon/assets/sprites/*.png ARE tracked.
@@ -80,3 +83,45 @@ stellar_horizon/assets/sprites/_gen_*.png
 # post-processed into 96x80 frames by 02_postprocess.py). Not committed —
 # regenerate with `python tools/redesign_bosses/01_generate_bases.py`.
 Assets/sprites/bosses/goliath/_base/
+
+# BLOQUE 67+ session debug logs
+*.pytest_*.txt
+*.smoke_*.txt
+*.finalverify.txt
+*.shield_*.txt
+*.diff_*.txt
+*.main_smoke.txt
+.tests_*.txt
+tests_*.txt
+tests_dbg.txt
+tests_full.txt
+tests_run.txt
+tests_baseline.txt
+
+# BLOQUE 67+ temp artifacts
+tmp_*.json
+output/
+.Trash
+.Trash/
+
+# BLOQUE 67+ boss-sprite backplate leftover dirs
+Assets/sprites/bosses/goliath/_backplate/
+
+# BLOQUE 73: GOLIATH session intermediates (regenerable, ~127 MB).
+# _strips/ holds the 1024px source strips used to bake the 16-bit frames;
+# the frames themselves under goliath/<anim>/ ARE tracked.
+Assets/sprites/bosses/goliath/_mask/
+Assets/sprites/bosses/goliath/_seed/
+Assets/sprites/bosses/goliath/_strips/
+Assets/sprites/bosses/goliath/_test/
+Assets/sprites/bosses/goliath/gifs/
+Assets/sprites/bosses/goliath/regen_report.json
+Assets/sprites/bosses/goliath/spritesheet_goliath.png
+
+# BLOQUE 73: archived release copies (424 MB each, incl. a duplicated .exe).
+# Kept locally for inspection; never committed.
+_archive_*/
+
+# BLOQUE 73.8: isolated worktrees for agent work (superpowers:using-git-worktrees).
+# MUST stay ignored: an unignored worktree dir gets committed wholesale.
+.worktrees/
