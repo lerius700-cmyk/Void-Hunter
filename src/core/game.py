@@ -257,7 +257,7 @@ class Game:
         pygame.display.flip()
 
     def _register_scenes(self) -> None:
-        """Wire up all 9 game state scenes + PAUSE overlay."""
+        """Wire up all 15 game state scenes (PAUSE included)."""
         def transition_to(state: GameState) -> None:
             if state == GameState.PAUSE:
                 self.scenes.push_overlay(self.scenes.scenes.get(GameState.PAUSE))

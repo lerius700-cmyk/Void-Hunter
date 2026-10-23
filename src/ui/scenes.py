@@ -1186,6 +1186,14 @@ class GameplayScene(Scene):
         self._rt = GameplayRuntime(transition_to, is_boss=False, act=act, audio=audio)
 
     def on_enter(self) -> None:
+        # BLOQUE 73.7 fix: GameplayRuntime is NOT a Scene, so it never got
+        # the `_game` back-reference that _register_with_back_ref() injects
+        # into scenes. The runtime reads Game.bg_mode to choose its
+        # background draw path, so without this line `bg_mode` was always
+        # the default 1 and the BACKGROUND menu option had NO effect on
+        # gameplay. Inject it before on_enter() so the very first frame
+        # already draws the right background.
+        self._rt._game = getattr(self, "_game", None)
         self._rt.on_enter()
         # BLOQUE 73.6: apply the user-chosen background variant (set on
         # the title screen via 1-4 / arrows). on_enter fires every time

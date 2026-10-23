@@ -4082,11 +4082,18 @@ class GameplayRuntime:
             if self._parallax_bg is not None:
                 self._parallax_bg.draw(target)
         else:
-            # ASTEROID NEBULA: the rich procedural strip.
+            # ASTEROID NEBULA: the rich procedural strip first, then the
+            # parallax layer on top for the sparkles. This is the v1.4.0
+            # composition and what the BLOQUE 73.6 spec + the v1.6.3
+            # release notes specify ("ScrollingGalaxyBackground + parallax
+            # encima"). Before this fix the parallax draw lived only in
+            # the bg_mode == 0 branch, so the nebula lost its layer.
             if self._galaxy_bg is not None and self._galaxy_bg.is_ready:
                 self._galaxy_bg.draw(target)
             elif self._tiling_bg is not None:
                 self._tiling_bg.draw(target)
+            if self._parallax_bg is not None:
+                self._parallax_bg.draw(target)
         # BLOQUE 25: ambient drift particles in background
         self._draw_ambient_dust(target)
         # Shake offset

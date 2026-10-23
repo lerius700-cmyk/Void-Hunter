@@ -61,13 +61,13 @@ print(f'  After 1 frame: frame_index = {cine._video._frame_index}')
 assert cine._video._frame_index == 1
 print('  OK')
 
-# Test 7: CinematicScene ESC skips to ACT_INTRO
+# Test 7: CinematicScene ESC skips to the post-cinematic MENU
 print('Test 7: CinematicScene ESC skip')
 event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE)
 pygame.event.post(event)
 pygame.event.pump()
 cine.update(1.0 / 30)
-assert GameState.ACT_INTRO in transitions
+assert GameState.MENU in transitions
 print('  OK')
 
 print()

@@ -189,7 +189,7 @@ def _cmd_check() -> int:
     print(f"  FIXED_DT         = {FIXED_DT:.6f}s")
     print(f"  Window           = {WINDOW_W}x{WINDOW_H}")
     print(f"  Mixer            = {MIXER_CHANNELS} ch @ {MIXER_SAMPLE_RATE} Hz")
-    print(f"  BLOQUE 16: full game with 9 scenes, 18 waves, 4 bosses.")
+    print(f"  BLOQUE 16: full game with 15 scenes, 18 waves, 4 bosses.")
     return 0
 
 
