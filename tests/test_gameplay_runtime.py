@@ -1517,8 +1517,16 @@ def test_boss_phase_change_spawns_burst():
     initial_shockwaves = len(rt._shockwaves)
     # Manually trigger a phase change (normally triggered by collision)
     rt._boss.hp = int(rt._boss.max_hp * (threshold - 0.05))
-    # Now damage it with a player bullet
-    rt._bullets.spawn(BULLET_PLAYER, rt._boss.x, rt._boss.y, 0, 100, damage=99, owner=OWNER_PLAYER)
+    # BLOQUE 73.3: aim at the boss's RIGHT side. Since BLOQUE 73.2 the
+    # shield oval is anchored to GOLIATH's torso and, on phase1_idle,
+    # measures world x 139..161 while the boss hitbox spans x 144..176.
+    # A bullet at (boss.x, boss.y) lands squarely inside the shield and is
+    # consumed, so the phase-change burst never fires. x 168 is inside the
+    # boss hitbox and clear of the shield on every animation frame.
+    rt._bullets.spawn(
+        BULLET_PLAYER, rt._boss.x + 8, rt._boss.y, 0, 100,
+        damage=99, owner=OWNER_PLAYER,
+    )
     rt._handle_collisions()
     after_particles = sum(1 for p in rt._particles.pool if p.active)
     after_shockwaves = len(rt._shockwaves)

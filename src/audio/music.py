@@ -25,9 +25,13 @@ Public API:
   - `get_current_track()` — "title" | "gameplay" | "gameplay_filtered" | None
 
 Path resolution (BLOQUE 58.45):
-  - Development:  `D:\AI\void-hunter\Assets\*.wav`
-  - PyInstaller: `<_MEIPASS>/Assets/*.wav` (bundled as data files)
-  - We probe both so the same code works for `python main.py` and the .exe.
+  - Development: `<project_root>/Assets/*.wav`, resolved RELATIVE to this
+    file (`Path(__file__).resolve().parent.parent.parent`), so the repo can
+    live anywhere on disk.
+  - PyInstaller: `<_MEIPASS>/Assets/` and `<exe_dir>/_internal/Assets/`
+    (bundled as data files).
+  - We probe all candidates so the same code works for `python main.py` and
+    the .exe.
 """
 from __future__ import annotations
 

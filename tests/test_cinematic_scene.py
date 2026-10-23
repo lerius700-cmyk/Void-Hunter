@@ -64,8 +64,8 @@ def test_cinematic_scene_instantiates():
     assert scene._finished is False
 
 
-def test_cinematic_scene_esc_skips_to_act_intro():
-    """ESC key during cinematic should transition to ACT_INTRO."""
+def test_cinematic_scene_esc_skips_to_menu():
+    """ESC key during cinematic should transition to the post-cinematic MENU."""
     from src.ui.scenes import CinematicScene
     from src.core.scene_manager import GameState
     transitions: list = []
@@ -78,11 +78,13 @@ def test_cinematic_scene_esc_skips_to_act_intro():
     pygame.event.post(event)
     pygame.event.pump()
     scene.update(1.0 / 30)
-    assert GameState.ACT_INTRO in transitions
+    assert GameState.MENU in transitions
+    # The menu intercepts: the cinematic must NOT jump straight to ACT_INTRO.
+    assert GameState.ACT_INTRO not in transitions
 
 
 def test_cinematic_scene_safety_net_finishes_at_15s():
-    """If the video takes > 15s, force-finish and go to ACT_INTRO."""
+    """If the video takes > 15s, force-finish and go to the MENU."""
     from src.ui.scenes import CinematicScene
     from src.core.scene_manager import GameState
     transitions: list = []
@@ -92,7 +94,9 @@ def test_cinematic_scene_safety_net_finishes_at_15s():
     scene.on_enter()
     # Advance 16 seconds (no events)
     scene.update(16.0)
-    assert GameState.ACT_INTRO in transitions
+    assert GameState.MENU in transitions
+    # The menu intercepts: the cinematic must NOT jump straight to ACT_INTRO.
+    assert GameState.ACT_INTRO not in transitions
 
 
 def test_cinematic_scene_draw_doesnt_crash():

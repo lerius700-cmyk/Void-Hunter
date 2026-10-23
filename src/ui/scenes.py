@@ -134,6 +134,159 @@ def _load_sprite(name: str) -> Optional[pygame.Surface]:
     return surf
 
 
+# ---------------------------------------------------------------------------
+# BLOQUE 73.2: GOLIATH sprite measurement helpers (ported from BLOQUE 66)
+# ---------------------------------------------------------------------------
+# BLOQUE 66.3 canvas anchor: all GOLIATH frames are 96x80 and the design
+# intent is for the body silhouette to be centred around (col 48, row 40).
+# Frames whose body leans (javelin/frame_03 is dx=+20) are re-aligned so
+# the visible body, not the canvas, lands on the world anchor.
+_GOLIATH_ANCHOR_X = 48
+_GOLIATH_ANCHOR_Y = 40
+
+# Caches. Both are keyed by the sprite's path-relative name, matching
+# `_load_sprite`. Cleared by tests that swap sprite files at runtime.
+_sprite_centroid_cache: dict[str, tuple[int, int]] = {}
+_sprite_arm_anchor_cache: dict[str, tuple[int, int]] = {}
+_sprite_eye_anchor_cache: dict[str, tuple[int, int]] = {}
+
+
+def get_sprite_eye_anchor(name: str) -> tuple[int, int]:
+    """BLOQUE 66.4l (ported in 73.4): sprite-local (col, row) of the eye.
+
+    The eye laser used to start at a constant offset from the boss anchor
+    (sprite row 24), but a pixel scan of the red eye shows it sits at row 18
+    in phase1_idle and row 22 in javelin/laser -- so the beam started 2-6 px
+    BELOW the eye every frame, reading as if it came from the chest.
+
+    Locating the eye per frame means the beam starts where the player can
+    see the eye, in every animation. The eye is the sprite's saturated
+    red pixels inside the head band; we take their centroid.
+
+    The eye anchor is NOT centroid-corrected: it is a sprite-local pixel
+    position, so the caller adds the same centroid shift the sprite blit
+    uses. See `_draw_eye_laser`.
+    """
+    if name in _sprite_eye_anchor_cache:
+        return _sprite_eye_anchor_cache[name]
+
+    surf = _load_sprite(name)
+    if surf is None:
+        _sprite_eye_anchor_cache[name] = (48, 20)
+        return (48, 20)
+    w, h = surf.get_size()
+
+    # Saturated red inside the head band (rows 0..29, body columns).
+    eye = [
+        (px, py)
+        for py in range(min(30, h))
+        for px in range(24, min(70, w))
+        if surf.get_at((px, py))[3] > 32
+        and surf.get_at((px, py))[0] > 170
+        and surf.get_at((px, py))[0] - surf.get_at((px, py))[1] > 70
+    ]
+    if not eye:
+        _sprite_eye_anchor_cache[name] = (48, 20)
+        return (48, 20)
+
+    anchor = (
+        int(round(sum(p[0] for p in eye) / len(eye))),
+        int(round(sum(p[1] for p in eye) / len(eye))),
+    )
+    _sprite_eye_anchor_cache[name] = anchor
+    return anchor
+
+
+def get_sprite_centroid_offset(name: str) -> tuple[int, int]:
+    """(dx, dy) that aligns the sprite's alpha-weighted centroid on (48, 40).
+
+    Computed once per sprite at first call and cached. Returns (0, 0) for
+    sprites whose metadata is unavailable (missing file, missing alpha, or
+    an empty silhouette) so callers degrade to a plain centred blit instead
+    of raising.
+    """
+    if name in _sprite_centroid_cache:
+        return _sprite_centroid_cache[name]
+    surf = _load_sprite(name)
+    if surf is None:
+        _sprite_centroid_cache[name] = (0, 0)
+        return (0, 0)
+    w, h = surf.get_size()
+    sum_a = sum_x = sum_y = 0
+    for y in range(h):
+        for x in range(w):
+            a = surf.get_at((x, y))[3]
+            if a == 0:
+                continue
+            sum_a += a
+            sum_x += x * a
+            sum_y += y * a
+    if sum_a == 0:
+        _sprite_centroid_cache[name] = (0, 0)
+        return (0, 0)
+    cx = sum_x / sum_a
+    cy = sum_y / sum_a
+    offset = (
+        int(round(_GOLIATH_ANCHOR_X - cx)),
+        int(round(_GOLIATH_ANCHOR_Y - cy)),
+    )
+    _sprite_centroid_cache[name] = offset
+    return offset
+
+
+def get_sprite_arm_anchor(name: str) -> tuple[int, int]:
+    """Sprite-local (col, row) of GOLIATH's shield plate.
+
+    GOLIATH's sprite already carries a brass shield disc on his left arm.
+    That disc is the anchor the runtime's translucent oval is mounted on,
+    so the plate the player sees and the hitbox the bullets test are the
+    same object.
+
+    Located by colour, not by canvas edge: the brass plate reads as a warm
+    high-luminance cluster (R high, G mid-high, B low) inside the gold
+    armour, and it is reliably the ONLY such cluster in the sprite. The
+    right edge of the silhouette is the javelin shaft, which would put the
+    oval off the body.
+
+    Returns the canvas anchor for an empty or missing sprite, and caches
+    per sprite path.
+    """
+    if name in _sprite_arm_anchor_cache:
+        return _sprite_arm_anchor_cache[name]
+    surf = _load_sprite(name)
+    fallback = (_GOLIATH_ANCHOR_X, _GOLIATH_ANCHOR_Y)
+    if surf is None:
+        _sprite_arm_anchor_cache[name] = fallback
+        return fallback
+    w, h = surf.get_size()
+    hits: list[tuple[int, int]] = []
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = surf.get_at((x, y))
+            if a == 0:
+                continue
+            # Brass plate signature: warm, bright, blue-poor.
+            if r > 185 and g > 145 and b < 130 and r > b + 70:
+                hits.append((x, y))
+    if not hits:
+        _sprite_arm_anchor_cache[name] = fallback
+        return fallback
+    col = sum(p[0] for p in hits) / len(hits)
+    row = sum(p[1] for p in hits) / len(hits)
+    # BLOQUE 73.3 sanity clamp. The brass signature also fires on small
+    # highlights elsewhere (a pauldron rivet, the javelin's iron tip, the
+    # helmet crest). Those land far from the body centre, so reject any
+    # match outside a box around the canvas anchor — the plate is always
+    # on the torso, never at the sprite's extremities. Without this, the
+    # oval jumped to col 66 (off the body) in purple_bullet/f00 and to
+    # col 28 (inside the torso) in javelin/f03.
+    col = min(max(col, _GOLIATH_ANCHOR_X - 6), _GOLIATH_ANCHOR_X + 6)
+    row = min(max(row, _GOLIATH_ANCHOR_Y - 8), _GOLIATH_ANCHOR_Y + 8)
+    anchor = (int(round(col)), int(round(row)))
+    _sprite_arm_anchor_cache[name] = anchor
+    return anchor
+
+
 # Map enemy kind value → sprite PNG filename (BLOQUE 58.47)
 _ENEMY_SPRITE_FILES: dict[str, str] = {
     "scout":    "enemy_scout.png",
@@ -303,6 +456,10 @@ class TitleScene(Scene):
 
     def update(self, dt: float) -> None:
         self._t += dt
+        # BLOQUE 73.6: decay the "BG: <theme>" label timer here, where dt
+        # is available. draw() has no dt (Scene contract is draw(target)).
+        if getattr(self, "_bg_variant_label_t", 0.0) > 0.0:
+            self._bg_variant_label_t = max(0.0, self._bg_variant_label_t - dt)
         # BLOQUE 58.59: advance the title video.
         if self._video is not None:
             self._video.update(dt)
@@ -311,6 +468,9 @@ class TitleScene(Scene):
             self._bg.update(dt)
         # "PRESS ANY KEY" or mouse click → start (BLOQUE 58.59: goes to CINEMATIC)
         # BLOQUE 58.60: S = sprite sheet gallery, V = video gallery.
+        # BLOQUE 73.6: 1-4 / arrows cycle the background variant (the
+        # choice is stored on the Game and applied by Cinematic / ActIntro
+        # / Gameplay when those scenes enter).
         for event in pygame.event.get(pygame.KEYDOWN):
             if event.key in (
                 pygame.K_LSHIFT, pygame.K_RSHIFT,
@@ -323,6 +483,30 @@ class TitleScene(Scene):
                 return
             if event.key == pygame.K_v:
                 self._transition_to(GameState.GALLERY_VIDEO)
+                return
+            from src.systems.parallax import _STRIP_VARIANT_THEMES
+            variants = len(_STRIP_VARIANT_THEMES)
+            delta = 0
+            if event.key in (pygame.K_1,):
+                delta = 0 - self._game.bg_variant_idx
+            elif event.key in (pygame.K_2,):
+                delta = 1 - self._game.bg_variant_idx
+            elif event.key in (pygame.K_3,):
+                delta = 2 - self._game.bg_variant_idx
+            elif event.key in (pygame.K_4,):
+                delta = 3 - self._game.bg_variant_idx
+            elif event.key in (pygame.K_LEFT, pygame.K_a):
+                delta = -1
+            elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                delta = 1
+            if delta:
+                self._game.bg_variant_idx = (self._game.bg_variant_idx + delta) % variants
+                self._bg_variant_label_t = 1.2  # seconds the label stays on screen
+                # Apply the change to the legacy parallax fallback if
+                # the video is missing. Gameplay reads the choice from
+                # the Game object when its scene enters.
+                if self._bg is not None:
+                    self._bg.set_theme(_STRIP_VARIANT_THEMES[self._game.bg_variant_idx])
                 return
             self._transition_to(GameState.CINEMATIC)
             return
@@ -353,6 +537,37 @@ class TitleScene(Scene):
         # BLOQUE 58.60: gallery hotkey hints in the bottom-left
         gallery = font2.render("S: SHIPS  V: VIDEOS", True, (110, 130, 160))
         target.blit(gallery, (4, INTERNAL_H - gallery.get_height() - 2))
+        # BLOQUE 73.6: bg variant selector. The 4 themes are blue_void,
+        # teal, gold_amber, purple_dusk. Show the current name above the
+        # gallery hint, briefly, after the user changes it. The legacy
+        # parallax fallback also picks up the choice immediately so the
+        # preview is visible even when the video is showing.
+        from src.systems.parallax import _STRIP_VARIANT_THEMES
+        game = getattr(self, "_game", None)
+        idx = game.bg_variant_idx if game is not None else 3
+        # Render a permanent small line so the user can see the keys.
+        keys_hint = font2.render("1-4 / LEFT-RIGHT: BG THEME", True, (110, 130, 160))
+        target.blit(keys_hint, (4, INTERNAL_H - keys_hint.get_height() * 2 - 4))
+        # Render the current selection, optionally with a fade after a change.
+        # NOTE: the fade timer is decayed in update(), NOT here. The Scene
+        # contract is draw(target) — there is no `dt` in draw(). Upstream
+        # (master, v1.6.3) referenced `dt` right here, which raised
+        # NameError on the frame after the user pressed 1-4 on the title
+        # screen and crashed the game. Fixed in the port.
+        if not hasattr(self, "_bg_variant_label_t"):
+            self._bg_variant_label_t = 0.0
+        label_alpha = 255 if self._bg_variant_label_t > 0 else 180
+        label_color = (255, 240, 140) if self._bg_variant_label_t > 0 else (180, 180, 200)
+        theme_name = _STRIP_VARIANT_THEMES[idx].replace("_", " ").upper()
+        label = font2.render(f"BG: {theme_name}  (1-4)", True, label_color)
+        # Fade the label when not actively changing.
+        if label_alpha < 255:
+            label.set_alpha(label_alpha)
+        # Apply the live variant to the legacy parallax fallback so the
+        # preview reflects the choice even with the video up.
+        if self._bg is not None:
+            self._bg.set_theme(_STRIP_VARIANT_THEMES[idx])
+        _center_blit(target, label, 175)
 
     def _draw_demo_ships(self, target: pygame.Surface) -> None:
         """BLOQUE 58.47: draw demo ships using the REAL ship sprites
@@ -718,6 +933,165 @@ _ENEMY_DRAWERS.update({
 })
 
 
+# BLOQUE 73.7: MainMenuScene — appears AFTER the cinematica, before any
+# wave fires. Three options:
+#   NEW GAME     -> ACT_INTRO  (the regular flow)
+#   BOSS TIME    -> BOSS_INTRO  (skip directly to the GOLIATH arena)
+#   BACKGROUND   -> submenu with two background modes
+#     SPACE VOID       (0): sparse starfield, no procedural strip
+#     ASTEROID NEBULA  (1): the rich purple procedural strip (default)
+# Up/Down navigates; Enter activates; Esc returns to TITLE.
+class MainMenuScene(Scene):
+    """BLOQUE 73.7: post-cinematic main menu (NEW GAME / BOSS TIME / BACKGROUND)."""
+
+    # Top-level menu items.
+    _ITEMS_TOP = ("NEW GAME", "BOSS TIME", "BACKGROUND")
+    # Background submenu items. The order matches the image the user
+    # provided: space void first, asteroid nebula second.
+    _ITEMS_BG = ("SPACE VOID", "ASTEROID NEBULA")
+
+    def __init__(self, transition_to: "TransitionFn") -> None:
+        self._transition_to = transition_to
+        self._t: float = 0.0
+        # 0 = NEW GAME, 1 = BOSS TIME, 2 = BACKGROUND
+        self._cursor: int = 0
+        # "top" (root menu) or "bg" (background submenu)
+        self._layer: str = "top"
+        # 0 = SPACE VOID, 1 = ASTEROID NEBULA — when the submenu is open
+        self._bg_cursor: int = 1
+        self._last_action: Optional[str] = None  # for the bottom hint
+
+    def on_enter(self) -> None:
+        self._t = 0.0
+        self._cursor = 0
+        self._layer = "top"
+        # When re-entering (e.g. after the background submenu), make sure
+        # the cursor lands on the user's previous choice so the menu feels
+        # consistent.
+        game = getattr(self, "_game", None)
+        if game is not None and hasattr(game, "bg_mode"):
+            self._bg_cursor = int(game.bg_mode) if game.bg_mode in (0, 1) else 1
+
+    def _items(self) -> tuple[str, ...]:
+        return self._ITEMS_BG if self._layer == "bg" else self._ITEMS_TOP
+
+    def _selected_label(self) -> str:
+        return self._items()[self._cursor if self._layer == "top" else self._bg_cursor]
+
+    def on_exit(self) -> None:
+        pass
+
+    def update(self, dt: float) -> None:
+        self._t += dt
+        for event in pygame.event.get(pygame.KEYDOWN):
+            if event.key in (
+                pygame.K_LSHIFT, pygame.K_RSHIFT,
+                pygame.K_LCTRL, pygame.K_RCTRL,
+                pygame.K_LALT, pygame.K_RALT,
+            ):
+                continue
+            # Submenu keys must be intercepted BEFORE the top-level 1-2-3
+            # keys, otherwise K_1/K_2 here would jump to NEW GAME / BOSS TIME
+            # instead of toggling the background mode.
+            if self._layer == "bg":
+                if event.key == pygame.K_1:
+                    self._bg_cursor = 0; self._apply_bg(); return
+                if event.key == pygame.K_2:
+                    self._bg_cursor = 1; self._apply_bg(); return
+                if event.key in (pygame.K_DOWN, pygame.K_s):
+                    self._cursor_down(); return
+                if event.key in (pygame.K_UP, pygame.K_w):
+                    self._cursor_up(); return
+                if event.key == pygame.K_RETURN:
+                    self._apply_bg(); return
+                if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                    self._cancel(); return
+            else:
+                if event.key in (pygame.K_DOWN, pygame.K_s):
+                    self._cursor_down(); return
+                if event.key in (pygame.K_UP, pygame.K_w):
+                    self._cursor_up(); return
+                if event.key == pygame.K_RETURN:
+                    self._activate(); return
+                if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                    self._cancel(); return
+                if event.key == pygame.K_1:
+                    self._cursor = 0; self._activate(); return
+                if event.key == pygame.K_2:
+                    self._cursor = 1; self._activate(); return
+                if event.key == pygame.K_3:
+                    self._cursor = 2; self._activate(); return
+        for event in pygame.event.get(pygame.MOUSEBUTTONDOWN):
+            self._activate()
+
+    # -- menu navigation helpers --------------------------------------
+    def _cursor_down(self) -> None:
+        items = self._items()
+        idx = (self._bg_cursor if self._layer == "bg" else self._cursor) + 1
+        self._cursor, self._bg_cursor = self._advance(idx, items)
+
+    def _cursor_up(self) -> None:
+        items = self._items()
+        idx = (self._bg_cursor if self._layer == "bg" else self._cursor) - 1
+        self._cursor, self._bg_cursor = self._advance(idx, items)
+
+    def _advance(self, raw: int, items: tuple[str, ...]) -> tuple[int, int]:
+        n = len(items)
+        if self._layer == "bg":
+            return self._cursor, raw % n
+        return raw % n, self._bg_cursor
+
+    def _activate(self) -> None:
+        if self._layer == "bg":
+            self._apply_bg()
+            return
+        choice = self._ITEMS_TOP[self._cursor]
+        if choice == "NEW GAME":
+            self._transition_to(GameState.ACT_INTRO)
+        elif choice == "BOSS TIME":
+            self._transition_to(GameState.BOSS_INTRO)
+        elif choice == "BACKGROUND":
+            self._layer = "bg"
+
+    def _apply_bg(self) -> None:
+        game = getattr(self, "_game", None)
+        if game is not None and hasattr(game, "bg_mode"):
+            game.bg_mode = self._bg_cursor
+        self._layer = "top"
+
+    def _cancel(self) -> None:
+        if self._layer == "bg":
+            self._layer = "top"
+        else:
+            self._transition_to(GameState.TITLE)
+
+    def draw(self, target: pygame.Surface) -> None:
+        # Subtle dim background so the menu reads as a separate screen.
+        veil = pygame.Surface((INTERNAL_W, INTERNAL_H), pygame.SRCALPHA)
+        veil.fill((0, 0, 0, 160))
+        target.blit(veil, (0, 0))
+        items = self._items()
+        active_idx = self._bg_cursor if self._layer == "bg" else self._cursor
+        title = "BACKGROUND" if self._layer == "bg" else "VOID HUNTER"
+        title_font = pygame.font.Font(None, 40)
+        item_font = pygame.font.Font(None, 28)
+        hint_font = pygame.font.Font(None, 18)
+        title_surf = title_font.render(title, True, (255, 240, 140))
+        _center_blit(target, title_surf, 120)
+        base_y = 200
+        for i, label in enumerate(items):
+            color = (255, 240, 140) if i == active_idx else (200, 200, 220)
+            prefix = ">" if i == active_idx else " "
+            text = f"{prefix} {label}"
+            surf = item_font.render(text, True, color)
+            _center_blit(target, surf, base_y + i * 36)
+        hint_text = "ARROWS: NAVIGATE   ENTER: SELECT   ESC: BACK"
+        if self._layer == "bg":
+            hint_text = "ARROWS: NAVIGATE   1-2: PICK   ESC: BACK"
+        hint = hint_font.render(hint_text, True, (160, 160, 180))
+        _center_blit(target, hint, 430)
+
+
 # BLOQUE 58.59: CinematicScene plays the ship zoom video (V2-G) between
 # TITLE and ACT_INTRO. Plays once (10s). ESC skips to ACT_INTRO. When the
 # video finishes naturally, also transitions to ACT_INTRO.
@@ -757,7 +1131,10 @@ class CinematicScene(Scene):
         if self._t > 15.0:
             self._finished = True
         if self._finished:
-            self._transition_to(GameState.ACT_INTRO)
+            # BLOQUE 73.7: chain into the main menu (NEW GAME / BOSS TIME
+            # / BACKGROUND) rather than straight to ACT_INTRO. The menu
+            # handles the NEW GAME → ACT_INTRO edge itself.
+            self._transition_to(GameState.MENU)
 
     def draw(self, target: pygame.Surface) -> None:
         if self._video is not None:
@@ -816,7 +1193,28 @@ class GameplayScene(Scene):
         self._rt = GameplayRuntime(transition_to, is_boss=False, act=act, audio=audio)
 
     def on_enter(self) -> None:
+        # BLOQUE 73.7 fix: GameplayRuntime is NOT a Scene, so it never got
+        # the `_game` back-reference that _register_with_back_ref() injects
+        # into scenes. The runtime reads Game.bg_mode to choose its
+        # background draw path, so without this line `bg_mode` was always
+        # the default 1 and the BACKGROUND menu option had NO effect on
+        # gameplay. Inject it before on_enter() so the very first frame
+        # already draws the right background.
+        self._rt._game = getattr(self, "_game", None)
         self._rt.on_enter()
+        # BLOQUE 73.6: apply the user-chosen background variant (set on
+        # the title screen via 1-4 / arrows). on_enter fires every time
+        # the scene becomes active, so the latest choice always wins,
+        # even when the user backed out of the pause menu or just changed
+        # the variant in the title and stepped straight into gameplay.
+        # The default is 3 = purple_dusk, matching the procedural
+        # backdrop the user approved.
+        game = getattr(self, "_game", None)
+        if game is not None:
+            from src.systems.parallax import _STRIP_VARIANT_THEMES
+            idx = max(0, min(len(_STRIP_VARIANT_THEMES) - 1, game.bg_variant_idx))
+            if self._rt._parallax_bg is not None:
+                self._rt._parallax_bg.set_theme(_STRIP_VARIANT_THEMES[idx])
         # BLOQUE 58.45: switch to the gameplay soundtrack (loop).
         # BLOQUE 58.6x: don't restart if already playing. on_enter fires
         # every time we return to gameplay (after sub-boss kill, after
@@ -1166,6 +1564,17 @@ class BossFightScene(Scene):
         self._rt = GameplayRuntime(transition_to, is_boss=True, act=act, audio=audio)
 
     def on_enter(self) -> None:
+        # BLOQUE 73.6: apply the user-chosen background variant before
+        # any runtime tick draws a frame, so the boss arena shows the
+        # variant selected on the title (or the default purple_dusk if
+        # --boss skipped the title).
+        game = getattr(self, "_game", None)
+        if game is not None:
+            from src.systems.parallax import _STRIP_VARIANT_THEMES
+            idx = max(0, min(len(_STRIP_VARIANT_THEMES) - 1, game.bg_variant_idx))
+            bg = getattr(self._rt, "_bg", None)
+            if bg is not None:
+                bg.set_theme(_STRIP_VARIANT_THEMES[idx])
         self._rt.on_enter()
         # BLOQUE 58.46: override the fresh scoring system with the player's
         # accumulated score from gameplay so the HUD doesn't reset to 0.

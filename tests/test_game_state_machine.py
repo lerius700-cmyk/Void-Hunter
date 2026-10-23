@@ -38,23 +38,36 @@ class _MockScene(Scene):
 
 
 # ---------------------------------------------------------------------------
-# 1. 10 states (9 main + PAUSE overlay)
+# 1. 15 states (14 main + PAUSE overlay)
 # ---------------------------------------------------------------------------
-def test_ten_states_total() -> None:
-    """BLOQUE 58.60: 14 states now (added GALLERY_SPRITE + GALLERY_VIDEO)."""
-    assert len(GameState) == 14
+def test_fifteen_states_total() -> None:
+    """BLOQUE 73.7: 15 states now (added MENU for the post-cinematic menu)."""
+    assert len(GameState) == 15
 
 
 def test_valid_transitions_table_populated() -> None:
-    """BLOQUE 58.60: 14 states have transition entries; PAUSE is overlay-only."""
-    assert len(VALID_TRANSITIONS) == 14
+    """BLOQUE 73.7: 15 states have transition entries; PAUSE is overlay-only."""
+    assert len(VALID_TRANSITIONS) == 15
     # Spot check
     assert GameState.TITLE in VALID_TRANSITIONS
     assert GameState.CINEMATIC in VALID_TRANSITIONS
+    assert GameState.MENU in VALID_TRANSITIONS
     assert GameState.GALLERY_SPRITE in VALID_TRANSITIONS
     assert GameState.GALLERY_VIDEO in VALID_TRANSITIONS
     assert GameState.GAMEPLAY in VALID_TRANSITIONS
     assert GameState.BOSS_FIGHT in VALID_TRANSITIONS
+
+
+def test_menu_is_wired_between_cinematic_and_act_intro() -> None:
+    """BLOQUE 73.7: the post-cinematic menu sits between CINEMATIC and ACT_INTRO.
+
+    The menu owns the NEW GAME -> ACT_INTRO edge, so CINEMATIC must be able
+    to reach MENU and MENU must be able to reach ACT_INTRO.
+    """
+    assert GameState.MENU in VALID_TRANSITIONS[GameState.CINEMATIC]
+    assert GameState.ACT_INTRO in VALID_TRANSITIONS[GameState.MENU]
+    assert GameState.BOSS_INTRO in VALID_TRANSITIONS[GameState.MENU]
+    assert GameState.TITLE in VALID_TRANSITIONS[GameState.MENU]
 
 
 # ---------------------------------------------------------------------------
