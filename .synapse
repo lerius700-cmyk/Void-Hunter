@@ -1,13 +1,13 @@
 {
   "synapse_version": "2.2.0",
-  "last_verification_utc": "2026-10-23T19:52:00Z",
+  "last_verification_utc": "2026-10-23T19:37:18Z",
   "system_status": "healthy",
   "active_bridges": {},
   "short_term_memory": {
     "current_objective": "Sesión consolidada y auditada (synapse-deep + sf-sm-doctor + gstack-review): GOLIATH animado, menú principal post-cinematica y selector de fondo corregido. Próximo: push de master (1 commit local sin pushear) y release v1.6.4 con el fix de bg_mode + entrada de changelog.",
     "last_successful_action": "Corregido el defecto funcional del selector de fondo (BLOQUE 73.6/73.7): GameplayRuntime nunca recibía el back-ref _game, así que bg_mode quedaba clavado en 1 y la rama SPACE VOID era código muerto; además el modo 1 perdía la capa de parallax. Medido: 93.99% de los píxeles difieren ahora entre modos (antes ~0%). Nuevo tests/test_bg_mode_render.py (5 tests de píxeles, el que el spec exigía y nunca existió) verificado como red real: sin el fix fallan 4 de 5. Suite completa: 2,791 pass + 8 fail + 6 skipped en 90.34s. sf-sm-doctor 7/7 con 0 findings.",
     "active_context_pointers": ["CLAUDE.md", "CONTEXT.md", "docs/handoffs/HANDOFF-GOLIATH-MENU-2026-10-23.md", "docs/superpowers/specs/2026-10-22-prompt-weapon-goliath-port-v1-4-0.md", "docs/changelog/CHANGELOG_v1.x.md"],
-    "critical_blockers": "8 tests preexistentes rojos (5 test_sub_boss_* + 2 test_asteroid_sprites.py fallan solo en suite completa por contaminación de estado entre módulos; 1 test_paths.py::test_paths_no_star_shapes es aserción real de geometría Lissajous). master está 1 commit adelante de origin/master (a8bf14f, prompt 8D) y sin pushear. Falta entrada de changelog y release v1.6.4 para el fix de bg_mode."
+    "critical_blockers": "8 tests preexistentes rojos (5 test_sub_boss_* + 2 test_asteroid_sprites.py fallan solo en suite completa por contaminación de estado entre módulos; 1 test_paths.py::test_paths_no_star_shapes es aserción real de geometría Lissajous). master está 6 commits adelante de origin/master y sin pushear (a8bf14f prompt 8D, 7bd4906 fix bg_mode, 0e43402 docs, bd64089 tools, 30dd5df wav, 2588c8b spec corregido). Falta entrada de changelog y release v1.6.4 para el fix de bg_mode; v1.6.3 se publicó anunciando una feature que no funcionaba."
   },
   "neural_load": {
     "token_efficiency_gain": "Lite perfil → CONTEXT.md reduce overhead. ~70% de archivos en R (REFERENCE) se cargan solo bajo demanda. Archivos físicos ahora coinciden con paths declarados en silos.",

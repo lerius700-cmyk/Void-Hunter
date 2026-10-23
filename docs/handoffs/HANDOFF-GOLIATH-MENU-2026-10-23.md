@@ -230,8 +230,9 @@ Expected `10/10` on all six (verified 2026-10-23).
 | `tests/test_goliath_animation_advances.py` | 73.5 — animation actually advances |
 | `tests/test_bg_variant_selector.py` | 73.6 |
 | `tests/test_main_menu_scene.py` | 73.7 |
+| `tests/test_bg_mode_render.py` | **73.8** — 5 pixel tests; the net that catches the inert background selector |
 | `tests/test_tile_manager.py` | 73.1 |
-| `docs/superpowers/specs/2026-10-22-prompt-weapon-goliath-port-v1-4-0.md` | Prompt-Weapon 8D to port this back into a v1.4.0 (BLOQUE 71) base. Commit `a8bf14f` |
+| `docs/superpowers/specs/2026-10-22-prompt-weapon-goliath-port-v1-4-0.md` | Prompt-Weapon 8D to port this back into a v1.4.0 (BLOQUE 71) base. Commit `a8bf14f`, **corrected by `2588c8b`** (see §11.7) |
 
 ---
 
@@ -384,8 +385,36 @@ fail; with it applied, 5/5 pass.
 
 - The 8 pre-existing failures (§9) — order-dependent pollution plus one
   real Lissajous geometry assertion. None introduced by BLOQUE 73.
-- `master` was **1 commit ahead of `origin/master`** at the start of
-  this pass: `a8bf14f` (the Prompt-Weapon 8D spec) had never been
-  pushed. It is a local-only commit until pushed.
+- `master` is **6 commits ahead of `origin/master`** and unpushed:
+  - `a8bf14f` — the Prompt-Weapon 8D spec (never pushed; it only existed
+    on this machine until now)
+  - `7bd4906` — the `bg_mode` fix + `tests/test_bg_mode_render.py`
+  - `0e43402` — this handoff, `CLAUDE.md` / `CONTEXT.md` / `.synapse` /
+    `docs/handoffs/CONTEXT.md`, `.gitignore`
+  - `bd64089` — the 20 untracked GOLIATH capture/audit scripts + the
+    v1.3 ship spec
+  - `30dd5df` — the 8 kHz gameplay music variant (60.9 MB, was untracked)
+  - `2588c8b` — the 8D port spec correction (§11.7)
 - The next release needs a changelog entry for the `bg_mode` fix and
-  the `GameState.MENU` test updates.
+  the `GameState.MENU` test updates. It should **not** reuse the
+  v1.5.0 version number.
+
+### 11.7 The 8D port spec was corrected too (`2588c8b`)
+
+The Prompt-Weapon 8D spec was written on 2026-10-22 — **before** the
+background-selector defect was found. As written it would have ported the
+broken implementation into a fresh v1.4.0 base and shipped it again.
+
+Corrections applied:
+
+| Was | Now |
+|---|---|
+| Mode 1 snippet drew only `_galaxy_bg` | Draws `_galaxy_bg` **then** `_parallax_bg` (matches the spec's own table and the v1.6.3 release notes) |
+| No mention of the `_game` back-reference | New section with the exact injection code and the measured proof (0% → 93.99% of bytes differing) |
+| Gate 8 = "compare screenshots by hand" | **Automated**: port `tests/test_bg_mode_render.py` and run it. Added Gate 8b for the mode-1 composition |
+| `pytest ... -q` in two gates | Changed to `--tb=no` — `pyproject.toml` already sets `addopts = "-q"`, so a second `-q` makes it `-qq` and silences the summary line |
+| No orientation for a clean-context agent | New **"CÓMO ARRANCAR"** block at the top: the 3 documents to read in order, the 4 commits needed (`ac53596`, `0837a86`, `ed13dab`, `7bd4906`), the base `d70b8da`, and a do-not-merge warning |
+
+> If this handoff is handed to another agent, hand them **this file and
+> the corrected 8D spec**. The spec alone would have reproduced the
+> defect; this file alone would not tell them what to build.
