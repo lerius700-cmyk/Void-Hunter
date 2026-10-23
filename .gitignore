@@ -132,3 +132,11 @@ Assets/sprites/bosses/goliath/spritesheet_goliath.png
 # BLOQUE 73: archived release copies (424 MB each, incl. a duplicated .exe).
 # Kept locally for inspection; never committed.
 _archive_*/
+
+# BLOQUE 73.8: isolated worktrees for agent work (superpowers:using-git-worktrees).
+# MUST stay ignored: an unignored worktree dir gets committed wholesale.
+.worktrees/
+
+# superpowers subagent-driven-development scratch workspace (ledger, briefs,
+# review packages). Git history is the record once the plan is done.
+.superpowers/
