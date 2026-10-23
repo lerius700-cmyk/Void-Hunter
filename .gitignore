@@ -117,3 +117,18 @@ github_token
 
 # BLOQUE 67+ boss-sprite backplate leftover dirs
 Assets/sprites/bosses/goliath/_backplate/
+
+# BLOQUE 73: GOLIATH session intermediates (regenerable, ~127 MB).
+# _strips/ holds the 1024px source strips used to bake the 16-bit frames;
+# the frames themselves under goliath/<anim>/ ARE tracked.
+Assets/sprites/bosses/goliath/_mask/
+Assets/sprites/bosses/goliath/_seed/
+Assets/sprites/bosses/goliath/_strips/
+Assets/sprites/bosses/goliath/_test/
+Assets/sprites/bosses/goliath/gifs/
+Assets/sprites/bosses/goliath/regen_report.json
+Assets/sprites/bosses/goliath/spritesheet_goliath.png
+
+# BLOQUE 73: archived release copies (424 MB each, incl. a duplicated .exe).
+# Kept locally for inspection; never committed.
+_archive_*/

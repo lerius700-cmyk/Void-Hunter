@@ -2,15 +2,15 @@
 
 **Perfil SF/SM:** Lite
 **Schema target:** `.synapse` 2.2.0 (acepta 2.1.0 legacy)
-**Versión actual:** v1.4.0+ (BLOQUE 71 released; BLOQUE 72 en curso, Task 5 done)
+**Versión actual:** v1.6.3 (BLOQUE 73.1→73.7 shipped: GOLIATH animado + escudo visible + menú principal post-cinematica)
 **Tipo:** CODE (Python + pygame 2.6, stdlib only + numpy para lowpass audio)
-**Test count:** 2,700 pass + 23 pre-existing fail + 6 skipped (excluyendo errores preexistentes no relacionados)
+**Test count:** 2,791 pass + 8 pre-existing fail + 6 skipped (2,805 total; 2026-10-23)
 
 ---
 
 ## ¿Qué ES / Qué NO ES
 
-**ES:** un shmup vertical 8-bit pixelart portrait 240×360 a 120 FPS, con 4 bosses (GOLIATH / HYDRA / PHANTOM / NEMESIS), modo roguelike con seed/RNG, formación Star Fox 64 + bezier paths, 24 SFX procedurales, 2 BGMs streaming, pausa con lowpass, selector de 5 naves × 5 animaciones × 8 frames, 4 videos cinemáticos (2 standalone 9:16 + 2 in-game), galería in-game de spritesheets + videos, y ~24.7K LOC en 79 archivos Python + ~24K LOC de tests en 38 archivos.
+**ES:** un shmup vertical 8-bit pixelart portrait 240×360 a 120 FPS, con 4 bosses (GOLIATH / HYDRA / PHANTOM / NEMESIS), modo roguelike con seed/RNG, formación Star Fox 64 + bezier paths, 24 SFX procedurales, 2 BGMs streaming, pausa con lowpass, selector de 5 naves × 5 animaciones × 8 frames, 4 videos cinemáticos (2 standalone 9:16 + 2 in-game), galería in-game de spritesheets + videos, menú principal post-cinematica (NEW GAME / BOSS TIME / BACKGROUND) con selector de fondo (SPACE VOID / ASTEROID NEBULA), y ~27.9K LOC en 87 archivos Python + ~22.7K LOC de tests en 99 archivos.
 
 **NO ES:** un MMO, un roguelike 2D con vista top-down, un juego online, un servicio con backend, un proyecto que requiere Truth Anchors de runtime (puertos localhost, ss, pgrep). Es una app standalone pygame que se compila con PyInstaller.
 
@@ -22,8 +22,8 @@
 L1  CLAUDE.md            ← identidad + reglas globales (ESTE ARCHIVO)
 L1.5 CONTEXT.md          ← Switch de contexto (ADUANA + silos + Token Budget)
 
-L2  src/                 ← código fuente (24.7K LOC, 79 archivos, 14 sistemas)
-L2  tests/               ← 1,630 tests pytest (38 archivos)
+L2  src/                 ← código fuente (27.9K LOC, 87 archivos, 14 sistemas)
+L2  tests/               ← 2,805 tests pytest (99 archivos)
 L2  Assets/              ← binarios (sprites, audio, galaxy panels, BGM, video)
 L2  tools/               ← scripts de captura / debug / generación (incl. video_gen/)
 L2  build.spec           ← PyInstaller onedir
@@ -37,6 +37,7 @@ L3  docs/handoffs/       ← handoffs cross-session (cierre formal de BLOQUE)
 L3  docs/superpowers/    ← planes y specs de features grandes
 L3  docs/design/         ← game design (GDD, etc.)
 L3  docs/references/     ← assets de referencia (sprites, paneles)
+L3  docs/movement/       ← coreografía de naves (sub-silo FROZEN)
 ```
 
 **Regla:** Entrar por L1 (`CLAUDE.md`) → L1.5 (`CONTEXT.md`) → identificar silo → leer `CONTEXT.md` del silo → trabajar.
@@ -75,7 +76,7 @@ L3  docs/references/     ← assets de referencia (sprites, paneles)
 
 **Expertise clave:** pygame internals (Sound/Channel, mixer.music.set_pos = no-op para WAV), render 8-bit, profile-aware de SF+SM, memoria cross-session.
 
-**Patrón de decisión:** Antes de cambiar algo, leer el BLOQUE relacionado en `docs/CHANGELOG_v1.x.md` para saber qué se intentó antes. Si un usuario muestra una imagen de referencia, **usar esa imagen** (no regenerar con AI/otra técnica) — el usuario ya invirtió en que esa imagen sea la correcta.
+**Patrón de decisión:** Antes de cambiar algo, leer el BLOQUE relacionado en `docs/changelog/CHANGELOG_v1.x.md` para saber qué se intentó antes. Si un usuario muestra una imagen de referencia, **usar esa imagen** (no regenerar con AI/otra técnica) — el usuario ya invirtió en que esa imagen sea la correcta.
 
 ---
 
@@ -111,7 +112,7 @@ void-hunter/
 ├── requirements-dev.txt        ← dev/test deps
 ├── pyproject.toml              ← tool config (ruff, mypy, pytest)
 │
-├── src/                        ← L2 código (118 archivos, 28K LOC)
+├── src/                        ← L2 código (87 archivos, 27.9K LOC)
 │   ├── core/                   ← game loop, settings, scene_manager
 │   ├── audio/                  ← synth + music (BLOQUE 58.14)
 │   ├── systems/                ← parallax, wave_manager, bezier, etc.
@@ -121,7 +122,7 @@ void-hunter/
 │   ├── roguelike/              ← seed, level_gen, form_gen, replay
 │   └── utils/                  ← palette, easing
 │
-├── tests/                      ← L2 (1,171 tests, BLOQUE 1-58.14)
+├── tests/                      ← L2 (2,805 tests, BLOQUE 1-73.7)
 │
 ├── Assets/                     ← L2 binarios
 │   ├── background/             ← galaxy_panel_*.png, galaxy_sprite_*.png
@@ -142,6 +143,7 @@ void-hunter/
 │   ├── changelog/              ← changelog
 │   ├── bloques/                ← checklists
 │   ├── session-reports/        ← reportes
+│   ├── handoffs/               ← handoffs cross-session
 │   ├── superpowers/            ← planes + specs
 │   ├── design/                 ← GDD
 │   └── references/             ← assets de referencia
@@ -157,9 +159,11 @@ void-hunter/
 
 | Protocolo | Cuándo usar | Dónde vive |
 |-----------|-------------|------------|
-| **sf-sm-doctor** (System Folder + Synapse Method) | Auditar / remediar estructura del proyecto | `D:\AI\Hermes SKills\skills\devops\sf-sm-doctor\` |
+| **sf-sm-doctor** (System Folder + Synapse Method) | Auditar / remediar estructura del proyecto | `C:\Users\Lerius\.minimax\skills\sf-sm-doctor\` |
+| **sf-sm-audit** (alias de sf-sm-doctor) | Auditoría de compliance SF+SM sin remediar | `C:\Users\Lerius\.minimax\skills\sf-sm-audit\` |
 | **synapse-compact** (Consolidación de sesión) | Fin de sesión, capturar objetivo + última acción | Mavis skill |
 | **synapse-deep** (Actualización documental) | Cuando hubo cambios de arquitectura / reglas / conceptos | Mavis skill |
+| **gstack-review** (Pre-landing PR review) | Antes de commitear / mergear: diff contra la rama base | `C:\Users\Lerius\.minimax\skills\gstack-review\` |
 | **sre-protocol** (SRE Protocol / Puente Roto) | Diagnosticar y reparar bridges runtime caídos (5 pasos: Symptom → Map Bridge → Execution → Verify → Document). Soporta HTTP, DB, GPU, Storage. | Mavis skill |
 | **breach_autorizado** (Breach Autorizado) | Acceso cross-silo explícito (5 pasos: Declaration → Min Action → Closure → Validation → Registration) | Mavis skill |
 | **test-driven-development** (TDD) | Antes de implementar feature nueva | Mavis skill |
@@ -189,24 +193,31 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 
 | Métrica | Valor | Fuente (Truth Anchor) |
 |---------|-------|------------------------|
-| Líneas de código (src/) | 26,760 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
+| Líneas de código (src/) | 27,871 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
 | Archivos Python (src/) | 87 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
-| Tests (tests/) | 2,700 pass + 23 fail + 6 skipped | `python -m pytest tests/ --tb=no -q` |
-| LOC tests/ (helper) | ~28,500 | `pytest --collect-only -q` (test count 2,729) |
-| Silos SF+SM | 8 (Lite, post sf-sm-doctor 2026-09-14) | manual SKILL.md |
-| Compliance SF | 8/8 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0; script restaurado via SKILL.md) |
-| Versión | v1.4.0+ (BLOQUE 71 shipped; BLOQUE 72 en curso, Task 5 done) | `git log --oneline -1` |
+| Tests (tests/) | 2,791 pass + 8 fail + 6 skipped (2,805 total) | `python -m pytest tests/ --tb=no` |
+| LOC tests/ | 22,650 (99 archivos .py) | `python -m pytest tests/ --collect-only` (2,805 tests) |
+| Silos SF+SM | 9 (Lite; audit 2026-10-23 detecta 9: arch, changelog, bloques, session-reports, handoffs, superpowers, design, references, movement) | `audit_sf_sm.py --perfil=lite` |
+| Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0, 0 findings; 2026-10-23) |
+| Versión | v1.6.3 (BLOQUE 73.1→73.7 shipped) | `git log --oneline -1` |
 | Rama | master | `git branch --show-current` |
 | Remote | github.com/lerius700-cmyk/Void-Hunter | `git remote -v` |
-| Build .exe | `dist/void-hunter/void-hunter.exe` ~4.3 MB | `Get-Item dist/void-hunter/void-hunter.exe` |
+| Build .exe | `dist/void-hunter.exe` ~424.5 MB (onefile) · `dist/void-hunter/void-hunter.exe` ~4.2 MB (onedir) | `Get-Item dist/void-hunter.exe` |
 | Videos cinemáticos (standalone) | 4 mp4 (1080×1920 + 540×960) en `release/videos/` | `Get-ChildItem release/videos/*.mp4` |
 | Videos cinemáticos (in-game) | 660 PNG frames en `Assets/video/{title,zoom}/frames/` | `Get-ChildItem Assets/video/*/frames/frame_*.png` |
 | Sprite sheets (in-game) | 5 PNGs en `Assets/sprites/player_ships/ship_*_spritesheet.png` | `Get-ChildItem Assets/sprites/player_ships/*_spritesheet.png` |
+| GOLIATH frames | 60 (6 anims × 10, todos con MD5 único) | `Get-ChildItem Assets/sprites/bosses/goliath/*/frame_*.png` |
 
-> **Nota:** los valores 22,981 LOC y 75 files en `src/` son el conteo actual
+> **Nota 1:** los valores 22,981 LOC y 75 files en `src/` son un conteo viejo
 > (regenerados 2026-08-17). El valor histórico 28,066 LOC / 118 files que
 > estaba en `docs/arch/ARCHITECTURE.md` (updated 2026-08-15) ya no aplica
 > tras el BLOQUE SF+SM (consolidación de archivos sueltos a silos).
+
+> **Nota 2:** los 8 tests que fallan son **preexistentes**, ninguno introducido
+> por BLOQUE 73: 5 de `test_sub_boss_*` + 2 de `test_asteroid_sprites.py` fallan
+> solo en la suite completa (pasan en aislamiento → contaminación de estado entre
+> tests) y 1 de `test_paths.py::test_paths_no_star_shapes` es una aserción real
+> de geometría de la LissajousPath. Ver `docs/handoffs/HANDOFF-GOLIATH-MENU-2026-10-23.md` §6.
 
 > **Regla:** si una métrica cambia, regenerar este bloque con el comando de la columna "Fuente". NUNCA editar a mano.
 
@@ -235,3 +246,15 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 - **2026-09-09 (BLOQUE 71 release v1.4.0)** — Asteroid hit feedback. `Asteroid.hit()` setea `hit_timer = 0.15s`, render con shape-aware white flash al 70% opacity (BLOQUE 71.1 refinamiento), MINE-ASTEROID hit en 4 estados, SFX `asteroid_hit` (noise burst 0.05s) + dispatch en `_asteroid_bullet_collision`. BLOQUE 71.2 fix: `hit_timer` decrementaba solo para MINE, ahora para todos los enemy kinds. E2E 60s OK. PNG captura `tools/playtest_out/bloque_71_asteroid_flash_01.png`. Release en GitHub tag `v1.4.0`.
 - **2026-09-12 (BLOQUE 72 en curso — Task 5 done)** — 4-Weapon Powerup System. Spec + plan en `docs/superpowers/`. T1 spec, T2 plan, T3 dispatch deferral fix, T4 e2e visual, **T5 (`8c8d82b`)** `WeaponSlot` dataclass (`src/entities/weapon_slot.py`) + 5 constantes ammo (`src/core/settings.py`: `WEAPON_PICKUP_AMMO=30`, `MAX_AMMO_THICK/LASER/FLAME/DOUBLE = 100/200/50/150`). 8/8 tests pass en `tests/test_weapon_slot.py`. Pendiente T6+ (slots en GameplayRuntime, PowerupKind expansion, HUD render, input remap, SFX, e2e visual).
 - **2026-09-14 (sf-sm-doctor manual remediation)** — Tree Integrity + Switch drift corregido. 9 logs L1 movidos a `logs/`/`logs/_root_*` (datos preservados, gitignored), `smoke.py` movido a `tools/smoke.py`, `MANIFEST.md` archivado en `_trash_2026-09-10/MANIFEST.md` (gitignored via nueva regla `_trash_*/`). Nuevo silo `docs/handoffs/` con `CONTEXT.md` + handoff de asteroides. Switch CONTEXT.md +8 handoffs, CLAUDE.md Mapa del Edificio +1 L3 handoffs. STATUS:GENERATED regenerado: 26,760 LOC / 87 files en `src/`, 2,700 tests pass (con 23 pre-existing failures + 6 skipped).
+- **2026-10-22 → 2026-10-23 (BLOQUE 73.1 → 73.7 — GOLIATH + menú principal)** — Cierre de 5 releases: v1.5.0, v1.5.1, v1.6.0, v1.6.1, v1.6.2, v1.6.3.
+  - **73.1** (`0985ccc`) TileManager degrada sin `Assets/background/tiles/act1/` — el v1.4.0 crasheaba al arrancar.
+  - **73.2** (`65a1a7e`) Escudo de GOLIATH dibujado: óvalo translúcido en el brazo, rampa hierro→azul→cyan.
+  - **73.3** (`60a9836`) 60 frames restaurados desde `ac53596` — `562eb58` los había colapsado a 10 copias idénticas por animación.
+  - **73.4** (`6c71e1b`) Eye-laser anclado al ojo real por frame + 7 frames re-padeados + hitbox del escudo reconstruido desde `max(R,RX)+1 × max(R,RY)+1`.
+  - **73.5** (`c6679b4`) `Boss.update_animation()` **nunca fue llamado** por nadie → cableado; `--boss` era un stub → ahora camina TITLE→ACT_INTRO→GAMEPLAY→BOSS_INTRO→BOSS_FIGHT.
+  - **73.6** (`e553189`) Selector de fondo (`SPACE VOID` / `ASTEROID NEBULA`, default = ASTEROID NEBULA).
+  - **73.7** (`cfa8e22`) Menú principal post-cinematica (`NEW GAME` / `BOSS TIME` / `BACKGROUND`), nuevo `GameState.MENU`.
+  - **Constantes sagradas (aprobadas en `0837a86`, no tocar):** `GOLIATH_SHIELD_DX=-11, DY=6, R=11, RX=11, RY=17`.
+  - **Docs:** `docs/handoffs/HANDOFF-GOLIATH-MENU-2026-10-23.md` (mapa autoritativo) + `docs/superpowers/specs/2026-10-22-prompt-weapon-goliath-port-v1-4-0.md` (prompt 8D para portar a base v1.4.0, commit `a8bf14f`).
+  - **Remediación documental 2026-10-23 (synapse-deep):** paths rotos corregidos en `CLAUDE.md` y `CONTEXT.md` (`docs/CHANGELOG_v1.x.md` → `docs/changelog/…`, `docs/ROADMAP.md` → `docs/arch/…`, `docs/MEGA_BLOQUE_58.8_CHECKLIST.md` → `docs/bloques/…`, script de auditoría → `C:\Users\Lerius\.minimax\skills\…`, repo → `F:\AI\MM\void-hunter`); 6 filas duplicadas en la tabla Bridges Externos del Switch eliminadas; 5 tests rotos por `GameState.MENU` actualizados (`test_game_state_machine.py`, `test_cinematic_scene.py`); `SyntaxError` de escape `\A` en el docstring de `src/audio/music.py` corregido (path obsoleto `D:\AI\void-hunter` → resolución relativa real); `.gitignore` extended para artefactos debug de GOLIATH (~127 MB) y `_archive_*/` (424 MB con un .exe duplicado). STATUS:GENERATED regenerado: 27,856 LOC / 87 files src/ / 2,786 tests pass + 8 fail + 6 skipped (2,800 total).
+  - **Auditoría 2026-10-23 (sf-sm-doctor + gstack-review) — DEFECTO FUNCIONAL CORREGIDO:** el selector de fondo del menú (`BACKGROUND → SPACE VOID / ASTEROID NEBULA`) **era inerte en gameplay**. `GameplayRuntime` no es un `Scene`, así que nunca recibió el `_game` que `_register_with_back_ref()` inyecta a las escenas → `bg_mode` quedaba clavado en 1 y la rama `bg_mode == 0` era código muerto. Además el modo 1 perdía la capa de parallax (quedó dentro de la rama `bg_mode == 0`), contra el spec y las release notes v1.6.3. Corregido en `src/ui/scenes.py` (`GameplayScene.on_enter` inyecta el back-ref) y `src/ui/gameplay_runtime.py` (modo 1 = galaxy + parallax encima). Medido: **93.99%** de los píxeles difieren entre modos (antes ~0%). Nuevo `tests/test_bg_mode_render.py` (5 tests de píxeles, el que el spec de BLOQUE 73.6 exigía y nunca existió) — verificado como red real: sin el fix fallan 4 de 5. Además: `tools/test_video_integration.py` assertion obsoleta corregida, conteos "9 scenes" → 15, `VALID_TRANSITIONS[TITLE]` **no** es defecto (el spec define `TITLE → CINEMATIC → MENU`). Suite final: **2,791 pass + 8 fail + 6 skipped (2,805 total)**. `sf-sm-doctor` 4/7 → **7/7**, 0 findings.

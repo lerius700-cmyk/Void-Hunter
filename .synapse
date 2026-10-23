@@ -1,30 +1,33 @@
 {
   "synapse_version": "2.2.0",
-  "last_verification_utc": "2026-09-14T22:00:00Z",
+  "last_verification_utc": "2026-10-23T19:52:00Z",
   "system_status": "healthy",
   "active_bridges": {},
   "short_term_memory": {
-    "current_objective": "BLOQUE 72 en curso (T6 done `e2cd03a`): player state ahora carga 4 weapon slots vacíos (A/S/D/F = thick/laser/flame/double) con `_weapon_active_idx=0` y `_weapon_pop_anim` dict. Próximo: T7 PowerupKind expansion (WEAPON → 4 kinds), T8 _apply_powerup_weapon, T9 HUD slot render, T10 BLOQUE 72.A e2e + visual.",
-    "last_successful_action": "BLOQUE 72 T6 RED→GREEN: tests/test_runtime_weapon_slots.py (6 tests) escritos primero (RED: AttributeError), state agregado a GameplayRuntime.__init__ (GREEN: 6/6 pass). Suite completa: 2,706 pass + 23 pre-existing fail + 6 skipped (era 2,700; +6 sin regresiones).",
-    "active_context_pointers": ["CLAUDE.md", "CONTEXT.md", "docs/arch/CONTEXT.md", "docs/changelog/CONTEXT.md", "docs/handoffs/HANDOFF-BLOQUE-71-72-2026-09-12.md", "docs/superpowers/plans/2026-09-09-asteroid-hit-and-powerup-system.md"],
-    "critical_blockers": "ninguno"
+    "current_objective": "Sesión consolidada y auditada (synapse-deep + sf-sm-doctor + gstack-review): GOLIATH animado, menú principal post-cinematica y selector de fondo corregido. Próximo: push de master (1 commit local sin pushear) y release v1.6.4 con el fix de bg_mode + entrada de changelog.",
+    "last_successful_action": "Corregido el defecto funcional del selector de fondo (BLOQUE 73.6/73.7): GameplayRuntime nunca recibía el back-ref _game, así que bg_mode quedaba clavado en 1 y la rama SPACE VOID era código muerto; además el modo 1 perdía la capa de parallax. Medido: 93.99% de los píxeles difieren ahora entre modos (antes ~0%). Nuevo tests/test_bg_mode_render.py (5 tests de píxeles, el que el spec exigía y nunca existió) verificado como red real: sin el fix fallan 4 de 5. Suite completa: 2,791 pass + 8 fail + 6 skipped en 90.34s. sf-sm-doctor 7/7 con 0 findings.",
+    "active_context_pointers": ["CLAUDE.md", "CONTEXT.md", "docs/handoffs/HANDOFF-GOLIATH-MENU-2026-10-23.md", "docs/superpowers/specs/2026-10-22-prompt-weapon-goliath-port-v1-4-0.md", "docs/changelog/CHANGELOG_v1.x.md"],
+    "critical_blockers": "8 tests preexistentes rojos (5 test_sub_boss_* + 2 test_asteroid_sprites.py fallan solo en suite completa por contaminación de estado entre módulos; 1 test_paths.py::test_paths_no_star_shapes es aserción real de geometría Lissajous). master está 1 commit adelante de origin/master (a8bf14f, prompt 8D) y sin pushear. Falta entrada de changelog y release v1.6.4 para el fix de bg_mode."
   },
   "neural_load": {
     "token_efficiency_gain": "Lite perfil → CONTEXT.md reduce overhead. ~70% de archivos en R (REFERENCE) se cargan solo bajo demanda. Archivos físicos ahora coinciden con paths declarados en silos.",
-    "session_drift_index": 0.0
+    "session_drift_index": 0.05
   },
   "synaptic_shortcuts": {
     "navegar_a_bloque_n": "git log --oneline | grep 'BLOQUE N' | head -1 → leer commit message → docs/changelog/CHANGELOG_v1.x.md",
     "regenerar_nebula_sprites": "python tools/process_galaxy_sprites_v2.py",
     "verificar_pause_music": "python tools/test_music_continuous_lowpass.py",
-    "correr_tests": "python -m pytest tests/ --tb=no -q",
-    "auditar_sf_sm": "(script removido de D:\\AI\\Hermes SKills — restaurar o actualizar path) — alternativa manual: revisar CLAUDE.md STATUS:GENERATED, CONTEXT.md L/S/R, .synapse",
+    "correr_tests": "python -m pytest tests/ --tb=no  (NO agregar -q: pyproject ya define addopts='-q' y un -q extra produce -qq, que silencia la línea de resumen)",
+    "correr_tests_goliath_menu": "python -m pytest tests/ -k \"boss or goliath or shield or javelin or menu or bg_variant\" --ignore=tests/test_paths_legacy.py --tb=no  (esperado: 243 passed, 1 skipped)",
+    "correr_tests_bg_mode": "python -m pytest tests/test_bg_mode_render.py --tb=no  (esperado: 5 passed — red de píxeles del selector de fondo)",
+    "smoke_boss": "python main.py --boss goliath --easy --duration 60  (esperado: 'jumped to GOLIATH (act 1)')",
+    "auditar_sf_sm": "python \"C:\\Users\\Lerius\\.minimax\\skills\\sf-sm-doctor\\scripts\\audit_sf_sm.py\" \"F:\\AI\\MM\\void-hunter\" --perfil=lite  (esperado: 7/7, exit 0)",
+    "gate_scan_gstack": "bash -lc \"cd /f/AI/MM/void-hunter && /c/Users/Lerius/gstack/bin/gstack-gate-diff master\"  (esperado: tagged={} sin RH-* relajaciones)",
+    "verificar_frames_goliath": "foreach ($a in phase1_idle,phase2_idle,javelin,laser,purple_bullet,death) { $h = Get-ChildItem \"Assets/sprites/bosses/goliath/$a/frame_*.png\" | ForEach-Object { (Get-FileHash $_.FullName -Algorithm MD5).Hash }; Write-Host \"$a $(@($h | Sort-Object -Unique).Count)/10\" }  (esperado 10/10 en las seis)",
     "mover_archivos_a_silo": "python tools/apply_sf_sm_deep_fix.py (idempotente — chequea si ya están movidos)",
     "generar_video_title": "python tools/video_gen/gen_v1_title.py (output: output/frames/v1_draft* + release/videos/void_hunter_title_v1*.mp4)",
     "generar_video_zoom": "python tools/video_gen/gen_v2_zoom.py (output: output/frames/v2_draft* + release/videos/void_hunter_zoom_v1*.mp4)",
     "generar_spritesheet_nave": "python tools/build_sprite_sheet.py [1-5] (output: Assets/sprites/player_ships/ship_0N_spritesheet.png)",
-    "smoke_test_videos": "python tools/test_video_integration.py (headless, valida VideoPlayer + scenes)",
-    "test_weapon_slot_unit": "python -m pytest tests/test_weapon_slot.py -v (BLOQUE 72 T5)",
-    "test_weapon_slot_runtime": "python -m pytest tests/test_runtime_weapon_slots.py -v (BLOQUE 72 T6)"
+    "smoke_test_videos": "python tools/test_video_integration.py (headless, valida VideoPlayer + scenes)"
   }
 }

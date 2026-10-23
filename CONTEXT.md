@@ -1,10 +1,10 @@
 # 🏛️ Switch de Contexto — VOID HUNTER
 
-**Versión:** 1.3.0
+**Versión:** 1.4.0
 **Propósito:** Navegación entre silos del proyecto VOID HUNTER.
 **Perfil SF/SM:** Lite
 **Schema target:** `.synapse` 2.2.0 (acepta 2.1.0 legacy)
-**Última remediación sf-sm-doctor:** 2026-09-14 (8 silos L3, +handoffs silo)
+**Última actualización:** 2026-10-23 (synapse-deep post BLOQUE 73.7 — paths reales, handoff GOLIATH/menú)
 
 ---
 
@@ -42,7 +42,7 @@ Regla: entrar por L1 → L1.5 → identificar silo → leer CONTEXT.md del silo 
 
 > **Regla:** los silos `docs/*/CONTEXT.md` son **passive hubs** (sin `.synapse`).
 > Solo el root tiene `.synapse` (Fase 4 del protocolo sf-sm-doctor).
-> **Silos L3 actuales (8):** arch, changelog, bloques, session-reports, handoffs, superpowers, design, references (+ `docs/movement/` que es sub-silo FROZEN — ver Switch).
+> **Silos L3 actuales (9):** arch, changelog, bloques, session-reports, handoffs, superpowers, design, references, movement (`docs/movement/` es sub-silo FROZEN — ver Switch).
 
 ---
 
@@ -61,7 +61,7 @@ Regla: entrar por L1 → L1.5 → identificar silo → leer CONTEXT.md del silo 
 | `main.py` / `build.spec` | L (LOAD) | Entry point + build |
 | `README.md` | R (REFERENCE) | Doc pública |
 | `requirements.txt` / `pyproject.toml` | R (REFERENCE) | Configuración |
-| `docs/ROADMAP.md` / `docs/MEGA_BLOQUE_58.8_CHECKLIST.md` | R (REFERENCE) | Roadmap + tracking |
+| `docs/arch/ROADMAP.md` / `docs/bloques/MEGA_BLOQUE_58.8_CHECKLIST.md` | R (REFERENCE) | Roadmap + tracking |
 | `Assets/**/*.png` | R (REFERENCE) | Binarios (no editar a mano) |
 | `Assets/**/*.wav` | R (REFERENCE) | Audio assets |
 | `Assets/video/**/*.png` | R (REFERENCE) | Video frames cinemáticos (no editar) |
@@ -112,12 +112,6 @@ Estos no son runtime bridges, son referencias a recursos externos que el agente 
 | Encode mp4 from frames | `python tools/video_gen/encode_mp4.py <frames_dir> <out.mp4> <w> <h> <fps>` | Generar mp4 standalone desde PNGs |
 | Build ship sprite sheets | `python tools/build_sprite_sheet.py [ship_id]` | Generar ship_NN_spritesheet.png (5 anims × 8 frames en un PNG) |
 | Video integration smoke test | `python tools/test_video_integration.py` | Headless smoke test del VideoPlayer + scenes |
-| Build .exe | `pyinstaller build.spec --clean -y` | Generar `dist/void-hunter/void-hunter.exe` |
-| Tests | `python -m pytest tests/ -q` | Validar regresiones |
-| Galaxy extraction | `python tools/process_galaxy_sprites_v2.py` | Regenerar sprites de nebula desde paneles |
-| Player ship sheets | `python tools/generate_player_ship_sheets.py` | Regenerar 5 naves × 5 anims × 8 frames |
-| Audio lowpass test | `python tools/test_music_continuous_lowpass.py` | Verificar pause/resume posicional |
-| Nebula render test | `python tools/test_nebula_render.py` | Verificar render de nebula headless |
 
 ---
 
@@ -125,12 +119,16 @@ Estos no son runtime bridges, son referencias a recursos externos que el agente 
 
 Comando canónico para auditar el estado del proyecto:
 
-```bash
+```powershell
 $env:PYTHONIOENCODING = "utf-8"
-python "D:\AI\Hermes SKills\skills\devops\sf-sm-doctor\scripts\audit_sf_sm.py" "D:\AI\void-hunter" --perfil=lite
+python "C:\Users\Lerius\.minimax\skills\sf-sm-doctor\scripts\audit_sf_sm.py" "F:\AI\MM\void-hunter" --perfil=lite
 ```
 
-Target: `7/7` compliance Lite. Si baja, correr remediación.
+Target: `7/7` compliance Lite (9 silos L3). Si baja, correr remediación.
+
+> **Nota:** el path del script y el del repo se movieron cuando las skills
+> se instalaron en `C:\Users\Lerius\.minimax\skills` y el repo en
+> `F:\AI\MM\`. Antes apuntaba a `D:\AI\Hermes SKills\...` y `D:\AI\void-hunter`.
 
 ---
 
@@ -138,7 +136,7 @@ Target: `7/7` compliance Lite. Si baja, correr remediación.
 
 | Fecha | Motivo | Silos | Archivos | Resultado |
 |-------|--------|-------|----------|-----------|
-| — | — | — | — | — |
+| 2026-10-22 | Cierre BLOQUE 73.1→73.7 (GOLIATH animado + escudo visible + menú principal) | src/ui, src/core, src/systems, Assets, tools, tests, docs | ~40 archivos | v1.5.0 → v1.6.3 publicadas; 5 releases en GitHub |
 
 ---
 
@@ -155,3 +153,15 @@ Target: `7/7` compliance Lite. Si baja, correr remediación.
   - Nuevo silo L3 `docs/handoffs/` con `CONTEXT.md` (passive hub). Switch CONTEXT.md +1 silo (handoffs).
   - CLAUDE.md Mapa del Edificio +1 L3 (handoffs). STATUS:GENERATED regenerado a valores reales (26,760 LOC / 87 files src/ / 2,700 tests pass / v1.4.0+).
   - Historial estructural actualizado con BLOQUE 70 (v1.3.0), BLOQUE 71 (v1.4.0), BLOQUE 72 Task 5.
+- **2026-10-23 (synapse-deep post BLOQUE 73.7)** — Actualización documental de la sesión GOLIATH + menú principal:
+  - Switch v1.3.0 → v1.4.0. Rutas corregidas: `docs/ROADMAP.md` → `docs/arch/ROADMAP.md`, `docs/MEGA_BLOQUE_58.8_CHECKLIST.md` → `docs/bloques/MEGA_BLOQUE_58.8_CHECKLIST.md`.
+  - Comando de auditoría actualizado al path real: `C:\Users\Lerius\.minimax\skills\sf-sm-doctor\scripts\audit_sf_sm.py` sobre `F:\AI\MM\void-hunter` (antes apuntaba a `D:\AI\Hermes SKills\...` y `D:\AI\void-hunter`, paths que ya no existen).
+  - Tabla "Bridges Externos": 6 filas duplicadas eliminadas (Build .exe, Tests, Galaxy extraction, Player ship sheets, Audio lowpass test, Nebula render test estaban repetidas).
+  - Historial de Breaches: primera fila registrada (cierre BLOQUE 73.1→73.7, cross-silo, 5 releases v1.5.0→v1.6.3).
+  - Silo `docs/handoffs/` +1 doc: `HANDOFF-GOLIATH-MENU-2026-10-23.md` (mapa autoritativo de GOLIATH + menú principal; supersede `docs/GOLIATH_HANDOFF.md`, congelado en v1.6.2).
+- **2026-10-23 (2ª pasada — sf-sm-doctor + gstack-review)** — Auditoría formal de la sesión GOLIATH + menú:
+  - `sf-sm-doctor` 4/7 → **7/7** (exit 0, 0 findings). El gap era `docs/handoffs/CONTEXT.md` sin sección Token Budget → agregada con formato L/S/R y Truth Anchors.
+  - `gstack-review`: gate scan `listed=4 eligible=4 tagged={}` (sin relajaciones RH-*), shell injection limpio, `.gitignore` verificado (ningún archivo ya commiteado queda ignorado).
+  - **Defecto funcional corregido:** el selector de fondo del menú era inerte en gameplay (`GameplayRuntime` sin back-ref `_game` → `bg_mode` clavado en 1) y el modo 1 perdía la capa de parallax. Fix en `src/ui/scenes.py` + `src/ui/gameplay_runtime.py`; nuevo `tests/test_bg_mode_render.py` (5 tests de píxeles).
+  - `src/audio/music.py`: `SyntaxError` de escape `\A` corregido (docstring con path obsoleto `D:\AI\void-hunter`).
+  - Suite final: **2,791 pass + 8 fail + 6 skipped (2,805 total)**.
