@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+import pygame
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
@@ -272,4 +274,114 @@ def test_oval_stays_taller_than_wide() -> None:
     rt = _runtime()
     _sx, _sy, rx, ry = _goliath_shield_ellipse(rt)
     assert ry > rx, f"el ovalo deberia seguir alto: rx={rx} ry={ry}"
+
+
+# --------------------------------------------------------------------------
+# 6. El ovalo es INVISIBLE (pedido del usuario)
+# --------------------------------------------------------------------------
+def _render_boss(rt) -> "object":
+    import pygame
+
+    surf = pygame.Surface((320, 480))
+    surf.fill((0, 0, 0))
+    rt.draw(surf)
+    return surf
+
+
+def test_nothing_is_drawn_on_the_shield_at_zero_hits(display) -> None:
+    """Sin impactos el escudo no dibuja NADA: el ovalo es invisible.
+
+    Se renderiza el boss dos veces: normal, y con el dibujo del escudo
+    anulado. Si los frames son identicos, el escudo no dibujo nada.
+    """
+    import numpy as np
+
+    rt = _runtime()
+    rt._boss_shield_hits = 0
+    rt._boss_shield_flash_t = 0.0
+    normal = _render_boss(rt)
+
+    rt2 = _runtime()
+    rt2._boss_shield_hits = 0
+    rt2._boss_shield_flash_t = 0.0
+    rt2._draw_goliath_shield = lambda *a, **k: None   # type: ignore[assignment]
+    sin_escudo = _render_boss(rt2)
+
+    a = pygame.surfarray.array3d(normal).astype(np.int16)
+    b = pygame.surfarray.array3d(sin_escudo).astype(np.int16)
+    diff = (np.abs(a - b).sum(axis=2) > 0).sum()
+    assert diff == 0, f"el escudo dibujo {diff} pixeles sin tener carga"
+
+
+def test_the_charge_layer_is_visible_once_loaded(display) -> None:
+    """Con carga tiene que verse la capa de calor (el unico indicador)."""
+    import numpy as np
+
+    rt = _runtime()
+    rt._boss_shield_hits = 12
+    rt._boss_shield_flash_t = 0.0
+    con_calor = _render_boss(rt)
+
+    rt2 = _runtime()
+    rt2._boss_shield_hits = 12
+    rt2._boss_shield_flash_t = 0.0
+    rt2._draw_goliath_shield = lambda *a, **k: None   # type: ignore[assignment]
+    sin_escudo = _render_boss(rt2)
+
+    a = pygame.surfarray.array3d(con_calor).astype(np.int16)
+    b = pygame.surfarray.array3d(sin_escudo).astype(np.int16)
+    diff = (np.abs(a - b).sum(axis=2) > 0).sum()
+    assert diff > 40, f"la capa de calor casi no se ve ({diff} pixeles)"
+
+
+def test_the_impact_layer_flashes_on_a_hit(display) -> None:
+    """Al recibir un disparo se prende el parpadeo."""
+    rt = _runtime()
+    rt._boss_shield_hits = 1
+    rt._boss_shield_flash_t = 0.0
+    sin_flash = _render_boss(rt)
+
+    rt2 = _runtime()
+    rt2._boss_shield_hits = 1
+    rt2._boss_shield_flash_t = 0.30
+    con_flash = _render_boss(rt2)
+
+    import numpy as np
+
+    a = pygame.surfarray.array3d(con_flash).astype(np.int16)
+    b = pygame.surfarray.array3d(sin_flash).astype(np.int16)
+    diff = (np.abs(a - b).sum(axis=2) > 0).sum()
+    assert diff > 40, f"el parpadeo de impacto casi no se ve ({diff} pixeles)"
+
+
+def test_a_bullet_on_the_shield_starts_the_flash(display) -> None:
+    """Un disparo que pega en el escudo prende el parpadeo."""
+    from src.entities.enemies.boss import BOSS_CONFIGS
+    from src.systems.projectile import BULLET_PLAYER, OWNER_PLAYER
+
+    rt = _runtime()
+    rt._boss_shield_flash_t = 0.0
+    b = rt._boss
+    cfg = BOSS_CONFIGS[b.id]
+    b.x = cfg.anchor_x
+    b.y = cfg.anchor_y
+
+    # El disparo tiene que caer dentro del escudo, no dentro del boss.
+    from src.ui.gameplay_runtime import _goliath_shield_ellipse
+
+    sx, sy, _rx, _ry = _goliath_shield_ellipse(rt)
+    rt._bullets.spawn(BULLET_PLAYER, float(sx), float(sy), 0, 100,
+                      damage=1, owner=OWNER_PLAYER)
+    rt._handle_shield_collisions()
+    assert rt._boss_shield_flash_t > 0.0, "el disparo no prendio el parpadeo"
+    assert rt._boss_shield_hits == 1
+
+
+def test_the_flash_decays_over_time(display) -> None:
+    """El parpadeo se apaga solo."""
+    rt = _runtime()
+    rt._boss_shield_flash_t = 0.30
+    rt.update(1.0 / 60.0)
+    assert rt._boss_shield_flash_t < 0.30, "el parpadeo no decayo"
+
 

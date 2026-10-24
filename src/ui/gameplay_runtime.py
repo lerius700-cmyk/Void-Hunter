@@ -101,6 +101,9 @@ GOLIATH_SHIELD_MAX_HITS = 20
 # how long a player bullet is immune after taking beam damage.
 GOLIATH_SHIELD_LASER_DURATION_S = 1.0
 GOLIATH_SHIELD_LASER_DAMAGE_COOLDOWN_S = 0.6
+# BLOQUE 67: duracion del parpadeo de impacto del escudo. Es lo unico que
+# se ve cuando le llega un disparo (el ovalo es invisible).
+GOLIATH_SHIELD_HIT_FLASH_S = 0.30
 
 
 def _goliath_shield_ellipse(runtime: "GameplayRuntime") -> tuple[int, int, int, int]:
@@ -443,6 +446,10 @@ class GameplayRuntime:
         self._boss_shield_laser_t: float = 0.0  # 0.0 = not firing; >0 = remaining seconds
         self._boss_shield_laser_duration: float = 1.0
         self._boss_shield_laser_damage_cooldown: dict[int, float] = {}
+        # BLOQUE 67: parpadeo de impacto del escudo. El ovalo es
+        # invisible; lo unico que se ve al recibir un disparo es esta capa
+        # titilando. Cuenta hacia abajo desde GOLIATH_SHIELD_HIT_FLASH_S.
+        self._boss_shield_flash_t: float = 0.0
         # BLOQUE 67: ultimo modo de fondo aplicado al parallax (-1 = nunca).
         # 0 = SPACE VOID, 1 = ASTEROID NEBULA (el fondo real de v1.4.0).
         self._bg_mode_applied: int = -1
@@ -2539,6 +2546,9 @@ class GameplayRuntime:
                 p.active = False
                 self._bullets.pool.release(p)
                 self._boss_shield_hits += 1
+                # BLOQUE 67: el ovalo es invisible, asi que el unico
+                # indicio de impacto es esta capa titilando.
+                self._boss_shield_flash_t = GOLIATH_SHIELD_HIT_FLASH_S
                 # Spark feedback on the shield
                 self._emit_burst(p.x, p.y, count=3, kind="spark",
                                   color=(180, 200, 255))
@@ -3227,6 +3237,11 @@ class GameplayRuntime:
         _section_t0 = _time.perf_counter()
         # BLOQUE 53a: tick the shield laser timer + beam damage
         self._update_shield_laser(effective_dt)
+        # BLOQUE 67: decae el parpadeo de impacto del escudo.
+        if self._boss_shield_flash_t > 0.0:
+            self._boss_shield_flash_t = max(
+                0.0, self._boss_shield_flash_t - effective_dt
+            )
         _section("shield_laser", _section_t0)
         _section_t0 = _time.perf_counter()
         if self._screen_flash > 0.0:
@@ -5853,17 +5868,21 @@ class GameplayRuntime:
             pygame.draw.rect(target, (255, 255, 255), rect, 1)
 
     def _draw_goliath_shield(self, target: pygame.Surface, ox: int, oy: int) -> None:
-        """BLOQUE 67: draw GOLIATH's shield as a translucent oval.
+        """BLOQUE 67: el escudo de GOLIATH.
 
-        The oval is measured from the current frame's sprite, so it sits
-        exactly on the shield plate on GOLIATH's RIGHT arm, and it is read
-        through `_goliath_shield_ellipse` — the SAME helper the hitbox
-        uses, so the picture and what the bullets collide with can never
-        drift apart.
+        **El ovalo es INVISIBLE.** No se dibuja ni el cuerpo ni el borde ni
+        el remache: lo unico que se ve sobre la placa son dos capas.
 
-        BLOQUE 67: the charge ramp now goes RED on the first hit and keeps
-        heating (red -> orange -> amber -> white hot) as the shield
-        charges, instead of the old iron/blue/cyan ramp.
+          1. la CAPA DE CALOR - un resplandor que crece y se calienta a
+             medida que el escudo carga (rojo -> naranja -> ambar ->
+             blanco caliente). A 0 impactos no se ve nada.
+          2. la CAPA DE IMPACTO - un parpadeo corto y blanco cada vez que
+             le llega un disparo. Es la unica senal de que el disparo
+             pego, porque el ovalo no esta a la vista.
+
+        La posicion sale de `_goliath_shield_ellipse`, la misma medicion
+        que usan el hitbox y el origen del laser, asi que las tres cosas
+        no pueden desincronizarse.
         """
         if self._boss is None:
             return
@@ -5876,46 +5895,49 @@ class GameplayRuntime:
         charge = min(1.0, self._boss_shield_hits / float(GOLIATH_SHIELD_MAX_HITS))
         shield_color = _shield_charge_color(charge)
 
-        # Translucent body on its own surface so SRCALPHA applies.
-        # BLOQUE 67: the minimum alpha was raised (70 -> 115) because at the
-        # old value the first-hit red read as dark brown over the dark
-        # background -- the "it turns red the moment it gets hit" cue was
-        # invisible. It has to pop on the very first bullet.
-        body = pygame.Surface((rx * 2 + 2, ry * 2 + 2), pygame.SRCALPHA)
-        fill_a = int(115 + 85 * charge)
-        pygame.draw.ellipse(
-            body, (*shield_color, fill_a),
-            (0, 0, rx * 2 + 2, ry * 2 + 2),
-        )
-        target.blit(body, (sx - rx - 1, sy - ry - 1))
-
-        # Bright rim so the oval reads against the dark boss silhouette.
-        rim = tuple(min(255, c + 70) for c in shield_color)
-        pygame.draw.ellipse(
-            target, rim, (sx - rx, sy - ry, rx * 2, ry * 2), 2,
-        )
-
-        # Inner bronze boss (the rivet) — same detail the procedural
-        # version had, keeps the oval reading as a plate not a bubble.
-        pygame.draw.circle(target, (140, 95, 45), (sx, sy), 4)
-        pygame.draw.circle(target, (190, 140, 70), (sx, sy), 4, 1)
-
-        # Charging glow (intensity scales with charge).
+        # --- CAPA DE CALOR -----------------------------------------------
+        # El resplandor del escudo cargandose. A 0 impactos no se dibuja.
         if charge > 0.0:
             pulse = 0.5 + 0.5 * math.sin(self._t * 6.0)
             glow_size = int((rx + ry) * 2)
             glow = pygame.Surface((glow_size, glow_size), pygame.SRCALPHA)
-            glow_alpha = int((30 + 90 * charge) * (0.6 + 0.4 * pulse))
+            alpha = int((80 + 150 * charge) * (0.65 + 0.35 * pulse))
+            # Relleno interior: la placa entera se ve caliente.
             pygame.draw.ellipse(
-                glow, (255, 150 + 60 * charge, 60, glow_alpha),
+                glow, (*shield_color, int(alpha * 0.28)),
+                (0, 0, glow_size, glow_size),
+            )
+            # Borde: el contorno del resplandor.
+            pygame.draw.ellipse(
+                glow, (*shield_color, alpha),
                 (0, 0, glow_size, glow_size), 1,
             )
+            inner = glow_size // 5
             pygame.draw.ellipse(
-                glow, (255, 180, 90, int(glow_alpha * 0.5)),
-                (glow_size // 8, glow_size // 8,
-                 glow_size - glow_size // 4, glow_size - glow_size // 4), 1,
+                glow, (*shield_color, int(alpha * 0.5)),
+                (inner, inner, glow_size - inner * 2, glow_size - inner * 2), 1,
             )
             target.blit(glow, (sx - glow_size // 2, sy - glow_size // 2))
+
+        # --- CAPA DE IMPACTO ---------------------------------------------
+        # El parpadeo cuando entra un disparo. Titila (alfa modulado
+        # rapido) mientras el temporizador baja.
+        if self._boss_shield_flash_t > 0.0:
+            flick = 0.5 + 0.5 * math.sin(self._t * 45.0)
+            life = self._boss_shield_flash_t / GOLIATH_SHIELD_HIT_FLASH_S
+            alpha = int(255 * life * (0.30 + 0.70 * flick))
+            flash_size = int((rx + ry) * 2)
+            flash = pygame.Surface((flash_size, flash_size), pygame.SRCALPHA)
+            pygame.draw.ellipse(
+                flash, (255, 245, 220, alpha),
+                (0, 0, flash_size, flash_size), 2,
+            )
+            pygame.draw.ellipse(
+                flash, (255, 220, 160, int(alpha * 0.6)),
+                (flash_size // 6, flash_size // 6,
+                 flash_size - flash_size // 3, flash_size - flash_size // 3), 1,
+            )
+            target.blit(flash, (sx - flash_size // 2, sy - flash_size // 2))
 
     def _apply_background_mode(self, bg_mode: int) -> None:
         """BLOQUE 67: le pasa el modo de fondo al parallax, solo si cambia.

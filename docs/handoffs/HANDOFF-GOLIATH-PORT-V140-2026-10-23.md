@@ -314,7 +314,27 @@ exterior de +24 → **+36**, paleta roja `(255,60,40)` → naranja
 `(255,110,30)/(255,150,40)/(255,226,150)`. Sale de la placa (origen medido),
 no del pecho.
 
-### 6.4 Defaults que NO se tocaron
+### 6.4 El óvalo es INVISIBLE (BLOQUE 67, 4º pedido del usuario)
+
+El usuario pidió que **no se vea el óvalo**: solo la capa que se calienta y
+la que titila cuando recibe un disparo.
+
+Se eliminaron del dibujo del escudo: el cuerpo translúcido, el borde
+brillante y el remache de bronce. Quedan dos capas:
+
+| Capa | Qué es | Cuándo se ve |
+|---|---|---|
+| **CAPA DE CALOR** | resplandor elíptico (relleno tenue + borde) con la rampa de carga | desde el 1er impacto; crece y se calienta |
+| **CAPA DE IMPACTO** | parpadeo blanco, alfa modulado rápido (`sin(t * 45)`) | 0.30 s por cada disparo (`GOLIATH_SHIELD_HIT_FLASH_S`) |
+
+A 0 impactos no se dibuja **nada** sobre la placa. El óvalo sigue siendo
+la referencia geométrica (hitbox, origen del láser y posición de las dos
+capas) — lo que cambió es que ya no se *dibuja*.
+
+Estado nuevo en el runtime: `self._boss_shield_flash_t`, que se prende en
+`_handle_shield_collisions` y decae en el update.
+
+### 6.5 Defaults que NO se tocaron
 
 `bg_mode` default = **1** (ASTEROID NEBULA). `bg_variant_idx` default =
 **3** (purple_dusk).

@@ -36,6 +36,8 @@ def _make_runtime(boss_id: str = "goliath", animation_path: str = "bosses/goliat
     # BLOQUE 73.2: _draw_goliath consults this to decide whether to draw
     # the shield oval or leave the slot to the charged laser.
     rt._boss_shield_laser_t = 0.0
+    # BLOQUE 67: parpadeo de impacto del escudo (capa de impacto).
+    rt._boss_shield_flash_t = 0.0
     rt._boss_spear_phase = "ready"
     rt._boss_spear_phase_t = 0.0
     # Boss — use a MagicMock so we can set arbitrary attributes
