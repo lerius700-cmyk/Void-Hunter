@@ -132,7 +132,51 @@ exigía inventar tres APIs nuevas que v1.6.3 nunca tuvo — es decir, no portar,
 Los 3 archivos quedaron apartados en
 `.worktrees/_srcrefs/_bloque66_branch_tests/` (fuera del repo) por si se quiere revisarlos.
 
-### 4.2 No portado por ser otro BLOQUE (fuera de alcance)
+### 4.2 El fondo ASTEROID NEBULA — recuperado (BLOQUE 67, 3er pedido del usuario)
+
+El usuario pidió poner **el fondo real de v1.4.0 (BLOQUE 71)** en la opción
+ASTEROID NEBULA del menú.
+
+**Lo que había:** el gameplay dibujaba el `ScrollingGalaxyBackground`
+(`galaxy_strip.png`, BLOQUE 58.6w) **por encima** del parallax. Dos fondos
+superpuestos, y el de arriba tapaba el de v1.4.0. En v1.4.0 ese objeto se
+actualizaba pero **nunca se dibujaba**.
+
+**Lo que es el fondo de v1.4.0:** el `ParallaxBackground` del gameplay se
+construía con `use_tile_sequence=True` y
+`tiles_dir=Assets/background/tiles/act1` — o sea, la secuencia de **6 tiles
+pintados** del "Asteroid Approach" (el morado procedural). Eran 320×480
+cada uno, 78 KB en total.
+
+**Por qué no estaban:** nunca se commitearon (el `ai_gen` los generaba en
+la máquina del dev). Por eso v1.4.0 crasheaba al arrancar (BLOQUE 73.1 lo
+tapó) y el juego no tenía ese fondo.
+
+**Dónde estaban:** en dos copias locales del repo que sí los tenían, con
+MD5 idéntico entre sí:
+
+```
+F:\AI\MM\void-hunter-backup\Assets\background\tiles\act1\
+F:\AI\Hermes Projects\Game Development\void-hunter\Assets\background\tiles\act1\
+```
+
+Se recuperaron de ahí — **no se regeneraron con AI**: son los PNGs
+originales, pintados a mano — y ahora están commiteados.
+
+**Qué cambió en el código:**
+
+| Archivo | Cambio |
+|---|---|
+| `src/systems/tile_manager.py` | `set_enabled()` — apaga/prende el fondo de tiles sin perder los assets |
+| `src/systems/parallax.py` | `set_background_mode(space_void=)`; `draw()` cae al strip procedural si el tile manager no está disponible (antes quedaba negro) |
+| `src/ui/gameplay_runtime.py` | bg_mode 1 = tiles (v1.4.0 real); bg_mode 0 = solo estrellas. `_apply_background_mode()` solo reaplica cuando el modo cambia |
+| `tools/tiles/` | pipeline de generación restaurado (`generate_tiles.py`, `ai_gen/02-04`, `VERIFICATION.md`, `_batch_args.json`) con las rutas hardcodeadas `D:\AI\void-hunter` convertidas a relativas. **No** se copiaron los JPGs crudos de `ai_gen/_raw/` (35 MB) |
+
+**Los 5 tests de tiles que estaban en `skip`** (el `skipif` de
+`test_tile_manager.py` los apagaba porque los assets no existían) ahora
+corren y pasan.
+
+### 4.3 No portado por ser otro BLOQUE (fuera de alcance)
 
 - **Carga dearma (charge system)** — los cambios de `master` en `test_gameplay_runtime.py`
   ("BLOQUE 73 Phase A") reescriben el contrato de carga del jugador. Se aplicó **sólo**

@@ -29,6 +29,10 @@ class TileManager:
         # FileNotFoundError at construction time, which crashed the whole
         # game at startup (v1.4.0 shipped broken for this reason).
         #
+        # BLOQUE 67: the tiles WERE recovered (from two local copies of the
+        # repo that still had them) and are committed now, 78 KB total.
+        # The guard stays: a clone without them still has to run.
+        #
         # `available=False` is a supported state: ParallaxBackground then
         # falls back to the procedural galaxy strip, which is the default
         # path for acts 2-4 anyway. The game is playable without the tiles;
@@ -36,6 +40,7 @@ class TileManager:
         # backdrop.
         self._tile_surfaces: list[pygame.Surface] = []
         self.available = False
+        self._assets_present = False
         if not self._tiles_dir.exists():
             return
         for i in range(self.NUM_TILES):
@@ -57,7 +62,18 @@ class TileManager:
                 self._tile_surfaces = []
                 return
         # BLOQUE 73.1: only now are all 6 tiles loaded — mark available.
+        self._assets_present = True
         self.available = True
+
+    def set_enabled(self, enabled: bool) -> None:
+        """BLOQUE 67: enciende/apaga el fondo de tiles sin perder los assets.
+
+        False = el modo SPACE VOID del menu (solo estrellas). True = el
+        fondo real del gameplay de v1.4.0 (Asteroid Approach). Si los
+        tiles no estan en el repo, esto no hace nada: el fallback es el
+        strip procedural de la galaxia.
+        """
+        self.available = bool(enabled) and self._assets_present
 
     def get_height(self) -> int:
         return self.NUM_TILES * self.TILE_H

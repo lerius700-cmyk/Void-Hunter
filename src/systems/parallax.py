@@ -228,6 +228,11 @@ class ParallaxBackground:
         self._theme_name: str = _STRIP_VARIANT_THEMES[0]
         self._stars_per_layer = stars_per_layer
         self._spawn_planets_enabled = spawn_planets
+        # BLOQUE 67: el strip procedural (la galaxia grande) se puede
+        # apagar para el modo "SPACE VOID" del menu. Sin este flag el
+        # parallax siempre pintaba su galaxia y no habia forma de
+        # quedarse solo con las estrellas.
+        self._strip_enabled: bool = True
         # Render the initial strip eagerly
         self._get_or_render_strip(self._strip_variant)
         self._init_stars()
@@ -256,6 +261,36 @@ class ParallaxBackground:
 
     def get_strip_variant(self) -> int:
         return self._strip_variant
+
+    def set_strip_enabled(self, enabled: bool) -> None:
+        """BLOQUE 67: enciende/apaga la galaxia procedural del strip.
+
+        False = solo las estrellas y los planetas (modo SPACE VOID).
+        True = el fondo completo de v1.4.0: galaxia + estrellas + planeta.
+        """
+        self._strip_enabled = bool(enabled)
+
+    def get_strip_enabled(self) -> bool:
+        return self._strip_enabled
+
+    def set_planets_enabled(self, enabled: bool) -> None:
+        """BLOQUE 67: el modo SPACE VOID tampoco quiere planetas."""
+        self._spawn_planets_enabled = bool(enabled)
+
+    def set_background_mode(self, space_void: bool) -> None:
+        """BLOQUE 67: elige el fondo del gameplay.
+
+        space_void=False (ASTEROID NEBULA) -> el fondo REAL de v1.4.0:
+            los tiles del "Asteroid Approach" (Assets/background/tiles/act1/,
+            6 PNGs de 320x480) con la galaxia procedural como fallback si
+            los tiles no estan en el repo.
+        space_void=True (SPACE VOID) -> solo el campo de estrellas:
+            sin tiles, sin galaxia y sin planetas.
+        """
+        self._strip_enabled = not space_void
+        self._spawn_planets_enabled = not space_void
+        if self._tile_manager is not None:
+            self._tile_manager.set_enabled(not space_void)
 
     def get_strip_height(self) -> int:
         return GALAXY_STRIP_H
@@ -291,12 +326,18 @@ class ParallaxBackground:
                 self._planet_timer = self._rng.uniform(PLANET_SPAWN_MIN_S, PLANET_SPAWN_MAX_S)
 
     def draw(self, target: pygame.Surface) -> None:
-        if self._tile_manager is not None:
+        if self._tile_manager is not None and self._tile_manager.available:
             # Tile mode: draw the tile as the backdrop. Stars + planets draw over.
             self._tile_manager.draw(target, scroll_y=self._strip_y_offset)
-        else:
+        elif self._strip_enabled:
             # Strip mode: draw the galaxy strip centered (offset 80) so the 480-wide
             # strip shows its middle 320 inside the 320-wide playfield.
+            #
+            # BLOQUE 67: this is now the FALLBACK. If the tile manager
+            # exists but its assets are not available (clone without the
+            # tiles), the old code drew nothing at all and the screen
+            # stayed black. Here it falls through to the procedural
+            # galaxy strip instead.
             strip = self._strip_surfaces.get(self._strip_variant)
             if strip is not None:
                 y = -self._strip_y_offset

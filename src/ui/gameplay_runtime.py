@@ -443,6 +443,9 @@ class GameplayRuntime:
         self._boss_shield_laser_t: float = 0.0  # 0.0 = not firing; >0 = remaining seconds
         self._boss_shield_laser_duration: float = 1.0
         self._boss_shield_laser_damage_cooldown: dict[int, float] = {}
+        # BLOQUE 67: ultimo modo de fondo aplicado al parallax (-1 = nunca).
+        # 0 = SPACE VOID, 1 = ASTEROID NEBULA (el fondo real de v1.4.0).
+        self._bg_mode_applied: int = -1
         self._shockwaves: list[Shockwave] = []  # expanding ring effects
         # BLOQUE 58.14.7: orange/yellow bomb burst (procedural soft circles)
         self._bomb_bursts: list[BombBurst] = []
@@ -3829,25 +3832,34 @@ class GameplayRuntime:
             elif self._bg is not None:
                 self._bg.draw(target)
         elif bg_mode == 0:
-            # SPACE VOID: only the sparse parallax starfield.
+            # SPACE VOID: solo el campo de estrellas. Sin la galaxia
+            # procedural, sin los tiles del Asteroid Approach y sin
+            # planetas.
             if self._parallax_bg is not None:
+                self._apply_background_mode(bg_mode)
                 self._parallax_bg.draw(target)
         else:
-            # ASTEROID NEBULA: the rich procedural strip first, then the
-            # parallax layer on top for the sparkles. This is the v1.4.0
-            # composition and what the BLOQUE 73.6 spec + the v1.6.3
-            # release notes specify ("ScrollingGalaxyBackground + parallax
-            # encima"). Before this fix the parallax draw lived only in
-            # the bg_mode == 0 branch, so the nebula lost its layer.
+            # ASTEROID NEBULA: el fondo REAL del gameplay de v1.4.0
+            # (BLOQUE 71).
             #
-            # NOTE: the galaxy strip used to be created and updated but
-            # NEVER drawn (BLOQUE 58.14.4 removed the draw() call), so the
-            # pixels were computed and thrown away. It is drawn here.
-            if self._galaxy_bg is not None and self._galaxy_bg.is_ready:
-                self._galaxy_bg.draw(target)
-            elif self._tiling_bg is not None:
-                self._tiling_bg.draw(target)
+            # En v1.4.0 el ParallaxBackground del gameplay se construia
+            # con use_tile_sequence=True y tiles_dir=Assets/background/
+            # tiles/act1 -- o sea, el fondo era la secuencia de 6 tiles
+            # pintados del "Asteroid Approach" (el morado procedural que
+            # el usuario recuerda). Esos PNGs nunca se commitearon, y por
+            # eso v1.4.0 crasheaba al arrancar (BLOQUE 73.1 lo tapo).
+            #
+            # Ahora los tiles estan commiteados (78 KB) y el fondo del
+            # gameplay vuelve a ser el de v1.4.0. Si un clone no los
+            # tiene, el parallax cae al strip procedural de la galaxia.
+            #
+            # Lo que se dibujaba antes era el ScrollingGalaxyBackground
+            # (galaxy_strip.png, BLOQUE 58.6w) POR ENCIMA del parallax:
+            # dos fondos superpuestos, y el de arriba tapaba el de
+            # v1.4.0. En v1.4.0 ese objeto se actualizaba pero NUNCA se
+            # dibujo.
             if self._parallax_bg is not None:
+                self._apply_background_mode(bg_mode)
                 self._parallax_bg.draw(target)
         # BLOQUE 25: ambient drift particles in background
         self._draw_ambient_dust(target)
@@ -5904,6 +5916,19 @@ class GameplayRuntime:
                  glow_size - glow_size // 4, glow_size - glow_size // 4), 1,
             )
             target.blit(glow, (sx - glow_size // 2, sy - glow_size // 2))
+
+    def _apply_background_mode(self, bg_mode: int) -> None:
+        """BLOQUE 67: le pasa el modo de fondo al parallax, solo si cambia.
+
+        SPACE VOID (0) = solo estrellas. ASTEROID NEBULA (1) = el fondo real
+        de v1.4.0: los tiles del "Asteroid Approach" (con la galaxia
+        procedural como fallback si los tiles no estan en el repo).
+        """
+        if self._bg_mode_applied == bg_mode:
+            return
+        self._bg_mode_applied = bg_mode
+        if self._parallax_bg is not None:
+            self._parallax_bg.set_background_mode(space_void=(bg_mode == 0))
 
     def _draw_goliath(self, target: pygame.Surface, ox: int, oy: int) -> None:
         """BLOQUE 64.B: GOLIATH — biblical giant warrior visual.
