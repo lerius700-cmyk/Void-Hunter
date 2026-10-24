@@ -75,6 +75,8 @@ else:
 #
 # The constants below are now a NUDGE on top of that measurement:
 #   DX / DY — pixel offset applied to the measured centre
+#   RX_SCALE — factor applied to the measured horizontal radius (the
+#              oval's MINOR axis) so it reads thinner
 #   RX / RY — fallback half-size when the sprite can't be measured
 #   R       — base radius used for the hitbox fallback
 #
@@ -82,7 +84,14 @@ else:
 # LEFT of centre, on the torso, and were the reason it never matched the
 # plate. They are kept here only as the documented fallback size.
 GOLIATH_SHIELD_DX = 0
-GOLIATH_SHIELD_DY = 0
+# BLOQUE 67 (user request): 3 px DOWN. The oval sat slightly high,
+# riding the top of the plate / the shoulder line.
+GOLIATH_SHIELD_DY = 3
+# BLOQUE 67 (user request): the oval's minor axis (horizontal) gets
+# thinner. The measured plate is ~9 px of half-width; scaling it to 0.78
+# brings the oval to ~7, which reads noticeably leaner without losing
+# the plate. The vertical radius is untouched, so the oval stays tall.
+GOLIATH_SHIELD_RX_SCALE = 0.78
 GOLIATH_SHIELD_R = 11
 GOLIATH_SHIELD_RX = 11
 GOLIATH_SHIELD_RY = 17
@@ -115,10 +124,12 @@ def _goliath_shield_ellipse(runtime: "GameplayRuntime") -> tuple[int, int, int, 
     vw, vh = 96, 80
     centroid_dx, centroid_dy = get_sprite_centroid_offset(path)
     cx, cy, rx, ry = get_sprite_shield_ellipse(path)
+    # BLOQUE 67: adelgazar el eje menor (horizontal) del ovalo.
+    rx = max(2, int(round(rx * GOLIATH_SHIELD_RX_SCALE)))
     return (
         int(runtime._boss.x) - vw // 2 + centroid_dx + int(round(cx)) + GOLIATH_SHIELD_DX,
         int(runtime._boss.y) - vh // 2 + centroid_dy + int(round(cy)) + GOLIATH_SHIELD_DY,
-        int(round(rx)),
+        rx,
         int(round(ry)),
     )
 

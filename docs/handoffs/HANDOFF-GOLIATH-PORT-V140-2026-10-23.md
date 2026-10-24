@@ -213,10 +213,21 @@ con la placa.
 | Constante | Antes (66.4o) | Ahora | Significado |
 |---|---|---|---|
 | `GOLIATH_SHIELD_DX` | -11 | **0** | ajuste del centro medido |
-| `GOLIATH_SHIELD_DY` | 6 | **0** | ajuste del centro medido |
+| `GOLIATH_SHIELD_DY` | 6 | **3** | ajuste del centro medido (3 px abajo) |
+| `GOLIATH_SHIELD_RX_SCALE` | — | **0.78** | adelgaza el eje menor del óvalo |
 | `GOLIATH_SHIELD_R` | 11 | 11 | radio base (fallback) |
 | `GOLIATH_SHIELD_RX` | 11 | 11 | half-size fallback |
 | `GOLIATH_SHIELD_RY` | 17 | 17 | half-size fallback |
+
+**Ajuste fino (2º pedido del usuario, mismo día):** bajar el óvalo 3 px
+(`DY = 3` — estaba medio arriba, rozando el hombro) y adelgazar el eje
+menor horizontal (`RX_SCALE = 0.78`: el radio medido de ~9 px pasa a ~7,
+el vertical queda igual). El óvalo sigue siendo más alto que ancho.
+
+Los tres ajustes son **la misma medición + un nudge**: la medición pura
+vive en `scenes.get_sprite_shield_ellipse()` (sin `DX`/`DY`/`RX_SCALE`) y
+el runtime aplica los nudges. Así el "encaje perfecto" no se pierde por
+retocar un número.
 
 **La elipse ya no es un óvalo fijo**: se MIDE por frame desde la silueta del
 sprite con `scenes.get_sprite_shield_ellipse()`. La placa usa la misma paleta

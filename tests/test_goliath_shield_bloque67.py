@@ -224,3 +224,52 @@ def test_laser_width_is_wider_than_the_old_eight_pixels() -> None:
     src = inspect.getsource(GameplayRuntime._draw_shield_laser)
     assert "beam_w = 8\n" not in src
 
+
+# --------------------------------------------------------------------------
+# 5. Ajuste fino pedido por el usuario: 3 px abajo y mas delgado
+# --------------------------------------------------------------------------
+def test_shield_is_shifted_three_pixels_down() -> None:
+    """El ovalo va 3 px mas abajo que la placa medida."""
+    from src.ui.gameplay_runtime import GOLIATH_SHIELD_DY, _goliath_shield_ellipse
+    from src.ui.scenes import get_sprite_centroid_offset, get_sprite_shield_ellipse
+
+    assert GOLIATH_SHIELD_DY == 3, f"DY deberia ser 3, es {GOLIATH_SHIELD_DY}"
+
+    rt = _runtime()
+    _sx, sy, _rx, _ry = _goliath_shield_ellipse(rt)
+    path = rt._boss.animation_path
+    _cx, cy, _m_rx, _m_ry = get_sprite_shield_ellipse(path)
+    _cdx, cdy = get_sprite_centroid_offset(path)
+    expected = int(rt._boss.y) - 40 + cdy + int(round(cy)) + 3
+    assert sy == expected, f"el centro deberia estar 3 px mas abajo: {sy} != {expected}"
+
+
+def test_shield_minor_axis_is_thinner_than_the_measured_plate() -> None:
+    """El eje menor (horizontal) del ovalo se adelgaza; el vertical no."""
+    from src.ui.gameplay_runtime import (
+        GOLIATH_SHIELD_RX_SCALE,
+        _goliath_shield_ellipse,
+    )
+    from src.ui.scenes import get_sprite_shield_ellipse
+
+    assert GOLIATH_SHIELD_RX_SCALE < 1.0, "el ovalo deberia adelgazar"
+    assert GOLIATH_SHIELD_RX_SCALE >= 0.6, "no lo adelgaces demasiado"
+
+    rt = _runtime()
+    _sx, _sy, rx, ry = _goliath_shield_ellipse(rt)
+    _cx, _cy, m_rx, m_ry = get_sprite_shield_ellipse(rt._boss.animation_path)
+
+    assert rx < m_rx, f"el radio horizontal deberia ser menor: {rx} vs {m_rx}"
+    assert rx == max(2, int(round(m_rx * GOLIATH_SHIELD_RX_SCALE)))
+    # El vertical queda como estaba: el ovalo sigue siendo alto.
+    assert ry == int(round(m_ry)), f"el radio vertical no deberia cambiar: {ry} vs {m_ry}"
+
+
+def test_oval_stays_taller_than_wide() -> None:
+    """Con el ajuste, el ovalo sigue siendo mas alto que ancho."""
+    from src.ui.gameplay_runtime import _goliath_shield_ellipse
+
+    rt = _runtime()
+    _sx, _sy, rx, ry = _goliath_shield_ellipse(rt)
+    assert ry > rx, f"el ovalo deberia seguir alto: rx={rx} ry={ry}"
+
