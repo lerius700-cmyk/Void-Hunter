@@ -62,31 +62,27 @@ else:
 
 
 # ---------------------------------------------------------------------------
-# BLOQUE 73.2: GOLIATH shield geometry (ported from BLOQUE 66)
+# BLOQUE 67: GOLIATH shield geometry (ported from BLOQUE 66, reworked 73.2)
 # ---------------------------------------------------------------------------
-# BLOQUE 66.4g: GOLIATH's shield is an ellipse whose centre moves per frame,
-# because the sprite's own silhouette moves per frame. A constant offset lands
-# over the chest in some frames and floats in empty space in others. See
-# `scenes.get_sprite_arm_anchor`.
+# BLOQUE 67 (user request): the oval had to move to GOLIATH's RIGHT arm --
+# the arm that actually carries the shield -- and had to FIT the shield's
+# silhouette exactly, instead of floating on the torso.
 #
-# All three consumers — the visual (_draw_goliath_shield), the hitbox
-# (_handle_shield_collisions) and the laser origin (_draw_shield_laser) —
-# read this one helper, so the picture, the hitbox and the beam can never
-# disagree. That desync is what the user reported repeatedly across
-# BLOQUE 65 and 66.1-66.4f.
+# That changed the geometry from "a fixed oval near the body anchor" to
+# "an oval measured from the sprite's own silhouette, per frame":
+# `scenes.get_sprite_shield_ellipse()` measures the plate and returns
+# (cx, cy, rx, ry) in sprite-local coordinates.
 #
-# The charge indicator is an OVAL fitted to the shield plate. Measured off
-# the sprite alpha map, the plate sits at roughly sprite cols 45-68, rows
-# 25-55 — so DX pulls it 11 px back onto the plate and DY drops it 6 px so
-# the oval straddles the plate's vertical middle. RX/RY make it an oval
-# (11x17) rather than a circle, matching the plate's tall aspect.
+# The constants below are now a NUDGE on top of that measurement:
+#   DX / DY — pixel offset applied to the measured centre
+#   RX / RY — fallback half-size when the sprite can't be measured
+#   R       — base radius used for the hitbox fallback
 #
-# These five values were approved by the user at BLOQUE 66.4o ("el ovalo
-# esta dentro de la silueta del escudo, y se ve bastante bien"). BLOQUE
-# 66.5 shrank them (DX=-2, DY=0, RX=7, RY=10) and the user rejected that.
-# DO NOT change them without explicit approval.
-GOLIATH_SHIELD_DX = -11
-GOLIATH_SHIELD_DY = 6
+# The OLD values (DX=-11, DY=6, RX=11, RY=17) put the oval 11 px to the
+# LEFT of centre, on the torso, and were the reason it never matched the
+# plate. They are kept here only as the documented fallback size.
+GOLIATH_SHIELD_DX = 0
+GOLIATH_SHIELD_DY = 0
 GOLIATH_SHIELD_R = 11
 GOLIATH_SHIELD_RX = 11
 GOLIATH_SHIELD_RY = 17
@@ -98,25 +94,64 @@ GOLIATH_SHIELD_LASER_DURATION_S = 1.0
 GOLIATH_SHIELD_LASER_DAMAGE_COOLDOWN_S = 0.6
 
 
-def _goliath_shield_center(runtime: "GameplayRuntime") -> tuple[int, int]:
-    """World-space centre of GOLIATH's shield for the current frame.
+def _goliath_shield_ellipse(runtime: "GameplayRuntime") -> tuple[int, int, int, int]:
+    """World-space (cx, cy, rx, ry) of the oval on GOLIATH's shield.
 
-    Converts the frame's sprite-local arm anchor into world coordinates
-    using the same blit origin `_draw_goliath` applies to the sprite
-    itself, so the shield and the sprite can never drift apart.
+    This is the ONE anchor. The visual (_draw_goliath_shield), the hitbox
+    (_handle_shield_collisions) and the laser origin (_draw_shield_laser)
+    all read it, so the picture, what the bullets collide with and where
+    the beam comes from can never disagree.
+
+    The ellipse is measured from the current frame's sprite silhouette, so
+    it tracks the plate exactly as the arm moves. When the sprite is
+    missing or the frame is degenerate, the fallback half-size
+    (GOLIATH_SHIELD_RX / GOLIATH_SHIELD_RY) is used.
     """
-    from src.ui.scenes import get_sprite_arm_anchor, get_sprite_centroid_offset
+    from src.ui.scenes import get_sprite_centroid_offset, get_sprite_shield_ellipse
 
     if runtime._boss is None:
-        return (0, 0)
+        return (0, 0, GOLIATH_SHIELD_RX, GOLIATH_SHIELD_RY)
     path = runtime._boss.animation_path
     vw, vh = 96, 80
     centroid_dx, centroid_dy = get_sprite_centroid_offset(path)
-    arm_col, arm_row = get_sprite_arm_anchor(path)
+    cx, cy, rx, ry = get_sprite_shield_ellipse(path)
     return (
-        int(runtime._boss.x) - vw // 2 + centroid_dx + arm_col + GOLIATH_SHIELD_DX,
-        int(runtime._boss.y) - vh // 2 + centroid_dy + arm_row + GOLIATH_SHIELD_DY,
+        int(runtime._boss.x) - vw // 2 + centroid_dx + int(round(cx)) + GOLIATH_SHIELD_DX,
+        int(runtime._boss.y) - vh // 2 + centroid_dy + int(round(cy)) + GOLIATH_SHIELD_DY,
+        int(round(rx)),
+        int(round(ry)),
     )
+
+
+def _goliath_shield_center(runtime: "GameplayRuntime") -> tuple[int, int]:
+    """World-space centre of GOLIATH's shield for the current frame."""
+    cx, cy, _rx, _ry = _goliath_shield_ellipse(runtime)
+    return (cx, cy)
+
+
+def _shield_charge_color(charge: float) -> tuple[int, int, int]:
+    """BLOQUE 67: the shield goes RED on the first hit and keeps heating.
+
+    The user asked for the oval to turn red the moment a bullet lands and
+    then warm up as the shield charges, so the player reads the charge
+    state off the colour alone:
+
+        0 hits          cold steel (not yet charged)
+        first hit       red
+        ~35%            red -> orange
+        ~70%            orange -> amber
+        100%            amber -> white hot
+    """
+    if charge <= 0.0:
+        return (96, 104, 124)
+    if charge < 0.35:
+        t = charge / 0.35
+        return (int(224 + 26 * t), int(44 + 96 * t), int(44 + 12 * t))
+    if charge < 0.70:
+        t = (charge - 0.35) / 0.35
+        return (255, int(140 + 70 * t), int(56 + 64 * t))
+    t = (charge - 0.70) / 0.30
+    return (255, int(210 + 40 * t), int(120 + 100 * t))
 
 
 # Wave spawn intervals (seconds) — how often to drop a new enemy during a wave
@@ -2469,19 +2504,19 @@ class GameplayRuntime:
         # If the laser is already firing, don't accumulate more charge
         if self._boss_shield_laser_t > 0.0:
             return
-        sx, sy = _goliath_shield_center(self)
+        sx, sy, srx, sry = _goliath_shield_ellipse(self)
         # BLOQUE 73.4: the hitbox must be the oval's own bounding box, not
-        # a square from the radius. GOLIATH_SHIELD_R is 11, which matches
-        # RX, but the oval is 11x17 — so a square 22x22 rect left the top
-        # and bottom 6 px of the visible shield non-colliding. Bullets
-        # passed straight through a shield the player could plainly see.
+        # a square from the radius. The oval is tall (rx != ry), so a
+        # square would leave the top and bottom of the visible shield
+        # non-colliding — bullets passed straight through a shield the
+        # player could plainly see.
         #
         # The +1 on each axis is not slack: pygame.Rect is half-open, so
-        # a rect of width 2*RX excludes the pixel at exactly +RX. Without
+        # a rect of width 2*rx excludes the pixel at exactly +rx. Without
         # it, the oval's leftmost and rightmost rim pixels fell outside.
-        hx = max(GOLIATH_SHIELD_R, GOLIATH_SHIELD_RX) + 1
-        hy = max(GOLIATH_SHIELD_R, GOLIATH_SHIELD_RY) + 1
-        shield_rect = pygame.Rect(int(sx - hx), int(sy - hy), hx * 2, hy * 2)
+        shield_rect = pygame.Rect(
+            int(sx - srx - 1), int(sy - sry - 1), (srx + 1) * 2, (sry + 1) * 2
+        )
         for p in self._bullets.pool:
             if not p.active or p.owner != OWNER_PLAYER:
                 continue
@@ -5582,44 +5617,48 @@ class GameplayRuntime:
             self._draw_spear_fragment(target, s, ox, oy)
 
     def _draw_shield_laser(self, target: pygame.Surface, ox: int, oy: int) -> None:
-        """BLOQUE 53a: render the GOLIATH charged shield laser.
+        """BLOQUE 67: render the GOLIATH charged shield laser.
 
-        A thick vertical beam from the boss's shield position down to
-        the bottom of the screen. Pulses red, with a bright white core
-        and an outer red glow. Drawn after the boss so it sits on top.
+        A THICK ORANGE beam from the shield plate down to the bottom of
+        the screen, with a hot core and an outer glow. The user asked for
+        it explicitly: thick and orange, and it must come out of the
+        shield (the measured plate), not out of the chest.
+
+        The beam source is read from the same anchor the visual and the
+        hitbox use, so picture, collision and beam origin agree.
         """
         if self._boss is None:
             return
-        # BLOQUE 73.2: beam source = the same anchor the visual and hitbox read.
-        beam_cx, beam_top = _goliath_shield_center(self)
+        beam_cx, beam_top, _srx, _sry = _goliath_shield_ellipse(self)
         beam_cx += ox
         beam_top += oy
-        beam_w = 8
+        # BLOQUE 67: "laser grueso" — the core went from 8 px to 14 px.
+        beam_w = 14
         # Pulse intensity
         pulse = 0.5 + 0.5 * math.sin(self._t * 30.0)
         beam_h = INTERNAL_H - beam_top + 4
-        # Outer red glow (wide)
-        glow = pygame.Surface((beam_w + 24, beam_h), pygame.SRCALPHA)
-        glow_alpha = int(80 + 40 * pulse)
-        pygame.draw.rect(glow, (255, 60, 40, glow_alpha),
-                         (0, 0, beam_w + 24, beam_h))
-        target.blit(glow, (beam_cx - (beam_w + 24) // 2, beam_top - 2))
-        # Mid red beam
-        mid = pygame.Surface((beam_w + 8, beam_h), pygame.SRCALPHA)
-        mid_alpha = int(180 + 40 * pulse)
-        pygame.draw.rect(mid, (255, 120, 60, mid_alpha),
-                         (0, 0, beam_w + 8, beam_h))
-        target.blit(mid, (beam_cx - (beam_w + 8) // 2, beam_top - 2))
-        # White hot core
+        # Outer orange glow (wide)
+        glow = pygame.Surface((beam_w + 36, beam_h), pygame.SRCALPHA)
+        glow_alpha = int(70 + 40 * pulse)
+        pygame.draw.rect(glow, (255, 110, 30, glow_alpha),
+                         (0, 0, beam_w + 36, beam_h))
+        target.blit(glow, (beam_cx - (beam_w + 36) // 2, beam_top - 2))
+        # Mid orange beam
+        mid = pygame.Surface((beam_w + 14, beam_h), pygame.SRCALPHA)
+        mid_alpha = int(190 + 40 * pulse)
+        pygame.draw.rect(mid, (255, 150, 40, mid_alpha),
+                         (0, 0, beam_w + 14, beam_h))
+        target.blit(mid, (beam_cx - (beam_w + 14) // 2, beam_top - 2))
+        # Hot amber core
         core = pygame.Surface((beam_w, beam_h), pygame.SRCALPHA)
-        pygame.draw.rect(core, (255, 240, 200, 230),
+        pygame.draw.rect(core, (255, 226, 150, 235),
                          (0, 0, beam_w, beam_h))
         target.blit(core, (beam_cx - beam_w // 2, beam_top - 2))
         # Bright top origin (the shield exploding)
-        origin_size = 24
+        origin_size = 30
         origin = pygame.Surface((origin_size, origin_size), pygame.SRCALPHA)
         origin_alpha = int(220 + 35 * pulse)
-        pygame.draw.circle(origin, (255, 220, 160, origin_alpha),
+        pygame.draw.circle(origin, (255, 190, 90, origin_alpha),
                            (origin_size // 2, origin_size // 2),
                            origin_size // 2)
         target.blit(origin, (beam_cx - origin_size // 2,
@@ -5791,50 +5830,36 @@ class GameplayRuntime:
             pygame.draw.rect(target, (255, 255, 255), rect, 1)
 
     def _draw_goliath_shield(self, target: pygame.Surface, ox: int, oy: int) -> None:
-        """BLOQUE 73.2: draw GOLIATH's shield as a translucent oval.
+        """BLOQUE 67: draw GOLIATH's shield as a translucent oval.
 
-        The oval is anchored to the boss's left arm via
-        `_goliath_shield_center`, which is the SAME helper the hitbox in
-        `_handle_shield_collisions` reads — so the picture and what the
-        bullets collide with can never drift apart.
+        The oval is measured from the current frame's sprite, so it sits
+        exactly on the shield plate on GOLIATH's RIGHT arm, and it is read
+        through `_goliath_shield_ellipse` — the SAME helper the hitbox
+        uses, so the picture and what the bullets collide with can never
+        drift apart.
 
-        The charge colour ramp (BLOQUE 65 + 66.x polish):
-          - ratio < 0.50        iron (uncooked)
-          - ratio 0.50 .. 0.85  iron -> mid blue
-          - ratio > 0.85        mid blue -> bright cyan-white
-
-        A pulsing outer glow scales with charge so the player can read the
-        shield's state from across the screen.
+        BLOQUE 67: the charge ramp now goes RED on the first hit and keeps
+        heating (red -> orange -> amber -> white hot) as the shield
+        charges, instead of the old iron/blue/cyan ramp.
         """
         if self._boss is None:
             return
-        sx, sy = _goliath_shield_center(self)
+        sx, sy, srx, sry = _goliath_shield_ellipse(self)
         sx += ox
         sy += oy
-        rx = GOLIATH_SHIELD_RX
-        ry = GOLIATH_SHIELD_RY
+        rx = max(1, srx)
+        ry = max(1, sry)
 
         charge = min(1.0, self._boss_shield_hits / float(GOLIATH_SHIELD_MAX_HITS))
-        if charge < 0.5:
-            shield_color = (110, 110, 125)
-        elif charge < 0.85:
-            t = (charge - 0.5) / 0.35
-            shield_color = (
-                int(70 + (110 - 70) * t),
-                int(70 + (170 - 70) * t),
-                int(85 + (255 - 85) * t),
-            )
-        else:
-            t = (charge - 0.85) / 0.15
-            shield_color = (
-                int(110 + (220 - 110) * t),
-                int(170 + (240 - 170) * t),
-                255,
-            )
+        shield_color = _shield_charge_color(charge)
 
         # Translucent body on its own surface so SRCALPHA applies.
+        # BLOQUE 67: the minimum alpha was raised (70 -> 115) because at the
+        # old value the first-hit red read as dark brown over the dark
+        # background -- the "it turns red the moment it gets hit" cue was
+        # invisible. It has to pop on the very first bullet.
         body = pygame.Surface((rx * 2 + 2, ry * 2 + 2), pygame.SRCALPHA)
-        fill_a = int(70 + 60 * charge)
+        fill_a = int(115 + 85 * charge)
         pygame.draw.ellipse(
             body, (*shield_color, fill_a),
             (0, 0, rx * 2 + 2, ry * 2 + 2),
@@ -5842,8 +5867,9 @@ class GameplayRuntime:
         target.blit(body, (sx - rx - 1, sy - ry - 1))
 
         # Bright rim so the oval reads against the dark boss silhouette.
+        rim = tuple(min(255, c + 70) for c in shield_color)
         pygame.draw.ellipse(
-            target, (190, 205, 235), (sx - rx, sy - ry, rx * 2, ry * 2), 1,
+            target, rim, (sx - rx, sy - ry, rx * 2, ry * 2), 2,
         )
 
         # Inner bronze boss (the rivet) — same detail the procedural
@@ -5858,11 +5884,11 @@ class GameplayRuntime:
             glow = pygame.Surface((glow_size, glow_size), pygame.SRCALPHA)
             glow_alpha = int((30 + 90 * charge) * (0.6 + 0.4 * pulse))
             pygame.draw.ellipse(
-                glow, (160, 220, 255, glow_alpha),
+                glow, (255, 150 + 60 * charge, 60, glow_alpha),
                 (0, 0, glow_size, glow_size), 1,
             )
             pygame.draw.ellipse(
-                glow, (160, 220, 255, int(glow_alpha * 0.5)),
+                glow, (255, 180, 90, int(glow_alpha * 0.5)),
                 (glow_size // 8, glow_size // 8,
                  glow_size - glow_size // 4, glow_size - glow_size // 4), 1,
             )

@@ -197,17 +197,72 @@ archivos ya trackeados.
 
 ## 6. Constantes sagradas — NO tocar
 
-```
-GOLIATH_SHIELD_DX = -11
-GOLIATH_SHIELD_DY = 6
-GOLIATH_SHIELD_R  = 11
-GOLIATH_SHIELD_RX = 11
-GOLIATH_SHIELD_RY = 17
-```
+### 6.1 Escudo de GOLIATH — CAMBIADAS por pedido explícito del usuario (BLOQUE 67)
 
-Aprobadas por el usuario en BLOQUE 66.4o. El port las copió **sin modificar**.
+El usuario pidió (2026-10-23) tres cosas del escudo:
 
-`bg_mode` default = **1** (ASTEROID NEBULA). `bg_variant_idx` default = **3** (purple_dusk).
+1. **el óvalo al lado DERECHO** de GOLIATH (el brazo que lleva el escudo),
+2. **que encaje perfectamente** en la silueta del escudo,
+3. **que se ponga rojo al primer disparo**, se vaya calentando al cargar, y
+   lance un **láser grueso y naranja**.
+
+El punto 1 y 2 obligan a cambiar la geometría: el óvalo viejo
+(`DX=-11`) quedaba 11 px a la izquierda, sobre el torso, y nunca coincidía
+con la placa.
+
+| Constante | Antes (66.4o) | Ahora | Significado |
+|---|---|---|---|
+| `GOLIATH_SHIELD_DX` | -11 | **0** | ajuste del centro medido |
+| `GOLIATH_SHIELD_DY` | 6 | **0** | ajuste del centro medido |
+| `GOLIATH_SHIELD_R` | 11 | 11 | radio base (fallback) |
+| `GOLIATH_SHIELD_RX` | 11 | 11 | half-size fallback |
+| `GOLIATH_SHIELD_RY` | 17 | 17 | half-size fallback |
+
+**La elipse ya no es un óvalo fijo**: se MIDE por frame desde la silueta del
+sprite con `scenes.get_sprite_shield_ellipse()`. La placa usa la misma paleta
+que el cuerpo, así que la única firma posible es el contorno — el escudo es
+el último bloque de píxeles sólidos de cada fila en la banda media
+(y 28-54), recortado para no meterse en el torso.
+
+Resultado medido sobre los 60 frames: `cx ∈ [57, 63.5]`, `rx ∈ [7, 11]`,
+`ry ∈ [9, 13]` — **todos del lado derecho, ninguno flotando**.
+
+El óvalo dejó de ser "una elipse cerca del ancla" y pasó a ser "la elipse
+de la placa": visual, hitbox y origen del láser leen la misma medición
+(`_goliath_shield_ellipse`), así que no pueden desincronizarse.
+
+**Decisión deliberada: NO se busca la placa del lado izquierdo.** En el
+lanzamiento del javelin el cuerpo rota y el escudo pasa al otro lado, pero
+el lóbulo izquierdo de esos frames es indistinguible del brazo: se midió y
+el detector elegía el brazo en 2 frames del `laser` (cx=38, óvalo flotando
+sobre el torso). Dejarlo en la posición canónica es mejor que mandarlo al
+lado equivocado.
+
+### 6.2 Rampa de color del escudo (BLOQUE 67)
+
+| Impactos | RGB | Color |
+|---|---|---|
+| 0 | (96, 104, 124) | acero frío (sin carga) |
+| 1 | (227, 57, 45) | **rojo al primer impacto** |
+| 5 | (255, 140, 56) | naranja |
+| 12 | (255, 210, 120) | ámbar |
+| 20 | (255, 250, 220) | blanco caliente |
+
+La rampa vieja era hierro → azul → cian. El alfa mínimo del relleno subió
+de 70 a 115 porque con el valor viejo el rojo del primer impacto se leía
+como marrón oscuro sobre el fondo y la señal no se veía.
+
+### 6.3 Láser (BLOQUE 67)
+
+Grueso y naranja, como pidió el usuario: núcleo de 8 px → **14 px**, glow
+exterior de +24 → **+36**, paleta roja `(255,60,40)` → naranja
+`(255,110,30)/(255,150,40)/(255,226,150)`. Sale de la placa (origen medido),
+no del pecho.
+
+### 6.4 Defaults que NO se tocaron
+
+`bg_mode` default = **1** (ASTEROID NEBULA). `bg_variant_idx` default =
+**3** (purple_dusk).
 
 ---
 

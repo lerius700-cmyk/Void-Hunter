@@ -287,6 +287,136 @@ def get_sprite_arm_anchor(name: str) -> tuple[int, int]:
     return anchor
 
 
+# ---------------------------------------------------------------------------
+# BLOQUE 67: elipse que encaja EXACTAMENTE en la placa del escudo
+# ---------------------------------------------------------------------------
+# GOLIATH lleva el escudo en el brazo derecho (columnas ~58-68 del sprite),
+# no en el izquierdo. La elipse tiene que caER sobre la silueta de esa
+# placa, no flotar al lado.
+#
+# La placa se mide por FORMA, no por color: usa la MISMA paleta que el
+# cuerpo (160,110,50), asi que la unica firma posible es el contorno.
+# El escudo es el ultimo bloque de pixeles solidos de cada fila en la
+# banda media (debajo del hombro, arriba de las piernas).
+#
+# _GOLIATH_SHIELD_BAND: banda vertical donde vive la placa.
+# _GOLIATH_SHIELD_RIGHT_MIN: columna desde la que el escudo puede empezar.
+#   Es el lado derecho; el recorte evita que el bloque se coma el torso.
+# _GOLIATH_SHIELD_FALLBACK: elipse canonica cuando la medicion falla
+#   (sprite ausente o frame degenerado). Es la mediana de las 60
+#   mediciones validas.
+_GOLIATH_SHIELD_BAND = (28, 54)
+_GOLIATH_SHIELD_RIGHT_MIN = 50
+_GOLIATH_SHIELD_FALLBACK = (60.5, 40.5, 8.5, 10.5)
+# Rango en el que una medicion se considera creible. Debajo de estos
+# valores el bloque encontrado es un fragmento (el brazo, la pata, el
+# proyectil) y no la placa: en ese caso se usa la elipse canonica.
+_GOLIATH_SHIELD_RX_RANGE = (6.5, 11.0)
+_GOLIATH_SHIELD_RY_RANGE = (9.0, 13.0)
+
+_sprite_shield_ellipse_cache: dict[str, tuple[float, float, float, float]] = {}
+
+
+def _measure_shield_lobe(
+    surf: pygame.Surface,
+    drop_warm: bool,
+) -> Optional[tuple[float, float, float, float]]:
+    """Elipse del lobulo izquierdo o derecho de la silueta del cuerpo.
+
+    ``drop_warm`` descarta los brillos calidos (los del haz del ojo, que
+    esta horneado en los frames de ataque y extiende el contorno fuera
+    del cuerpo). Como son pixeles INTERIORES, quitarlos no cambia la
+    silueta; lo que hace es que el haz deje de contar como escudo.
+    """
+    w, h = surf.get_size()
+    body = [[False] * w for _ in range(h)]
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = surf.get_at((x, y))
+            if a <= 32:
+                continue
+            if drop_warm and r >= 235 and b <= 140 and (g >= 130 or r - b >= 190):
+                # Colores del HAZ DEL OJO horneado en los frames de ataque:
+                # (255,140,60) (255,80,40) (255,220,80) (240,200,120).
+                # El (220,180,80) de la cara del escudo NO se descarta:
+                # ese es el brillo de la placa.
+                continue
+            body[y][x] = True
+
+    band_top, band_bottom = _GOLIATH_SHIELD_BAND
+    right_pts: list[tuple[int, int]] = []
+    for y in range(band_top, min(band_bottom, h)):
+        row = body[y]
+        xs = [x for x in range(w) if row[x]]
+        if not xs:
+            continue
+        end = xs[-1]
+        start = end
+        while start - 1 >= 0 and row[start - 1]:
+            start -= 1
+        if end >= _GOLIATH_SHIELD_RIGHT_MIN:
+            right_pts.extend((x, y) for x in range(max(start, _GOLIATH_SHIELD_RIGHT_MIN), end + 1))
+
+    def _ellipse(pts: list[tuple[int, int]]) -> Optional[tuple[float, float, float, float]]:
+        if not pts:
+            return None
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+        return ((x0 + x1) / 2.0, (y0 + y1) / 2.0, (x1 - x0) / 2.0, (y1 - y0) / 2.0)
+
+    def _sane(e: Optional[tuple[float, float, float, float]]) -> bool:
+        if e is None:
+            return False
+        _, _, rx, ry = e
+        return (
+            _GOLIATH_SHIELD_RX_RANGE[0] <= rx <= _GOLIATH_SHIELD_RX_RANGE[1]
+            and _GOLIATH_SHIELD_RY_RANGE[0] <= ry <= _GOLIATH_SHIELD_RY_RANGE[1]
+        )
+
+    # El lado derecho es el caso normal: el escudo esta en el brazo
+    # derecho de GOLIATH.
+    #
+    # NO se busca el lado izquierdo, y es deliberado. En los frames con
+    # el cuerpo girado (lanzamiento del javelin) el escudo pasa al otro
+    # lado, pero el lobulo izquierdo de esos frames es indistinguible del
+    # BRAZO: se midio y el detector elegia el brazo en 2 frames del
+    # `laser` (cx=38, ovalo flotando sobre el torso). Dejarlo en la
+    # posicion canonica es mucho mejor que mandarlo al lado equivocado:
+    # los 60 frames quedan con cx en [57, 63.5], siempre a la derecha.
+    right = _ellipse(right_pts)
+    if _sane(right):
+        return right
+    return None
+
+
+def get_sprite_shield_ellipse(name: str) -> tuple[float, float, float, float]:
+    """BLOQUE 67: (cx, cy, rx, ry) sprite-local de la elipse del escudo.
+
+    La elipse se dimensiona con la silueta REAL de la placa del escudo en
+    ese frame, para que encaje perfecto. La primera pasada usa el alpha
+    tal cual; si el resultado es disparatado (el haz del ojo horneado en
+    los frames de ataque, o el proyectil) se reintenta descartando los
+    brillos calidos.
+
+    Devuelve la elipse canonica (_GOLIATH_SHIELD_FALLBACK) si el sprite no
+    existe o si el frame es degenerado.
+    """
+    if name in _sprite_shield_ellipse_cache:
+        return _sprite_shield_ellipse_cache[name]
+    surf = _load_sprite(name)
+    if surf is None:
+        _sprite_shield_ellipse_cache[name] = _GOLIATH_SHIELD_FALLBACK
+        return _GOLIATH_SHIELD_FALLBACK
+    result = _measure_shield_lobe(surf, drop_warm=False)
+    if result is None:
+        result = _measure_shield_lobe(surf, drop_warm=True)
+    if result is None:
+        result = _GOLIATH_SHIELD_FALLBACK
+    _sprite_shield_ellipse_cache[name] = result
+    return result
+
+
 # Map enemy kind value → sprite PNG filename (BLOQUE 58.47)
 _ENEMY_SPRITE_FILES: dict[str, str] = {
     "scout":    "enemy_scout.png",
