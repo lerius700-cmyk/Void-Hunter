@@ -105,10 +105,51 @@ regresión** respecto de v1.6.3:
 
 ---
 
-**Suite:** 8 failed / 2818 passed / 7 skipped — los 8 son fallos
-pre-existentes documentados (contaminación de estado entre tests de
-sub-boss, sprites de asteroides y una aserción de geometría del
-LissajousPath). Cero regresiones.
+## ✅ Verification
+
+| Check | Resultado |
+|---|---|
+| `void-hunter-v1.7.0.exe --check` | `VOID HUNTER check OK` — 15 scenes, 18 waves, 4 bosses |
+| Suite completa | 8 failed / 2818 passed / 7 skipped — los 8 son pre-existentes documentados |
+| Tests del sistema de 4 armas | 55 passed |
+| Escudo de GOLIATH | 20 tests (anclaje, rampa, láser, capa de impacto) |
+| `get_sprite_shield_ellipse` en los 60 frames | cx 57..63.5, rx 7..11, ry 9..13 — todos a la derecha |
+| Láser del ojo | borde superior en el ojo (y=62 vs ojo y=63); 1 s después, rayo x=191 = ojo x=191 |
+| Tiles del Asteroid Approach | 10/10 MD5 únicos × 6 animaciones de GOLIATH; 0 frames con margen <2px |
+| `--boss goliath --easy --duration 60` | `jumped to GOLIATH (act 1)`, exit 0, sin crash |
+| Smoke del flujo completo | TITLE → CINEMATIC → MENU → ACT_INTRO → GAMEPLAY → BOSS_FIGHT, OK |
+
+Evidencia visual en `tools/playtest_out/`:
+- `goliath_shield_sin_ovalo_bloque67.png` — escudo sin óvalo: nada / parpadeo / calor
+- `eye_laser_bloque67.png` — el rayo saliendo del ojo
+- `bg_asteroid_nebula_v140.png` — el fondo morado de v1.4.0 vs space void
+- `final_phase2_idle.png` — el óvalo medido sobre la placa
+
+## ⬇️ Como jugar
+
+1. Descargá `VoidHunter-v1.7.0-win64.zip` (~273 MB).
+2. Extraé en cualquier carpeta.
+3. Doble-click en `void-hunter-v1.7.0.exe`.
+4. Pasá la title screen y la cinemática para llegar al menú.
+
+El menú también está disponible vía flag:
+```
+void-hunter-v1.7.0.exe --boss goliath
+```
+salta directo a la pelea (no pasa por el menú).
+
+En el título, `1-4` o `←→` cambian el tema del fondo. Default: **purple_dusk**.
+
+## 💻 Requisitos
+
+Windows 10/11 64-bit · ~290 MB disco · ~200 MB RAM
+
+---
 
 **Assets:** 321 MB (la línea v1.4.0 tiene 150 MB menos que v1.6.3: no
 trae los sprites del sistema de armas ni los paneles de galaxia nuevos).
+
+**Nota sobre la línea:** esta release sale de la rama
+`bloquec-67-goliath-port`, que es la línea v1.4.0 con el trabajo de
+GOLIATH y el menú portados encima. `master` sigue siendo la línea v1.6.3.
+
