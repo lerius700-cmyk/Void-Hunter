@@ -399,17 +399,44 @@ desde el mismo worktree — el boss fight y el título se ven **idénticos**.
 > clock desfasado por los **2.29 s** que tarda el onefile en extraerse y
 > abrir la ventana. Con el mismo clock de juego, el título se ve igual.
 
+### Release v1.7.2 (la v1.7.1 tenía el sistema de armas de más)
+
+**La base es v1.4.0 (BLOQUE 71) y v1.4.0 NO tiene sistema de armas.** El
+port del sistema de 4 armas (BLOQUE 72 + 73 Fase A/B/C) fue un error del
+port: además de meter los 4 tipos de arma y los 4 cuadros de slots en el
+HUD, arrastraba el commit `d43f7be` de BLOQUE 73 Fase A, que **elimina
+el láser de carga del LMB** que v1.4.0 sí tenía. O sea: se perdía una
+feature de la base para ganar algo que no correspondía.
+
+Se revierte el commit completo (`1c9170d`). Vuelven a su estado exacto
+de `d70b8da`: `src/ui/hud.py`, `src/entities/asteroid.py`,
+`src/entities/enemies/enemy.py`, `src/audio/synth.py` y
+`src/core/settings.py` son idénticos a v1.4.0; y se borran
+`src/entities/weapon_slot.py`, los 4 sprites de bala, los 4 SFX de arma
+y los 7 tests del sistema.
+
+**Se conserva** el powerup `WEAPON` original de v1.4.0
+(`PowerupKind.WEAPON`) y los eventos `WEAPON_LEVEL_UP` /
+`WEAPON_SPECIAL_UNLOCKED` del event bus: son de la base y no se tocan.
+
+**Regla para el futuro:** la línea de este trabajo es v1.4.0. Cualquier
+feature de BLOQUE 72+ tiene que entrar **por pedido explícito**, nunca
+porque "master la tenía". El master es otra línea con otras features;
+portar cosas de ahí "para no perder nada" mete features que la base no
+tiene.
+
 ### Artefactos
 
 | | |
 |---|---|
-| Tag | `v1.7.1` (anotado) sobre el HEAD de la rama |
-| Artefactos | `dist/void-hunter-v1.7.1.exe` (278 MB) + `dist/VoidHunter-v1.7.1-win64.zip` (276 MB) |
-| Release notes | `tools/release_notes_v1.7.1.md` (y `tools/release_notes_v1.7.0.md`) |
-| Suite | 8 failed / 2825 passed / 7 skipped (los 8 pre-existentes) |
+| Tag | `v1.7.2` (anotado) sobre el HEAD de la rama |
+| Artefactos | `dist/void-hunter-v1.7.2.exe` (278 MB) + `dist/VoidHunter-v1.7.2-win64.zip` (276 MB) |
+| Release notes | `tools/release_notes_v1.7.{0,1,2}.md` |
+| Suite | 8 failed / 2766 passed / 7 skipped (los 8 pre-existentes) |
 
-> La v1.7.0 queda publicada con el `.exe` roto — es historial público, no
-> se borra. La v1.7.1 es la que hay que usar.
+> v1.7.0 quedó publicada con el `.exe` sin el fondo del boss fight; la
+> v1.7.1 con el sistema de armas de más. **La v1.7.2 es la buena.**
+> Las tres quedan como historial público.
 
 ### Lo que NO se tocó en `master`
 
