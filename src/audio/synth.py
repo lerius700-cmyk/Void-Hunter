@@ -150,6 +150,17 @@ SFX_CATALOG: dict[str, _SfxSpec] = {
     # BLOQUE 71 Task 3: brief noise burst for bullet→asteroid hit feedback.
     # Short percussive tick (~0.05s) that pairs with the white-flash visual.
     "asteroid_hit":           _SfxSpec("asteroid_hit", Voice.NOISE, 0, 0, 0.002, 0.02, 0.0, 0.03, 0.05, "Asteroid hit feedback", 0.3),
+    # BLOQUE 73 Fase B+ : per-weapon fire SFX (one per pickup). Each is
+    # rendered into Assets/sounds/<name>.wav at PyInstaller bundle time
+    # via tools/generate_weapon_sfx.py.
+    # THICK: punchy 0.08s square wave sweep down (heavy impact).
+    "shoot_thick":           _SfxSpec("shoot_thick", Voice.SQUARE, 880, 220, 0.005, 0.06, 0.0, 0.08, 0.10, "THICK weapon fire", 0.6),
+    # LASER: longer sustained triangle sweep (continuous beam feel).
+    "laser_hum":             _SfxSpec("laser_hum", Voice.TRIANGLE, 200, 800, 0.010, 0.40, 0.65, 0.30, 0.50, "LASER weapon hum", 0.4),
+    # FLAME: short noise burst (crackle, like a flame thrower pulse).
+    "flame_loop":            _SfxSpec("flame_loop", Voice.NOISE, 1200, 600, 0.002, 0.06, 0.3, 0.06, 0.10, "FLAME weapon crackle", 0.3),
+    # DOUBLE: dual square-wave taps (two bullets fired in sync).
+    "shoot_double":          _SfxSpec("shoot_double", Voice.SQUARE, 1320, 660, 0.003, 0.05, 0.0, 0.06, 0.08, "DOUBLE weapon fire", 0.5),
     # BLOQUE_STELLAR_HORIZON_AUDIO: per-ship thruster loops.
     # Each ship (player + 6 enemy kinds) gets a unique continuous
     # loop that loops forever while alive. The ThrusterManager applies

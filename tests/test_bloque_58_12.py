@@ -99,8 +99,11 @@ class TestPowerupDistribution:
         for _ in range(1000):
             kind = pick_random_powerup(rng)
             counts[kind] += 1
-        # SCORE has 35% weight, expect 250-450 picks
-        assert 250 < counts[PowerupKind.SCORE] < 450, f"SCORE got {counts[PowerupKind.SCORE]}"
+        # BLOQUE 72 T7: SCORE weight bajo de 35 -> 23 (4 weapon kinds
+        # absorbed 12 puntos del antiguo WEAPON=20). Rango esperado
+        # ajustado a ~23% +- ~10% (130-330). Misma logica para BOMB
+        # (15%, sin cambios).
+        assert 130 < counts[PowerupKind.SCORE] < 330, f"SCORE got {counts[PowerupKind.SCORE]}"
         # BOMB has 15% weight, expect 100-200 picks
         assert 100 < counts[PowerupKind.BOMB] < 200, f"BOMB got {counts[PowerupKind.BOMB]}"
 

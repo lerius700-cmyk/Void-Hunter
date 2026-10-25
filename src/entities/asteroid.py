@@ -53,22 +53,41 @@ ASTEROID_SCALE_MAX = 2.5
 
 
 class PowerupKind(Enum):
-    """BLOQUE 58.12: 4 powerup types that asteroids can hide.
-    Distributed roguelike-style (random.choice from weighted pool).
+    """BLOQUE 58.12 + 72: powerup types that asteroids / MINE-ASTEROID drop.
+
+    BLOQUE 72 T7: the old single ``WEAPON`` kind (which bumped ``weapon.level``
+    and did nothing visible) is replaced by **4 distinct weapon kinds**:
+      THICK  — A — thick shot       (max 100 ammo)
+      LASER  — S — continuous laser (max 200 ammo)
+      FLAME  — D — flamethrower     (max  50 ammo)
+      DOUBLE — F — double blue beam (max 150 ammo)
+
+    The MINE-ASTEROID drop pool expands from {BOMB, HP, WEAPON} to
+    {BOMB, HP, THICK, LASER, FLAME, DOUBLE} (SCORE excluded by design).
     """
     BOMB = "bomb"                # +1 bomb (clears screen)
     HP = "hp"                    # +30 HP
-    WEAPON = "weapon"            # upgrade weapon level
+    # BLOQUE 72 T7: 4 weapon powerups (replaced old single WEAPON)
+    THICK = "thick"              # A — thick shot
+    LASER = "laser"              # S — continuous laser beam
+    FLAME = "flame"              # D — flamethrower cone
+    DOUBLE = "double"            # F — double blue laser
     SCORE = "score"              # +500 score
 
 
-# Distribution weights (sums to 100). Roguelike = random pick.
+# Distribution weights (sums to 100). Roguelike = weighted pick.
+# BLOQUE 72 T7: old WEAPON weight (20) split into 4 equal weapon kinds
+# (8 each), SCORE reduced from 35 -> 23 to keep sum = 100.
 POWERUP_WEIGHTS: dict[PowerupKind, int] = {
-    PowerupKind.BOMB: 15,
-    PowerupKind.HP: 30,
-    PowerupKind.WEAPON: 20,
-    PowerupKind.SCORE: 35,
+    PowerupKind.BOMB:   15,
+    PowerupKind.HP:     30,
+    PowerupKind.THICK:   8,  # = 20/4 + small bump
+    PowerupKind.LASER:   8,
+    PowerupKind.FLAME:   8,
+    PowerupKind.DOUBLE:  8,  # = 32 total weapons, was 20
+    PowerupKind.SCORE:  23,  # reduced from 35 to keep sum=100
 }
+# Total: 15 + 30 + 8*4 + 23 = 15 + 30 + 32 + 23 = 100  ✅
 
 
 @dataclass
@@ -211,11 +230,14 @@ class Powerup:
         cx, cy = int(self.x), int(self.y)
         # Pulse size
         size = 8 + int(1.5 * math.sin(self.pulse))
-        # Color by kind
+        # Color by kind (BLOQUE 72 T7: 4 weapon colors replace old single WEAPON)
         color = {
             PowerupKind.BOMB:    (255, 100, 100),
             PowerupKind.HP:      (100, 255, 100),
-            PowerupKind.WEAPON:  (100, 180, 255),
+            PowerupKind.THICK:   (255, 160, 60),    # orange
+            PowerupKind.LASER:   (80, 255, 120),    # green
+            PowerupKind.FLAME:   (255, 100, 40),    # red-orange
+            PowerupKind.DOUBLE:  (100, 220, 255),   # cyan
             PowerupKind.SCORE:   (255, 220, 100),
         }[self.kind]
         # Background
@@ -223,11 +245,14 @@ class Powerup:
         pygame.draw.rect(bg, (*color, 200), (0, 0, size * 2, size * 2), border_radius=2)
         pygame.draw.rect(bg, (255, 255, 255, 220), (0, 0, size * 2, size * 2), 1, border_radius=2)
         target.blit(bg, (cx - size, cy - size))
-        # Letter
+        # Letter (BLOQUE 72 T7: 4 weapon letters replace old single W)
         letter = {
             PowerupKind.BOMB:    "B",
             PowerupKind.HP:      "+",
-            PowerupKind.WEAPON:  "W",
+            PowerupKind.THICK:   "A",
+            PowerupKind.LASER:   "S",
+            PowerupKind.FLAME:   "D",
+            PowerupKind.DOUBLE:  "F",
             PowerupKind.SCORE:   "S",
         }[self.kind]
         try:

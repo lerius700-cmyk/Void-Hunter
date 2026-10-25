@@ -97,8 +97,10 @@ def test_twenty_six_sfx_in_catalog() -> None:
     # BLOQUE 58.14: 7 per-ship thruster SFX added (bomber, cruiser, heavy,
     # kamikaze, player, scout, ufo). 24 + 2 + 7 = 33.
     # BLOQUE 71 Task 3: +1 asteroid_hit (noise burst for asteroid hit feedback).
-    assert len(SFX_CATALOG) == 34
-    assert len(SFX_NAMES) == 34
+    # BLOQUE 73 Fase B+: +4 weapon SFX (shoot_thick, laser_hum, flame_loop,
+    # shoot_double). 34 + 4 = 38.
+    assert len(SFX_CATALOG) == 38
+    assert len(SFX_NAMES) == 38
 
 
 def test_all_expected_sfx_present() -> None:
@@ -118,6 +120,8 @@ def test_all_expected_sfx_present() -> None:
         "thruster_ufo",
         # BLOQUE 71 Task 3: bullet→asteroid hit feedback.
         "asteroid_hit",
+        # BLOQUE 73 Fase B+: per-weapon fire SFX (one per pickup).
+        "shoot_thick", "laser_hum", "flame_loop", "shoot_double",
     }
     assert set(SFX_NAMES) == expected
 
@@ -215,7 +219,8 @@ def test_audio_engine_sfx_count() -> None:
     if engine.mixer_available:
         # BLOQUE 58.14: 33 SFX (was 26).
         # BLOQUE 71 Task 3: +1 asteroid_hit = 34.
-        assert len(engine.sfx_sounds) == 34
+        # BLOQUE 73 Fase B+: +4 weapon SFX = 38.
+        assert len(engine.sfx_sounds) == 38
         assert len(engine.bgm_sounds) == 4
 
 

@@ -53,6 +53,23 @@ SCORE_WHITE = (240, 240, 240)    # <20%
 GOLD_BORDER = (255, 200, 80)     # 100% gold border
 
 
+# BLOQUE 72 T9: weapon slot layout constants
+WEAPON_SLOT_SIZE = 12
+WEAPON_SLOT_SPACING = 4
+WEAPON_SLOT_BG_DARK = (30, 20, 30)
+WEAPON_SLOT_OUTLINE = (60, 60, 70)
+WEAPON_SLOT_SELECTED = (255, 255, 255)
+WEAPON_SLOT_POP_DURATION_S = 0.2
+
+# Color per weapon_id (matches asteroid.py Powerup.draw colors for consistency)
+WEAPON_COLORS = {
+    "thick":  (255, 160, 60),   # orange
+    "laser":  (80, 255, 120),   # green
+    "flame":  (255, 100, 40),   # red-orange
+    "double": (100, 220, 255),  # cyan
+}
+
+
 def score_color_for_ratio(ratio: float) -> tuple[int, int, int]:
     """BLOQUE 58.41: compute the score color based on kill ratio.
 
@@ -121,6 +138,10 @@ class HUD:
         scoring: ScoringSystem,
         t: float = 0.0,
         kill_ratio: float = 1.0,
+        # BLOQUE 72 T9: weapon slot state (optional, default None = don't draw)
+        weapon_slots: Optional[list] = None,
+        weapon_active_idx: int = 0,
+        weapon_pop_anim: Optional[dict] = None,
     ) -> None:
         self._ensure_fonts()
         # BLOQUE 58.7ab: HUD moved to BOTTOM. Ships + sub-boss spawn at
@@ -133,6 +154,12 @@ class HUD:
         y = self._draw_missiles(target, player, y, t)
         # Right column: score at the BOTTOM
         self._draw_score(target, scoring, kill_ratio, t)
+        # BLOQUE 72 T9: bottom-center weapon slot inventory
+        if weapon_slots is not None:
+            self._draw_weapon_slots(
+                target, weapon_slots, weapon_active_idx, t,
+                weapon_pop_anim or {},
+            )
 
     def _draw_hp_bar(self, target: pygame.Surface, player: Player, y: int, t: float) -> int:
         """BLOQUE 58.41: HP bar minimalist (no value text, smaller)."""
@@ -358,6 +385,83 @@ class HUD:
             text_w = text.get_width()
             score_y = INTERNAL_H - SCORE_FONT_SIZE - HUD_MARGIN - 2
             target.blit(text, (INTERNAL_W - HUD_MARGIN - text_w, score_y))
+
+    # ------------------------------------------------------------------
+    # BLOQUE 72 T9: weapon slot inventory (bottom-center)
+    # ------------------------------------------------------------------
+    def _draw_weapon_slots(
+        self,
+        target: pygame.Surface,
+        slots: list,
+        active_idx: int,
+        t: float,
+        pop_anim: dict,
+    ) -> None:
+        """Draw 4 weapon slots (A/S/D/F) at the bottom-center.
+
+        Visual states:
+          - Empty: dark bg (30, 20, 30)
+          - Filled: weapon color (orange/green/red-orange/cyan per weapon_id)
+          - Selected (active_idx): white outline, 2 px wide
+          - Pop animation: scale 1.0 -> 1.4 -> 1.0 over WEAPON_SLOT_POP_DURATION_S
+          - Selection pulse: +/-5% scale at 0.5 Hz on the active slot
+
+        Letter (A/S/D/F) is drawn centered in filled slots.
+        Ammo count is drawn below each slot.
+        """
+        self._ensure_fonts()
+        n = len(slots)
+        total_w = n * WEAPON_SLOT_SIZE + (n - 1) * WEAPON_SLOT_SPACING
+        start_x = (INTERNAL_W - total_w) // 2
+        y = INTERNAL_H - WEAPON_SLOT_SIZE - 22  # 22 px above bottom edge
+
+        for i, slot in enumerate(slots):
+            x = start_x + i * (WEAPON_SLOT_SIZE + WEAPON_SLOT_SPACING)
+            is_selected = (i == active_idx)
+            is_popping = pop_anim.get(slot.letter, 0.0) > 0.0
+
+            # Pop scale: triangle wave 0 -> 0.5 ramps 1.0 -> 1.4; 0.5 -> 1.0 ramps back
+            scale = 1.0
+            if is_popping:
+                pop_t = 1.0 - (pop_anim[slot.letter] / WEAPON_SLOT_POP_DURATION_S)
+                if pop_t < 0.5:
+                    scale = 1.0 + 0.4 * (pop_t / 0.5)
+                else:
+                    scale = 1.4 - 0.4 * ((pop_t - 0.5) / 0.5)
+            # Selection pulse +/-5% at 0.5 Hz
+            if is_selected:
+                scale *= 1.0 + 0.05 * (0.5 + 0.5 * math.sin(t * 3.14))
+
+            size = max(1, int(WEAPON_SLOT_SIZE * scale))
+            ox = x + (WEAPON_SLOT_SIZE - size) // 2
+            oy = y + (WEAPON_SLOT_SIZE - size) // 2
+
+            # Background: dark if empty, weapon color if filled
+            if slot.is_empty:
+                pygame.draw.rect(target, WEAPON_SLOT_BG_DARK, (ox, oy, size, size))
+            else:
+                color = WEAPON_COLORS.get(slot.weapon_id, (200, 200, 200))
+                pygame.draw.rect(target, color, (ox, oy, size, size))
+
+            # Letter centered in filled slot
+            if not slot.is_empty and self.font_label is not None:
+                letter_surf = self.font_label.render(slot.letter, True, (0, 0, 0))
+                lx = ox + (size - letter_surf.get_width()) // 2
+                ly = oy + (size - letter_surf.get_height()) // 2
+                target.blit(letter_surf, (lx, ly))
+
+            # Ammo count below slot (only for filled)
+            if not slot.is_empty and self.font_label is not None:
+                ammo_text = f"{slot.ammo}"
+                ammo_surf = self.font_label.render(ammo_text, True, (255, 255, 255))
+                ax = ox + (size - ammo_surf.get_width()) // 2
+                ay = oy + size + 1
+                target.blit(ammo_surf, (ax, ay))
+
+            # Border (selected = white 2px, else gray 1px)
+            border_color = WEAPON_SLOT_SELECTED if is_selected else WEAPON_SLOT_OUTLINE
+            border_w = 2 if is_selected else 1
+            pygame.draw.rect(target, border_color, (ox, oy, size, size), border_w)
 
 
 # ---------------------------------------------------------------------------
