@@ -39,8 +39,8 @@ from src.systems.particle_engine import (
     P_SMOKE, P_SPARK, ParticleEngine,
 )
 from src.systems.projectile import (
-    BULLET_BOSS, BULLET_ENEMY, BULLET_PLAYER, BULLET_PLAYER_BEAM,
-    BULLET_PLAYER_CHARGED,
+    BULLET_BOSS, BULLET_BOSS_LASER, BULLET_ENEMY, BULLET_PLAYER,
+    BULLET_PLAYER_BEAM, BULLET_PLAYER_CHARGED, BULLET_SIZES,
     OWNER_BOSS, OWNER_ENEMY, OWNER_PLAYER, ProjectilePool,
 )
 from src.systems.scoring_system import ScoringSystem
@@ -2125,6 +2125,13 @@ class GameplayRuntime:
                             "phase2_idle" if self._boss.phase >= 2 else "phase1_idle"
                         )
                         self._boss.set_animation_state(idle_state)
+                # BLOQUE 67: el laser del ojo se reasigna a la x del ojo
+                # DESPUES de que el boss se mueva Y de que se resuelva la
+                # animacion de ataque, asi que usa la pose final del
+                # frame. Si se hiciera antes, el rayo se quedaria con la
+                # x de la pose anterior (el ojo esta en otra columna
+                # segun la pose) y se separaba del ojo.
+                self._aim_eye_lasers()
             # Boss attack selection (suppressed during entry)
             if self._boss_entry_t >= 0.8:
                 attack = self._boss.select_attack()
@@ -2236,15 +2243,16 @@ class GameplayRuntime:
             laser_x = self._boss.x
             laser_y = self._boss.y + 30
             if self._boss.id == BossId.GOLIATH:
-                from src.ui.scenes import (
-                    get_sprite_centroid_offset,
-                    get_sprite_eye_anchor,
-                )
-                path = self._boss.animation_path
-                eye_col, eye_row = get_sprite_eye_anchor(path)
-                cdx, cdy = get_sprite_centroid_offset(path)
-                laser_x = int(self._boss.x) - 48 + cdx + eye_col
-                laser_y = int(self._boss.y) - 40 + cdy + eye_row
+                eye_x, eye_y = self._goliath_eye_position()
+                laser_x = eye_x
+                # BLOQUE 67: el sprite del laser es una columna de 360 px
+                # que se CENTRA en la posicion del proyectil. Si se
+                # spawnea en el ojo, la mitad del rayo queda por encima
+                # (fuera de la pantalla) y el rayo parecia salir del tope
+                # de la pantalla en vez del ojo. Se spawnea media altura
+                # mas abajo para que el BORDE SUPERIOR del rayo caiga
+                # justo en el ojo.
+                laser_y = eye_y + BULLET_SIZES[BULLET_BOSS_LASER][1] // 2
             spawn_boss_laser(
                 self._bullets,
                 x=laser_x,
@@ -2256,6 +2264,40 @@ class GameplayRuntime:
                 from src.entities.enemies.boss import ATTACK_ANIM_DURATIONS_S
                 self._boss.set_animation_state("laser")
                 self._boss.attack_anim_timer = ATTACK_ANIM_DURATIONS_S["laser"]
+
+    def _goliath_eye_position(self) -> tuple[int, int]:
+        """BLOQUE 67: posicion del ojo de GOLIATH en el mundo.
+
+        El ojo se busca por color en el frame actual (rojo saturado en la
+        banda de la cabeza) y se convierte a coordenadas de mundo con el
+        mismo offset que usa el blit del sprite.
+        """
+        from src.ui.scenes import get_sprite_centroid_offset, get_sprite_eye_anchor
+
+        if self._boss is None:
+            return (0, 0)
+        path = self._boss.animation_path
+        eye_col, eye_row = get_sprite_eye_anchor(path)
+        cdx, cdy = get_sprite_centroid_offset(path)
+        return (
+            int(self._boss.x) - 48 + cdx + eye_col,
+            int(self._boss.y) - 40 + cdy + eye_row,
+        )
+
+    def _aim_eye_lasers(self) -> None:
+        """BLOQUE 67: el laser del ojo sigue al ojo.
+
+        El laser es una columna de 360 px que baja a 200 px/s. GOLIATH se
+        oscila +-80 px (x = anchor + sin(move_t * 0.5) * 80), asi que sin
+        esto la columna se separa del ojo mientras baja y parece venir de
+        otro lado. Se le reasigna la x del ojo en cada frame.
+        """
+        if self._boss is None or self._boss.id != BossId.GOLIATH:
+            return
+        eye_x, _eye_y = self._goliath_eye_position()
+        for p in self._bullets.pool:
+            if p.active and p.kind == BULLET_BOSS_LASER:
+                p.x = float(eye_x)
 
     def _start_goliath_spear_throw(self) -> None:
         """BLOQUE 52: begin the GOLIATH spear throw wind-up animation.

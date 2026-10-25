@@ -173,9 +173,19 @@ def test_eye_anchor_sits_in_the_head_band() -> None:
 
 
 def test_eye_laser_spawns_at_the_eye_not_the_body(runtime) -> None:
-    """The beam must originate near the eye, not boss.y + 30."""
+    """The beam must originate at the eye, not at boss.y + 30.
+
+    BLOQUE 67: the beam is a 360 px tall sprite that is CENTERED on the
+    projectile position. Spawning it with its center on the eye put 180 px
+    of beam ABOVE the eye — off the top of the screen — so the beam looked
+    like it came from the ceiling instead of the eye.
+
+    The invariant is about the visible top edge of the beam: that has to
+    land on the eye.
+    """
     import pygame
 
+    from src.systems.projectile import BULLET_BOSS_LASER, BULLET_SIZES
     from src.ui.scenes import get_sprite_centroid_offset, get_sprite_eye_anchor
 
     b = runtime._boss
@@ -195,8 +205,48 @@ def test_eye_laser_spawns_at_the_eye_not_the_body(runtime) -> None:
     assert len(after) > before, "attack 9 spawned no projectile"
 
     laser = after[-1]
-    assert abs(laser.y - expected_y) <= 2, (
-        f"eye laser spawned at y={laser.y}, expected ~{expected_y} (the eye)"
+    half = BULLET_SIZES[BULLET_BOSS_LASER][1] // 2
+    beam_top = laser.y - half
+    assert abs(beam_top - expected_y) <= 2, (
+        f"eye laser top at y={beam_top}, expected ~{expected_y} (the eye)"
+    )
+    # The beam must NOT start above the eye (that was the ceiling bug).
+    assert beam_top >= expected_y - 2, "the beam still starts above the eye"
+
+    # And it must be under the eye on the x axis too.
+    expected_x = int(b.x) - 48 + cdx + eye_col
+    assert abs(laser.x - expected_x) <= 2, (
+        f"eye laser at x={laser.x}, expected ~{expected_x} (the eye)"
+    )
+    b.phase = 1
+
+
+def test_eye_laser_follows_the_eye_when_the_boss_moves(runtime) -> None:
+    """BLOQUE 67: el rayo tiene que seguir al ojo.
+
+    GOLIATH se oscila +-80 px. El rayo es un proyectil con vx=0, asi que
+    sin reasignarlo la columna se separa del ojo mientras baja y parece
+    venir de otro lado (era lo que se veía en la captura del usuario).
+    """
+    b = runtime._boss
+    b.phase = 2
+    b.animation_state = "laser"
+    b.animation_frame = 0
+    runtime._boss_shield_hits = 0
+
+    runtime._spawn_boss_attack(9)
+    laser = [p for p in runtime._bullets.pool if p.active][-1]
+
+    # Mueve el boss y tickea: el rayo tiene que reacomodarse.
+    # OJO: el boss se reposiciona solo con la oscilacion
+    # (x = anchor_x + sin(move_t * 0.5) * 80), asi que hay que mover
+    # move_t, no x.
+    b.move_t = 3.0
+    runtime.update(1.0 / 60.0)
+
+    eye_x, _eye_y = runtime._goliath_eye_position()
+    assert abs(laser.x - eye_x) <= 2, (
+        f"el rayo quedo en x={laser.x} y el ojo en x={eye_x}"
     )
     b.phase = 1
 
