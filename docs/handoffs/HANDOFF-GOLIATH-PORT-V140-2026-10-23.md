@@ -363,14 +363,53 @@ revertiría trabajo más nuevo de `master` en esos archivos.
 `master` quedó **intacto**: `a40fdaf`, working tree limpio, sus 8 commits sin pushear
 sin tocar. Sigue siendo la línea v1.6.3.
 
-### Release v1.7.0
+### Release v1.7.1 (la v1.7.0 tenía el .exe roto)
+
+La **v1.7.0 se publicó con un `.exe` incompleto**: `Assets/imagen fondo
+del juego.jpg` (el fondo pintado del boss fight) vive en la **raíz** de
+`Assets/`, y el `build.spec` bundleaba carpetas + WAVs sueltos de la raíz
+pero no ese JPG. En el `.exe` el boss fight caía al fallback del parallax
+→ **negro con estrellas** en vez de la nebulosa con asteroides.
+
+Era un fallo **silencioso**: `--check` pasaba, los 2825 tests pasaban, y
+el juego arrancaba bien. Solo se notaba mirando la pelea contra GOLIATH.
+También faltaba `voice_gameplay.wav`.
+
+**Fix:** `build.spec` bundlea la raíz de `Assets/` con un **glob** en vez
+de una lista a mano, así ningún asset nuevo puede quedar afuera:
+
+```python
+*[(str(p), "Assets")
+  for p in sorted((PROJECT_ROOT / "Assets").glob("*"))
+  if p.is_file() and "_lp" not in p.name]
+```
+
+Se excluyen los `*_lp*.wav` (caché del lowpass, 61 MB por cutoff, se
+regenera solo); el `lp600` pre-generado sigue listado aparte.
+
+**Guard:** `tests/test_build_spec_assets.py` (7 tests) verifica la
+cobertura del `build.spec` **sin compilar**, para que un bug de
+packaging no vuelva a llegar a una release publicada.
+
+**Verificación:** comparación lado a lado del `.exe` vs `python main.py`
+desde el mismo worktree — el boss fight y el título se ven **idénticos**.
+
+> Lo que parecía un "título glitcheado" en el `.exe` era la fase
+> `logo_reveal` del video del título (frames 0-119), capturada con el
+> clock desfasado por los **2.29 s** que tarda el onefile en extraerse y
+> abrir la ventana. Con el mismo clock de juego, el título se ve igual.
+
+### Artefactos
 
 | | |
 |---|---|
-| Tag | `v1.7.0` (anotado) sobre el HEAD de la rama |
-| Artefactos | `dist/void-hunter-v1.7.0.exe` (287 MB) + `dist/VoidHunter-v1.7.0-win64.zip` (273 MB) |
-| Release notes | `tools/release_notes_v1.7.0.md` |
-| Suite | 8 failed / 2818 passed / 7 skipped (los 8 pre-existentes) |
+| Tag | `v1.7.1` (anotado) sobre el HEAD de la rama |
+| Artefactos | `dist/void-hunter-v1.7.1.exe` (278 MB) + `dist/VoidHunter-v1.7.1-win64.zip` (276 MB) |
+| Release notes | `tools/release_notes_v1.7.1.md` (y `tools/release_notes_v1.7.0.md`) |
+| Suite | 8 failed / 2825 passed / 7 skipped (los 8 pre-existentes) |
+
+> La v1.7.0 queda publicada con el `.exe` roto — es historial público, no
+> se borra. La v1.7.1 es la que hay que usar.
 
 ### Lo que NO se tocó en `master`
 
