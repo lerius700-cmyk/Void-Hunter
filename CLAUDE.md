@@ -2,17 +2,19 @@
 
 **Perfil SF/SM:** Lite
 **Schema target:** `.synapse` 2.2.0 (acepta 2.1.0 legacy)
-**Versión actual:** v1.2.5 (BLOQUE 58.60 — gallery + sprite sheets)
+**Versión actual:** v1.7.2 (BLOQUE 67 — línea v1.4.0 + GOLIATH + menú post-cinematica)
 **Tipo:** CODE (Python + pygame 2.6, stdlib only + numpy para lowpass audio)
-**Test count:** 1,630 / 1,630 pass (excluyendo 2 archivos con errores preexistentes no relacionados)
+**Test count:** 2,766 pass + 8 fail pre-existentes + 7 skipped (2,781 total)
 
 ---
 
 ## ¿Qué ES / Qué NO ES
 
-**ES:** un shmup vertical 8-bit pixelart portrait 240×360 a 120 FPS, con 4 bosses (GOLIATH / HYDRA / PHANTOM / NEMESIS), modo roguelike con seed/RNG, formación Star Fox 64 + bezier paths, 24 SFX procedurales, 2 BGMs streaming, pausa con lowpass, selector de 5 naves × 5 animaciones × 8 frames, 4 videos cinemáticos (2 standalone 9:16 + 2 in-game), galería in-game de spritesheets + videos, y ~24.7K LOC en 79 archivos Python + ~24K LOC de tests en 38 archivos.
+**ES:** un shmup vertical 8-bit pixelart portrait 320×480 a 120 FPS, con 4 bosses (GOLIATH / HYDRA / PHANTOM / NEMESIS), modo roguelike con seed/RNG, formación Star Fox 64 + bezier paths, 24 SFX procedurales, 2 BGMs streaming, pausa con lowpass, selector de 5 naves × 5 animaciones × 8 frames, 4 videos cinemáticos (2 standalone 9:16 + 2 in-game), galería in-game de spritesheets + videos, **menú post-cinematica** (NEW GAME / BOSS TIME / BACKGROUND), **GOLIATH con el escudo medido sobre su placa** (brazo derecho, óvalo invisible, capa de calor + parpadeo, láser naranja grueso) y **el fondo morado del "Asteroid Approach" de v1.4.0** (6 tiles en `Assets/background/tiles/act1/`). ~27.7K LOC en 86 archivos Python + ~22.7K LOC de tests en 83 archivos.
 
 **NO ES:** un MMO, un roguelike 2D con vista top-down, un juego online, un servicio con backend, un proyecto que requiere Truth Anchors de runtime (puertos localhost, ss, pgrep). Es una app standalone pygame que se compila con PyInstaller.
+
+**LÍNEA DE TRABAJO (importante):** esta rama es la **línea v1.4.0** (BLOQUE 71) + el trabajo de GOLIATH y el menú. **v1.4.0 NO tiene sistema de armas**: ni 4 tipos de arma, ni los 4 cuadros de slots en el HUD, ni remap de input de armas. `master` es otra línea (v1.6.3) con features que esta línea **no** tiene.
 
 ---
 
@@ -22,17 +24,18 @@
 L1  CLAUDE.md            ← identidad + reglas globales (ESTE ARCHIVO)
 L1.5 CONTEXT.md          ← Switch de contexto (ADUANA + silos + Token Budget)
 
-L2  src/                 ← código fuente (24.7K LOC, 79 archivos, 14 sistemas)
-L2  tests/               ← 1,630 tests pytest (38 archivos)
-L2  Assets/              ← binarios (sprites, audio, galaxy panels, BGM, video)
-L2  tools/               ← scripts de captura / debug / generación (incl. video_gen/)
-L2  build.spec           ← PyInstaller onedir
+L2  src/                 ← código fuente (27.7K LOC, 86 archivos, 14 sistemas)
+L2  tests/               ← 2,781 tests pytest (83 archivos)
+L2  Assets/              ← binarios (sprites, audio, galaxy panels, tiles, BGM, video)
+L2  tools/               ← scripts de captura / debug / generación (incl. video_gen/, tiles/)
+L2  build.spec           ← PyInstaller onefile
 L2  main.py              ← entry point
 
 L3  docs/arch/           ← arquitectura + roadmap + GDD
 L3  docs/changelog/      ← changelog v1.x + raíz
 L3  docs/bloques/        ← checklists de BLOQUE (mega + user prompts)
 L3  docs/session-reports/← reportes de sesión
+L3  docs/handoffs/       ← handoffs cross-session (cierre formal de BLOQUE)
 L3  docs/superpowers/    ← planes y specs de features grandes
 L3  docs/design/         ← game design (GDD, etc.)
 L3  docs/references/     ← assets de referencia (sprites, paneles)
@@ -65,6 +68,11 @@ L3  docs/references/     ← assets de referencia (sprites, paneles)
 4. **Commits con prefijo de BLOQUE**: `feat: BLOQUE N` / `fix: BLOQUE N` / `chore: BLOQUE N`.
 5. **Sub-boss (BLOQUE 50) = "Wolfen" dart**, NO un boss real. Los 4 bosses reales son GOLIATH/HYDRA/PHANTOM/NEMESIS.
 6. **"minijefe" = sub-boss** en el español del usuario. "canción" = BGM de 5:30. GOLIATH aparece al menos a los 3:40 (220s).
+7. **La base de esta línea es v1.4.0 (BLOQUE 71).** Una feature de BLOQUE 72+ entra **sólo por pedido explícito del usuario**, nunca porque "master la tenía". `master` es otra línea con otras features: portarlas "para no perder nada" mete features que la base no tiene (y puede **borrar** features de la base — BLOQUE 73 Fase A eliminaba el láser de carga del LMB de v1.4.0). Referencia: el commit `1c9170d` (sistema de 4 armas) se revirtió en `8634b17`.
+8. **El escudo de GOLIATH se MIDE, no se posiciona a ojo.** `scenes.get_sprite_shield_ellipse()` lee la silueta real de la placa del brazo derecho por frame. Visual, hitbox y origen del láser leen **la misma** medición (`_goliath_shield_ellipse`): no pueden desincronizarse. Constantes: `GOLIATH_SHIELD_DX/DY` = ajuste del centro medido (0/3), `RX/RY/R` = half-size de fallback (11/17/11).
+9. **El óvalo del escudo es INVISIBLE**: no se dibujan el cuerpo, el borde ni el remache. Solo la **capa de calor** (roja al primer impacto, se calienta al cargar) y la **capa de impacto** (parpadeo de 0.30 s por disparo). `GOLIATH_SHIELD_HIT_FLASH_S = 0.30`.
+10. **`build.spec` bundlea la raíz de `Assets/` con un glob**, no con una lista a mano. Un asset suelto en la raíz (ej. `imagen fondo del juego.jpg`, el fondo pintado del boss fight) se quedaba afuera del `.exe` y hacía que la pelea se viera **negra con estrellas**. Cubierto por `tests/test_build_spec_assets.py`.
+11. **Los tiles del "Asteroid Approach"** (`Assets/background/tiles/act1/`, 6 PNG, 78 KB) están commiteados: nunca se commitearon y por eso v1.4.0 crasheaba al arrancar. No regenerar con AI — son los originales, pintados a mano.
 
 ---
 
@@ -87,6 +95,7 @@ L3  docs/references/     ← assets de referencia (sprites, paneles)
 - Background scroll = top→bottom, HUD = bottom.
 - Audio usa `Sound + Channel` (no `mixer.music` para pause/resume posicional).
 - User-facing language = español; código / commits / docs técnicas = inglés.
+- El título de la ventana dice `VOID HUNTER v1.4.0 (BLOQUE 71)` (`src/core/settings.py:WINDOW_TITLE`). Es el rótulo de la base; la release va por tag de git, no por ese string.
 
 **DEBE preguntar:**
 
@@ -94,6 +103,7 @@ L3  docs/references/     ← assets de referencia (sprites, paneles)
 - Cambios visuales antes de "listo" (user confirms con frame PNG explícito).
 - Cambios al `.exe` (PyInstaller) — preguntar antes de rebuildear.
 - Cualquier cambio que toque audio / music — preguntar antes de tocar la implementación.
+- **Antes de portar una feature que existe en `master` pero no en la base v1.4.0** — preguntar si entra. (El usuario corrigió esto el 2026-10-25: "la version 1.4 no tenia armas extra... nada de armas nuevas").
 
 ---
 
@@ -110,26 +120,28 @@ void-hunter/
 ├── requirements-dev.txt        ← dev/test deps
 ├── pyproject.toml              ← tool config (ruff, mypy, pytest)
 │
-├── src/                        ← L2 código (118 archivos, 28K LOC)
+├── src/                        ← L2 código (86 archivos, 27.7K LOC)
 │   ├── core/                   ← game loop, settings, scene_manager
 │   ├── audio/                  ← synth + music (BLOQUE 58.14)
-│   ├── systems/                ← parallax, wave_manager, bezier, etc.
+│   ├── systems/                ← parallax, wave_manager, bezier, tile_manager, etc.
 │   ├── entities/               ← player, enemy, boss, projectile
-│   ├── ui/                     ← scenes, gameplay_runtime, HUD
+│   ├── ui/                     ← scenes, gameplay_runtime, HUD, video_player
 │   ├── movement/               ← formation, paths
 │   ├── roguelike/              ← seed, level_gen, form_gen, replay
 │   └── utils/                  ← palette, easing
 │
-├── tests/                      ← L2 (1,171 tests, BLOQUE 1-58.14)
+├── tests/                      ← L2 (2,781 tests, BLOQUE 1-67)
 │
 ├── Assets/                     ← L2 binarios
 │   ├── background/             ← galaxy_panel_*.png, galaxy_sprite_*.png
-│   ├── sprites/                ← ship sprites, enemy sprites, VFX
+│   │   └── tiles/act1/         ← 6 tiles del "Asteroid Approach" (BLOQUE 64)
+│   ├── sprites/                ← ship sprites, enemy sprites, GOLIATH frames, VFX
 │   ├── *.wav                   ← BGM + voice clips
 │   └── keep kept - Lerius - soundtrack gameplay_lp600.wav
 │
 ├── tools/                      ← L2 dev-only (no productiva)
 │   ├── capture/                ← scripts de screenshot
+│   ├── tiles/                  ← pipeline del fondo Asteroid Approach (generate_tiles.py + ai_gen/)
 │   ├── debug_*.py              ← debug tools
 │   ├── test_*.py               ← ad-hoc tests
 │   ├── process_galaxy_sprites_v2.py
@@ -141,6 +153,7 @@ void-hunter/
 │   ├── changelog/              ← changelog
 │   ├── bloques/                ← checklists
 │   ├── session-reports/        ← reportes
+│   ├── handoffs/               ← handoffs cross-session
 │   ├── superpowers/            ← planes + specs
 │   ├── design/                 ← GDD
 │   └── references/             ← assets de referencia
@@ -156,7 +169,9 @@ void-hunter/
 
 | Protocolo | Cuándo usar | Dónde vive |
 |-----------|-------------|------------|
-| **sf-sm-doctor** (System Folder + Synapse Method) | Auditar / remediar estructura del proyecto | `D:\AI\Hermes SKills\skills\devops\sf-sm-doctor\` |
+| **sf-sm-doctor** (System Folder + Synapse Method) | Auditar / remediar estructura del proyecto | `C:\Users\Lerius\.minimax\skills\sf-sm-doctor\` |
+| **sf-sm-audit** (alias de sf-sm-doctor) | Auditar compliance sin remediar | `C:\Users\Lerius\.minimax\skills\sf-sm-audit\` |
+| **gstack-review** | Review pre-landing del diff contra la base | `C:\Users\Lerius\.minimax\skills\gstack-review\` |
 | **synapse-compact** (Consolidación de sesión) | Fin de sesión, capturar objetivo + última acción | Mavis skill |
 | **synapse-deep** (Actualización documental) | Cuando hubo cambios de arquitectura / reglas / conceptos | Mavis skill |
 | **sre-protocol** (SRE Protocol / Puente Roto) | Diagnosticar y reparar bridges runtime caídos (5 pasos: Symptom → Map Bridge → Execution → Verify → Document). Soporta HTTP, DB, GPU, Storage. | Mavis skill |
@@ -188,24 +203,30 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 
 | Métrica | Valor | Fuente (Truth Anchor) |
 |---------|-------|------------------------|
-| Líneas de código (src/) | 24,757 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
-| Archivos Python (src/) | 79 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
-| Tests (tests/) | 1,630 / 1,630 pass | `python -m pytest tests/ -q` (exit 0) |
-| LOC tests/ (helper) | ~24,000 | `pytest --collect-only -q` (test count) |
-| Silos SF+SM | 7 (Lite) | `audit_sf_sm.py` |
+| Líneas de código (src/) | 27,694 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
+| Archivos Python (src/) | 86 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
+| Tests (tests/) | 2,766 pass + 8 fail pre-existentes + 7 skipped | `python -m pytest tests/ --tb=no` |
+| LOC tests/ | 22,681 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
+| Silos SF+SM | 9 (Lite) | `Get-ChildItem docs -Directory \| Measure-Object` |
 | Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
-| Versión | v1.2.5 (BLOQUE 58.60) | `git log --oneline -1` |
-| Rama | master | `git branch --show-current` |
+| Versión | v1.7.2 (BLOQUE 67) | `git log --oneline -1` |
+| Rama | bloquec-67-goliath-port | `git branch --show-current` |
 | Remote | github.com/lerius700-cmyk/Void-Hunter | `git remote -v` |
-| Build .exe | `dist/void-hunter/void-hunter.exe` ~4.3 MB | `Get-Item dist/void-hunter/void-hunter.exe` |
+| Build .exe | `dist/void-hunter.exe` ~278 MB (onefile) | `Get-Item dist/void-hunter.exe` |
+| Tiles Asteroid Approach | 6 PNG (320×480) en `Assets/background/tiles/act1/` | `Get-ChildItem Assets/background/tiles/act1/*.png` |
+| Frames GOLIATH | 60 PNG (6 anim × 10) en `Assets/sprites/bosses/goliath/` | `Get-ChildItem Assets/sprites/bosses/goliath/*/frame_*.png` |
 | Videos cinemáticos (standalone) | 4 mp4 (1080×1920 + 540×960) en `release/videos/` | `Get-ChildItem release/videos/*.mp4` |
 | Videos cinemáticos (in-game) | 660 PNG frames en `Assets/video/{title,zoom}/frames/` | `Get-ChildItem Assets/video/*/frames/frame_*.png` |
 | Sprite sheets (in-game) | 5 PNGs en `Assets/sprites/player_ships/ship_*_spritesheet.png` | `Get-ChildItem Assets/sprites/player_ships/*_spritesheet.png` |
 
-> **Nota:** los valores 22,981 LOC y 75 files en `src/` son el conteo actual
-> (regenerados 2026-08-17). El valor histórico 28,066 LOC / 118 files que
-> estaba en `docs/arch/ARCHITECTURE.md` (updated 2026-08-15) ya no aplica
-> tras el BLOQUE SF+SM (consolidación de archivos sueltos a silos).
+> **Nota:** los 8 tests que fallan son **pre-existentes** (5 de `test_sub_boss_*`
+> por contaminación de estado entre tests, 2 de `test_asteroid_sprites.py` y
+> 1 de `test_paths.py::test_paths_no_star_shapes` que es una aserción real
+> de geometría del LissajousPath). No son regresiones del port.
+>
+> Esta rama es la **línea v1.4.0** (BLOQUE 71) + BLOQUE 67. `master` es otra
+> línea (v1.6.3) y tiene features que esta línea no tiene — ver la
+> decisión 7 en "Decisiones arquitectónicas no negociables".
 
 > **Regla:** si una métrica cambia, regenerar este bloque con el comando de la columna "Fuente". NUNCA editar a mano.
 
@@ -230,3 +251,14 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
   - 660 frames PNG bundleados en `Assets/video/`
   - STATUS:GENERATED regenerado: 24,757 LOC / 79 files en `src/`, 1,630 tests pass
   - `docs/superpowers/specs/2026-08-25-void-hunter-videos-design.md` (spec de la feature)
+- **2026-10-25 (BLOQUE 67 — línea v1.4.0 + GOLIATH + menú post-cinematica, v1.7.0 → v1.7.2)** — Partiendo de `d70b8da` (v1.4.0, BLOQUE 71) en el worktree `.worktrees/bloquec-67-goliath-port`:
+  - **GOLIATH (BLOQUE 66)**: 60 frames restaurados de `ac53596` + el re-padding de `6c71e1b`; el escudo se **mide** sobre la silueta de la placa del brazo derecho (`scenes.get_sprite_shield_ellipse()`), el **óvalo es invisible** y solo se ven la capa de calor (roja al primer impacto) y el parpadeo de impacto; láser del escudo **naranja y grueso**; el **láser del ojo sale del ojo** (y lo sigue cuando GOLIATH se mueve).
+  - **Menú post-cinematica (BLOQUE 73.7)**: `GameState.MENU` + `MainMenuScene` (NEW GAME / BOSS TIME / BACKGROUND) + `Game.bg_mode`.
+  - **Fondo ASTEROID NEBULA real de v1.4.0**: los 6 tiles del "Asteroid Approach" (BLOQUE 64) **recuperados** de dos copias locales del repo (MD5 idéntico) y commiteados (78 KB). Nunca se commitearon, por eso v1.4.0 crasheaba al arrancar.
+  - **BLOQUE 73.1**: `TileManager` degrada graceful sin los tiles (v1.4.0 crasheaba al arrancar: `FileNotFoundError`).
+  - **`--boss` deja de ser stub**: camina `TITLE → ACT_INTRO → GAMEPLAY → BOSS_INTRO → BOSS_FIGHT`.
+  - **`build.spec`**: la raíz de `Assets/` se bundlea con un **glob**. `imagen fondo del juego.jpg` (el fondo pintado del boss fight) no entraba al `.exe` y la pelea se veía **negra con estrellas**. Cubierto por `tests/test_build_spec_assets.py`.
+  - **Revertido**: el sistema de 4 armas (BLOQUE 72 + 73 Fase A/B/C) — la base v1.4.0 **no tiene armas** (ni 4 tipos, ni los 4 cuadros de slots, ni el remap de input) y el port además arrastraba `d43f7be`, que **borraba** el láser de carga del LMB de v1.4.0.
+  - **Releases**: v1.7.0 (`.exe` sin el fondo del boss fight) → v1.7.1 (con el sistema de armas de más) → **v1.7.2 (la correcta)**.
+  - **Handoff**: `docs/handoffs/HANDOFF-GOLIATH-PORT-V140-2026-10-23.md`.
+  - STATUS:GENERATED regenerado: 27,694 LOC / 86 files en `src/`, 22,681 LOC en `tests/`, 2,781 tests, 9 silos.

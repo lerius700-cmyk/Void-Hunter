@@ -9,6 +9,7 @@
 | Archivo | Tipo | Descripción |
 |---------|------|-------------|
 | `Starfox_ships_8bits.png` | Referencia | Sprite sheet de naves Star Fox 8-bit (referencia para ship selection) |
+| `../background/tiles/act1/*.png` | Asset fuente | Los 6 tiles del "Asteroid Approach" (BLOQUE 64) — el fondo morado de v1.4.0. **No regenerar con AI**: son los originales, pintados a mano. Recuperados el 2026-10-25 (BLOQUE 67) |
 
 ---
 
@@ -29,6 +30,7 @@
 |--------|---------|-------------|
 | `references/*.png` ↔ `Assets/sprites/player_ships/` | Las naves generadas deben parecerse a la referencia | `python tools/test_nebula_render.py` (o equivalente para ships) |
 | `references/Starfox_ships_8bits.png` ↔ `docs/arch/ARCHITECTURE.md` §Ship Selection | El spec referencia esta imagen | `grep -l 'Star Fox' docs/arch/ARCHITECTURE.md` |
+| `Assets/background/tiles/act1/` ↔ fondo del gameplay | Los tiles commiteados tienen que ser los originales (MD5 8C2DD339FE4E...) | `Get-FileHash Assets/background/tiles/act1/tile_01_atmosphere_exit.png -Algorithm MD5` |
 
 ---
 

@@ -1,6 +1,6 @@
 # 🏛️ Switch de Contexto — VOID HUNTER
 
-**Versión:** 1.2.0
+**Versión:** 1.3.0 (línea v1.7.2 / BLOQUE 67)
 **Propósito:** Navegación entre silos del proyecto VOID HUNTER.
 **Perfil SF/SM:** Lite
 **Schema target:** `.synapse` 2.2.0 (acepta 2.1.0 legacy)
@@ -25,14 +25,15 @@ Regla: entrar por L1 → L1.5 → identificar silo → leer CONTEXT.md del silo 
 |------|------|-----------|-----------|
 | **L1** | `CLAUDE.md` | Identidad + reglas globales | Siempre (inducción) |
 | **L1.5** | `CONTEXT.md` | Switch de contexto | Antes de cualquier tarea |
-| **L2** | `src/` | Código fuente (24.7K LOC, 79 archivos, 14 sistemas) | Implementar features |
-| **L2** | `tests/` | 1,630 tests pytest (~24K LOC, 38 archivos) | TDD / regression |
-| **L2** | `Assets/` | Binarios (sprites, audio, galaxy panels, video) | Solo lectura, regenerar con `tools/` |
+| **L2** | `src/` | Código fuente (27.7K LOC, 86 archivos, 14 sistemas) | Implementar features |
+| **L2** | `tests/` | 2,781 tests pytest (~22.7K LOC, 83 archivos) | TDD / regression |
+| **L2** | `Assets/` | Binarios (sprites, audio, galaxy panels, tiles, video) | Solo lectura, regenerar con `tools/` |
 | **L2** | `tools/` | Dev-only (captura, debug, generación, video_gen) | Verificar visuales, generar assets |
 | **L3** | `docs/arch/CONTEXT.md` | Arquitectura + roadmap + GDD | Decisiones de diseño |
 | **L3** | `docs/changelog/CONTEXT.md` | Changelog histórico | "¿qué se intentó antes?" |
 | **L3** | `docs/bloques/CONTEXT.md` | Checklists de BLOQUE (mega + user) | Tracking de features |
 | **L3** | `docs/session-reports/CONTEXT.md` | Reportes de sesión | Continuity cross-session |
+| **L3** | `docs/handoffs/CONTEXT.md` | Handoffs cross-session (cierre formal de BLOQUE) | Retomar un BLOQUE a medio hacer |
 | **L3** | `docs/superpowers/CONTEXT.md` | Planes + specs de features grandes | Diseño de features nuevas |
 | **L3** | `docs/design/CONTEXT.md` | Game design (GDD) | Game design questions |
 | **L3** | `docs/movement/CONTEXT.md` | Coreografía de naves (FROZEN subsystem) | ANTES de tocar `src/movement/` o `src/systems/wave_patterns/` |
@@ -63,10 +64,12 @@ Regla: entrar por L1 → L1.5 → identificar silo → leer CONTEXT.md del silo 
 | `Assets/**/*.wav` | R (REFERENCE) | Audio assets |
 | `Assets/video/**/*.png` | R (REFERENCE) | Video frames cinemáticos (no editar) |
 | `Assets/sprites/player_ships/*_spritesheet.png` | R (REFERENCE) | Sprite sheets de naves |
+| `Assets/background/tiles/act1/*.png` | R (REFERENCE) | 6 tiles del fondo Asteroid Approach (no editar a mano) |
 | `release/videos/*.mp4` | R (REFERENCE) | Videos standalone (share externos) |
 | `tools/**/*.py` | R (REFERENCE) | Dev tools (no productiva) |
 | `tools/playtest_out/**/*.png` | R (REFERENCE) | Visual proofs |
 | `tools/video_gen/**` | R (REFERENCE) | Pipeline de generación de video |
+| `tools/tiles/**` | R (REFERENCE) | Pipeline del fondo Asteroid Approach (`generate_tiles.py` + `ai_gen/`) |
 | `*.log` | S (SKIP) | Logs de ejecución |
 | `dist/` / `build/` | S (SKIP) | Output PyInstaller |
 | `release/` (general) | S (SKIP) | Output deliverables (gitignored) |
@@ -98,8 +101,14 @@ Estos no son runtime bridges, son referencias a recursos externos que el agente 
 
 | Recurso | Comando | Uso |
 |---------|---------|-----|
-| Build .exe | `pyinstaller build.spec --clean -y` | Generar `dist/void-hunter/void-hunter.exe` |
-| Tests | `python -m pytest tests/ -q` | Validar regresiones |
+| Build .exe (onefile) | `python -m PyInstaller build.spec --clean --noconfirm` | Generar `dist/void-hunter.exe` (~278 MB) |
+| Tests | `python -m pytest tests/ --tb=no` | Validar regresiones (NO agregar `-q`: pyproject ya lo pone) |
+| Self-test del juego | `python main.py --check` | Verificar imports + settings sin abrir ventana |
+| Pelea directa | `python main.py --boss goliath --easy --duration 60` | Saltar al boss fight (TITLE→ACT_INTRO→GAMEPLAY→BOSS_INTRO→BOSS_FIGHT) |
+| Smoke del flujo completo | `python tools/capture/capture_full_flow_v140.py` | Recorrer TITLE→CINEMATIC→MENU→…→BOSS_FIGHT headless |
+| Captura del escudo | `python tools/capture/capture_goliath_shield_bloque67.py` | Rampa de carga + láser del escudo |
+| Captura del menú | `python tools/capture/capture_main_menu.py` | Los 5 estados del menú |
+| Tiles del fondo | `python tools/tiles/generate_tiles.py` | Regenerar los tiles del "Asteroid Approach" |
 | Galaxy extraction | `python tools/process_galaxy_sprites_v2.py` | Regenerar sprites de nebula desde paneles |
 | Player ship sheets | `python tools/generate_player_ship_sheets.py` | Regenerar 5 naves × 5 anims × 8 frames |
 | Audio lowpass test | `python tools/test_music_continuous_lowpass.py` | Verificar pause/resume posicional |
@@ -109,12 +118,6 @@ Estos no son runtime bridges, son referencias a recursos externos que el agente 
 | Encode mp4 from frames | `python tools/video_gen/encode_mp4.py <frames_dir> <out.mp4> <w> <h> <fps>` | Generar mp4 standalone desde PNGs |
 | Build ship sprite sheets | `python tools/build_sprite_sheet.py [ship_id]` | Generar ship_NN_spritesheet.png (5 anims × 8 frames en un PNG) |
 | Video integration smoke test | `python tools/test_video_integration.py` | Headless smoke test del VideoPlayer + scenes |
-| Build .exe | `pyinstaller build.spec --clean -y` | Generar `dist/void-hunter/void-hunter.exe` |
-| Tests | `python -m pytest tests/ -q` | Validar regresiones |
-| Galaxy extraction | `python tools/process_galaxy_sprites_v2.py` | Regenerar sprites de nebula desde paneles |
-| Player ship sheets | `python tools/generate_player_ship_sheets.py` | Regenerar 5 naves × 5 anims × 8 frames |
-| Audio lowpass test | `python tools/test_music_continuous_lowpass.py` | Verificar pause/resume posicional |
-| Nebula render test | `python tools/test_nebula_render.py` | Verificar render de nebula headless |
 
 ---
 
@@ -124,10 +127,13 @@ Comando canónico para auditar el estado del proyecto:
 
 ```bash
 $env:PYTHONIOENCODING = "utf-8"
-python "D:\AI\Hermes SKills\skills\devops\sf-sm-doctor\scripts\audit_sf_sm.py" "D:\AI\void-hunter" --perfil=lite
+python "C:\Users\Lerius\.minimax\skills\sf-sm-doctor\scripts\audit_sf_sm.py" "F:\AI\MM\void-hunter" --perfil=lite
 ```
 
 Target: `7/7` compliance Lite. Si baja, correr remediación.
+
+> La ruta vieja `D:\AI\Hermes SKills\...` ya no existe (skills migradas a
+> `C:\Users\Lerius\.minimax\skills\`).
 
 ---
 
@@ -141,6 +147,14 @@ Target: `7/7` compliance Lite. Si baja, correr remediación.
 
 ## Historial de cambios estructurales
 
+- **2026-10-25 (BLOQUE 67)** — Línea v1.4.0 + GOLIATH + menú post-cinematica (v1.7.2):
+  - Silo nuevo `docs/handoffs/` (handoffs cross-session) con su `CONTEXT.md`.
+  - `docs/arch/` gana el silo de handoffs en la tabla de silos.
+  - Tokens: `Assets/background/tiles/act1/*.png` y `tools/tiles/**` pasan a R (REFERENCE).
+  - Bridges externos: comando de build corregido a `python -m PyInstaller build.spec
+    --clean --noconfirm` (el spec es **onefile**, no onedir) y se deduplican las
+    6 filas repetidas.
+  - Ruta de la auditoría corregida a `C:\Users\Lerius\.minimax\skills\...`.
 - **2026-08-17** — sf-sm-doctor primera pasada. Compliance `1/7 → 7/7`:
   - Tree Integrity: `CHANGELOG.md` movido de raíz a `docs/changelog/`.
   - `CLAUDE.md` creado con 8 essentials + marcador `**Perfil SF/SM:** Lite` + bloque `STATUS:GENERATED`.

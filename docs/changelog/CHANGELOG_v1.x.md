@@ -2295,6 +2295,96 @@ _trash_2026-09-10/` after a few days post-release.
 - `07dc8c0` BLOQUE 71: spec
 
 ### Deferred to v1.5.0
+---
+
+## BLOQUE 67 — Línea v1.4.0 + GOLIATH + menú post-cinematica (2026-10-25)
+
+Port de BLOQUE 66 (GOLIATH) y BLOQUE 73.7 (menú post-cinematica) sobre la
+base `d70b8da` (v1.4.0, BLOQUE 71). Trabajo en el worktree
+`.worktrees/bloquec-67-goliath-port`, rama `bloquec-67-goliath-port`.
+
+### GOLIATH (BLOQUE 66)
+
+- **60 frames restaurados** de `ac53596` (BLOQUE 65) + el re-padding de
+  `6c71e1b`. La base v1.4.0 los tenía **colapsados** (10 copias idénticas
+  por animación). Gate 2: 10/10 MD5 únicos en las 6 animaciones.
+  **No se regeneraron con AI**: son los PNGs originales.
+- **El escudo se mide, no se posiciona a ojo.** La placa usa la misma
+  paleta que el cuerpo, así que la firma de color no la aísla: la
+  detección es por silueta (`scenes.get_sprite_shield_ellipse()`), banda
+  y 28..54, último bloque de píxeles sólidos de cada fila, recortado para
+  no meterse en el torso. Medido en los 60 frames: cx 57..63.5,
+  rx 7..11, ry 9..13 — **todos en el brazo derecho**.
+- **El óvalo es INVISIBLE.** Se sacaron el cuerpo translúcido, el borde
+  y el remache. Quedan dos capas: la **capa de calor** (roja al primer
+  impacto → naranja → ámbar → blanco caliente) y la **capa de impacto**
+  (parpadeo blanco de 0.30 s por disparo, `GOLIATH_SHIELD_HIT_FLASH_S`).
+- **Láser del escudo naranja y grueso**: núcleo de 8 → 14 px, glow de +24 →
+  +36, paleta `(255,60,40)` → `(255,110,30)/(255,150,40)/(255,226,150)`.
+  Sale de la placa, no del pecho.
+- **El láser del ojo sale del ojo.** El sprite del rayo es una columna de
+  360 px que el pool dibuja *centrada* en el proyectil: al aparecer en el
+  ojo, media columna quedaba fuera de pantalla y el rayo parecía salir
+  del tope. Ahora el borde superior del rayo cae en el ojo, y el rayo
+  **sigue al ojo** cuando GOLIATH se oscila ±80 px.
+- `Boss.update_animation()` (BLOQUE 64.B) **nunca fue llamado** por nadie:
+  el boss se quedaba en una pose durante toda la pelea.
+
+### Menú post-cinematica (BLOQUE 73.7)
+
+- `GameState.MENU` + `MainMenuScene` (NEW GAME / BOSS TIME / BACKGROUND) +
+  `Game.bg_mode` (default 1 = ASTEROID NEBULA).
+- Selector de tema de fondo en el título (`1-4` / ←→): blue_void / teal /
+  gold_amber / **purple_dusk** (default).
+- `--boss` deja de ser un stub: camina
+  `TITLE → ACT_INTRO → GAMEPLAY → BOSS_INTRO → BOSS_FIGHT`.
+
+### Fondo ASTEROID NEBULA real de v1.4.0
+
+- Los **6 tiles del "Asteroid Approach"** (BLOQUE 64) nunca se commitearon.
+  Recuperados de dos copias locales del repo (MD5 idéntico) y commiteados
+  (78 KB). No se regeneraron con AI.
+- `TileManager` degrada graceful sin los tiles: en v1.4.0 levantaba
+  `FileNotFoundError` y **el juego no arrancaba** (BLOQUE 73.1).
+
+### Packaging (bug silencioso, 2 releases con el .exe roto)
+
+- `Assets/imagen fondo del juego.jpg` (el fondo pintado del boss fight)
+  vive en la **raíz** de `Assets/` y el `build.spec` no lo bundleaba: en
+  el `.exe` la pelea se veía **negra con estrellas**. `build.spec` ahora
+  usa un **glob** de la raíz, así ningún asset suelto se queda afuera.
+- Faltaba `voice_gameplay.wav`.
+- `tests/test_build_spec_assets.py` (7 tests) verifica la cobertura del
+  spec **sin compilar**.
+
+### Revertido: el sistema de 4 armas
+
+El port del sistema de armas (BLOQUE 72 + 73 Fase A/B/C) fue un error:
+la base v1.4.0 **no tiene armas** — ni 4 tipos, ni los 4 cuadros de slots
+del HUD, ni remap de input — y arrastraba `d43f7be` (BLOQUE 73 Fase A),
+que **borraba el láser de carga del LMB** de v1.4.0. Revertido completo
+en `8634b17`. Se conserva el powerup `WEAPON` original de v1.4.0.
+
+**Regla que queda escrita:** esta línea es v1.4.0. Una feature de
+BLOQUE 72+ entra **sólo por pedido explícito**, nunca porque "master la
+tenía".
+
+### Releases
+
+| Tag | Qué es |
+|-----|--------|
+| `v1.7.0` | El juego completo, con el `.exe` **sin el fondo del boss fight** |
+| `v1.7.1` | Fix del `.exe` (fondo + voz), pero **con el sistema de armas de más** |
+| **`v1.7.2`** | **La correcta**: línea v1.4.0 sin armas de más, `.exe` completo |
+
+Handoff completo: `docs/handoffs/HANDOFF-GOLIATH-PORT-V140-2026-10-23.md`.
+
+### Suite
+
+`2,766 pass + 8 fail pre-existentes + 7 skipped` (2,781 total). Los 8 son
+los ya documentados (5 de `test_sub_boss_*` por contaminación de estado,
+2 de `test_asteroid_sprites.py`, 1 de `test_paths.py`).
+
 - **BLOQUE 72 (4-weapon powerup system)** — spec + 20-task plan are
   on disk; implementation paused for v1.4.0 to ship first. Adds
   thick shot (A), laser (S), flamethrower (D), double blue laser (F)
