@@ -26,7 +26,7 @@ Regla: entrar por L1 → L1.5 → identificar silo → leer CONTEXT.md del silo 
 | **L1** | `CLAUDE.md` | Identidad + reglas globales | Siempre (inducción) |
 | **L1.5** | `CONTEXT.md` | Switch de contexto | Antes de cualquier tarea |
 | **L2** | `src/` | Código fuente (27.7K LOC, 86 archivos, 14 sistemas) | Implementar features |
-| **L2** | `tests/` | 2,781 tests pytest (~22.7K LOC, 83 archivos) | TDD / regression |
+| **L2** | `tests/` | 2,787 tests pytest (~22.8K LOC, 96 archivos) | TDD / regression |
 | **L2** | `Assets/` | Binarios (sprites, audio, galaxy panels, tiles, video) | Solo lectura, regenerar con `tools/` |
 | **L2** | `tools/` | Dev-only (captura, debug, generación, video_gen) | Verificar visuales, generar assets |
 | **L3** | `docs/arch/CONTEXT.md` | Arquitectura + roadmap + GDD | Decisiones de diseño |

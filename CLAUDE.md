@@ -4,13 +4,13 @@
 **Schema target:** `.synapse` 2.2.0 (acepta 2.1.0 legacy)
 **Versión actual:** v1.7.2 (BLOQUE 67 — línea v1.4.0 + GOLIATH + menú post-cinematica)
 **Tipo:** CODE (Python + pygame 2.6, stdlib only + numpy para lowpass audio)
-**Test count:** 2,766 pass + 8 fail pre-existentes + 7 skipped (2,781 total)
+**Test count:** 2,772 pass + 8 fail pre-existentes + 7 skipped (2,787 total)
 
 ---
 
 ## ¿Qué ES / Qué NO ES
 
-**ES:** un shmup vertical 8-bit pixelart portrait 320×480 a 120 FPS, con 4 bosses (GOLIATH / HYDRA / PHANTOM / NEMESIS), modo roguelike con seed/RNG, formación Star Fox 64 + bezier paths, 24 SFX procedurales, 2 BGMs streaming, pausa con lowpass, selector de 5 naves × 5 animaciones × 8 frames, 4 videos cinemáticos (2 standalone 9:16 + 2 in-game), galería in-game de spritesheets + videos, **menú post-cinematica** (NEW GAME / BOSS TIME / BACKGROUND), **GOLIATH con el escudo medido sobre su placa** (brazo derecho, óvalo invisible, capa de calor + parpadeo, láser naranja grueso) y **el fondo morado del "Asteroid Approach" de v1.4.0** (6 tiles en `Assets/background/tiles/act1/`). ~27.7K LOC en 86 archivos Python + ~22.7K LOC de tests en 83 archivos.
+**ES:** un shmup vertical 8-bit pixelart portrait 320×480 a 120 FPS, con 4 bosses (GOLIATH / HYDRA / PHANTOM / NEMESIS), modo roguelike con seed/RNG, formación Star Fox 64 + bezier paths, 24 SFX procedurales, 2 BGMs streaming, pausa con lowpass, selector de 5 naves × 5 animaciones × 8 frames, 4 videos cinemáticos (2 standalone 9:16 + 2 in-game), galería in-game de spritesheets + videos, **menú post-cinematica** (NEW GAME / BOSS TIME / BACKGROUND), **GOLIATH con el escudo medido sobre su placa** (brazo derecho, óvalo invisible, capa de calor + parpadeo, láser naranja grueso) y **el fondo morado del "Asteroid Approach" de v1.4.0** (6 tiles en `Assets/background/tiles/act1/`). ~27.7K LOC en 86 archivos Python + ~22.8K LOC de tests en 96 archivos.
 
 **NO ES:** un MMO, un roguelike 2D con vista top-down, un juego online, un servicio con backend, un proyecto que requiere Truth Anchors de runtime (puertos localhost, ss, pgrep). Es una app standalone pygame que se compila con PyInstaller.
 
@@ -25,7 +25,7 @@ L1  CLAUDE.md            ← identidad + reglas globales (ESTE ARCHIVO)
 L1.5 CONTEXT.md          ← Switch de contexto (ADUANA + silos + Token Budget)
 
 L2  src/                 ← código fuente (27.7K LOC, 86 archivos, 14 sistemas)
-L2  tests/               ← 2,781 tests pytest (83 archivos)
+L2  tests/               ← 2,787 tests pytest (96 archivos)
 L2  Assets/              ← binarios (sprites, audio, galaxy panels, tiles, BGM, video)
 L2  tools/               ← scripts de captura / debug / generación (incl. video_gen/, tiles/)
 L2  build.spec           ← PyInstaller onefile
@@ -130,7 +130,7 @@ void-hunter/
 │   ├── roguelike/              ← seed, level_gen, form_gen, replay
 │   └── utils/                  ← palette, easing
 │
-├── tests/                      ← L2 (2,781 tests, BLOQUE 1-67)
+├── tests/                      ← L2 (2,787 tests, BLOQUE 1-67)
 │
 ├── Assets/                     ← L2 binarios
 │   ├── background/             ← galaxy_panel_*.png, galaxy_sprite_*.png
@@ -205,8 +205,8 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 |---------|-------|------------------------|
 | Líneas de código (src/) | 27,694 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
 | Archivos Python (src/) | 86 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
-| Tests (tests/) | 2,766 pass + 8 fail pre-existentes + 7 skipped | `python -m pytest tests/ --tb=no` |
-| LOC tests/ | 22,681 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
+| Tests (tests/) | 2,772 pass + 8 fail pre-existentes + 7 skipped | `python -m pytest tests/ --tb=no` |
+| LOC tests/ | 22,773 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
 | Silos SF+SM | 9 (Lite) | `Get-ChildItem docs -Directory \| Measure-Object` |
 | Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
 | Versión | v1.7.2 (BLOQUE 67) | `git log --oneline -1` |
@@ -261,4 +261,4 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
   - **Revertido**: el sistema de 4 armas (BLOQUE 72 + 73 Fase A/B/C) — la base v1.4.0 **no tiene armas** (ni 4 tipos, ni los 4 cuadros de slots, ni el remap de input) y el port además arrastraba `d43f7be`, que **borraba** el láser de carga del LMB de v1.4.0.
   - **Releases**: v1.7.0 (`.exe` sin el fondo del boss fight) → v1.7.1 (con el sistema de armas de más) → **v1.7.2 (la correcta)**.
   - **Handoff**: `docs/handoffs/HANDOFF-GOLIATH-PORT-V140-2026-10-23.md`.
-  - STATUS:GENERATED regenerado: 27,694 LOC / 86 files en `src/`, 22,681 LOC en `tests/`, 2,781 tests, 9 silos.
+  - STATUS:GENERATED regenerado: 27,694 LOC / 86 files en `src/`, 22,773 LOC en `tests/`, 2,787 tests, 9 silos.

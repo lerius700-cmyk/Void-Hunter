@@ -69,7 +69,7 @@ Exactamente lo que corresponde a la línea v1.4.0 + el trabajo pedido:
 
 ---
 
-**Suite:** 8 failed / 2766 passed / 7 skipped — los 8 son fallos
+**Suite:** 8 failed / 2772 passed / 7 skipped — los 8 son fallos
 pre-existentes documentados. Cero regresiones.
 
 **Verificación visual:** el `.exe` y `python main.py` corriendo desde el

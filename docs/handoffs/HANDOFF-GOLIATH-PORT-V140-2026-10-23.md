@@ -64,7 +64,7 @@ python -m pytest tests/ --tb=no
 | | failed | passed | skipped | total |
 |---|---|---|---|---|
 | **v1.4.0 crudo (baseline)** | **158** | 2,539 | 7 | 2,704 |
-| **v1.4.0 + port** | **8** | **2,726** | 12 | 2,746 |
+| **v1.4.0 + port** | **8** | **2,772** | 7 | 2,787 |
 
 Los **8 que quedan son pre-existentes** (idénticos a los que ya fallaban en v1.6.3, ver
 `HANDOFF-GOLIATH-MENU-2026-10-23.md` §6):
@@ -432,7 +432,7 @@ tiene.
 | Tag | `v1.7.2` (anotado) sobre el HEAD de la rama |
 | Artefactos | `dist/void-hunter-v1.7.2.exe` (278 MB) + `dist/VoidHunter-v1.7.2-win64.zip` (276 MB) |
 | Release notes | `tools/release_notes_v1.7.{0,1,2}.md` |
-| Suite | 8 failed / 2766 passed / 7 skipped (los 8 pre-existentes) |
+| Suite | 8 failed / 2772 passed / 7 skipped (los 8 pre-existentes) |
 
 > v1.7.0 quedó publicada con el `.exe` sin el fondo del boss fight; la
 > v1.7.1 con el sistema de armas de más. **La v1.7.2 es la buena.**
@@ -455,6 +455,41 @@ Por eso el `build.spec` no necesita bundlear `Assets/sounds` — igual que
 en v1.6.3.
 
 ---
+
+## 7.5 Cierre de sesion: synapse-deep + sf-sm-audit + gstack-review
+
+**`synapse-deep`** — documentacion al estado real de la linea v1.7.2:
+`CLAUDE.md` (version, 5 decisiones arquitectonicas nuevas, STATUS:GENERATED
+regenerado con los truth anchors, historial del BLOQUE 67) · `CONTEXT.md`
+raiz (silos, token budget, bridges externos deduplicados, comando de build
+corregido a `python -m PyInstaller build.spec --clean --noconfirm`, ruta
+real de la auditoria) · silo nuevo `docs/handoffs/` con su `CONTEXT.md` ·
+`CHANGELOG_v1.x.md` · `SESSION_REPORT_BLOQUE_67.md` · `references/CONTEXT.md`
+· `.synapse` reescrito en schema 2.2.0 canonico (los shortcuts legacy
+migraron al bloque "Bridges Externos" del CONTEXT.md raiz).
+
+**`sf-sm-audit`** — 6/7 con un finding (Tree Integrity: `_trash_2026-09-10_MANIFEST.md`
+huérfano en la raiz). Remediado igual que master: el manifest archivado en
+`_trash_2026-09-10/` y `smoke.py` movido a `tools/`. **7/7, 0 findings.**
+Extra: master movio `smoke.py` pero dejo `ROOT` apuntando a `tools/` y el
+script no corria; corregido.
+
+**`gstack-review`** — sin hallazgos criticos. 4 observaciones informativas
+todas medidas: side effect idempotente en `draw()`, render del strip de
+fallback (11.2 ms, una vez), medicion del escudo (3.9 ms por frame nuevo
+del sprite, cacheada; frame times reales: mediana 2.28 ms, p99 3.20 ms
+contra 8.33 ms de budget) y el doble clic en el menu (protegido por el
+guard `new_state == current_state` de `SceneManager.transition_to`).
+
+**Un hueco real que se cerro:** no habia ningun test que impidiera volver a
+meter el sistema de armas — justo el error que cometi y que el usuario
+corrigio. `tests/test_linea_v140_sin_armas.py` (6 tests) es el guard:
+verificado que muerde (al inyectar `draw_weapon_slots` en `hud.py` falla).
+
+**Nota:** `src/systems/weapon_system.py` (3 rutas elementales plasma/ion/shock,
+BLOQUE 7) SI pertenece a la linea v1.4.0 — es el sistema del GDD §3, no el
+de las 4 armas de BLOQUE 72. El guard apunta a `weapon_slot.py`, a los cuadros
+del HUD, a los tipos extra de `PowerupKind` y al remapeo de inputs.
 
 ## 8. Cómo continuar
 

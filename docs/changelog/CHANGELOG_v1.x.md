@@ -2381,7 +2381,7 @@ Handoff completo: `docs/handoffs/HANDOFF-GOLIATH-PORT-V140-2026-10-23.md`.
 
 ### Suite
 
-`2,766 pass + 8 fail pre-existentes + 7 skipped` (2,781 total). Los 8 son
+`2,772 pass + 8 fail pre-existentes + 7 skipped` (2,787 total). Los 8 son
 los ya documentados (5 de `test_sub_boss_*` por contaminación de estado,
 2 de `test_asteroid_sprites.py`, 1 de `test_paths.py`).
 

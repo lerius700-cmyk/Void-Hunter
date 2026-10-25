@@ -53,9 +53,9 @@
 
 | | |
 |---|---|
-| Suite | 2,766 pass + 8 fail pre-existentes + 7 skipped (2,781 total) |
+| Suite | 2,772 pass + 8 fail pre-existentes + 7 skipped (2,787 total) |
 | src/ | 27,694 LOC / 86 archivos |
-| tests/ | 22,681 LOC / 83 archivos |
+| tests/ | 22,773 LOC / 96 archivos |
 | Silos | 9 |
 | `.exe` | `dist/void-hunter.exe` ~278 MB (onefile) |
 
