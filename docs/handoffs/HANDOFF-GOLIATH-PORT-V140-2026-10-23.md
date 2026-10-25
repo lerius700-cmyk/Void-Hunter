@@ -341,22 +341,52 @@ Estado nuevo en el runtime: `self._boss_shield_flash_t`, que se prende en
 
 ---
 
-## 7. Decisión de integración (2026-10-23)
+## 7. Decisión de integración (2026-10-24)
 
-El usuario eligió, sobre las opciones de `superpowers:finishing-a-development-branch`:
+El usuario fue pidiendo ajustes a lo largo del día. La decisión final:
 
-- **Rama preservada tal cual.** NO se mergeó a `master`, NO se hizo push, NO se abrió
-  PR, NO se borró la rama ni el worktree.
-- **No se buildeó el `.exe` ni el zip de release.** La release se decide después.
+- **Rama preservada como línea de release propia.** NO se mergeó a `master`.
+  Se publica desde la rama `bloquec-67-goliath-port`, que queda como la
+  línea v1.4.0 + GOLIATH + menú + armas.
+- **Se portó el sistema de 4 armas** (BLOQUE 72 + 73 Fase A/B/C) antes de
+  publicar, para que v1.7.0 no fuera una regresión respecto de v1.6.3.
+  Los 10 commits de master son descendientes directos de `d70b8da`, así que
+  entran por cherry-pick con merge de 3 vías — sin conflictos.
+- **Versión: v1.7.0** (v1.5.0 y v1.6.x ya estaban publicadas).
+- **Publicación: build + tag + push + GitHub release.**
 
 Motivo de no mergear: `master` está **39 commits** por encima de la base `d70b8da` y ya
 incluye estas features en su forma v1.6.3. Un merge haría 3-way merge desde `d70b8da`,
 conflictuaría en `scenes.py` / `gameplay_runtime.py` / `game.py` / `main.py` y
-revertiría trabajo más nuevo de `master` en esos archivos. La rama queda lista para
-publicar una release **desde la línea v1.4.0**.
+revertiría trabajo más nuevo de `master` en esos archivos.
 
 `master` quedó **intacto**: `a40fdaf`, working tree limpio, sus 8 commits sin pushear
-sin tocar.
+sin tocar. Sigue siendo la línea v1.6.3.
+
+### Release v1.7.0
+
+| | |
+|---|---|
+| Tag | `v1.7.0` (anotado) sobre el HEAD de la rama |
+| Artefactos | `dist/void-hunter-v1.7.0.exe` (287 MB) + `dist/VoidHunter-v1.7.0-win64.zip` (273 MB) |
+| Release notes | `tools/release_notes_v1.7.0.md` |
+| Suite | 8 failed / 2818 passed / 7 skipped (los 8 pre-existentes) |
+
+### Lo que NO se tocó en `master`
+
+Los 6 tiles del "Asteroid Approach" **no están en `master`** — viven sólo
+en esta rama (y en las dos copias locales de donde se recuperaron). Si en
+algún momento se mergea esta rama a `master`, los tiles van con ella.
+
+### Nota sobre los assets de armas
+
+`Assets/sounds/*.wav` y `Assets/sprites/weapons/*.png` se commitearon pero
+**no se cargan en runtime**: los SFX se sintetizan en memoria desde la
+tabla `_SfxSpec` de `src/audio/synth.py` (`_prebake_all`), y las balas se
+dibujan proceduralmente. Son la referencia pre-renderizada que produce
+`tools/generate_weapon_sfx.py` y `tools/weapon_assets/generate_bullets.py`.
+Por eso el `build.spec` no necesita bundlear `Assets/sounds` — igual que
+en v1.6.3.
 
 ---
 
