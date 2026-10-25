@@ -230,15 +230,8 @@ class TestCollisionPreserved:
 # =====================================================================
 class TestPowerupPreserved:
     def test_powerup_kind_enum_unchanged(self) -> None:
-        # BLOQUE 72 T7: actualizado de {"bomb", "hp", "weapon", "score"}
-        # (4 kinds con WEAPON unico) a {"bomb", "hp", "thick", "laser",
-        # "flame", "double", "score"} (7 kinds con 4 weapons). El sort
-        # powerup WEAPON fue reemplazado por 4 kinds distintos.
         kinds = {k.value for k in PowerupKind}
-        assert kinds == {"bomb", "hp", "thick", "laser", "flame", "double", "score"}
+        assert kinds == {"bomb", "hp", "weapon", "score"}
 
     def test_weights_sum_to_100(self) -> None:
-        # BLOQUE 72 T7: la suma sigue siendo 100 (verificacion de invariante
-        # contractual del sistema de pesos). El detalle de cada peso cambio
-        # (WEAPON=20 -> THICK/LASER/FLAME/DOUBLE=8 c/u, SCORE=35 -> 23).
         assert sum(POWERUP_WEIGHTS.values()) == 100

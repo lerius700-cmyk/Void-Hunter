@@ -514,36 +514,6 @@ class GameplayRuntime:
         # BLOQUE 26: even more polish
         self._bomb_flash: float = 0.0  # 0..1 white flash on the player after bomb use
 
-        # BLOQUE 72 T6: 4-weapon powerup system. The player carries 4
-        # fixed weapon slots (A/S/D/F), each backed by a WeaponSlot
-        # dataclass (src/entities/weapon_slot.py). All start empty;
-        # pickups (T7-T8) fill them, RMB (T-N input remap) consumes them.
-        # `_weapon_active_idx` indexes the currently-selected slot;
-        # mouse wheel cycles it (T-N). `_weapon_pop_anim` ticks down the
-        # HUD pop-up scale animation (used by T8 + T9 HUD).
-        from src.entities.weapon_slot import WeaponSlot
-        from src.core.settings import (
-            WEAPON_PICKUP_AMMO,
-            MAX_AMMO_THICK, MAX_AMMO_LASER, MAX_AMMO_FLAME, MAX_AMMO_DOUBLE,
-            WEAPON_FIRE_COOLDOWN_S,
-        )
-        # WEAPON_PICKUP_AMMO se queda en module scope para _apply_powerup_weapon (T8)
-        self._weapon_slots: list[WeaponSlot] = [
-            WeaponSlot("A", "thick",  0, MAX_AMMO_THICK),
-            WeaponSlot("S", "laser",  0, MAX_AMMO_LASER),
-            WeaponSlot("D", "flame",  0, MAX_AMMO_FLAME),
-            WeaponSlot("F", "double", 0, MAX_AMMO_DOUBLE),
-        ]
-        self._weapon_active_idx: int = 0
-        self._weapon_pop_anim: dict[str, float] = {"A": 0.0, "S": 0.0, "D": 0.0, "F": 0.0}
-        # BLOQUE 73 Fase C: RMB weapon fire state.
-        #   _weapon_fire_request: True while RMB is firing (consumed by Fase B
-        #     fire functions to spawn bullets).
-        #   _weapon_fire_cooldown: seconds remaining until next shot allowed.
-        self._weapon_fire_request: bool = False
-        self._weapon_fire_cooldown: float = 0.0
-        del WEAPON_FIRE_COOLDOWN_S  # used in _fire_active_weapon at call-time
-
     def _play_sfx(self, name: str, volume: float = 1.0) -> None:
         if self._audio is not None:
             self._audio.play_sfx(name, volume)
@@ -777,17 +747,10 @@ class GameplayRuntime:
             self._mouse_r_held = False
         # BLOQUE 34: shooting controls
         #   LMB held = input_fire (charge shot, release fires)
-        #   BLOQUE 73 Fase C: RMB held = fire active weapon from slot
-        #     (consumes ammo via _fire_active_weapon). Replaces the old
-        #     rapid-fire L1 behavior. LMB still does charge shot as before.
+        #   RMB held = input_rapid_fire (continuous L1, no charge)
+        # These are independent — you can RMB-spam while LMB charges.
         self._player.input_fire = self._mouse_held
-        self._player.input_rapid_fire = False  # BLOQUE 73 Fase C: legacy disabled
-        # BLOQUE 73 Fase C: RMB weapon fire tick (consume ammo at fire rate).
-        # The actual bullets are spawned by Fase B (src/entities/projectile.py)
-        # when _weapon_fire_request is True — for now Fase C just decrements
-        # ammo so the player sees the slot count drop while holding RMB.
-        if self._mouse_r_held and self._weapon_fire_cooldown <= 0.0:
-            self._fire_active_weapon()
+        self._player.input_rapid_fire = self._mouse_r_held
         # BLOQUE 58.8.1/58.8.2/58.8.3: shift = DASH (click, < 0.28s) or PROPULSION (hold).
         # Process all events in a single pass so we don't miss KEYUP.
         for event in pygame.event.get():
@@ -811,22 +774,6 @@ class GameplayRuntime:
                 elif event.key == pygame.K_ESCAPE:
                     from src.core.scene_manager import GameState
                     self._transition_to(GameState.PAUSE)
-                # BLOQUE 73 Fase C: keys 1/2/3/4 select weapon slot directly.
-                elif event.key == pygame.K_1:
-                    self._select_weapon_slot(0)  # A
-                elif event.key == pygame.K_2:
-                    self._select_weapon_slot(1)  # S
-                elif event.key == pygame.K_3:
-                    self._select_weapon_slot(2)  # D
-                elif event.key == pygame.K_4:
-                    self._select_weapon_slot(3)  # F
-            elif event.type == pygame.MOUSEWHEEL:
-                # BLOQUE 73 Fase C: mouse wheel cycles active slot.
-                # event.y > 0 = scroll up = next slot; event.y < 0 = prev.
-                if event.y > 0:
-                    self._cycle_weapon_slot(+1)
-                elif event.y < 0:
-                    self._cycle_weapon_slot(-1)
             elif event.type == pygame.KEYUP:
                 if event.key == pygame.K_LSHIFT:
                     # BLOQUE 58.8.1: if shift was released quickly (click),
@@ -868,18 +815,17 @@ class GameplayRuntime:
     # Firing
     # ------------------------------------------------------------------
     def _handle_firing(self, dt: float) -> None:
-        # BLOQUE 73 Phase A (Approach A): LMB is now a basic-bullet backup.
-        # The old LMB max-charge laser was REMOVED because it competed with
-        # the pickup weapon identity (RMB = fire weapon from slot active).
-        # The player's charge state machine (player.py) still tracks
-        # charge_time for the visual charge ring, but we ignore the
-        # charge level here and always fire at L1 (charge_level=0).
-        # The dead methods ``_update_continuous_laser`` /
-        # ``_draw_continuous_laser`` / ``_laser_apply_damage`` are kept
-        # for reference but no longer called from the gameplay loop.
-        if (self._player.wants_to_charge_release
-                or self._player.wants_to_shoot):
-            # LMB always fires basic bullet regardless of charge_time.
+        # BLOQUE 37: L3 max charge is now a continuous laser (not discrete bullets)
+        current_charge = self._player.get_charge_level()
+        self._update_continuous_laser(dt, current_charge)
+        # Charge release (player.wants_to_charge_release)
+        if self._player.wants_to_charge_release:
+            charge_level = self._player.get_charge_level()
+            if charge_level == 0:
+                charge_level = 1
+            self._weapon.request_fire(charge_level=charge_level)
+        # Normal fire
+        elif self._player.wants_to_shoot:
             self._weapon.request_fire(charge_level=0)
         # BLOQUE 39: Bomb → spawn a homing missile (replaces screen-clear)
         # BLOQUE 58.26 FIX: the bomb is consumed in player.update (which
@@ -897,10 +843,10 @@ class GameplayRuntime:
                 BombBurst(self._player.x, self._player.y)
             )
             self._player.wants_to_bomb = False
-        # Charge SFX: REMOVED in BLOQUE 73 Phase A. The old charge loop
-        # SFX was tied to charge level which no longer affects bullets.
-        # The charge visual ring still works in player.draw() for
-        # gameplay feedback, but we no longer play SFX on charge changes.
+        # Charge SFX: rising pitch as charge level increases
+        if current_charge > self._last_charge_level:
+            self._play_sfx("charge_loop", volume=0.5)
+        self._last_charge_level = current_charge
         fire_now, special_now, charge_level = self._weapon.consume_pending()
         if fire_now or special_now:
             # BLOQUE 38: tag the shot with its source so the muzzle flash
@@ -927,13 +873,9 @@ class GameplayRuntime:
     # ------------------------------------------------------------------
     def _update_continuous_laser(self, dt: float, current_charge: int) -> None:
         """L3 max charge while LMB held → render a continuous plasma beam
+        that damages enemies in its path (no individual bullet spawns).
 
-        DEPRECATED (BLOQUE 73 Phase A, Approach A): the LMB max-charge laser
-        was removed because it conflicted with the BLOQUE 72.A pickup
-        weapon identity (RMB now fires the weapon from the active slot).
-        This method is kept for reference and for the existing test
-        suite (``tests/test_gameplay_runtime.py::test_continuous_laser_*``)
-        but is NO LONGER CALLED from ``_handle_firing``.
+        Replaces the BLOQUE 30 discrete-beam approach (0.08s spawn loop).
         """
         from src.core.settings import (
             LASER_DAMAGE_PER_TICK, LASER_HIT_RADIUS_PX, LASER_MAX_RANGE_PX,
@@ -1094,10 +1036,6 @@ class GameplayRuntime:
 
     def _draw_continuous_laser(self, target: pygame.Surface, ox: int, oy: int) -> None:
         """BLOQUE 37: multi-layer plasma beam from muzzle to endpoint.
-
-        DEPRECATED (BLOQUE 73 Phase A, Approach A): see
-        ``_update_continuous_laser`` deprecation note. Kept for reference
-        and test suite compatibility; not called from ``draw()``.
 
         Drawn on a per-pixel-alpha surface and blitted on top of the player,
         so the line is visible regardless of the parent surface's alpha mode.
@@ -1974,45 +1912,19 @@ class GameplayRuntime:
                 ast.x -= 20 if dx > 0 else -20
 
     def _player_pickup_powerups(self) -> None:
-        """BLOQUE 58.12: player collects asteroid-powerups.
-
-        BLOQUE 72 T8: dispatches to ``_apply_asteroid_powerup`` (renamed
-        from ``_apply_powerup`` to avoid override by the ring-system's
-        same-named method at line ~3679).
-        """
+        """BLOQUE 58.12: player collects asteroid-powerups."""
         for p in self._asteroid_powerups:
             if not p.active:
                 continue
             dx = self._player.x - p.x
             dy = self._player.y - p.y
             if dx * dx + dy * dy <= 18 * 18:
-                # Apply the asteroid powerup (BLOQUE 72 T8: renamed).
-                self._apply_asteroid_powerup(p.kind)
+                # Apply the powerup
+                self._apply_powerup(p.kind)
                 p.active = False
 
-    def _apply_asteroid_powerup(self, kind) -> None:
-        """BLOQUE 58.12 + 72 T8: apply an ASTEROID powerup effect to the player.
-
-        Note: there are TWO powerup systems in this class:
-          - ASTEROID system (this method): triggered by ``_player_pickup_powerups``
-            from ``self._asteroid_powerups`` (MINE-ASTEROID drops). Uses
-            ``PowerupKind`` enum (BOMB, HP, THICK, LASER, FLAME, DOUBLE, SCORE).
-          - RING system (``_apply_powerup`` at line ~3679): triggered by
-            ``_spawn_powerup`` for gold ring pickups from killed enemies.
-            Uses string constants like ``POWERUP_BOMB = "bomb"``.
-
-        Naming this method ``_apply_asteroid_powerup`` (instead of
-        ``_apply_powerup``) prevents Python from silently overwriting it
-        with the later ring-system definition — the asteroid pickup
-        path now dispatches to this method explicitly via
-        ``_player_pickup_powerups``.
-
-        BLOQUE 72 T8: the old single ``PowerupKind.WEAPON`` branch (which
-        bumped ``self._weapon.level`` and did nothing visible) is replaced
-        by a 4-kind dispatch to ``_apply_powerup_weapon``. The dead
-        ``elif kind == PowerupKind.WEAPON:`` branch (which referenced the
-        now-removed enum member) is gone.
-        """
+    def _apply_powerup(self, kind) -> None:
+        """BLOQUE 58.12: apply a powerup effect to the player."""
         from src.entities.asteroid import PowerupKind
         if kind == PowerupKind.BOMB:
             # +1 bomb (BLOQUE 53a bomb system). Use weapon_system for bombs.
@@ -2021,215 +1933,17 @@ class GameplayRuntime:
             # +30 HP, capped at max
             max_hp = self._player.max_hp if hasattr(self._player, "max_hp") else 100
             self._player.hp = min(max_hp, self._player.hp + 30)
-        elif kind in (
-            PowerupKind.THICK,
-            PowerupKind.LASER,
-            PowerupKind.FLAME,
-            PowerupKind.DOUBLE,
-        ):
-            # BLOQUE 72 T8: route weapon powerup to its slot (A/S/D/F).
-            self._apply_powerup_weapon(kind)
+        elif kind == PowerupKind.WEAPON:
+            # Upgrade weapon level (simple: +1, capped)
+            cur_level = getattr(self._weapon, "level", 0) if hasattr(self, "_weapon") else 0
+            # The weapon system has its own logic; we just bump a flag.
+            # (Most simple: just call _weapon.upgrade() if it exists.)
+            if hasattr(self._weapon, "level"):
+                self._weapon.level = min(getattr(self._weapon, "level", 0) + 1, 2)
         elif kind == PowerupKind.SCORE:
             # +500 score
             if hasattr(self, "_scoring"):
                 self._scoring.score = getattr(self._scoring, "score", 0) + 500
-
-    def _apply_powerup_weapon(self, kind) -> None:
-        """BLOQUE 72 T8: apply a weapon powerup to its slot.
-
-        Empty slot: fill to WEAPON_PICKUP_AMMO (30 by default).
-        Filled slot: stack to max_ammo (excess silently dropped per
-        ``WeaponSlot.add_ammo`` contract).
-
-        Also triggers the HUD pop-up animation timer on the slot's
-        letter key (consumed by the T9 HUD slot renderer).
-
-        BLOQUE 73 Fase B: auto-switches the active slot to the picked-up
-        weapon so the player can immediately RMB-fire it. Player can
-        still manually cycle via mouse wheel / keys 1-4.
-        """
-        from src.entities.asteroid import PowerupKind
-        from src.core.settings import WEAPON_PICKUP_AMMO
-        slot_index = {
-            PowerupKind.THICK:  0,
-            PowerupKind.LASER:  1,
-            PowerupKind.FLAME:  2,
-            PowerupKind.DOUBLE: 3,
-        }.get(kind)
-        if slot_index is None:
-            return
-        slot = self._weapon_slots[slot_index]
-        slot.add_ammo(WEAPON_PICKUP_AMMO)
-        # HUD pop-up scale animation duration (consumed by T9 HUD render).
-        # 0.2s matches the spec's `WEAPON_SLOT_POP_DURATION_S`.
-        self._weapon_pop_anim[slot.letter] = 0.2
-        # Auto-switch: the picked-up weapon becomes active so RMB fires it
-        # immediately. Player can cycle back via wheel / 1-4 if they prefer.
-        self._weapon_active_idx = slot_index
-
-    # ------------------------------------------------------------------
-    # BLOQUE 73 Fase C: weapon slot input (wheel cycling + keys + RMB)
-    # ------------------------------------------------------------------
-    def _cycle_weapon_slot(self, direction: int) -> None:
-        """Cycle ``_weapon_active_idx`` by ``direction`` (+1 or -1).
-
-        Wraps around at both ends: from 0 with direction=-1 -> 3 (F),
-        from 3 with direction=+1 -> 0 (A). Empty weapon_slots list is
-        a safe no-op (defensive — should never happen in practice).
-        """
-        n = len(self._weapon_slots)
-        if n == 0:
-            return
-        self._weapon_active_idx = (self._weapon_active_idx + direction) % n
-
-    def _select_weapon_slot(self, idx: int) -> None:
-        """Set ``_weapon_active_idx`` to ``idx`` if in range; else no-op.
-
-        Out-of-range indices (negative or >= len) are ignored. Used by
-        keys 1/2/3/4 (slots 0/1/2/3).
-        """
-        if 0 <= idx < len(self._weapon_slots):
-            self._weapon_active_idx = idx
-
-    def _fire_active_weapon(self) -> bool:
-        """Try to fire the active weapon. Consumes 1 ammo + spawns bullets.
-
-        BLOQUE 73 Fase B: dispatches to per-weapon fire function based on
-        ``slot.weapon_id``. Each weapon has its own bullet pattern AND
-        its own cooldown (THICK slow 5/sec, LASER 10/sec, FLAME fast
-        ~14/sec, DOUBLE medium 8/sec).
-
-        Returns:
-            True if a shot was fired (active slot had ammo), False if
-            the slot was empty OR the cooldown is still active.
-
-        Side effects:
-            - Decrements active slot ammo by 1 (via WeaponSlot.consume).
-            - Spawns bullets via _fire_thick / _fire_laser / _fire_flame
-              / _fire_double based on weapon_id.
-            - Sets ``_weapon_fire_cooldown`` to the weapon-specific value.
-            - Sets ``_weapon_fire_request = True`` (legacy flag for
-              any external consumer; the actual bullet spawn happens
-              inline here in Fase B).
-        """
-        if not self._weapon_slots:
-            return False
-        # Cooldown gate: if RMB was fired too recently, no-op.
-        if self._weapon_fire_cooldown > 0.0:
-            return False
-        slot = self._weapon_slots[self._weapon_active_idx]
-        if slot.is_empty:
-            return False
-        slot.consume(1)
-        self._weapon_fire_request = True
-        # Dispatch by weapon_id to per-weapon fire function.
-        if slot.weapon_id == "thick":
-            self._fire_thick()
-        elif slot.weapon_id == "laser":
-            self._fire_laser()
-        elif slot.weapon_id == "flame":
-            self._fire_flame()
-        elif slot.weapon_id == "double":
-            self._fire_double()
-        return True
-
-    # ------------------------------------------------------------------
-    # BLOQUE 73 Fase B: per-weapon fire functions (THICK/LASER/FLAME/DOUBLE)
-    # ------------------------------------------------------------------
-    # Each function spawns bullets at the player's muzzle position in
-    # the player's nose direction, with weapon-specific pattern + cooldown.
-    # The bullet kind is BULLET_PLAYER (existing) for now — Phase B+ can
-    # introduce per-weapon BULLET_* kinds + procedural sprites.
-    #
-    # Cooldowns per weapon:
-    #   THICK:  0.20s = 5 shots/sec (slow, heavy)
-    #   LASER:  0.10s = 10 shots/sec (medium, beam-like)
-    #   FLAME:  0.07s = ~14 shots/sec (fast, cone)
-    #   DOUBLE: 0.125s = 8 shots/sec (medium, parallel pair)
-    # ------------------------------------------------------------------
-    def _bullet_speed(self, mult: float = 1.0) -> float:
-        """Base bullet speed for weapon fire (px/s). Scaled by mult."""
-        from src.core.settings import INTERNAL_H
-        # Bullets cross the screen in ~0.75s at 1.0x speed.
-        return (INTERNAL_H / 0.75) * mult
-
-    def _fire_thick(self) -> None:
-        """THICK: 1 big slow bullet, pierce=1, cooldown 0.20s (5/sec)."""
-        import math
-        nose_rad = math.radians(self._player.nose_angle)
-        bx = self._player.x + math.sin(nose_rad) * 12.0
-        by = self._player.y - math.cos(nose_rad) * 12.0
-        speed = self._bullet_speed(0.75)
-        vx = math.sin(nose_rad) * speed
-        vy = -math.cos(nose_rad) * speed
-        self._bullets.spawn(
-            BULLET_PLAYER, bx, by, vx, vy,
-            damage=3, owner=OWNER_PLAYER,
-            pierce=1, has_trail=True, trail_color=(255, 160, 60),
-        )
-        self._weapon_fire_cooldown = 0.20
-        self._play_sfx("shoot_thick", volume=0.6)
-
-    def _fire_laser(self) -> None:
-        """LASER: 1 fast pierce bullet, pierce=3, cooldown 0.10s (10/sec)."""
-        import math
-        nose_rad = math.radians(self._player.nose_angle)
-        bx = self._player.x + math.sin(nose_rad) * 12.0
-        by = self._player.y - math.cos(nose_rad) * 12.0
-        speed = self._bullet_speed(1.5)
-        vx = math.sin(nose_rad) * speed
-        vy = -math.cos(nose_rad) * speed
-        self._bullets.spawn(
-            BULLET_PLAYER, bx, by, vx, vy,
-            damage=1, owner=OWNER_PLAYER,
-            pierce=3, has_trail=True, trail_color=(80, 255, 120),
-        )
-        self._weapon_fire_cooldown = 0.10
-        self._play_sfx("laser_hum", volume=0.4)
-
-    def _fire_flame(self) -> None:
-        """FLAME: 3-bullet fan spread, fast, cooldown 0.07s (~14/sec)."""
-        import math
-        nose_rad = math.radians(self._player.nose_angle)
-        bx = self._player.x + math.sin(nose_rad) * 12.0
-        by = self._player.y - math.cos(nose_rad) * 12.0
-        speed = self._bullet_speed(1.2)
-        spread = math.radians(15.0)
-        for i in range(3):
-            a = -spread / 2 + (spread * i / 2)
-            vx = math.sin(nose_rad + a) * speed
-            vy = -math.cos(nose_rad + a) * speed
-            self._bullets.spawn(
-                BULLET_PLAYER, bx, by, vx, vy,
-                damage=1, owner=OWNER_PLAYER,
-                pierce=0, has_trail=True, trail_color=(255, 100, 40),
-            )
-        self._weapon_fire_cooldown = 0.07
-        self._play_sfx("flame_loop", volume=0.3)
-
-    def _fire_double(self) -> None:
-        """DOUBLE: 2 parallel bullets side-by-side, medium, cooldown 0.125s."""
-        import math
-        nose_rad = math.radians(self._player.nose_angle)
-        # Muzzle offset perpendicular to nose direction (for left/right).
-        perp_x = -math.cos(nose_rad)  # 90° CCW
-        perp_y = -math.sin(nose_rad)
-        bx_center = self._player.x + math.sin(nose_rad) * 12.0
-        by_center = self._player.y - math.cos(nose_rad) * 12.0
-        offset = 5.0  # distance between bullets perpendicular to nose
-        speed = self._bullet_speed(1.0)
-        vx = math.sin(nose_rad) * speed
-        vy = -math.cos(nose_rad) * speed
-        for sign in (-1, +1):
-            bx = bx_center + perp_x * offset * sign
-            by = by_center + perp_y * offset * sign
-            self._bullets.spawn(
-                BULLET_PLAYER, bx, by, vx, vy,
-                damage=2, owner=OWNER_PLAYER,
-                pierce=0, has_trail=True, trail_color=(100, 220, 255),
-            )
-        self._weapon_fire_cooldown = 0.125
-        self._play_sfx("shoot_double", volume=0.5)
 
     def _attach_wave_path(
         self,
@@ -3475,21 +3189,6 @@ class GameplayRuntime:
         slowmo_factor = self._slowmo.get_factor()
         effective_dt = dt * slowmo_factor
         self._t += effective_dt
-        # BLOQUE 72 T8: tick the HUD weapon-slot pop-up animation timers.
-        # Each tick decays the timer; T9 HUD reads them to scale the
-        # slot box from 1.0 -> 1.4 -> 1.0 during the 0.2s window.
-        for letter in self._weapon_pop_anim:
-            if self._weapon_pop_anim[letter] > 0.0:
-                self._weapon_pop_anim[letter] = max(
-                    0.0, self._weapon_pop_anim[letter] - effective_dt,
-                )
-        # BLOQUE 73 Fase C: tick the RMB weapon fire cooldown. Decays in
-        # scaled time (matches pop_anim above). When the cooldown reaches
-        # 0, the next _read_input call may fire again if RMB is held.
-        if self._weapon_fire_cooldown > 0.0:
-            self._weapon_fire_cooldown = max(
-                0.0, self._weapon_fire_cooldown - effective_dt,
-            )
         # BLOQUE 58.11: game time advances in REAL dt (not effective_dt
         # with slowmo) so the Tron trail's hit cooldown ages correctly
         # even during hitstop / slowmo.
@@ -4350,10 +4049,7 @@ class GameplayRuntime:
             self._draw_player_scaled(target, shx, shy)
         # BLOQUE 37: continuous L3 laser (drawn on top of player so it appears
         # to emerge from the muzzle).
-        # BLOQUE 73 Phase A: REMOVED. The LMB max-charge laser conflicted
-        # with the BLOQUE 72.A pickup weapon identity (RMB now fires the
-        # active weapon). Method kept for reference but not called.
-        # self._draw_continuous_laser(target, shx, shy)
+        self._draw_continuous_laser(target, shx, shy)
         # BLOQUE 47: aim reticle (drawn last so it sits on top of everything)
         if not self._player.is_dead:
             self._draw_reticle(target, shx, shy)
@@ -4377,11 +4073,7 @@ class GameplayRuntime:
         if self._enemies_spawned_total > 0:
             ratio = min(1.0, self._scoring.kills / self._enemies_spawned_total)
         self._hud.draw(target, self._player, self._weapon, self._scoring,
-                       t=self._t, kill_ratio=ratio,
-                       # BLOQUE 72 T9: weapon slot inventory HUD
-                       weapon_slots=self._weapon_slots,
-                       weapon_active_idx=self._weapon_active_idx,
-                       weapon_pop_anim=self._weapon_pop_anim)
+                       t=self._t, kill_ratio=ratio)
         # BLOQUE 58.8: pattern indicator banner (top center)
         if self._use_procedural_patterns and self._active_pattern_kind_label:
             font = pygame.font.Font(None, 18)
@@ -4795,10 +4487,12 @@ class GameplayRuntime:
         if mx < 4 or mx > INTERNAL_W - 4 or my < 4 or my > INTERNAL_H - 4:
             return
         # Color: cyan when laser is active, otherwise warm yellow
-        # BLOQUE 73 Phase A: laser-aware color removed (laser deprecated).
-        # Reticle always warm yellow.
-        color = (255, 240, 140)  # warm yellow
-        core_color = (255, 255, 220)
+        if self._player.state == PlayerState.CHARGE and self._player.get_charge_level() >= 3:
+            color = (140, 220, 255)  # plasma cyan
+            core_color = (220, 245, 255)
+        else:
+            color = (255, 240, 140)  # warm yellow
+            core_color = (255, 255, 220)
         # Outer ring (subtle, for depth)
         pygame.draw.circle(target, (color[0] // 2, color[1] // 2, color[2] // 2), (mx, my), 8, 1)
         # 4 tick marks (cross pattern, 4px each direction, 2px gap)

@@ -104,22 +104,13 @@ MINE_SPAWN_FRACTION: float = 1.0 / 4.0  # BLOQUE 64.5: 1/8 → 1/4 (25%, antes 1
 
 
 def pick_mine_powerup(rng: random.Random) -> "PowerupKind":
-    """BLOQUE 63 + 72 T7: pool of powerups MINE-ASTEROID can drop.
+    """BLOQUE 63: pool of powerups MINE-ASTEROID can drop. Excludes
+    SCORE (the camo tension is the reward, not the points).
 
-    Excludes SCORE (the camo tension is the reward, not the points).
-
-    BLOQUE 72 T7: pool expanded from 3 kinds (BOMB/HP/WEAPON) to 6 kinds
-    (BOMB/HP/THICK/LASER/FLAME/DOUBLE). Equal-weight pick.
+    Equal-weight pick between BOMB / HP / WEAPON.
     """
     from src.entities.asteroid import PowerupKind
-    return rng.choice([
-        PowerupKind.BOMB,
-        PowerupKind.HP,
-        PowerupKind.THICK,
-        PowerupKind.LASER,
-        PowerupKind.FLAME,
-        PowerupKind.DOUBLE,
-    ])
+    return rng.choice([PowerupKind.BOMB, PowerupKind.HP, PowerupKind.WEAPON])
 
 
 def should_drop_mine_powerup(rng: random.Random) -> bool:
