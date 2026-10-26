@@ -7,15 +7,15 @@
 
 <div align="center">
 
-### 👉 [⬇️ Descargar VoidHunter v1.4.0 para Windows (381 MB)](https://github.com/lerius700-cmyk/Void-Hunter/releases/download/v1.4.0/void-hunter.exe) 👈
+### 👉 [⬇️ Descargar VoidHunter v1.7.2 para Windows (290 MB)](https://github.com/lerius700-cmyk/Void-Hunter/releases/download/v1.7.2/VoidHunter-v1.7.2-win64.zip) 👈
 
 </div>
 
-**Pasos:** descarga el `.exe` (onefile, ~381 MB porque trae Python + pygame + todos los assets dentro) → doble click (no necesita instalación, no necesita ZIP, no necesita carpeta `_internal/`)
+**Pasos:** descarga el `.zip` (290 MB) y extrae el `.exe` (onefile, ~290 MB porque trae Python + pygame + todos los assets dentro) → doble click (no necesita instalación, no necesita carpeta `_internal/`)
 **Si Windows SmartScreen pregunta:** *More info* → *Run anyway* (no tenemos cert de firma todavía)
 **Controles:** `WASD` / flechas = mover · `Click` / `Espacio` = disparar · `P` = pausa · `ESC` = salir
 
-📜 [Todos los releases + notas de versión](https://github.com/lerius700-cmyk/Void-Hunter/releases) · [Notas de v1.4.0](https://github.com/lerius700-cmyk/Void-Hunter/releases/tag/v1.4.0)
+📜 [Todos los releases + notas de versión](https://github.com/lerius700-cmyk/Void-Hunter/releases) · [Notas de v1.7.2](https://github.com/lerius700-cmyk/Void-Hunter/releases/tag/v1.7.2)
 
 ---
 
@@ -28,11 +28,17 @@ sprite-sheet & video gallery, MINE-ASTEROID stealth enemies (25% spawn),
 and 25+ visual juice systems. Built in
 Pygame 2.6, stdlib only (no numpy, no scipy — math only).
 
-**Status:** 🚧 **In-progress product.** **v1.4.0** es el último release
+**Status:** 🚧 **In-progress product.** **v1.7.2** es el último release
 público (→ [Releases](https://github.com/lerius700-cmyk/Void-Hunter/releases)).
 Polishing en curso. Ver [ROADMAP.md](./docs/arch/ROADMAP.md).
 
 ---
+
+## 🆕 Qué hay de nuevo en v1.7.2
+
+- **Línea base v1.4.0 restaurada.** La v1.7.1 había metido el sistema de 4 armas (BLOQUE 72 + 73), que no pertenece a la base v1.4.0. La v1.7.2 lo revierte: 7 tests del sistema de armas eliminados.
+- **Menú post-cinematica:** NEW GAME / BOSS TIME / BACKGROUND, con el fondo procedural dibujado de verdad.
+- Detalle completo en las [notas de la v1.7.2](https://github.com/lerius700-cmyk/Void-Hunter/releases/tag/v1.7.2).
 
 ## 🆕 Qué hay de nuevo en v1.4.0 (BLOQUE 71 + 71.1 + 71.2)
 
@@ -66,7 +72,7 @@ pyinstaller build.spec --noconfirm
 # → dist/void-hunter.exe
 ```
 
-**Download releases:** [releases/](https://github.com/lerius700-cmyk/Void-Hunter/releases) (v1.0 → v1.4.0)
+**Download releases:** [releases/](https://github.com/lerius700-cmyk/Void-Hunter/releases) (v1.0 → v1.7.2)
 
 ---
 
@@ -95,7 +101,7 @@ void-hunter/
 ├── requirements.txt         # pygame only
 ├── requirements-dev.txt     # pytest, mypy, ruff
 │
-├── src/                     # game source (~24.3k LOC, 86 .py files)
+├── src/                     # game source (~21.4k LOC, 87 .py files)
 │   ├── audio/               # 25 SFX synth + 2 streaming BGM
 │   ├── core/                # settings, scene_manager, event_bus
 │   ├── entities/            # player, enemies (8 types), boss (4), projectile
@@ -106,7 +112,7 @@ void-hunter/
 │   ├── ui/                  # gameplay_runtime, scenes, HUD, video_player, gallery
 │   └── utils/               # math, paths, logging
 │
-├── tests/                   # 1,630 tests, 100% passing on changed code
+├── tests/                   # 96 test modules (1,533 test functions), 100% passing on changed code
 │                            # (25 pre-existing headless flakes unrelated to current work)
 │
 ├── tools/                   # development utilities
@@ -142,7 +148,7 @@ void-hunter/
 │
 ├── dist/                    # .exe build output (gitignored)
 │   ├── void-hunter.exe
-│   └── VoidHunter-v1.4.0-win64.zip
+│   └── VoidHunter-v1.7.2-win64.zip
 │
 └── _trash_2026-09-10/       # 41 transient files from release prep (safe to rm)
 ```
@@ -198,14 +204,14 @@ python main.py --act 1 --easy --duration 60
 python tools/capture/capture_sub_boss.py
 # → tools/playtest_out/sub_boss_v1.40.png
 
-# Build the .exe (onefile mode: single 381 MB .exe, no _internal/ folder)
+# Build the .exe (onefile mode: single ~290 MB .exe, no _internal/ folder)
 pyinstaller build.spec --clean --noconfirm
-# → dist/void-hunter.exe (~381 MB; self-extracts to tempdir on launch)
+# → dist/void-hunter.exe (~290 MB; self-extracts to tempdir on launch)
 ```
 
 **Quality gates:**
-- 1,630 / 1,630 tests passing on the current code paths
-  (~25 pre-existing failures: pygame uninit in `test_asteroid_sprites.py`, sub_boss order-dependent, Lissajous — all predate v1.4.0)
+- 1,533 test functions in 96 modules (`tests/`), counted in `master` on 2026-10-26; the pass state of every shipped version is in that release's verification table
+  (~25 pre-existing headless flakes: pygame uninit in `test_asteroid_sprites.py`, sub_boss order-dependent, Lissajous — all predate v1.4.0)
 - 0 numpy/scipy imports in the game runtime (numpy allowed only in `apply_lowpass_to_wav` for the pause lowpass, per BLOQUE 58.14)
 - Internal coordinates 320×480; display scaling done in `Game._present()`
 - Windowed mode (never fullscreen, never terminal)
@@ -216,7 +222,7 @@ pyinstaller build.spec --clean --noconfirm
 
 See [docs/arch/ROADMAP.md](./docs/arch/ROADMAP.md). TL;DR:
 
-- **Now (v1.5.0):** BLOQUE 72 — 4-weapon powerup system (thick shot A, laser S, flamethrower D, double blue laser F) + RMB + mouse wheel cycling
+- **Now (v1.7.2):** línea base v1.4.0 restaurada (el sistema de 4 armas de la v1.7.1 se revirtió: no pertenece a esta base) + menú post-cinematica
 - **Next:** gameplay depth (more bosses, act 2, leader-follower polish)
 - **Later:** leaderboards, Steam release, achievements, multiplayer
 
@@ -227,9 +233,9 @@ See [docs/arch/ROADMAP.md](./docs/arch/ROADMAP.md). TL;DR:
 - **Engine:** Python 3.11 + Pygame 2.6.1 (SDL 2.28.4)
 - **Inspiration:** Star Fox 64, Metal Slug, Galaga
 - **Audio:** synthesized (no external SFX), 2 streaming BGM tracks
-- **Total LOC:** ~42k (24,295 in `src/` + 17,497 in `tests/`, 86 + 38 = 124 Python files)
-- **Latest release:** [v1.4.0](https://github.com/lerius700-cmyk/Void-Hunter/releases/tag/v1.4.0) — 2026-09-10
+- **Total LOC:** ~49.5k (21,393 in `src/` + 16,169 in `tests/`, 87 + 98 = 185 Python files; 311 counting `tools/`)
+- **Latest release:** [v1.7.2](https://github.com/lerius700-cmyk/Void-Hunter/releases/tag/v1.7.2) — 2026-10-25
 
 ---
 
-*Last updated: 2026-09-10*
+*Last updated: 2026-10-26*
