@@ -2417,7 +2417,7 @@ def test_every_feature_says_where_it_came_from(audit):
     on those.
 
     NOTE: these counters are the ground truth of the shipped art. They
-    MUST be re-validated after Task 5 mirrors javelin/frame_03 and
+    MUST be re-validated after Task 6 mirrors javelin/frame_03 and
     purple_bullet/frame_06: those two frames become measurable, so the
     counts move.
     """
@@ -2459,7 +2459,7 @@ def test_the_report_still_documents_the_art_problem(audit):
     from the drawing, otherwise the report lies about the source art.
 
     NOTE: these three frames are hard-coded and MUST be re-validated
-    after Task 5 mirrors javelin/frame_03 and purple_bullet/frame_06 --
+    after Task 6 mirrors javelin/frame_03 and purple_bullet/frame_06 --
     mirroring moves the clip's probe median, and with it the set of
     frames the auditor flags.
     """
