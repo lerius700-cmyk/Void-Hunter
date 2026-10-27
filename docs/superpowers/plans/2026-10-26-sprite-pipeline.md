@@ -1329,7 +1329,17 @@ sys.path.insert(0, str(ROOT / "tools"))
 from src.anim.manifest import load_set
 
 
-def test_anchors_toml_is_up_to_date():
+@pytest.fixture(scope="module")
+def display():
+    """pygame needs a video mode before convert_alpha() works."""
+    import pygame
+
+    pygame.init()
+    pygame.display.set_mode((320, 480))
+    yield
+
+
+def test_anchors_toml_is_up_to_date(display):
     from sprite_pipeline.audit import audit_set, render_anchors_toml
 
     anim_set = load_set("goliath")
