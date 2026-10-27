@@ -42,6 +42,11 @@ These numbers were measured against the 60 shipped GOLIATH frames with the manif
 clean. `COLAPSADO`, `CORTADO` and `AUSENTE` do not fire on the current
 assets.
 
+One more frame needs the interpolation: `death/frame_09` has no detectable
+eye, because by the last frame of the death clip the boss is a heap of
+wreckage. The `eye` part's `on_missing = "interpolate"` resolves it from
+`death/frame_08`.
+
 **Two FAIL states, both repaired by mirroring two PNGs.** The five
 FUERA_DE_RANGO frames are resolved by interpolating the ellipse, which is a
 legitimate resolution — the measurement is reconstructed, not defaulted. The
@@ -51,7 +56,7 @@ pipeline's bar is therefore **0 FAIL** plus **no unresolved feature** (the
 Key measurements that the thresholds depend on:
 
 - **Probe (brass signature, warm filter applied)** detects the plate in **60/60** frames. Probe median per clip: `phase1_idle` 50.6 (max healthy deviation 1.9), `phase2_idle` 50.7 (3.0), `javelin` 48.8 (**21.4** at f03), `laser` 49.5 (5.5), `purple_bullet` 51.2 (**18.2** at f06), `death` 51.6 (10.9).
-- **`side_tolerance = 14`** separates the two turned-around frames (18.2, 21.4) from every healthy frame. The next-largest deviation among the frames that sit on the wrong side of the centre is `death/frame_02` at 10.9 — a margin of 3.1, so the threshold is not on a knife edge. It is declared per clip in the manifest.
+- **`side_tolerance = 14`** separates the two turned-around frames (21.4 at `javelin/f03`, 18.2 at `purple_bullet/f06`) from every healthy frame. The next-largest deviation among the frames that sit on the wrong side of the centre is `death/frame_02` at 10.9 — a margin of 3.1, so the threshold is not on a knife edge. The value comes from the loader's default (`entry.get("side_tolerance", 14.0)`); no clip overrides it, and the manifest's comment repeats the same figures.
 - **Shape ellipse** is measurable in **60/60** frames with the two-pass rule, but 7 are not credible: `javelin/f03`, `javelin/f04`, `javelin/f07`, `laser/f04`, `laser/f07`, `purple_bullet/f06`, `purple_bullet/f08`. The two turned-around frames are repaired by mirroring; the other five are resolved by interpolation.
 - **Height metric** (silhouette bbox height, warm pixels excluded): `laser/f05` 61 vs median 75 (18.7%), `purple_bullet/f07` 57 vs 73 (21.9%), `death/f04` 75 vs 61 (23%), `death/f08` 39 (36%), `death/f09` 37 (39%). The per-clip `scale_tolerance` values below make all of these intentional.
 - **FIRMA_AMBIGUA** fires where the probe and the shape measurement disagree by more than `side_tolerance`: `laser/f05` (16.0), `death/f02` (16.8), `death/f07` (14.2). The largest disagreement among the remaining frames is 11.5 (`purple_bullet/f01`) — a margin of 2.5.
@@ -91,7 +96,7 @@ Key measurements that the thresholds depend on:
 - Produces:
   - `src.anim.manifest.SETS_ROOT: Path` — `Assets/sprites/bosses`
   - `src.anim.manifest.ManifestError(ValueError)`
-  - `src.anim.manifest.DetectRule` — frozen dataclass; fields `method: str`, `side: str | None`, `min_col: int`, `band: tuple[int,int]`, `col_range: tuple[int,int]`, `head_band: tuple[int,int]`, `r_min: int`, `g_min: int`, `b_max: int`, `rg_min: int`, `r_minus_b_min: int`, `rx_range: tuple[float,float]`, `ry_range: tuple[float,float]`, `warm_fallback: WarmRule | None`, `probe: DetectRule | None`; classmethod `from_dict(raw: dict[str, Any]) -> DetectRule`
+  - `src.anim.manifest.DetectRule` — frozen dataclass; fields `method: str`, `side: str | None`, `min_col: int`, `band: tuple[int,int] | None`, `col_range: tuple[int,int] | None`, `head_band: tuple[int,int] | None` (None means "no window declared" — a `(0, 0)` default would be truthy and silently produce an empty scan), `r_min: int`, `g_min: int`, `b_max: int`, `rg_min: int`, `r_minus_b_min: int`, `rx_range: tuple[float,float]`, `ry_range: tuple[float,float]`, `warm_fallback: WarmRule | None`, `probe: DetectRule | None`; classmethod `from_dict(raw: dict[str, Any]) -> DetectRule`
   - `src.anim.manifest.WarmRule` — frozen dataclass; fields `r_min: int`, `b_max: int`, `g_min: int`, `r_minus_b_min: int`; classmethod `from_dict(raw: dict[str, Any]) -> WarmRule`; method `matches(r: int, g: int, b: int) -> bool`
   - `src.anim.manifest.Part` — frozen dataclass; fields `id: str`, `draw: str`, `pivot: str`, `z: int`, `offset: tuple[int,int]`, `scale: tuple[float,float]`, `radii: tuple[float,float,float] | None`, `detect: DetectRule | None`, `on_missing: str`
   - `src.anim.manifest.Clip` — frozen dataclass; fields `id: str`, `dir: str`, `frames: int`, `fps: float`, `loop: bool`, `scale_tolerance: float`, `side_tolerance: float`
@@ -360,9 +365,9 @@ class DetectRule:
     method: str
     side: str | None = None
     min_col: int = 0
-    band: tuple[int, int] = (0, 0)
-    col_range: tuple[int, int] = (0, 0)
-    head_band: tuple[int, int] = (0, 0)
+    band: tuple[int, int] | None = None
+    col_range: tuple[int, int] | None = None
+    head_band: tuple[int, int] | None = None
     r_min: int = 0
     g_min: int = 0
     b_max: int = 255
@@ -390,9 +395,17 @@ class DetectRule:
             method=str(method),
             side=side,
             min_col=int(raw.get("min_col", 0)),
-            band=_as_int_pair(raw.get("band", (0, 0)), "band"),
-            col_range=_as_int_pair(raw.get("col_range", (0, 0)), "col_range"),
-            head_band=_as_int_pair(raw.get("head_band", (0, 0)), "head_band"),
+            band=_as_int_pair(raw["band"], "band") if "band" in raw else None,
+            col_range=(
+                _as_int_pair(raw["col_range"], "col_range")
+                if "col_range" in raw
+                else None
+            ),
+            head_band=(
+                _as_int_pair(raw["head_band"], "head_band")
+                if "head_band" in raw
+                else None
+            ),
             r_min=int(raw.get("r_min", 0)),
             g_min=int(raw.get("g_min", 0)),
             b_max=int(raw.get("b_max", 255)),
@@ -576,8 +589,10 @@ sided   = "right"       # the shield is ALWAYS on the right arm
 #   laser 0.187, purple_bullet 0.219, death 0.393.
 # side_tolerance: how far the probe column may stray from the clip median
 #   before the frame counts as turned around. The two real cases deviate
-#   18.1 (purple_bullet/f06) and 21.4 (javelin/f03); every healthy frame
-#   deviates at most 8.0.
+#   21.4 (javelin/f03) and 18.2 (purple_bullet/f06). The next-largest
+#   deviation among the frames that sit on the wrong side of the centre is
+#   death/frame_02 at 10.9 -- a margin of 3.1, so the threshold is not on
+#   a knife edge.
 
 [[clips]]
 id     = "phase1_idle"
@@ -727,7 +742,8 @@ Create `tests/test_manifest_side_consistency.py`:
 
 BLOQUE 73.4 shipped GOLIATH with two frames where the character is drawn
 turned around: the shield plate sits at probe column 27.4 and 33.1 instead
-of the 46-65 every healthy frame uses. The SHAPE rule cannot see this --
+of the 40.8-59.6 band every healthy frame stays inside. The SHAPE rule
+cannot see this --
 it finds the arm at the right of the band and measures a plausible ellipse
 that is not the plate. The PROBE can: a cheap colour signature used only
 to answer "which side is the plate on?".
@@ -778,7 +794,7 @@ def probe_columns(goliath, clip):
     for i in range(clip.frames):
         png = goliath.path / clip.dir / f"frame_{i:02d}.png"
         surf = pygame.image.load(str(png)).convert_alpha()
-        found = color_centroid(surf, rule.probe)
+        found = color_centroid(surf, rule.probe, warm=rule.warm_fallback)
         out.append(found[0] if found else None)
     return out
 
@@ -941,10 +957,13 @@ def color_centroid(
     warm filter the probe latches onto the beam.
     """
     w, h = surf.get_size()
+    # A rule that declares no window scans the WHOLE surface. The windows
+    # are optional on purpose: a default of (0, 0) would be truthy and
+    # would silently produce an empty scan window.
     if band is None:
-        band = rule.head_band or (0, h)
+        band = rule.head_band if rule.head_band is not None else (0, h)
     if col_range is None:
-        col_range = rule.col_range or (0, w)
+        col_range = rule.col_range if rule.col_range is not None else (0, w)
     top, bottom = band
     first, last = col_range
 
@@ -992,6 +1011,8 @@ def plate_ellipse(
     Returns (cx, cy, rx, ry) or None when no run qualifies.
     """
     w, h = surf.get_size()
+    if rule.band is None:
+        return None
     band_top, band_bottom = rule.band
     if band_bottom <= band_top:
         return None
@@ -1153,7 +1174,7 @@ git commit -m "feat: BLOQUE 74 - primitivas de medicion de pixeles y deteccion d
 - Consumes: `src.anim.manifest` (Task 1), `src.anim.measure` (Task 2).
 - Produces:
   - `tools/sprite_pipeline/audit.py::STATES` — the seven state names, in severity order: `COLAPSADO`, `CORTADO`, `LADO_EQUIVOCADO`, `FIRMA_AMBIGUA`, `AUSENTE`, `FUERA_DE_RANGO`, `ESCALADO`
-  - `tools/sprite_pipeline/audit.py::FAIL_STATES` — `frozenset({"COLAPSADO", "CORTADO", "LADO_EQUIVOCADO", "FIRMA_AMBIGUA", "AUSENTE"})`
+  - `tools/sprite_pipeline/audit.py::FAIL_STATES` — `frozenset({"COLAPSADO", "CORTADO", "LADO_EQUIVOCADO"})`. AUSENTE and FIRMA_AMBIGUA are WARNs: a frame whose plate cannot be measured is resolved by interpolation, and a probe/shape disagreement is informational.
   - `tools/sprite_pipeline/audit.py::Finding` — frozen dataclass; fields `clip: str`, `frame: int`, `state: str`, `detail: str`
   - `tools/sprite_pipeline/audit.py::FrameMeasurement` — frozen dataclass; fields `clip: str`, `frame: int`, `body_dx: int`, `body_dy: int`, `eye: tuple[int,int] | None`, `shield: tuple[float,float,float,float] | None`, `shield_source: str`
   - `tools/sprite_pipeline/audit.py::audit_set(anim_set) -> tuple[list[Finding], list[FrameMeasurement]]`
@@ -1240,6 +1261,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import statistics
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -1319,6 +1341,7 @@ class FrameMeasurement:
     body_dx: int
     body_dy: int
     eye: tuple[int, int] | None
+    eye_source: str
     shield: tuple[float, float, float, float] | None
     shield_source: str
 
@@ -1391,14 +1414,18 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
 
         probe_cols = _clip_probe_columns(anim_set, clip, surfaces)
         good_cols = sorted(c for c in probe_cols if c is not None)
-        probe_median = good_cols[len(good_cols) // 2] if good_cols else 0.0
+        # The TRUE median -- the average of the two middle values. The
+        # upper-middle element would shift the threshold by up to 0.2 px and
+        # make the auditor decide against a different median than the one
+        # the baseline table was measured with.
+        probe_median = statistics.median(good_cols) if good_cols else 0.0
 
         rule = shield_part.detect
         heights = [
             silhouette_height(surf, rule, drop_warm=True) for surf in surfaces
         ]
         good_heights = sorted(h for h in heights if h is not None)
-        height_median = good_heights[len(good_heights) // 2] if good_heights else 0
+        height_median = statistics.median(good_heights) if good_heights else 0
 
         for i, surf in enumerate(surfaces):
             frame_no = i
@@ -1443,10 +1470,16 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
 
             # --- eye ------------------------------------------------------
             eye = None
+            eye_source = "measured"
             if eye_part.detect is not None:
                 found = color_centroid(surf, eye_part.detect)
                 if found is not None:
                     eye = (int(round(found[0])), int(round(found[1])))
+                else:
+                    # The boss is a wreck by the end of the death clip: the
+                    # last frame has no eye left to find. The part's
+                    # on_missing policy (interpolate) resolves it.
+                    eye_source = "missing"
 
             # --- shield plate ---------------------------------------------
             shield = None
@@ -1478,8 +1511,15 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                     shield = ellipse
 
                 probe_col = probe_cols[i]
-                if probe_col is not None and shield is not None:
+                if probe_col is not None:
                     # --- LADO_EQUIVOCADO: turned-around character ----------
+                    # This check must NOT depend on the shape measurement.
+                    # The turned-around frames are exactly the ones whose
+                    # shape measurement is NOT credible -- the shape rule
+                    # finds the arm, not the plate -- so gating this on a
+                    # credible ellipse would skip the very frames it exists
+                    # to catch. The probe is independent of the shape rule,
+                    # so it can answer the side question on its own.
                     centre_col = anim_set.anchor[0]
                     wrong_side = (
                         probe_col <= centre_col
@@ -1499,7 +1539,9 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                         )
 
                     # --- FIRMA_AMBIGUA: the two detectors disagree -------
-                    if abs(probe_col - shield[0]) > clip.side_tolerance:
+                    # This one DOES need both: it is the disagreement
+                    # between the two detectors that defines it.
+                    if shield is not None and abs(probe_col - shield[0]) > clip.side_tolerance:
                         findings.append(
                             Finding(
                                 clip.id,
@@ -1517,6 +1559,7 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                     body_dx=body_dx,
                     body_dy=body_dy,
                     eye=eye,
+                    eye_source=eye_source,
                     shield=shield,
                     shield_source=shield_source,
                 )
@@ -1549,16 +1592,48 @@ def _interpolate_missing(
         cys = [m.shield[1] if m.shield else None for m in items]
         rxs = [m.shield[2] if m.shield else None for m in items]
         rys = [m.shield[3] if m.shield else None for m in items]
+        eye_cols = [float(m.eye[0]) if m.eye else None for m in items]
+        eye_rows = [float(m.eye[1]) if m.eye else None for m in items]
         for i, m in enumerate(items):
-            if m.shield is not None:
-                out.append(m)
+            eye = m.eye
+            eye_source = m.eye_source
+            if eye is None:
+                ex = interpolate(eye_cols, i)
+                ey = interpolate(eye_rows, i)
+                if ex is not None and ey is not None:
+                    eye = (int(round(ex)), int(round(ey)))
+                    eye_source = "interpolated"
+            if m.shield is not None and eye is not None:
+                out.append(
+                    FrameMeasurement(
+                        clip=m.clip,
+                        frame=m.frame,
+                        body_dx=m.body_dx,
+                        body_dy=m.body_dy,
+                        eye=eye,
+                        eye_source=eye_source,
+                        shield=m.shield,
+                        shield_source=m.shield_source,
+                    )
+                )
                 continue
             cx = interpolate(cxs, i)
             cy = interpolate(cys, i)
             rx = interpolate(rxs, i)
             ry = interpolate(rys, i)
             if None in (cx, cy, rx, ry):
-                out.append(m)
+                out.append(
+                    FrameMeasurement(
+                        clip=m.clip,
+                        frame=m.frame,
+                        body_dx=m.body_dx,
+                        body_dy=m.body_dy,
+                        eye=eye,
+                        eye_source=eye_source,
+                        shield=None,
+                        shield_source=m.shield_source,
+                    )
+                )
                 continue
             out.append(
                 FrameMeasurement(
@@ -1566,7 +1641,8 @@ def _interpolate_missing(
                     frame=m.frame,
                     body_dx=m.body_dx,
                     body_dy=m.body_dy,
-                    eye=m.eye,
+                    eye=eye,
+                    eye_source=eye_source,
                     shield=(cx, cy, rx, ry),
                     shield_source="interpolated",
                 )
@@ -1607,6 +1683,7 @@ def render_anchors_toml(anim_set: AnimSet, measurements: list[FrameMeasurement])
             lines.append("eye = [0, 0]")
         else:
             lines.append(f"eye = [{m.eye[0]}, {m.eye[1]}]")
+        lines.append(f'eye_source = "{m.eye_source}"')
         if m.shield is None:
             lines.append("shield = [0.0, 0.0, 0.0, 0.0]")
         else:
@@ -1672,12 +1749,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[clip] {clip_id}")
             for f in items:
                 print(f"  frame_{f.frame:02d}  {f.state:<16} {f.detail}")
-        fails = sum(1 for f in findings if f.state in FAIL_STATES)
-        warns = len(findings) - fails
+        # Count FRAMES, not findings: a frame can carry two findings
+        # (javelin/frame_03 is FUERA_DE_RANGO *and* LADO_EQUIVOCADO).
+        flagged = {(f.clip, f.frame) for f in findings}
+        failing = {
+            (f.clip, f.frame) for f in findings if f.state in FAIL_STATES
+        }
         total = sum(c.frames for c in anim_set.clips.values())
         print(
-            f"summary: {fails + warns}/{total} frames with findings "
-            f"({fails} FAIL, {warns} WARN)"
+            f"summary: {len(flagged)}/{total} frames with findings "
+            f"({len(failing)} FAIL, {len(flagged) - len(failing)} WARN)"
         )
 
     if args.write_anchors:
@@ -1699,7 +1780,7 @@ Expected: the report names exactly the 10 frames in the baseline table above —
 - [ ] **Step 6: Generate the anchors file**
 
 Run: `python tools/sprite_pipeline/audit.py goliath --write-anchors`
-Expected: `wrote .../anchors.toml`, and the file contains 60 `[[anchors]]` blocks. The 8 blocks whose plate could not be measured carry `shield_source = "interpolated"`.
+Expected: `wrote .../anchors.toml`, and the file contains 60 `[[anchors]]` blocks. The 7 blocks whose plate could not be measured carry `shield_source = "interpolated"`.
 
 - [ ] **Step 7: Run the freshness test**
 
@@ -2099,7 +2180,7 @@ Each failure state is repaired at the layer where it is actually fixable:
     CORTADO          build (PNG)  re-pad onto a fresh transparent canvas
     FUERA_DE_RANGO   anchors      interpolate from the neighbouring frames
     AUSENTE          anchors      interpolate from the neighbouring frames
-    FIRMA_AMBIGUA    config       add the colliding colour to detect.exclude
+    FIRMA_AMBIGUA    config       widen detect.warm_fallback
     ESCALADO         --           reported, never auto-repaired (pixel art)
     COLAPSADO        --           not repairable: the art is gone
 
@@ -2342,7 +2423,7 @@ Create `tests/test_anchor_interpolation.py`:
 ```python
 """BLOQUE 74: a missing measurement must be reconstructed, not defaulted.
 
-Eight of GOLIATH's frames have an implausible shield ellipse (the plate is
+Seven of GOLIATH's frames have an implausible shield ellipse (the plate is
 missing from the art or the arm is measured instead). A constant fallback
 would pin the oval to a fixed point while the arm moves. Interpolating
 from the frames around it keeps the oval on the arm.
