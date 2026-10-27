@@ -53,13 +53,22 @@ def main(argv: list[str] | None = None) -> int:
         "--fix", action="store_true", help="apply repairs (mirrors, re-pads)"
     )
     parser.add_argument("--json", action="store_true", help="machine-readable report")
+    parser.add_argument(
+        "--root",
+        default=None,
+        help=(
+            "directory that HOLDS the sets (default: the repository's "
+            "Assets/sprites/bosses). Point it at a copy to repair a set "
+            "without touching the shipped art."
+        ),
+    )
     args = parser.parse_args(argv)
 
     pygame.init()
     ensure_display()
 
     try:
-        anim_set = load_set(args.set)
+        anim_set = load_set(args.set, root=Path(args.root) if args.root else None)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

@@ -5,6 +5,10 @@ using the boss's animation_path. If the sprite is available, it blits the
 sprite (96x80) and returns. If the sprite is missing, the existing
 procedural drawing is used as a graceful fallback.
 
+BLOQUE 74: the clip the frames live in is "phase1_idle" (the clip IDs are
+phase1_idle, phase2_idle, javelin, laser, purple_bullet and death). The
+old "idle" directory does not exist, so the test used to skip itself.
+
 This file verifies both branches by patching BOSS_CONFIGS and constructing
 a minimal GameplayRuntime via __new__ (bypassing the heavy __init__).
 """
@@ -17,8 +21,12 @@ import pygame
 pygame.init()
 pygame.display.set_mode((1, 1))
 
+# BLOQUE 74: the real clip. "idle" was never a directory of the GOLIATH
+# set, so the sprite test below skipped itself instead of testing.
+GOLIATH_SPRITE = "bosses/goliath/phase1_idle/frame_00.png"
 
-def _make_runtime(boss_id: str = "goliath", animation_path: str = "bosses/goliath/idle/frame_00.png"):
+
+def _make_runtime(boss_id: str = "goliath", animation_path: str = GOLIATH_SPRITE):
     """Build a minimal GameplayRuntime instance for _draw_goliath smoke tests.
 
     Uses __new__ to bypass the heavy __init__ (which constructs the player,
@@ -94,20 +102,21 @@ def test_draw_goliath_uses_sprite_when_animation_path_exists():
     # If the file isn't reachable, this test is effectively a no-op
     # verification (the procedural fallback test covers the missing-sprite
     # branch).
-    pre_surf = _load_sprite("bosses/goliath/idle/frame_00.png")
+    pre_surf = _load_sprite(GOLIATH_SPRITE)
     if pre_surf is None:
         pytest.skip(
-            "Could not load goliath idle sprite (pygame uninitialized or "
-            "Assets/sprites/bosses/goliath/idle/frame_00.png missing). "
-            "Procedural fallback path is covered by test 2."
+            "Could not load the goliath phase1_idle sprite (pygame "
+            "uninitialized or Assets/sprites/bosses/goliath/phase1_idle/"
+            "frame_00.png missing). Procedural fallback path is covered by "
+            "test 2."
         )
 
     # Clean cache so we observe the load during _draw_goliath
-    _sprite_cache.pop("bosses/goliath/idle/frame_00.png", None)
+    _sprite_cache.pop(GOLIATH_SPRITE, None)
 
     rt = _make_runtime(
         boss_id="goliath",
-        animation_path="bosses/goliath/idle/frame_00.png",
+        animation_path=GOLIATH_SPRITE,
     )
 
     with _patch_boss_configs():
@@ -116,8 +125,8 @@ def test_draw_goliath_uses_sprite_when_animation_path_exists():
         rt._draw_goliath(target, 0, 0)
         # _draw_goliath must have called _load_sprite on the boss's
         # animation_path. The cache now has the surface.
-        assert "bosses/goliath/idle/frame_00.png" in _sprite_cache
-        surf = _sprite_cache["bosses/goliath/idle/frame_00.png"]
+        assert GOLIATH_SPRITE in _sprite_cache
+        surf = _sprite_cache[GOLIATH_SPRITE]
         assert surf is not None
         # The sprite is 96x80 per the BLOQUE 60 spec.
         assert surf.get_width() == 96

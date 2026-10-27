@@ -21,6 +21,7 @@ from enum import Enum
 
 import pygame
 
+from src.anim.manifest import loaded_set
 from src.core.settings import INTERNAL_H, INTERNAL_W
 from src.systems.pool import Pool
 
@@ -182,9 +183,22 @@ class Boss:
     @property
     def animation_path(self) -> str:
         """BLOQUE 60: relative path under Assets/sprites/ for the current
-        animation frame. Format: 'bosses/goliath/<state>/frame_NN.png'.
+        animation frame. Format: 'bosses/goliath/<clip dir>/frame_NN.png'.
+
+        BLOQUE 74: the clip DIRECTORY comes from the manifest, not from
+        the clip id. The two are allowed to differ (`clip.dir` is the
+        directory on disk, `clip.id` is the name the runtime plays), so
+        the path is resolved from the manifest. When the manifest cannot
+        be read the clip id is used, which is what every shipped clip
+        declares anyway.
         """
-        return f"bosses/goliath/{self.animation_state}/frame_{self.animation_frame:02d}.png"
+        clip_dir = self.animation_state
+        anim_set = loaded_set("goliath")
+        if anim_set is not None:
+            clip = anim_set.clips.get(self.animation_state)
+            if clip is not None:
+                clip_dir = clip.dir
+        return f"bosses/goliath/{clip_dir}/frame_{self.animation_frame:02d}.png"
 
     def update_animation(self, dt: float) -> None:
         """BLOQUE 74: advance the animation frame.

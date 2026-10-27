@@ -20,7 +20,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+def _project_root() -> Path:
+    """The repository root, resolved on demand.
+
+    The frozen build does NOT have one: the bundle is extracted to a
+    temporary directory and the assets are read from THERE. Resolving the
+    source tree at import time would drag the frozen path in for nothing,
+    so the root is computed only when the default sets root is needed.
+    """
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def _sets_root() -> Path:
@@ -38,10 +46,19 @@ def _sets_root() -> Path:
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass:
         return Path(meipass) / "Assets" / "sprites" / "bosses"
-    return ROOT / "Assets" / "sprites" / "bosses"
+    return _project_root() / "Assets" / "sprites" / "bosses"
 
 
-SETS_ROOT = _sets_root()
+def __getattr__(name: str) -> Any:
+    """Lazily resolved module attributes (PEP 562).
+
+    SETS_ROOT is resolved on FIRST access instead of at import time: a
+    frozen build never needs the source tree, and the default of
+    `load_set` computes it only when it is really used.
+    """
+    if name == "SETS_ROOT":
+        return _sets_root()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 VALID_METHODS = ("shape", "color")
 VALID_SIDES = ("left", "right")
@@ -272,8 +289,39 @@ class AnimSet:
         raise ManifestError(f"unknown part {part_id!r} in {self.name}")
 
 
-def load_set(name: str, root: Path = SETS_ROOT) -> AnimSet:
-    """Load and validate the manifest of the set called `name`."""
+_LOADED: dict[tuple[str, Path | None], AnimSet] = {}
+
+
+def loaded_set(name: str, root: Path | None = None) -> AnimSet | None:
+    """The manifest of a set, parsed ONCE. None when it cannot be read.
+
+    The runtime asks for the manifest on the HOT path (the boss rebuilds
+    its sprite path every frame), so the TOML is parsed a single time and
+    the result is kept. A set whose manifest is missing or malformed
+    returns None: the caller falls back to its own defaults instead of
+    crashing the game.
+    """
+    key = (name, root)
+    cached = _LOADED.get(key)
+    if cached is not None:
+        return cached
+    try:
+        anim_set = load_set(name, root)
+    except (ManifestError, OSError):
+        return None
+    _LOADED[key] = anim_set
+    return anim_set
+
+
+def load_set(name: str, root: Path | None = None) -> AnimSet:
+    """Load and validate the manifest of the set called `name`.
+
+    `root` is the directory that HOLDS the sets; None means the default
+    one (the repository's Assets/sprites/bosses, or the frozen bundle's),
+    resolved at call time so the source tree is never touched on import.
+    """
+    if root is None:
+        root = _sets_root()
     path = root / name
     manifest_path = path / "manifest.toml"
     if not manifest_path.is_file():

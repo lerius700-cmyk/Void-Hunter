@@ -43,9 +43,10 @@ from src.anim.measure import (  # noqa: E402
     color_centroid,
     credible_ellipse,
     interpolate,
+    is_cut_off,
     plate_ellipse,
-    silhouette_bbox,
     silhouette_height,
+    silhouette_margins,
 )
 from sprite_pipeline import ensure_display  # noqa: E402
 
@@ -214,19 +215,20 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
             frame_no = i
 
             # --- CORTADO: silhouette touching the canvas edge -----------
-            bbox = silhouette_bbox(surf)
-            if bbox is not None:
-                left, top, right, bottom = bbox
-                w, h = surf.get_size()
-                if left < 2 or top < 2 or (w - right) < 2 or (h - bottom) < 2:
-                    findings.append(
-                        Finding(
-                            clip.id,
-                            frame_no,
-                            "CORTADO",
-                            f"silhouette margins L{left} T{top} R{w - right} B{h - bottom}",
-                        )
+            # The threshold is CORTADO_MARGIN, the SAME constant the repair
+            # targets, so a frame the auditor flags is a frame the repair
+            # can reach (when a translation can give it the margin).
+            margins = silhouette_margins(surf)
+            if margins is not None and is_cut_off(margins):
+                left, top, right, bottom = margins
+                findings.append(
+                    Finding(
+                        clip.id,
+                        frame_no,
+                        "CORTADO",
+                        f"silhouette margins L{left} T{top} R{right} B{bottom}",
                     )
+                )
 
             # --- ESCALADO: silhouette height vs the clip median ---------
             height = heights[i]
@@ -542,13 +544,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--write-anchors", action="store_true", help="write anchors.toml"
     )
+    parser.add_argument(
+        "--root",
+        default=None,
+        help=(
+            "directory that HOLDS the sets (default: the repository's "
+            "Assets/sprites/bosses)."
+        ),
+    )
     args = parser.parse_args(argv)
 
     pygame.init()
     ensure_display()
 
     try:
-        anim_set = load_set(args.set)
+        anim_set = load_set(args.set, root=Path(args.root) if args.root else None)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

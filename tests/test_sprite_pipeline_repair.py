@@ -8,6 +8,10 @@ The flip itself is an INVOLUTION -- mirroring twice restores the original
 pixels. What is idempotent is the repair PASS: it only acts on a
 LADO_EQUIVOCADO finding, and once the frame has been mirrored the next
 audit finds none, so a second `--fix` changes nothing.
+
+The re-pad and the auditor must agree on the THRESHOLD: the repair targets
+CORTADO_MARGIN, the very threshold the auditor flags below, so a frame the
+auditor flags is a frame the repair can reach.
 """
 from __future__ import annotations
 
@@ -26,13 +30,22 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
 
 from src.anim.manifest import load_set  # noqa: E402
-from src.anim.measure import silhouette_bbox  # noqa: E402
-from sprite_pipeline.audit import Finding  # noqa: E402
+from src.anim.measure import (  # noqa: E402
+    CORTADO_MARGIN,
+    silhouette_bbox,
+    silhouette_margins,
+)
+from sprite_pipeline.audit import Finding, audit_set  # noqa: E402
 from sprite_pipeline.repair import (  # noqa: E402
     mirror_frame,
     repair_set,
     repad_frame,
 )
+
+# The synthetic-set builder lives with the auditor's own tests: the
+# manifest it writes declares the parts the auditor measures (the shield
+# plate and the eye), and there is exactly ONE copy of that manifest.
+from tests.test_sprite_pipeline_audit import build_set  # noqa: E402
 
 W, H = 96, 80
 TRANSPARENT = (0, 0, 0, 0)
@@ -65,14 +78,30 @@ def _margins(surf: pygame.Surface) -> tuple[int, int, int, int]:
     return (left, top, w - right, h - bottom)
 
 
-def _synthetic_set(tmp_path: Path, pixels: dict[tuple[int, int], tuple]):
-    """A one-frame set on disk, loaded through the real manifest loader."""
+def _tight_pixels() -> dict[tuple[int, int], tuple]:
+    """A silhouette with the margins (0, 1).
+
+    It touches the LEFT edge and is 1 px from the TOP edge, and it keeps
+    4 px of slack on the right: the tightest frame a translation can still
+    give the auditor's margin to.
+    """
+    return _rect(0, 1, W - 4, 40)
+
+
+def _synthetic_set(
+    tmp_path: Path, pixels: dict[tuple[int, int], tuple], clip_dir: str = "idle"
+):
+    """A one-frame set on disk, loaded through the real manifest loader.
+
+    The clip's ID is always "idle"; `clip_dir` is the DIRECTORY the frames
+    live in, so a set that separates the two can be built.
+    """
     set_dir = tmp_path / "synthetic"
-    clip_dir = set_dir / "idle"
-    clip_dir.mkdir(parents=True)
-    pygame.image.save(_surface(pixels), str(clip_dir / "frame_00.png"))
+    frames_dir = set_dir / clip_dir
+    frames_dir.mkdir(parents=True)
+    pygame.image.save(_surface(pixels), str(frames_dir / "frame_00.png"))
     (set_dir / "manifest.toml").write_text(
-        """[meta]
+        f"""[meta]
 name = "SYNTHETIC"
 version = 1
 canvas = [96, 80]
@@ -81,7 +110,7 @@ sided = "right"
 
 [[clips]]
 id = "idle"
-dir = "idle"
+dir = "{clip_dir}"
 frames = 1
 fps = 10
 loop = true
@@ -321,4 +350,112 @@ def test_repair_set_reports_a_re_pad_that_worked(tmp_path):
     )
 
     assert actions == ["re-padded idle/frame_00"]
+    assert frame.read_bytes() != before
+
+
+# ---------------------------------------------------------------------------
+# The re-pad and the auditor must agree on the threshold.
+#
+# The repair used to target a margin of 3 while the auditor flagged below
+# 2. A frame with only 4 px of slack could not reach the repair's target,
+# so it stayed flagged FOREVER: `run.py --fix` exited 1 on a set that can
+# never be repaired. ONE threshold (CORTADO_MARGIN) closes the gap.
+# ---------------------------------------------------------------------------
+def test_a_frame_with_margins_0_and_1_is_repaired_and_stops_being_CORTADO(tmp_path):
+    """The tightest repairable frame: margins (0, 1).
+
+    The auditor flags it CORTADO, the re-pad moves it inward, and the
+    auditor accepts the result: the finding is GONE.
+    """
+    build_set(tmp_path, [_tight_pixels()])
+    anim_set = load_set("synthetic", root=tmp_path)
+    frame = anim_set.path / "idle" / "frame_00.png"
+
+    findings, _ = audit_set(anim_set)
+    cortado = [f for f in findings if f.state == "CORTADO"]
+    assert cortado, "the tight frame must be flagged CORTADO"
+    assert "L0 T1" in cortado[0].detail, cortado[0].detail
+
+    actions = repair_set(anim_set, cortado, apply=True)
+    assert actions == ["re-padded idle/frame_00"]
+
+    # The repaired frame is not flagged any more.
+    findings_after, _ = audit_set(anim_set)
+    assert not [f for f in findings_after if f.state == "CORTADO"], [
+        f.detail for f in findings_after
+    ]
+
+    after = pygame.image.load(str(frame)).convert_alpha()
+    margins = silhouette_margins(after)
+    assert margins is not None
+    assert min(margins) >= CORTADO_MARGIN, margins
+
+
+def test_the_re_pad_targets_the_threshold_the_auditor_applies(tmp_path):
+    """ONE threshold: the repair's default IS the auditor's threshold.
+
+    A stricter target than the auditor's would leave frames the auditor
+    flags unrepaired; a looser one would move art that does not need to
+    move. The repair must target exactly CORTADO_MARGIN.
+    """
+    path = tmp_path / "frame_00.png"
+    # A silhouette whose margins are exactly (2, 2): the auditor accepts
+    # it, so the repair must NOT touch it.
+    pygame.image.save(_surface(_rect(2, 2, W - 2, H - 2)), str(path))
+    before = path.read_bytes()
+
+    assert repad_frame(path) is False
+    assert path.read_bytes() == before
+
+    # One pixel too close on the left: the auditor flags it and the
+    # repair (with its default margin) fixes it. The silhouette keeps 4 px
+    # of slack in total, so a translation CAN give it the margin.
+    pygame.image.save(_surface(_rect(1, 2, W - 3, H - 2)), str(path))
+    assert repad_frame(path) is True
+
+    after = pygame.image.load(str(path)).convert_alpha()
+    margins = silhouette_margins(after)
+    assert margins is not None
+    assert min(margins) >= CORTADO_MARGIN, margins
+
+
+# ---------------------------------------------------------------------------
+# The frame is looked up through the manifest's `clip.dir`, never through
+# the clip id. The two are allowed to differ.
+# ---------------------------------------------------------------------------
+def test_the_repair_resolves_the_directory_from_the_manifest(tmp_path):
+    """A finding names the clip by ID; the frames live in `clip.dir`.
+
+    Every clip of the shipped GOLIATH manifest declares `dir` equal to its
+    `id`, so the two are the same string there. A set that separates them
+    must still be repaired in the right place -- the directory comes from
+    the manifest, never from the id.
+    """
+    anim_set = _synthetic_set(tmp_path, _rect(20, 30, 60, 50), clip_dir="frames")
+    frame = anim_set.path / "frames" / "frame_00.png"
+    before = frame.read_bytes()
+
+    actions = repair_set(
+        anim_set,
+        [Finding("idle", 0, "LADO_EQUIVOCADO", "probe col 10.0")],
+        apply=True,
+    )
+
+    assert actions == ["mirrored frames/frame_00"]
+    assert frame.read_bytes() != before
+
+
+def test_the_repair_resolves_the_directory_of_a_re_pad_from_the_manifest(tmp_path):
+    """The re-pad resolves its frame through the manifest too."""
+    anim_set = _synthetic_set(tmp_path, _rect(0, 30, 41, 50), clip_dir="frames")
+    frame = anim_set.path / "frames" / "frame_00.png"
+    before = frame.read_bytes()
+
+    actions = repair_set(
+        anim_set,
+        [Finding("idle", 0, "CORTADO", "silhouette margins L0 T30 R55 B30")],
+        apply=True,
+    )
+
+    assert actions == ["re-padded frames/frame_00"]
     assert frame.read_bytes() != before

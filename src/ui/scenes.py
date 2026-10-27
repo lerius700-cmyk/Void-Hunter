@@ -162,6 +162,12 @@ _anchor_set_cache: AnchorSet | None = None
 _manifest_cache: AnimSet | None = None
 _manifest_failed = False
 _clip_player_cache: ClipPlayer | None = None
+_clip_dir_cache: dict[str, str] | None = None
+
+# The canvas the GOLIATH frames are authored on. It is DECLARED by the
+# manifest (meta.canvas) -- see get_canvas_size(). This fallback is only
+# used when the manifest cannot be read at all.
+CANVAS_FALLBACK = (96, 80)
 
 
 def _load_manifest() -> AnimSet | None:
@@ -218,22 +224,48 @@ def clear_anchor_cache() -> None:
     picks up the new files.
     """
     global _anchor_set_cache, _manifest_cache, _manifest_failed
-    global _clip_player_cache
+    global _clip_player_cache, _clip_dir_cache
     _anchor_set_cache = None
     _manifest_cache = None
     _manifest_failed = False
     _clip_player_cache = None
+    _clip_dir_cache = None
 
 
 def _clip_id_for_dir(clip_dir: str) -> str | None:
-    """Map a clip's directory name to its clip id."""
+    """Map a clip's directory name to its clip id.
+
+    MEMOIZED: the anchor lookup runs once per sprite per frame (67 times
+    a frame in the worst case) and the clip set does not change at
+    runtime, so the scan is done ONCE and then it is a dict lookup.
+    """
+    global _clip_dir_cache
+    if _clip_dir_cache is None:
+        anim_set = _load_manifest()
+        if anim_set is None:
+            return None
+        _clip_dir_cache = {clip.dir: clip.id for clip in anim_set.clips.values()}
+    return _clip_dir_cache.get(clip_dir)
+
+
+def get_canvas_size() -> tuple[int, int]:
+    """The animated set's declared canvas size.
+
+    The canvas is the size the set's frames are authored on, and the
+    manifest DECLARES it (`meta.canvas`): it is a property of the set, not
+    a constant of the game. A set with a different canvas does not need
+    the runtime to change.
+
+    The fallback is used only when the manifest cannot be read at all
+    (a build without the assets bundled).
+    """
     anim_set = _load_manifest()
     if anim_set is None:
-        return None
-    for clip in anim_set.clips.values():
-        if clip.dir == clip_dir:
-            return clip.id
-    return None
+        return CANVAS_FALLBACK
+    width, height = anim_set.canvas
+    if width <= 0 or height <= 0:
+        return CANVAS_FALLBACK
+    return (width, height)
 
 
 def _anchor_for(name: str) -> FrameAnchor | None:

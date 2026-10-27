@@ -120,12 +120,16 @@ def _goliath_shield_ellipse(runtime: "GameplayRuntime") -> tuple[int, int, int, 
     boss is missing, the fallback half-size (GOLIATH_SHIELD_RX /
     GOLIATH_SHIELD_RY) is used.
     """
-    from src.ui.scenes import get_sprite_centroid_offset, get_sprite_shield_ellipse
+    from src.ui.scenes import (
+        get_canvas_size,
+        get_sprite_centroid_offset,
+        get_sprite_shield_ellipse,
+    )
 
     if runtime._boss is None:
         return (0, 0, GOLIATH_SHIELD_RX, GOLIATH_SHIELD_RY)
     path = runtime._boss.animation_path
-    vw, vh = 96, 80
+    vw, vh = get_canvas_size()
     centroid_dx, centroid_dy = get_sprite_centroid_offset(path)
     cx, cy, rx, ry = get_sprite_shield_ellipse(path)
     # BLOQUE 67: adelgazar el eje menor (horizontal) del ovalo.
@@ -2308,20 +2312,27 @@ class GameplayRuntime:
     def _goliath_eye_position(self) -> tuple[int, int]:
         """BLOQUE 67: posicion del ojo de GOLIATH en el mundo.
 
-        El ojo se busca por color en el frame actual (rojo saturado en la
-        banda de la cabeza) y se convierte a coordenadas de mundo con el
-        mismo offset que usa el blit del sprite.
+        BLOQUE 74: la posicion del ojo ya NO se busca por color en el frame
+        actual: esta horneada en la tabla de anchors (anchors.toml), que el
+        auditor midio frame por frame en build time. Aqui solo se lee la
+        tabla y se convierte a coordenadas de mundo con el mismo offset que
+        usa el blit del sprite.
         """
-        from src.ui.scenes import get_sprite_centroid_offset, get_sprite_eye_anchor
+        from src.ui.scenes import (
+            get_canvas_size,
+            get_sprite_centroid_offset,
+            get_sprite_eye_anchor,
+        )
 
         if self._boss is None:
             return (0, 0)
         path = self._boss.animation_path
         eye_col, eye_row = get_sprite_eye_anchor(path)
         cdx, cdy = get_sprite_centroid_offset(path)
+        vw, vh = get_canvas_size()
         return (
-            int(self._boss.x) - 48 + cdx + eye_col,
-            int(self._boss.y) - 40 + cdy + eye_row,
+            int(self._boss.x) - vw // 2 + cdx + eye_col,
+            int(self._boss.y) - vh // 2 + cdy + eye_row,
         )
 
     def _aim_eye_lasers(self) -> None:
@@ -6054,7 +6065,11 @@ class GameplayRuntime:
         """
         if self._boss is None:
             return
-        from src.ui.scenes import get_clip_player, get_sprite_centroid_offset
+        from src.ui.scenes import (
+            get_canvas_size,
+            get_clip_player,
+            get_sprite_centroid_offset,
+        )
         # Per-state bob amplitude. The procedural frame motion is the main
         # source of life; this is a tiny global sway on top.
         anim = self._boss.animation_state if self._boss else "phase1_idle"
@@ -6067,7 +6082,7 @@ class GameplayRuntime:
         bob = math.sin(self._t * 1.0) * bob_amp
         cx = int(self._boss.x + ox)
         cy = int(self._boss.y + oy)
-        vw, vh = 96, 80
+        vw, vh = get_canvas_size()
         # BLOQUE 73.2: shift the sprite so the body's visual centroid lands
         # on the world anchor (cx, cy) instead of on the canvas anchor
         # (vw//2, vh//2). Frames that lean (javelin/frame_03 is dx=-19 since

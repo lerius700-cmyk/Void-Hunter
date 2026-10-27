@@ -22,6 +22,16 @@ from src.anim.manifest import DetectRule, WarmRule
 
 ALPHA_MIN = 32
 
+# The margin (in pixels) the silhouette must keep from EVERY canvas edge.
+# Below it the frame is CORTADO (cut).
+#
+# ONE threshold, shared by the auditor and the repair: the auditor flags a
+# frame whose margin is below it and the repair targets exactly it. Two
+# thresholds would wedge the pipeline -- a frame the auditor flags but the
+# repair cannot reach stays flagged forever, and `run.py --fix` would keep
+# exiting 1 on a set that can never be repaired.
+CORTADO_MARGIN = 2
+
 
 def alpha_centroid(surf: pygame.Surface) -> tuple[float, float] | None:
     """Alpha-weighted centroid of the silhouette.
@@ -77,6 +87,31 @@ def silhouette_bbox(
     if right < 0:
         return None
     return (left, top, right + 1, bottom + 1)
+
+
+def silhouette_margins(
+    surf: pygame.Surface, threshold: int = ALPHA_MIN
+) -> tuple[int, int, int, int] | None:
+    """(left, top, right, bottom) margins of the silhouette, in pixels.
+
+    A margin is how many transparent pixels separate the silhouette from
+    that edge of the canvas. None when the sprite is fully transparent.
+    """
+    bbox = silhouette_bbox(surf, threshold)
+    if bbox is None:
+        return None
+    left, top, right, bottom = bbox
+    w, h = surf.get_size()
+    return (left, top, w - right, h - bottom)
+
+
+def is_cut_off(margins: tuple[int, int, int, int]) -> bool:
+    """True when a silhouette comes closer than CORTADO_MARGIN to an edge.
+
+    This is the CORTADO test of the auditor as a function, so the repair
+    and the finding can never disagree about what "cut off" means.
+    """
+    return min(margins) < CORTADO_MARGIN
 
 
 def silhouette_height(
