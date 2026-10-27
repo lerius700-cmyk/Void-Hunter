@@ -2549,14 +2549,20 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _live_video_system():
-    """Guarantee a live video mode for every test.
+    """Guarantee a live pygame for every test.
 
-    pygame.quit() in another module's teardown tears the video system down;
-    pygame.display.set_mode() brings it back. Only the display is restored
-    -- the rest of pygame's state stays as the previous module left it.
+    pygame.quit() in another module's teardown tears pygame down -- the
+    video system AND the font subsystem. Restoring only the display is not
+    enough: pygame.font.get_init() stays False and pygame.font.Font(None, 12)
+    raises "font not initialized" (src/ui/gameplay_runtime.py:4269). So
+    pygame.init() comes first -- it re-initialises the modules that are
+    down without resetting the state of the ones that are up -- and the
+    display mode is set afterwards, because init() opens no window.
     """
     import pygame
 
+    if not pygame.get_init():
+        pygame.init()
     if not pygame.display.get_init():
         pygame.display.set_mode((320, 480))
     yield
@@ -2572,6 +2578,16 @@ def _live_video_system():
 - The remaining failures must be only `tests/test_paths.py::test_paths_no_star_shapes` (a genuine assertion) and `tests/test_manifest_side_consistency.py::test_plate_is_on_the_declared_side` (red by design until Task 6 mirrors the frames).
 - `python -m pytest tests/test_asteroid_sprites.py --tb=no` -> passes.
 - `python -m mypy src/anim/` -> still 0 errors.
+
+**Also normalise the display size.** Four module fixtures open a 1x1 mode
+(`tests/test_cinematic_scene.py`, `tests/test_gallery_scene.py`,
+`tests/test_player_sprite_sheet.py`, `tests/test_video_player.py`). With
+nothing calling `pygame.quit()` any more, that 1x1 surface survives for the
+rest of the session, and `src/ui/gameplay_runtime.py:493-495` caches
+`pygame.display.get_surface().get_size()` into `_game_screen_size` — so a
+`GameplayRuntime` built after one of those modules would cache (1, 1) instead
+of (320, 480). Nothing fails today, but the mouse-to-internal scaling in the
+shipped game would be wrong. Change those four to `(320, 480)`.
 
 **Note:** this task also invalidates the hard-coded frame names in `tests/test_features_detected_everywhere.py` (Task 6 mirrors two frames and shifts the clip medians). Re-validate them in Task 6, not here.
 
@@ -3586,7 +3602,7 @@ git diff v1.7.2 HEAD --stat -- src/ Assets/ build.spec main.py
 
 ## Self-review notes
 
-- **Spec coverage:** every section of the spec has a task — the manifest (§2.2) is Task 1, the anchors (§2.3) is Task 3 and Task 6, the auditor (§2.4) is Task 3, the repair (§2.5) is Task 5, the compositor (§2.6) is Task 6, the GOLIATH migration (§3) is Tasks 5 and 7, the tests (§4) are spread across Tasks 1-7, and the delivery order (§5) is the task order.
+- **Spec coverage:** every section of the spec has a task — the manifest (§2.2) is Task 1, the anchors (§2.3) is Task 3 and Task 7, the auditor (§2.4) is Task 3, the repair (§2.5) is Task 6, the compositor (§2.6) is Task 7, the GOLIATH migration (§3) is Tasks 6 and 8, the tests (§4) are spread across Tasks 1-7, and the delivery order (§5) is the task order. Task 5 is the pygame-contamination fix, which the spec does not cover — it was added because the pipeline work exposed that the suite's documented failures were collection-order accidents.
 - **Deviations from the spec, each deliberate and measured:**
   1. `src/anim/` is split into five files rather than three (see "File structure"): the measurement code has to be importable by the tests without the auditor's CLI, and `anchors.toml` has a different lifecycle from `manifest.toml`.
   2. `FIRMA_AMBIGUA` is a **WARN, not a FAIL**, and its definition is "the two independent detectors disagree". Two candidate definitions were measured against the 60 shipped frames and both were unusable: "the measured region contains a baked-effect colour" fires on 59/60 frames because `(240,200,120)` is the plate's own highlight, and "excluding the colliding colours changes the measurement" fires on 0/60 frames because the colliding pixels are isolated highlights that never move a run boundary. The spec's table says FAIL; the plan says WARN because a FAIL here would block the pipeline on a state that cannot be detected reliably.
