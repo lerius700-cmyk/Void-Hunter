@@ -4814,14 +4814,17 @@ def _anchor_for(name: str):
     anchors = _load_anchor_set()
     if "/" not in name:
         return None
-    clip_dir, _, filename = name.rpartition("/")
+    # The LAST directory component, not a split on the last "/": the
+    # runtime's path form is bosses/goliath/<clip dir>/frame_NN.png, and
+    # rpartition would leave the whole prefix as the "clip dir".
+    filename = PurePath(name).name
     if not filename.startswith("frame_") or not filename.endswith(".png"):
         return None
     try:
         index = int(filename[len("frame_"):-len(".png")])
     except ValueError:
         return None
-    clip_id = _clip_id_for_dir(clip_dir)
+    clip_id = _clip_id_for_dir(PurePath(name).parent.name)
     if clip_id is None:
         return None
     return anchors.get(clip_id, index)
