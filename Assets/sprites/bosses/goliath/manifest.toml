@@ -1,0 +1,113 @@
+# BLOQUE 74: SPEC of the GOLIATH animation set. Hand-edited.
+#
+# Verified by: tools/sprite_pipeline/audit.py
+# Design: docs/superpowers/specs/2026-10-26-sprite-pipeline-design.md
+#
+# The shield constants below are the BLOQUE 67 user-approved values, moved
+# here verbatim. Do not retune them here.
+
+[meta]
+name    = "GOLIATH"
+version = 1
+canvas  = [96, 80]      # every frame of every clip
+anchor  = [48, 40]      # where the boss sits in the world
+sided   = "right"       # the shield is ALWAYS on the right arm
+
+# ---------------------------------------------------------------- clips
+#
+# scale_tolerance: relative deviation of the silhouette height from the
+#   clip median that still counts as "not rescaled". death is loose because
+#   the boss collapses on purpose (75 px -> 37 px).
+# side_tolerance: how far the probe column may stray from the clip median
+#   before the frame counts as turned around. 14 separates the two real
+#   cases (18.9, 21.6) from every healthy frame (max 13.2).
+
+[[clips]]
+id     = "phase1_idle"
+dir    = "phase1_idle"
+frames = 10
+fps    = 10
+loop   = true
+
+[[clips]]
+id     = "phase2_idle"
+dir    = "phase2_idle"
+frames = 10
+fps    = 10
+loop   = true
+
+[[clips]]
+id     = "javelin"
+dir    = "javelin"
+frames = 10
+fps    = 10
+loop   = true
+
+[[clips]]
+id     = "laser"
+dir    = "laser"
+frames = 10
+fps    = 10
+loop   = true
+scale_tolerance = 0.25   # the boss crouches when it fires
+
+[[clips]]
+id     = "purple_bullet"
+dir    = "purple_bullet"
+frames = 10
+fps    = 10
+loop   = true
+scale_tolerance = 0.25   # the boss throws
+
+[[clips]]
+id     = "death"
+dir    = "death"
+frames = 10
+fps    = 10
+loop   = false             # one-shot: holds on the last frame
+scale_tolerance = 0.60     # the boss collapses -- that IS the animation
+
+# ---------------------------------------------------------------- parts
+#
+#   draw = "frames"      one PNG per frame of the current clip
+#   draw = "ellipse"     procedural primitive (the invisible shield oval)
+#   draw = "point"       an anchor only, draws nothing (the eye)
+#   draw = "procedural"  runtime effect; never baked into the art
+#
+#   pivot = "centroid"   auto: alpha-weighted centroid of the silhouette
+#   pivot = "detect"     auto: the detection rule declared below
+#
+#   on_missing = "interpolate" | "fallback" | "skip"
+
+[[parts]]
+id    = "body"
+draw  = "frames"
+pivot = "centroid"
+z     = 0
+
+[[parts]]
+id     = "shield_plate"
+draw   = "ellipse"
+pivot  = "detect"
+z      = 1
+offset = [0, 3]          # GOLIATH_SHIELD_DX / GOLIATH_SHIELD_DY
+scale  = [0.78, 1.0]     # GOLIATH_SHIELD_RX_SCALE
+
+# `exclude` drops the two baked eye-beam colours that also satisfy the
+# brass signature. Without it the detector measures the beam instead of
+# the plate (BLOQUE 73.4 shipped that bug in get_sprite_arm_anchor).
+detect = { method = "shape", band = [28, 54], side = "right", min_col = 50, ranges = { rx = [6.5, 11.0], ry = [9.0, 13.0] }, exclude = [[255, 220, 80], [240, 200, 120]], probe = { method = "color", r_min = 185, g_min = 145, b_max = 130, r_minus_b_min = 70 } }
+on_missing = "interpolate"
+
+[[parts]]
+id    = "eye"
+draw  = "point"
+pivot = "detect"
+z     = 2
+detect = { method = "color", head_band = [0, 30], col_range = [24, 70], r_min = 170, rg_min = 70 }
+on_missing = "interpolate"
+
+[[parts]]
+id   = "fx_eye_beam"
+draw = "procedural"
+z    = 3
