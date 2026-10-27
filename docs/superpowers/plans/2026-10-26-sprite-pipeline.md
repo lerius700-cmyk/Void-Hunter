@@ -2954,8 +2954,8 @@ Expected: exactly two modified PNGs, `javelin/frame_03.png` and `purple_bullet/f
 The two FAIL states are gone and the counters are UNCHANGED: the two mirrored
 frames stay `FUERA_DE_RANGO` (the shape rule still measures the body, not the
 plate, in them), so they keep being interpolated exactly as before. The
-clip medians do move -- javelin's goes from 49.0 to 49.19 and purple_bullet's
-from 51.2 to 51.97 -- but no frame crosses the side threshold, and the
+clip medians do move -- javelin's goes from 48.80 to 49.19 and purple_bullet's
+from 51.23 to 51.97 -- but no frame crosses the side threshold, and the
 mirrored frames land at probe columns 67.6 and 61.9, both on the right of the
 centre, which is what the rule asks for.
 
