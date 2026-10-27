@@ -3419,14 +3419,26 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+# A feature is UNRESOLVED when its source says so. The generator writes a
+# zero placeholder for an unresolved feature, so the source is the only
+# thing that distinguishes "measured at (0, 0)" from "not measured at all".
+UNRESOLVED_SOURCES = ("missing", "out_of_range")
+
+
 @dataclass(frozen=True)
 class FrameAnchor:
-    """The baked measurement of one frame."""
+    """The baked measurement of one frame.
+
+    `eye` and `shield` are INDEPENDENT: either can be measured, interpolated
+    or unresolved. An unresolved feature is None, never a zero tuple -- the
+    eye laser must not be launched from the corner of the canvas.
+    """
 
     body_dx: int
     body_dy: int
-    eye: tuple[int, int]
-    shield: tuple[float, float, float, float]
+    eye: tuple[int, int] | None
+    eye_source: str
+    shield: tuple[float, float, float, float] | None
     shield_source: str
 
 
@@ -3450,17 +3462,28 @@ def load_anchors(path: Path) -> AnchorSet:
         key = (str(entry["clip"]), int(entry["frame"]))
         eye = entry.get("eye", (0, 0))
         shield = entry.get("shield", (0.0, 0.0, 0.0, 0.0))
+        eye_source = str(entry.get("eye_source", "measured"))
+        shield_source = str(entry.get("shield_source", "measured"))
         entries[key] = FrameAnchor(
             body_dx=int(entry.get("body_dx", 0)),
             body_dy=int(entry.get("body_dy", 0)),
-            eye=(int(eye[0]), int(eye[1])),
-            shield=(
-                float(shield[0]),
-                float(shield[1]),
-                float(shield[2]),
-                float(shield[3]),
+            eye=(
+                None
+                if eye_source in UNRESOLVED_SOURCES
+                else (int(eye[0]), int(eye[1]))
             ),
-            shield_source=str(entry.get("shield_source", "measured")),
+            eye_source=eye_source,
+            shield=(
+                None
+                if shield_source in UNRESOLVED_SOURCES
+                else (
+                    float(shield[0]),
+                    float(shield[1]),
+                    float(shield[2]),
+                    float(shield[3]),
+                )
+            ),
+            shield_source=shield_source,
         )
     return AnchorSet(entries=entries)
 ```
