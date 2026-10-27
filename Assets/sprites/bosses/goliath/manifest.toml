@@ -20,12 +20,14 @@ sided   = "right"       # the shield is ALWAYS on the right arm
 #
 # scale_tolerance: relative deviation of the silhouette height from the
 #   clip median that still counts as "not rescaled". Measured on the real
-#   assets: phase1_idle 0.027, phase2_idle 0.107, javelin 0.058,
-#   laser 0.187, purple_bullet 0.219, death 0.393.
+#   assets: phase1_idle 0.027, phase2_idle 0.107, javelin 0.066,
+#   laser 0.164, purple_bullet 0.214, death 0.383.
 # side_tolerance: how far the probe column may stray from the clip median
 #   before the frame counts as turned around. The two real cases deviate
-#   18.1 (purple_bullet/f06) and 21.4 (javelin/f03); every healthy frame
-#   deviates at most 8.0.
+#   21.4 (javelin/f03) and 18.2 (purple_bullet/f06). The next-largest
+#   deviation among the frames that sit on the wrong side of the centre is
+#   death/frame_02 at 10.9 -- a margin of 3.1, so the threshold is not on
+#   a knife edge.
 
 [[clips]]
 id     = "phase1_idle"
@@ -54,7 +56,7 @@ dir    = "laser"
 frames = 10
 fps    = 10
 loop   = true
-scale_tolerance = 0.25   # the boss crouches when it fires (0.187 measured)
+scale_tolerance = 0.25   # the boss crouches when it fires (0.164 measured)
 
 [[clips]]
 id     = "purple_bullet"
@@ -62,7 +64,7 @@ dir    = "purple_bullet"
 frames = 10
 fps    = 10
 loop   = true
-scale_tolerance = 0.30   # the boss throws (0.219 measured)
+scale_tolerance = 0.30   # the boss throws (0.214 measured)
 
 [[clips]]
 id     = "death"
