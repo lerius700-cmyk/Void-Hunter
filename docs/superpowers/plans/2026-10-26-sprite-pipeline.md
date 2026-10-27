@@ -58,8 +58,9 @@ Key measurements that the thresholds depend on:
 - **Probe (brass signature, warm filter applied)** detects the plate in **60/60** frames. Probe median per clip: `phase1_idle` 50.6 (max healthy deviation 1.9), `phase2_idle` 50.7 (3.0), `javelin` 48.8 (**21.4** at f03), `laser` 49.5 (5.5), `purple_bullet` 51.2 (**18.2** at f06), `death` 51.6 (10.9).
 - **`side_tolerance = 14`** separates the two turned-around frames (21.4 at `javelin/f03`, 18.2 at `purple_bullet/f06`) from every healthy frame. The next-largest deviation among the frames that sit on the wrong side of the centre is `death/frame_02` at 10.9 — a margin of 3.1, so the threshold is not on a knife edge. The value comes from the loader's default (`entry.get("side_tolerance", 14.0)`); no clip overrides it, and the manifest's comment repeats the same figures.
 - **Shape ellipse** is measurable in **60/60** frames with the two-pass rule, but 7 are not credible: `javelin/f03`, `javelin/f04`, `javelin/f07`, `laser/f04`, `laser/f07`, `purple_bullet/f06`, `purple_bullet/f08`. The two turned-around frames are repaired by mirroring; the other five are resolved by interpolation.
-- **Height metric** (silhouette bbox height, warm pixels excluded): `laser/f05` 61 vs median 75 (18.7%), `purple_bullet/f07` 57 vs 73 (21.9%), `death/f04` 75 vs 61 (23%), `death/f08` 39 (36%), `death/f09` 37 (39%). The per-clip `scale_tolerance` values below make all of these intentional.
+- **Height metric** (silhouette bbox height, warm pixels excluded), against the TRUE median: `laser/f05` 61 vs median 73.0 (16.4%), `purple_bullet/f07` 57 vs 72.5 (21.4%), `death/f04` 75 vs 60.0 (25%), `death/f08` 39 (35%), `death/f09` 37 (38.3%). The per-clip `scale_tolerance` values below make all of these intentional.
 - **FIRMA_AMBIGUA** fires where the probe and the shape measurement disagree by more than `side_tolerance`: `laser/f05` (16.0), `death/f02` (16.8), `death/f07` (14.2). The largest disagreement among the remaining frames is 11.5 (`purple_bullet/f01`) — a margin of 2.5.
+- **Max height deviation per clip** (true median): `phase1_idle` 0.027, `phase2_idle` 0.107, `javelin` 0.066, `laser` 0.164, `purple_bullet` 0.214, `death` 0.383. Every clip's `scale_tolerance` clears its own maximum by at least 0.086 — the tightest are `laser` (0.164 vs 0.25) and `purple_bullet` (0.214 vs 0.30).
 
 ---
 
@@ -585,8 +586,8 @@ sided   = "right"       # the shield is ALWAYS on the right arm
 #
 # scale_tolerance: relative deviation of the silhouette height from the
 #   clip median that still counts as "not rescaled". Measured on the real
-#   assets: phase1_idle 0.027, phase2_idle 0.107, javelin 0.058,
-#   laser 0.187, purple_bullet 0.219, death 0.393.
+#   assets: phase1_idle 0.027, phase2_idle 0.107, javelin 0.066,
+#   laser 0.164, purple_bullet 0.214, death 0.383.
 # side_tolerance: how far the probe column may stray from the clip median
 #   before the frame counts as turned around. The two real cases deviate
 #   21.4 (javelin/f03) and 18.2 (purple_bullet/f06). The next-largest
@@ -621,7 +622,7 @@ dir    = "laser"
 frames = 10
 fps    = 10
 loop   = true
-scale_tolerance = 0.25   # the boss crouches when it fires (0.187 measured)
+scale_tolerance = 0.25   # the boss crouches when it fires (0.164 measured)
 
 [[clips]]
 id     = "purple_bullet"
@@ -629,7 +630,7 @@ dir    = "purple_bullet"
 frames = 10
 fps    = 10
 loop   = true
-scale_tolerance = 0.30   # the boss throws (0.219 measured)
+scale_tolerance = 0.30   # the boss throws (0.214 measured)
 
 [[clips]]
 id     = "death"
