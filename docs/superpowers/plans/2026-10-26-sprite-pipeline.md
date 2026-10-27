@@ -2973,16 +2973,7 @@ Create `tools/sprite_pipeline/repair.py`:
 Each failure state is repaired at the layer where it is actually fixable:
 
     LADO_EQUIVOCADO  build (PNG)  mirror the frame horizontally
-     CORTADO          build (PNG)  re-pad onto a fresh transparent canvas,
-                               WHERE A TRANSLATION EXISTS: the sprite is
-                               MOVED inside its own canvas (never scaled --
-                               pixel art does not survive resampling), and a
-                               silhouette that cannot be translated at all
-                               is left alone and reported. The repair's
-                               min_margin must also be <= the auditor's
-                               threshold (margin < 2) or a frame the auditor
-                               flags stays unrepairable.
-
+    CORTADO          build (PNG)  re-pad onto a fresh transparent canvas
     FUERA_DE_RANGO   anchors      interpolate from the neighbouring frames
     AUSENTE          anchors      interpolate from the neighbouring frames
     FIRMA_AMBIGUA    config       widen detect.warm_fallback
@@ -3361,6 +3352,7 @@ import sys
 from pathlib import Path
 
 import pygame
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -3412,6 +3404,81 @@ def _load_synthetic(tmp_path: Path):
     path = tmp_path / "anchors.toml"
     path.write_text(SYNTHETIC_ANCHORS, encoding="utf-8")
     return load_anchors(path)
+
+
+# A whole synthetic SET whose clip id and clip DIRECTORY are different
+# names. Every shipped manifest declares `id = dir`, so a regression that
+# used the id for the PNG path (or the directory for the anchor key)
+# would pass every other test in the suite. This fixture is the one place
+# where the two genuinely differ.
+SYNTHETIC_MANIFEST = """
+[meta]
+name    = "SYNTHETIC"
+version = 1
+canvas  = [96, 80]
+anchor  = [48, 40]
+
+[[clips]]
+id     = "javelin"
+dir    = "javelin_frames"
+frames = 1
+fps    = 10
+loop   = true
+
+[[parts]]
+id    = "body"
+draw  = "frames"
+pivot = "centroid"
+z     = 0
+"""
+
+# The anchor table of that set: keyed by the clip ID ("javelin"), not by
+# the clip directory ("javelin_frames").
+SYNTHETIC_SET_ANCHORS = """
+[meta]
+generated_by = "test"
+
+[[anchors]]
+clip = "javelin"
+frame = 0
+body_dx = 10
+body_dy = 0
+eye = [51, 19]
+eye_source = "measured"
+shield = [60.5, 40.5, 8.5, 10.5]
+shield_source = "measured"
+"""
+
+# A table that claims a measurement it does not carry.
+CORRUPT_ANCHORS = """
+[meta]
+generated_by = "test"
+
+[[anchors]]
+clip = "javelin"
+frame = 0
+body_dx = -3
+body_dy = 2
+eye_source = "measured"
+shield = [60.5, 40.5, 8.5, 10.5]
+shield_source = "measured"
+"""
+
+
+def _write_synthetic_set(root: Path) -> Path:
+    """Write a set whose clip id and clip directory differ, and return it."""
+    set_dir = root / "synthetic"
+    frames_dir = set_dir / "javelin_frames"
+    frames_dir.mkdir(parents=True)
+    (set_dir / "manifest.toml").write_text(SYNTHETIC_MANIFEST, encoding="utf-8")
+    (set_dir / "anchors.toml").write_text(SYNTHETIC_SET_ANCHORS, encoding="utf-8")
+    # The body sits at (30, 30) 16x20, so its alpha centroid is (37.5,
+    # 39.5) and the registration correction is +10 / 0 -- the same
+    # arithmetic the auditor does.
+    surf = pygame.Surface((96, 80), pygame.SRCALPHA)
+    surf.fill((200, 100, 50, 255), pygame.Rect(30, 30, 16, 20))
+    pygame.image.save(surf, str(frames_dir / "frame_00.png"))
+    return set_dir
 
 
 # --------------------------------------------------------------------------
@@ -3654,6 +3721,185 @@ def test_the_clip_follows_the_manifest_fps():
     assert player.state("javelin", 1.05).frame == 0
     # a one-shot clip holds on its last frame
     assert player.state("death", 99.0).frame == 9
+
+
+# --------------------------------------------------------------------------
+# the clip id and the clip directory are two different names
+# --------------------------------------------------------------------------
+
+
+def test_the_anchor_table_is_keyed_by_the_clip_id(tmp_path):
+    """The ID keys the table; the DIRECTORY names the PNG.
+
+    Every shipped manifest declares `id = dir`, so only a set where the
+    two differ can tell the two apart.
+    """
+    from src.anim.anchors import load_anchors
+    from src.anim.manifest import load_set
+
+    set_dir = _write_synthetic_set(tmp_path)
+    anim_set = load_set("synthetic", root=tmp_path)
+    clip = anim_set.clip("javelin")
+    assert clip.id == "javelin"
+    assert clip.dir == "javelin_frames"
+
+    anchors = load_anchors(set_dir / "anchors.toml")
+    assert anchors.get("javelin", 0) is not None, "the id does not key the table"
+    assert anchors.get("javelin_frames", 0) is None, "the directory keys the table"
+
+
+def test_the_png_is_named_by_the_clip_directory(tmp_path):
+    """The PNG lives in the clip's DIRECTORY, not in a folder named after
+    the id."""
+    from src.anim.anchors import load_anchors
+    from src.anim.clip import ClipPlayer
+    from src.anim.manifest import load_set
+
+    set_dir = _write_synthetic_set(tmp_path)
+    anim_set = load_set("synthetic", root=tmp_path)
+    anchors = load_anchors(set_dir / "anchors.toml")
+    player = ClipPlayer(anim_set, anchors)
+
+    surf = player.surface("javelin", 0)
+    assert surf is not None, "the frame PNG was not found in the clip directory"
+    assert surf.get_size() == anim_set.canvas
+
+
+def test_the_compositor_uses_the_id_for_the_anchor_and_the_dir_for_the_png(tmp_path):
+    """The two names are used for the two different things."""
+    from src.anim.anchors import load_anchors
+    from src.anim.clip import ClipPlayer
+    from src.anim.manifest import load_set
+    from src.anim.measure import alpha_centroid
+
+    set_dir = _write_synthetic_set(tmp_path)
+    anim_set = load_set("synthetic", root=tmp_path)
+    anchors = load_anchors(set_dir / "anchors.toml")
+    player = ClipPlayer(anim_set, anchors)
+
+    target = pygame.Surface((240, 360), pygame.SRCALPHA)
+    player.draw(target, "javelin", 0, origin=(120, 180))
+
+    centroid = alpha_centroid(target)
+    assert centroid is not None, "the body was not drawn: the anchor was not found"
+    assert abs(centroid[0] - 120) <= 1.0
+    assert abs(centroid[1] - 180) <= 1.0
+
+
+# --------------------------------------------------------------------------
+# the frame boundary
+# --------------------------------------------------------------------------
+
+
+def test_a_frame_boundary_is_not_lost_to_float_error():
+    """0.3 s at 10 fps is frame 3, not frame 2.
+
+    0.3 * 10 is 2.9999999999999996 in binary floating point, so the
+    division used to land on the previous frame.
+    """
+    from src.anim.anchors import load_anchors
+    from src.anim.clip import ClipPlayer
+    from src.anim.manifest import load_set
+
+    anim_set = load_set("goliath")
+    anchors = load_anchors(anim_set.path / "anchors.toml")
+    player = ClipPlayer(anim_set, anchors)
+
+    assert player.state("javelin", 0.3).frame == 3
+    assert player.state("javelin", 0.6).frame == 6
+    assert player.state("javelin", 0.7).frame == 7
+
+
+def test_the_epsilon_does_not_move_a_mid_interval_frame():
+    """The epsilon rescues an exact boundary and nothing else."""
+    from src.anim.anchors import load_anchors
+    from src.anim.clip import ClipPlayer
+    from src.anim.manifest import load_set
+
+    anim_set = load_set("goliath")
+    anchors = load_anchors(anim_set.path / "anchors.toml")
+    player = ClipPlayer(anim_set, anchors)
+
+    assert player.state("javelin", 0.29).frame == 2
+    assert player.state("javelin", 0.31).frame == 3
+    assert player.state("javelin", 0.89).frame == 8
+
+
+# --------------------------------------------------------------------------
+# a hole in the table
+# --------------------------------------------------------------------------
+
+
+def test_a_frame_missing_from_the_table_still_draws_its_body():
+    """A hole in the table must not make the boss blink out.
+
+    The registration correction is unknown for a frame that is not in the
+    table, so the body degrades to a plain centred blit.
+    """
+    from src.anim.anchors import AnchorSet, load_anchors
+    from src.anim.clip import ClipPlayer
+    from src.anim.manifest import load_set
+    from src.anim.measure import alpha_centroid
+
+    anim_set = load_set("goliath")
+    anchors = load_anchors(anim_set.path / "anchors.toml")
+    original = anchors.get("javelin", 3)
+    assert original is not None
+
+    trimmed = AnchorSet(
+        entries={
+            key: value
+            for key, value in anchors.entries.items()
+            if key != ("javelin", 3)
+        }
+    )
+    player = ClipPlayer(anim_set, trimmed)
+
+    target = pygame.Surface((240, 360), pygame.SRCALPHA)
+    player.draw(target, "javelin", 3, origin=(120, 180))
+
+    centroid = alpha_centroid(target)
+    assert centroid is not None, "the body vanished with its anchor"
+    # No correction: the body lands where the canvas puts it.
+    assert abs(centroid[0] - (120 - original.body_dx)) <= 1.0
+    assert abs(centroid[1] - (180 - original.body_dy)) <= 1.0
+
+
+# --------------------------------------------------------------------------
+# a corrupt table
+# --------------------------------------------------------------------------
+
+
+def test_a_table_that_claims_a_measurement_it_does_not_carry_fails_loudly(tmp_path):
+    """A source of "measured" with no value is corruption, not a position.
+
+    Reading it as (0, 0) would fire the eye laser from the corner of the
+    canvas.
+    """
+    from src.anim.anchors import AnchorError, load_anchors
+
+    path = tmp_path / "anchors.toml"
+    path.write_text(CORRUPT_ANCHORS, encoding="utf-8")
+    with pytest.raises(AnchorError):
+        load_anchors(path)
+
+
+def test_an_unresolved_entry_may_omit_its_value(tmp_path):
+    """An unresolved feature carries no value, and that is not corruption."""
+    from src.anim.anchors import load_anchors
+
+    path = tmp_path / "anchors.toml"
+    path.write_text(
+        CORRUPT_ANCHORS.replace(
+            'eye_source = "measured"', 'eye_source = "missing"'
+        ),
+        encoding="utf-8",
+    )
+    anchors = load_anchors(path)
+    entry = anchors.get("javelin", 0)
+    assert entry is not None
+    assert entry.eye is None
+    assert entry.eye_source == "missing"
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -3690,6 +3936,16 @@ from pathlib import Path
 UNRESOLVED_SOURCES = ("missing", "out_of_range")
 
 
+class AnchorError(ValueError):
+    """The anchor table is malformed.
+
+    It does NOT mean "the measurement is bad" -- a bad measurement is a
+    feature whose source says so, and it is read as None. This is about
+    a table that cannot be believed at all: an entry that claims a
+    measurement it does not carry.
+    """
+
+
 @dataclass(frozen=True)
 class FrameAnchor:
     """The baked measurement of one frame.
@@ -3724,17 +3980,39 @@ class AnchorSet:
 
 
 def load_anchors(path: Path) -> AnchorSet:
-    """Read anchors.toml."""
+    """Read anchors.toml.
+
+    The source and the value are cross-checked: an entry that claims a
+    measurement ("measured" / "interpolated") must CARRY that value. An
+    entry that omits it is corrupt, and reading the missing key as a
+    default would put the eye in the corner of the canvas.
+
+    An entry whose source says the feature is UNRESOLVED may omit the
+    value: it is None either way, and the generator writes a zero
+    placeholder for it.
+    """
     with path.open("rb") as fh:
         raw = tomllib.load(fh)
 
     entries: dict[tuple[str, int], FrameAnchor] = {}
     for entry in raw.get("anchors", []):
-        key = (str(entry["clip"]), int(entry["frame"]))
-        eye = entry.get("eye", (0, 0))
-        shield = entry.get("shield", (0.0, 0.0, 0.0, 0.0))
+        clip = str(entry["clip"])
+        frame = int(entry["frame"])
+        key = (clip, frame)
         eye_source = str(entry.get("eye_source", "measured"))
         shield_source = str(entry.get("shield_source", "measured"))
+        if "eye" not in entry and eye_source not in UNRESOLVED_SOURCES:
+            raise AnchorError(
+                f"{clip}/{frame:02d}: eye_source is {eye_source!r} but the "
+                "entry carries no eye"
+            )
+        if "shield" not in entry and shield_source not in UNRESOLVED_SOURCES:
+            raise AnchorError(
+                f"{clip}/{frame:02d}: shield_source is {shield_source!r} but "
+                "the entry carries no shield"
+            )
+        eye = entry.get("eye", (0, 0))
+        shield = entry.get("shield", (0.0, 0.0, 0.0, 0.0))
         entries[key] = FrameAnchor(
             body_dx=int(entry.get("body_dx", 0)),
             body_dy=int(entry.get("body_dy", 0)),
@@ -3821,6 +4099,19 @@ COLD_STEEL = (96, 104, 124)
 # `shield_ellipse_rect`.
 DRAW_SHIELD_OVAL = False
 
+# A frame that is missing from the anchor table still has a body: only its
+# REGISTRATION CORRECTION is unknown, so it degrades to a plain centred
+# blit instead of making the character disappear. The oval stays absent --
+# without a measurement there is no credible position for it.
+NO_OFFSET = FrameAnchor(
+    body_dx=0,
+    body_dy=0,
+    eye=None,
+    eye_source="missing",
+    shield=None,
+    shield_source="missing",
+)
+
 
 def _base(
     anchor: FrameAnchor, origin: tuple[int, int], canvas: tuple[int, int]
@@ -3883,9 +4174,15 @@ def draw_part(
 
     `origin` is the world anchor (the boss's position on screen).
     `canvas` is the set's canvas size, (width, height).
+
+    A frame that is missing from the anchor table still draws its body
+    (without the registration correction); everything that needs a
+    measurement -- the oval, the eye -- stays undrawn.
     """
     if anchor is None:
-        return
+        if part.draw != "frames" or surf is None:
+            return
+        anchor = NO_OFFSET
 
     if part.draw == "frames":
         if surf is None:
@@ -3962,12 +4259,20 @@ class ClipPlayer:
         self._surface_cache: dict[Path, pygame.Surface] = {}
 
     def state(self, clip_id: str, elapsed: float) -> ClipState:
-        """The frame index for `elapsed` seconds into `clip_id`."""
+        """The frame index for `elapsed` seconds into `clip_id`.
+
+        The index is `elapsed * fps`, with a 1e-6 epsilon: 0.3 * 10 is
+        2.9999999999999996 in binary floating point, so an exact frame
+        boundary would land on the PREVIOUS frame and the animation
+        would advance 100 ms early whenever the runtime feeds rounded
+        seconds in. The epsilon is a microsecond -- it rescues an exact
+        boundary and does not move a frame that is genuinely mid-interval.
+        """
         clip = self.set.clip(clip_id)
         if clip.frames <= 0:
             return ClipState(clip=clip, frame=0)
-        step = 1.0 / clip.fps if clip.fps > 0 else 0.1
-        index = int(elapsed / step)
+        fps = clip.fps if clip.fps > 0 else 10.0
+        index = int(elapsed * fps + 1e-6)
         if clip.loop:
             index %= clip.frames
         else:
