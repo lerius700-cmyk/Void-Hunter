@@ -300,6 +300,13 @@ def loaded_set(name: str, root: Path | None = None) -> AnimSet | None:
     the result is kept. A set whose manifest is missing or malformed
     returns None: the caller falls back to its own defaults instead of
     crashing the game.
+
+    "Malformed" covers a manifest with a SYNTAX error: `tomllib` raises
+    `TOMLDecodeError`, which is a `ValueError` and NOT a `ManifestError`.
+    The manifest is hand-edited, so a half-written file is a plausible
+    state -- it must degrade, not break the game loop. This is the same
+    contract as the UI's own loader (`src/ui/scenes.py::_load_manifest`):
+    the two loaders must never disagree about what "unreadable" means.
     """
     key = (name, root)
     cached = _LOADED.get(key)
@@ -307,10 +314,23 @@ def loaded_set(name: str, root: Path | None = None) -> AnimSet | None:
         return cached
     try:
         anim_set = load_set(name, root)
-    except (ManifestError, OSError):
+    except (OSError, ValueError):
+        # ValueError covers ManifestError (a subclass) AND
+        # tomllib.TOMLDecodeError: a broken manifest degrades to None.
         return None
     _LOADED[key] = anim_set
     return anim_set
+
+
+def clear_loaded_cache() -> None:
+    """Drop the cached manifests.
+
+    The runtime swaps the art at runtime (the tests do), so a manifest
+    that changed on disk must be re-read. `src/ui/scenes.py` calls this
+    from `clear_anchor_cache()`: the two caches hold the SAME file, so
+    they have to be dropped together.
+    """
+    _LOADED.clear()
 
 
 def load_set(name: str, root: Path | None = None) -> AnimSet:

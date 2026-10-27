@@ -54,7 +54,9 @@ b.animation_frame = 0
 b.animation_timer = 0.0
 
 # Save the screenshot.
-out = ROOT / "tools" / "playtest_out" / "bloque_60_goliath_phase1_mid.png"
+# BLOQUE 74: the name follows the sibling capture scripts (the phase-2
+# one writes "goliath_phase2_mid.png"), not the older "bloque_NN_" prefix.
+out = ROOT / "tools" / "playtest_out" / "goliath_phase1_mid.png"
 out.parent.mkdir(parents=True, exist_ok=True)
 surf = pygame.Surface((320, 480))
 surf.fill((8, 8, 20))

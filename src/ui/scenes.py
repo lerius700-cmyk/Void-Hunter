@@ -16,7 +16,7 @@ import pygame
 
 from src.anim.anchors import AnchorSet, FrameAnchor, load_anchors
 from src.anim.clip import ClipPlayer
-from src.anim.manifest import AnimSet, load_set
+from src.anim.manifest import AnimSet, clear_loaded_cache, load_set
 from src.anim.parts import canonical_shield_ellipse
 from src.core.scene_manager import GameState, Scene
 from src.core.settings import INTERNAL_H, INTERNAL_W
@@ -221,15 +221,19 @@ def clear_anchor_cache() -> None:
     """Drop the loaded table, the manifest and the compositor.
 
     The tests that swap the art at runtime call this, so the next read
-    picks up the new files.
+    picks up the new files. The manifest cache of `src.anim.manifest` is
+    dropped too: it holds the SAME file, and a stale `AnimSet` would
+    serve the old clips after the swap.
     """
     global _anchor_set_cache, _manifest_cache, _manifest_failed
     global _clip_player_cache, _clip_dir_cache
+
     _anchor_set_cache = None
     _manifest_cache = None
     _manifest_failed = False
     _clip_player_cache = None
     _clip_dir_cache = None
+    clear_loaded_cache()
 
 
 def _clip_id_for_dir(clip_dir: str) -> str | None:
