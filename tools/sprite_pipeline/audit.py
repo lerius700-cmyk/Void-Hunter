@@ -16,12 +16,19 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import statistics
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-import pygame
+# pygame prints its support banner to STDOUT when the module is imported,
+# which would corrupt the --json report (it is not stderr, so `2>$null`
+# does not remove it). This is pygame's own suppression mechanism and it
+# has to be set BEFORE the import below.
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+
+import pygame  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
@@ -29,7 +36,6 @@ if str(ROOT) not in sys.path:
 
 from src.anim.manifest import AnimSet, Clip, load_set  # noqa: E402
 from src.anim.measure import (  # noqa: E402
-    ALPHA_MIN,
     alpha_centroid,
     color_centroid,
     credible_ellipse,
@@ -89,7 +95,25 @@ class Finding:
 
 @dataclass(frozen=True)
 class FrameMeasurement:
-    """The measurement of one frame, ready to be baked."""
+    """The measurement of one frame, ready to be baked.
+
+    `eye_source` and `shield_source` say where each feature came from:
+
+    * "measured"     -- the detector found it in this frame.
+    * "interpolated" -- it could not be measured here, and it was
+      reconstructed from the frames around it.
+    * "missing"      -- the feature is absent from the art.
+    * "out_of_range" -- the feature was found but measured implausibly.
+
+    The last two mean UNRESOLVED: the feature could be neither measured
+    nor reconstructed, and its value is absent. A consumer must tolerate
+    them. On the 60 shipped GOLIATH frames only "measured" and
+    "interpolated" occur (53 + 7 shields, 59 + 1 eyes, nothing
+    unresolved), but the format does not guarantee that.
+
+    The two features are resolved independently: one of them being
+    reconstructed never changes the other's source.
+    """
 
     clip: str
     frame: int
@@ -114,7 +138,7 @@ def _md5(path: Path) -> str:
 
 
 def _clip_probe_columns(
-    anim_set: AnimSet, clip: Clip, surfaces: list
+    anim_set: AnimSet, surfaces: list[pygame.Surface]
 ) -> list[float | None]:
     """Probe column per frame: where the brass signature sits in each frame.
 
@@ -167,7 +191,7 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                     )
                 )
 
-        probe_cols = _clip_probe_columns(anim_set, clip, surfaces)
+        probe_cols = _clip_probe_columns(anim_set, surfaces)
         good_cols = sorted(c for c in probe_cols if c is not None)
         # The TRUE median -- the average of the two middle values. The
         # upper-middle element would shift the threshold by up to 0.2 px and
@@ -275,6 +299,18 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                     # credible ellipse would skip the very frames it exists
                     # to catch. The probe is independent of the shape rule,
                     # so it can answer the side question on its own.
+                    #
+                    # KNOWN BLIND SPOT: `stray` is measured against THIS
+                    # CLIP's own probe median, so a clip mirrored AS A
+                    # WHOLE moves its median with it and would not be
+                    # flagged. That is the accepted trade-off -- the
+                    # median is per-clip-relative on purpose, because the
+                    # plate travels with the arm -- and on the shipped
+                    # frames the manifest records a 3.1 px margin between
+                    # the two real cases (21.4 and 18.2) and the next
+                    # largest wrong-side frame (death/frame_02 at 10.9).
+                    # Detecting a whole-clip mirror needs a reference
+                    # outside the clip, which this pipeline does not have.
                     centre_col = anim_set.anchor[0]
                     wrong_side = (
                         probe_col <= centre_col
@@ -335,6 +371,13 @@ def _interpolate_missing(
 
     The findings still report the art problem -- the interpolation fixes
     the measurement, it does not fix the art.
+
+    Each feature is resolved INDEPENDENTLY: the eye and the shield each
+    keep their own source, and each is only called "interpolated" when it
+    was actually reconstructed. A feature that was measured stays
+    "measured" even when the OTHER feature had to be reconstructed, and a
+    feature that could be neither measured nor reconstructed stays
+    unresolved (None) with its original source.
     """
     by_clip: dict[str, list[FrameMeasurement]] = {}
     for m in measurements:
@@ -350,6 +393,7 @@ def _interpolate_missing(
         eye_cols = [float(m.eye[0]) if m.eye else None for m in items]
         eye_rows = [float(m.eye[1]) if m.eye else None for m in items]
         for i, m in enumerate(items):
+            # --- the eye: measured, reconstructed, or unresolved --------
             eye = m.eye
             eye_source = m.eye_source
             if eye is None:
@@ -358,38 +402,28 @@ def _interpolate_missing(
                 if ex is not None and ey is not None:
                     eye = (int(round(ex)), int(round(ey)))
                     eye_source = "interpolated"
-            if m.shield is not None and eye is not None:
-                out.append(
-                    FrameMeasurement(
-                        clip=m.clip,
-                        frame=m.frame,
-                        body_dx=m.body_dx,
-                        body_dy=m.body_dy,
-                        eye=eye,
-                        eye_source=eye_source,
-                        shield=m.shield,
-                        shield_source=m.shield_source,
-                    )
-                )
-                continue
-            cx = interpolate(cxs, i)
-            cy = interpolate(cys, i)
-            rx = interpolate(rxs, i)
-            ry = interpolate(rys, i)
-            if None in (cx, cy, rx, ry):
-                out.append(
-                    FrameMeasurement(
-                        clip=m.clip,
-                        frame=m.frame,
-                        body_dx=m.body_dx,
-                        body_dy=m.body_dy,
-                        eye=eye,
-                        eye_source=eye_source,
-                        shield=None,
-                        shield_source=m.shield_source,
-                    )
-                )
-                continue
+                # else: no neighbour to interpolate from -- the eye stays
+                # unresolved and keeps its original source.
+
+            # --- the shield: same, independently -----------------------
+            shield = m.shield
+            shield_source = m.shield_source
+            if shield is None:
+                cx = interpolate(cxs, i)
+                cy = interpolate(cys, i)
+                rx = interpolate(rxs, i)
+                ry = interpolate(rys, i)
+                if (
+                    cx is not None
+                    and cy is not None
+                    and rx is not None
+                    and ry is not None
+                ):
+                    shield = (cx, cy, rx, ry)
+                    shield_source = "interpolated"
+                # else: no neighbour to interpolate from -- the shield
+                # stays unresolved and keeps its original source.
+
             out.append(
                 FrameMeasurement(
                     clip=m.clip,
@@ -398,8 +432,8 @@ def _interpolate_missing(
                     body_dy=m.body_dy,
                     eye=eye,
                     eye_source=eye_source,
-                    shield=(cx, cy, rx, ry),
-                    shield_source="interpolated",
+                    shield=shield,
+                    shield_source=shield_source,
                 )
             )
     out.sort(key=lambda m: (m.clip, m.frame))
@@ -416,6 +450,13 @@ def render_anchors_toml(anim_set: AnimSet, measurements: list[FrameMeasurement])
 
     Deterministic: the same measurements always produce the same text, so
     the freshness test can compare it byte for byte.
+
+    Every block carries where its features came from (`eye_source` /
+    `shield_source`): "measured", "interpolated", or -- when the feature
+    could be neither measured nor reconstructed -- "missing" /
+    "out_of_range", which mean UNRESOLVED. A consumer must tolerate those
+    two: an unresolved feature is written as a zero placeholder, and only
+    its source tells it apart from a real position.
     """
     manifest_bytes = (anim_set.path / "manifest.toml").read_bytes()
     lines = [
