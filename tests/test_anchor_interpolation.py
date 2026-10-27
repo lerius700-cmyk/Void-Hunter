@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 import pygame
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -76,6 +77,81 @@ def _load_synthetic(tmp_path: Path):
     path = tmp_path / "anchors.toml"
     path.write_text(SYNTHETIC_ANCHORS, encoding="utf-8")
     return load_anchors(path)
+
+
+# A whole synthetic SET whose clip id and clip DIRECTORY are different
+# names. Every shipped manifest declares `id = dir`, so a regression that
+# used the id for the PNG path (or the directory for the anchor key)
+# would pass every other test in the suite. This fixture is the one place
+# where the two genuinely differ.
+SYNTHETIC_MANIFEST = """
+[meta]
+name    = "SYNTHETIC"
+version = 1
+canvas  = [96, 80]
+anchor  = [48, 40]
+
+[[clips]]
+id     = "javelin"
+dir    = "javelin_frames"
+frames = 1
+fps    = 10
+loop   = true
+
+[[parts]]
+id    = "body"
+draw  = "frames"
+pivot = "centroid"
+z     = 0
+"""
+
+# The anchor table of that set: keyed by the clip ID ("javelin"), not by
+# the clip directory ("javelin_frames").
+SYNTHETIC_SET_ANCHORS = """
+[meta]
+generated_by = "test"
+
+[[anchors]]
+clip = "javelin"
+frame = 0
+body_dx = 10
+body_dy = 0
+eye = [51, 19]
+eye_source = "measured"
+shield = [60.5, 40.5, 8.5, 10.5]
+shield_source = "measured"
+"""
+
+# A table that claims a measurement it does not carry.
+CORRUPT_ANCHORS = """
+[meta]
+generated_by = "test"
+
+[[anchors]]
+clip = "javelin"
+frame = 0
+body_dx = -3
+body_dy = 2
+eye_source = "measured"
+shield = [60.5, 40.5, 8.5, 10.5]
+shield_source = "measured"
+"""
+
+
+def _write_synthetic_set(root: Path) -> Path:
+    """Write a set whose clip id and clip directory differ, and return it."""
+    set_dir = root / "synthetic"
+    frames_dir = set_dir / "javelin_frames"
+    frames_dir.mkdir(parents=True)
+    (set_dir / "manifest.toml").write_text(SYNTHETIC_MANIFEST, encoding="utf-8")
+    (set_dir / "anchors.toml").write_text(SYNTHETIC_SET_ANCHORS, encoding="utf-8")
+    # The body sits at (30, 30) 16x20, so its alpha centroid is (37.5,
+    # 39.5) and the registration correction is +10 / 0 -- the same
+    # arithmetic the auditor does.
+    surf = pygame.Surface((96, 80), pygame.SRCALPHA)
+    surf.fill((200, 100, 50, 255), pygame.Rect(30, 30, 16, 20))
+    pygame.image.save(surf, str(frames_dir / "frame_00.png"))
+    return set_dir
 
 
 # --------------------------------------------------------------------------
@@ -318,3 +394,183 @@ def test_the_clip_follows_the_manifest_fps():
     assert player.state("javelin", 1.05).frame == 0
     # a one-shot clip holds on its last frame
     assert player.state("death", 99.0).frame == 9
+
+
+# --------------------------------------------------------------------------
+# the clip id and the clip directory are two different names
+# --------------------------------------------------------------------------
+
+
+def test_the_anchor_table_is_keyed_by_the_clip_id(tmp_path):
+    """The ID keys the table; the DIRECTORY names the PNG.
+
+    Every shipped manifest declares `id = dir`, so only a set where the
+    two differ can tell the two apart.
+    """
+    from src.anim.anchors import load_anchors
+    from src.anim.manifest import load_set
+
+    set_dir = _write_synthetic_set(tmp_path)
+    anim_set = load_set("synthetic", root=tmp_path)
+    clip = anim_set.clip("javelin")
+    assert clip.id == "javelin"
+    assert clip.dir == "javelin_frames"
+
+    anchors = load_anchors(set_dir / "anchors.toml")
+    assert anchors.get("javelin", 0) is not None, "the id does not key the table"
+    assert anchors.get("javelin_frames", 0) is None, "the directory keys the table"
+
+
+def test_the_png_is_named_by_the_clip_directory(tmp_path):
+    """The PNG lives in the clip's DIRECTORY, not in a folder named after
+    the id."""
+    from src.anim.anchors import load_anchors
+    from src.anim.clip import ClipPlayer
+    from src.anim.manifest import load_set
+
+    set_dir = _write_synthetic_set(tmp_path)
+    anim_set = load_set("synthetic", root=tmp_path)
+    anchors = load_anchors(set_dir / "anchors.toml")
+    player = ClipPlayer(anim_set, anchors)
+
+    surf = player.surface("javelin", 0)
+    assert surf is not None, "the frame PNG was not found in the clip directory"
+    assert surf.get_size() == anim_set.canvas
+
+
+def test_the_compositor_uses_the_id_for_the_anchor_and_the_dir_for_the_png(tmp_path):
+    """The two names are used for the two different things."""
+    from src.anim.anchors import load_anchors
+    from src.anim.clip import ClipPlayer
+    from src.anim.manifest import load_set
+    from src.anim.measure import alpha_centroid
+
+    set_dir = _write_synthetic_set(tmp_path)
+    anim_set = load_set("synthetic", root=tmp_path)
+    anchors = load_anchors(set_dir / "anchors.toml")
+    player = ClipPlayer(anim_set, anchors)
+
+    target = pygame.Surface((240, 360), pygame.SRCALPHA)
+    player.draw(target, "javelin", 0, origin=(120, 180))
+
+    centroid = alpha_centroid(target)
+    assert centroid is not None, "the body was not drawn: the anchor was not found"
+    assert abs(centroid[0] - 120) <= 1.0
+    assert abs(centroid[1] - 180) <= 1.0
+
+
+# --------------------------------------------------------------------------
+# the frame boundary
+# --------------------------------------------------------------------------
+
+
+def test_a_frame_boundary_is_not_lost_to_float_error():
+    """0.3 s at 10 fps is frame 3, not frame 2.
+
+    0.3 * 10 is 2.9999999999999996 in binary floating point, so the
+    division used to land on the previous frame.
+    """
+    from src.anim.anchors import load_anchors
+    from src.anim.clip import ClipPlayer
+    from src.anim.manifest import load_set
+
+    anim_set = load_set("goliath")
+    anchors = load_anchors(anim_set.path / "anchors.toml")
+    player = ClipPlayer(anim_set, anchors)
+
+    assert player.state("javelin", 0.3).frame == 3
+    assert player.state("javelin", 0.6).frame == 6
+    assert player.state("javelin", 0.7).frame == 7
+
+
+def test_the_epsilon_does_not_move_a_mid_interval_frame():
+    """The epsilon rescues an exact boundary and nothing else."""
+    from src.anim.anchors import load_anchors
+    from src.anim.clip import ClipPlayer
+    from src.anim.manifest import load_set
+
+    anim_set = load_set("goliath")
+    anchors = load_anchors(anim_set.path / "anchors.toml")
+    player = ClipPlayer(anim_set, anchors)
+
+    assert player.state("javelin", 0.29).frame == 2
+    assert player.state("javelin", 0.31).frame == 3
+    assert player.state("javelin", 0.89).frame == 8
+
+
+# --------------------------------------------------------------------------
+# a hole in the table
+# --------------------------------------------------------------------------
+
+
+def test_a_frame_missing_from_the_table_still_draws_its_body():
+    """A hole in the table must not make the boss blink out.
+
+    The registration correction is unknown for a frame that is not in the
+    table, so the body degrades to a plain centred blit.
+    """
+    from src.anim.anchors import AnchorSet, load_anchors
+    from src.anim.clip import ClipPlayer
+    from src.anim.manifest import load_set
+    from src.anim.measure import alpha_centroid
+
+    anim_set = load_set("goliath")
+    anchors = load_anchors(anim_set.path / "anchors.toml")
+    original = anchors.get("javelin", 3)
+    assert original is not None
+
+    trimmed = AnchorSet(
+        entries={
+            key: value
+            for key, value in anchors.entries.items()
+            if key != ("javelin", 3)
+        }
+    )
+    player = ClipPlayer(anim_set, trimmed)
+
+    target = pygame.Surface((240, 360), pygame.SRCALPHA)
+    player.draw(target, "javelin", 3, origin=(120, 180))
+
+    centroid = alpha_centroid(target)
+    assert centroid is not None, "the body vanished with its anchor"
+    # No correction: the body lands where the canvas puts it.
+    assert abs(centroid[0] - (120 - original.body_dx)) <= 1.0
+    assert abs(centroid[1] - (180 - original.body_dy)) <= 1.0
+
+
+# --------------------------------------------------------------------------
+# a corrupt table
+# --------------------------------------------------------------------------
+
+
+def test_a_table_that_claims_a_measurement_it_does_not_carry_fails_loudly(tmp_path):
+    """A source of "measured" with no value is corruption, not a position.
+
+    Reading it as (0, 0) would fire the eye laser from the corner of the
+    canvas.
+    """
+    from src.anim.anchors import AnchorError, load_anchors
+
+    path = tmp_path / "anchors.toml"
+    path.write_text(CORRUPT_ANCHORS, encoding="utf-8")
+    with pytest.raises(AnchorError):
+        load_anchors(path)
+
+
+def test_an_unresolved_entry_may_omit_its_value(tmp_path):
+    """An unresolved feature carries no value, and that is not corruption."""
+    from src.anim.anchors import load_anchors
+
+    path = tmp_path / "anchors.toml"
+    path.write_text(
+        CORRUPT_ANCHORS.replace(
+            'eye_source = "measured"', 'eye_source = "missing"'
+        ),
+        encoding="utf-8",
+    )
+    anchors = load_anchors(path)
+    entry = anchors.get("javelin", 0)
+    assert entry is not None
+    assert entry.eye is None
+    assert entry.eye_source == "missing"
+

@@ -37,6 +37,19 @@ COLD_STEEL = (96, 104, 124)
 # `shield_ellipse_rect`.
 DRAW_SHIELD_OVAL = False
 
+# A frame that is missing from the anchor table still has a body: only its
+# REGISTRATION CORRECTION is unknown, so it degrades to a plain centred
+# blit instead of making the character disappear. The oval stays absent --
+# without a measurement there is no credible position for it.
+NO_OFFSET = FrameAnchor(
+    body_dx=0,
+    body_dy=0,
+    eye=None,
+    eye_source="missing",
+    shield=None,
+    shield_source="missing",
+)
+
 
 def _base(
     anchor: FrameAnchor, origin: tuple[int, int], canvas: tuple[int, int]
@@ -99,9 +112,15 @@ def draw_part(
 
     `origin` is the world anchor (the boss's position on screen).
     `canvas` is the set's canvas size, (width, height).
+
+    A frame that is missing from the anchor table still draws its body
+    (without the registration correction); everything that needs a
+    measurement -- the oval, the eye -- stays undrawn.
     """
     if anchor is None:
-        return
+        if part.draw != "frames" or surf is None:
+            return
+        anchor = NO_OFFSET
 
     if part.draw == "frames":
         if surf is None:

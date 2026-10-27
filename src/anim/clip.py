@@ -37,12 +37,20 @@ class ClipPlayer:
         self._surface_cache: dict[Path, pygame.Surface] = {}
 
     def state(self, clip_id: str, elapsed: float) -> ClipState:
-        """The frame index for `elapsed` seconds into `clip_id`."""
+        """The frame index for `elapsed` seconds into `clip_id`.
+
+        The index is `elapsed * fps`, with a 1e-6 epsilon: 0.3 * 10 is
+        2.9999999999999996 in binary floating point, so an exact frame
+        boundary would land on the PREVIOUS frame and the animation
+        would advance 100 ms early whenever the runtime feeds rounded
+        seconds in. The epsilon is a microsecond -- it rescues an exact
+        boundary and does not move a frame that is genuinely mid-interval.
+        """
         clip = self.set.clip(clip_id)
         if clip.frames <= 0:
             return ClipState(clip=clip, frame=0)
-        step = 1.0 / clip.fps if clip.fps > 0 else 0.1
-        index = int(elapsed / step)
+        fps = clip.fps if clip.fps > 0 else 10.0
+        index = int(elapsed * fps + 1e-6)
         if clip.loop:
             index %= clip.frames
         else:

@@ -22,6 +22,16 @@ from pathlib import Path
 UNRESOLVED_SOURCES = ("missing", "out_of_range")
 
 
+class AnchorError(ValueError):
+    """The anchor table is malformed.
+
+    It does NOT mean "the measurement is bad" -- a bad measurement is a
+    feature whose source says so, and it is read as None. This is about
+    a table that cannot be believed at all: an entry that claims a
+    measurement it does not carry.
+    """
+
+
 @dataclass(frozen=True)
 class FrameAnchor:
     """The baked measurement of one frame.
@@ -56,17 +66,39 @@ class AnchorSet:
 
 
 def load_anchors(path: Path) -> AnchorSet:
-    """Read anchors.toml."""
+    """Read anchors.toml.
+
+    The source and the value are cross-checked: an entry that claims a
+    measurement ("measured" / "interpolated") must CARRY that value. An
+    entry that omits it is corrupt, and reading the missing key as a
+    default would put the eye in the corner of the canvas.
+
+    An entry whose source says the feature is UNRESOLVED may omit the
+    value: it is None either way, and the generator writes a zero
+    placeholder for it.
+    """
     with path.open("rb") as fh:
         raw = tomllib.load(fh)
 
     entries: dict[tuple[str, int], FrameAnchor] = {}
     for entry in raw.get("anchors", []):
-        key = (str(entry["clip"]), int(entry["frame"]))
-        eye = entry.get("eye", (0, 0))
-        shield = entry.get("shield", (0.0, 0.0, 0.0, 0.0))
+        clip = str(entry["clip"])
+        frame = int(entry["frame"])
+        key = (clip, frame)
         eye_source = str(entry.get("eye_source", "measured"))
         shield_source = str(entry.get("shield_source", "measured"))
+        if "eye" not in entry and eye_source not in UNRESOLVED_SOURCES:
+            raise AnchorError(
+                f"{clip}/{frame:02d}: eye_source is {eye_source!r} but the "
+                "entry carries no eye"
+            )
+        if "shield" not in entry and shield_source not in UNRESOLVED_SOURCES:
+            raise AnchorError(
+                f"{clip}/{frame:02d}: shield_source is {shield_source!r} but "
+                "the entry carries no shield"
+            )
+        eye = entry.get("eye", (0, 0))
+        shield = entry.get("shield", (0.0, 0.0, 0.0, 0.0))
         entries[key] = FrameAnchor(
             body_dx=int(entry.get("body_dx", 0)),
             body_dy=int(entry.get("body_dy", 0)),
