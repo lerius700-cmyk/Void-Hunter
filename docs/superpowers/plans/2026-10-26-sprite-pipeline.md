@@ -130,7 +130,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src.anim.manifest import ManifestError, WarmRule, load_set
+from src.anim.manifest import DetectRule, ManifestError, WarmRule, load_set
 
 
 @pytest.fixture(scope="module")
@@ -223,9 +223,87 @@ def test_warm_rule_matches_the_whole_beam_and_keeps_the_plate_highlight():
     assert rule.matches(220, 180, 80) is False
 
 
+def test_absent_scan_windows_are_none_not_zero_pairs(goliath):
+    """A window that the manifest does not declare must be None.
+
+    `(0, 0)` is a TRUTHY tuple, so a consumer doing
+    `rule.head_band or (0, h)` gets `(0, 0)` back -- an EMPTY scan
+    window. The probe would then find nothing in any frame and the
+    auditor would report no LADO_EQUIVOCADO at all, so the two
+    turned-around frames would never be repaired.
+    """
+    probe = goliath.part("shield_plate").detect.probe
+    assert probe is not None
+    assert probe.band is None
+    assert probe.col_range is None
+    assert probe.head_band is None
+
+
+def test_declared_scan_windows_still_parse_as_pairs(goliath):
+    """The windows the manifest DOES declare are still read as pairs."""
+    shield = goliath.part("shield_plate").detect
+    assert shield.band == (28, 54)
+    eye = goliath.part("eye").detect
+    assert eye.head_band == (0, 30)
+    assert eye.col_range == (24, 70)
+
+
+def test_tolerance_thresholds_are_locked(goliath):
+    """The tolerances decide which frames the auditor reports.
+
+    `side_tolerance` separates the two turned-around frames (21.4 at
+    javelin/f03, 18.2 at purple_bullet/f06) from every healthy frame.
+    `scale_tolerance` is the relative silhouette-height deviation a clip
+    tolerates. Both were measured on the shipped frames; a silent edit
+    here would quietly change which frames are flagged, so the values
+    are asserted exactly -- and the clip ids are the keys, so a new
+    clip without a deliberate tolerance fails the test.
+    """
+    scale = {clip.id: clip.scale_tolerance for clip in goliath.clips.values()}
+    assert scale == {
+        "phase1_idle": 0.15,
+        "phase2_idle": 0.15,
+        "javelin": 0.15,
+        "laser": 0.25,
+        "purple_bullet": 0.30,
+        "death": 0.60,
+    }
+    for clip in goliath.clips.values():
+        assert clip.side_tolerance == 14.0, clip.id
+
+
 def test_unknown_set_raises():
     with pytest.raises(ManifestError):
         load_set("no_existe")
+
+
+# ---------------------------------------------------------------------------
+# The ManifestError contract: a malformed manifest must fail LOUDLY and with
+# the manifest's own error type, never with a bare IndexError/KeyError.
+# ---------------------------------------------------------------------------
+def test_unknown_detect_method_raises():
+    """A misspelled method must not flow into the auditor unchallenged."""
+    with pytest.raises(ManifestError):
+        DetectRule.from_dict({"method": "shapeh"})
+
+
+def test_unknown_detect_side_raises():
+    with pytest.raises(ManifestError):
+        DetectRule.from_dict({"method": "shape", "side": "middle"})
+
+
+def test_bad_pair_arity_raises_manifest_error():
+    """`band = [28]` used to raise a bare IndexError."""
+    with pytest.raises(ManifestError):
+        DetectRule.from_dict({"method": "shape", "band": [28]})
+
+
+def test_unknown_clip_and_part_raise():
+    set_ = load_set("goliath")
+    with pytest.raises(ManifestError):
+        set_.clip("no_such_clip")
+    with pytest.raises(ManifestError):
+        set_.part("no_such_part")
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -768,6 +846,7 @@ import os
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
+import statistics
 import sys
 from pathlib import Path
 
@@ -819,15 +898,19 @@ def test_plate_is_on_the_declared_side(goliath):
     for clip in goliath.clips.values():
         cols = probe_columns(goliath, clip)
         good = sorted(c for c in cols if c is not None)
-        median = good[len(good) // 2]
+        # The TRUE median (the average of the two middle values), so this
+        # test reports the same deviations the manifest justifies its
+        # side_tolerance against.
+        median = statistics.median(good)
         for i, col in enumerate(cols):
             if col is None:
                 continue
-            wrong_side = col <= centre if rule.side == "right" else col >= centre
+            wrong_side = col < centre if rule.side == "right" else col > centre
             stray = abs(col - median) > clip.side_tolerance
             if wrong_side and stray:
                 offenders.append(
-                    f"{clip.id}/frame_{i:02d} (probe col {col:.1f}, median {median:.1f})"
+                    f"{clip.id}/frame_{i:02d} "
+                    f"(probe col {col:.1f}, median {median:.1f})"
                 )
     assert not offenders, "plate on the wrong side: " + ", ".join(offenders)
 ```
