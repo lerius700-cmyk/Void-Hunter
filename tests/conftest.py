@@ -26,13 +26,21 @@ def _live_video_system():
     enough: pygame.font.get_init() stays False and pygame.font.Font(None, 12)
     raises "font not initialized" (src/ui/gameplay_runtime.py:4269). So
     pygame.init() comes first -- it re-initialises the modules that are
-    down without resetting the state of the ones that are up -- and the
-    display mode is set afterwards, because init() opens no window.
+    down without resetting the state of the ones that are up.
+
+    The video mode is set afterwards, and the guard tests the SURFACE, not
+    the subsystem: pygame.init() leaves pygame.display.get_init() True
+    while pygame.display.get_surface() is still None, so a guard on
+    get_init() would never call set_mode() and the whole session would run
+    without a display surface. Without one, convert_alpha() raises "No
+    video mode has been set" and src/ui/gameplay_runtime.py:5004-5007
+    swallows it into cache = None -- the player spritesheet silently never
+    loads.
     """
     import pygame
 
     if not pygame.get_init():
         pygame.init()
-    if not pygame.display.get_init():
+    if pygame.display.get_surface() is None:
         pygame.display.set_mode((320, 480))
     yield

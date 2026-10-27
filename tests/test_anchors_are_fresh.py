@@ -46,6 +46,6 @@ def test_anchors_toml_is_up_to_date(display):
     assert current == rendered, (
         "anchors.toml is stale -- regenerate it with "
         "`python tools/sprite_pipeline/audit.py goliath --write-anchors` "
-        "(BLOQUE 74 Task 5 adds `python tools/sprite_pipeline/run.py "
+        "(BLOQUE 74 Task 6 adds `python tools/sprite_pipeline/run.py "
         "goliath --fix` as the one-step fix)"
     )
