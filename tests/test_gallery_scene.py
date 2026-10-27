@@ -11,7 +11,7 @@ import pytest
 @pytest.fixture(scope="module", autouse=True)
 def _init_pygame():
     pygame.init()
-    pygame.display.set_mode((1, 1))
+    pygame.display.set_mode((320, 480))
     yield
 
 

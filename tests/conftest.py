@@ -19,14 +19,20 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _live_video_system():
-    """Guarantee a live video mode for every test.
+    """Guarantee a live pygame for every test.
 
-    pygame.quit() in another module's teardown tears the video system down;
-    pygame.display.set_mode() brings it back. Only the display is restored
-    -- the rest of pygame's state stays as the previous module left it.
+    pygame.quit() in another module's teardown tears pygame down -- the
+    video system AND the font subsystem. Restoring only the display is not
+    enough: pygame.font.get_init() stays False and pygame.font.Font(None, 12)
+    raises "font not initialized" (src/ui/gameplay_runtime.py:4269). So
+    pygame.init() comes first -- it re-initialises the modules that are
+    down without resetting the state of the ones that are up -- and the
+    display mode is set afterwards, because init() opens no window.
     """
     import pygame
 
+    if not pygame.get_init():
+        pygame.init()
     if not pygame.display.get_init():
         pygame.display.set_mode((320, 480))
     yield
