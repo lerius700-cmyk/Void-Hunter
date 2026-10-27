@@ -836,7 +836,7 @@ side of the canvas centre AND it strays more than `side_tolerance` from
 the clip's median probe column. Both conditions are needed: death/frame_02
 is legitimately at column 40.7 because the boss is collapsing.
 
-This test FAILS until Task 5 mirrors javelin/frame_03 and
+This test FAILS until Task 6 mirrors javelin/frame_03 and
 purple_bullet/frame_06.
 """
 from __future__ import annotations
