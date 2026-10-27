@@ -357,6 +357,10 @@ class DetectRule:
     retry: measure the plain silhouette first, and drop the warm pixels
     only when the plain measurement is not credible.
 
+    `band`, `col_range` and `head_band` are optional scan windows. None
+    means "no window declared" -- a `(0, 0)` default would be truthy and
+    silently produce an empty scan.
+
     `probe` is an optional colour signature used ONLY to answer "which side
     is the feature on?". The shape rule cannot detect a turned-around
     character: it finds the ARM at the right of the band and measures a
@@ -1089,9 +1093,12 @@ def _credible(
 def interpolate(values: list[float | None], index: int) -> float | None:
     """Fill a missing measurement from its neighbours.
 
-    Catmull-Rom through the nearest measured values on each side when four
-    of them exist, otherwise a linear interpolation between the closest
-    measured pair. Returns None when there is nothing to interpolate from.
+    Catmull-Rom through the nearest measured values on each side. When only
+    one measured neighbour exists on a side, that side's tangent collapses
+    and the curve becomes a smooth one that still passes through both
+    measured endpoints (it is NOT a straight line: at the midpoint of a gap
+    it returns the midpoint, but between the endpoints it bows slightly).
+    Returns None when there is nothing to interpolate from.
 
     This is inbetweening: the shield plate moves smoothly with the arm, so
     the frames where the art forgot it can be reconstructed from the ones
@@ -1099,8 +1106,9 @@ def interpolate(values: list[float | None], index: int) -> float | None:
     """
     if index < 0 or index >= len(values):
         return None
-    if values[index] is not None:
-        return float(values[index])
+    current = values[index]
+    if current is not None:
+        return float(current)
 
     left = index - 1
     while left >= 0 and values[left] is None:
@@ -1112,9 +1120,11 @@ def interpolate(values: list[float | None], index: int) -> float | None:
     left_value = values[left] if left >= 0 else None
     right_value = values[right] if right < len(values) else None
 
-    if left_value is None and right_value is None:
-        return None
+    # The two guards are nested rather than chained so that the type of
+    # each neighbour is known on its own branch.
     if left_value is None:
+        if right_value is None:
+            return None
         return float(right_value)
     if right_value is None:
         return float(left_value)
@@ -1126,8 +1136,15 @@ def interpolate(values: list[float | None], index: int) -> float | None:
     right2 = right + 1
     while right2 < len(values) and values[right2] is None:
         right2 += 1
-    p0 = values[left2] if left2 >= 0 else left_value
-    p3 = values[right2] if right2 < len(values) else right_value
+    # The scans above stop on a measured value, so left2 / right2 hold one
+    # whenever the index is in range; the None checks are the type-safe
+    # spelling of that invariant and fall back to the nearest neighbour.
+    p0 = values[left2] if left2 >= 0 else None
+    p3 = values[right2] if right2 < len(values) else None
+    if p0 is None:
+        p0 = left_value
+    if p3 is None:
+        p3 = right_value
 
     span = right - left
     t = (index - left) / span
