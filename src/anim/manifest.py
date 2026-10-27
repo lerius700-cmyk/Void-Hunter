@@ -115,6 +115,10 @@ class DetectRule:
     retry: measure the plain silhouette first, and drop the warm pixels
     only when the plain measurement is not credible.
 
+    `band`, `col_range` and `head_band` are optional scan windows. None
+    means "no window declared" -- a `(0, 0)` default would be truthy and
+    silently produce an empty scan.
+
     `probe` is an optional colour signature used ONLY to answer "which side
     is the feature on?". The shape rule cannot detect a turned-around
     character: it finds the ARM at the right of the band and measures a
@@ -124,9 +128,9 @@ class DetectRule:
     method: str
     side: str | None = None
     min_col: int = 0
-    band: tuple[int, int] = (0, 0)
-    col_range: tuple[int, int] = (0, 0)
-    head_band: tuple[int, int] = (0, 0)
+    band: tuple[int, int] | None = None
+    col_range: tuple[int, int] | None = None
+    head_band: tuple[int, int] | None = None
     r_min: int = 0
     g_min: int = 0
     b_max: int = 255
@@ -154,9 +158,17 @@ class DetectRule:
             method=str(method),
             side=side,
             min_col=int(raw.get("min_col", 0)),
-            band=_as_int_pair(raw.get("band", (0, 0)), "band"),
-            col_range=_as_int_pair(raw.get("col_range", (0, 0)), "col_range"),
-            head_band=_as_int_pair(raw.get("head_band", (0, 0)), "head_band"),
+            band=_as_int_pair(raw["band"], "band") if "band" in raw else None,
+            col_range=(
+                _as_int_pair(raw["col_range"], "col_range")
+                if "col_range" in raw
+                else None
+            ),
+            head_band=(
+                _as_int_pair(raw["head_band"], "head_band")
+                if "head_band" in raw
+                else None
+            ),
             r_min=int(raw.get("r_min", 0)),
             g_min=int(raw.get("g_min", 0)),
             b_max=int(raw.get("b_max", 255)),
