@@ -4,6 +4,9 @@ The auditor is the gate that stops a broken set from entering the repo.
 If the auditor itself is wrong, it silently blesses broken art. These
 tests feed it synthetic frames, one per state, and assert the verdict.
 
+All SEVEN states are covered here: COLAPSADO, CORTADO, LADO_EQUIVOCADO,
+FIRMA_AMBIGUA, AUSENTE, FUERA_DE_RANGO and ESCALADO.
+
 Synthetic frames are built in a temporary directory with a temporary
 manifest, so nothing here touches the shipped assets.
 """
@@ -33,7 +36,6 @@ W, H = 96, 80
 TRANSPARENT = (0, 0, 0, 0)
 BRASS = (200, 170, 60)
 BODY = (160, 110, 50)
-BEAM = (255, 220, 80)
 
 
 def write_frame(path: Path, pixels: dict[tuple[int, int], tuple]) -> None:
@@ -44,8 +46,8 @@ def write_frame(path: Path, pixels: dict[tuple[int, int], tuple]) -> None:
     pygame.image.save(surf, str(path))
 
 
-def build_set(tmp_path: Path, frames: list[dict[tuple[int, int], tuple]]) -> Path:
-    """Write a one-clip set and return its directory."""
+def build_set(tmp_path: Path, frames: list[dict[tuple[int, int], tuple]]) -> None:
+    """Write a one-clip set into `tmp_path`."""
     set_dir = tmp_path / "synthetic"
     clip_dir = set_dir / "idle"
     clip_dir.mkdir(parents=True)
@@ -66,7 +68,11 @@ frames = {n}
 fps = 10
 loop = true
 scale_tolerance = 0.15
-side_tolerance = 14.0
+# The tolerance the synthetic cases are tuned for. The shipped GOLIATH
+# manifest uses 14.0; here 10.0 keeps every case off the edge of its
+# threshold (the LADO case is 15 px away, so it clears it by 5 px and
+# not by 1).
+side_tolerance = 10.0
 
 [[parts]]
 id = "body"
@@ -96,7 +102,6 @@ on_missing = "interpolate"
     (set_dir / "manifest.toml").write_text(
         manifest.format(n=len(frames)), encoding="utf-8"
     )
-    return set_dir
 
 
 def body_pixels(cx: int = 40, width: int = 20, top: int = 20, height: int = 45):
@@ -172,6 +177,46 @@ def test_implausible_ellipse_is_FUERA_DE_RANGO(tmp_path):
     assert "FUERA_DE_RANGO" in states
 
 
+def test_probe_and_shape_disagree_is_FIRMA_AMBIGUA(tmp_path):
+    """The two independent detectors disagree by more than the tolerance.
+
+    The brass is a wide slab that STARTS left of the shape rule's
+    min_col (50), so the shape rule still measures the arm (a credible
+    ellipse at cx 58.5) while the probe's centroid sits at 43.5. The two
+    detectors are 15 px apart, which is more than the 10 px tolerance.
+
+    The clip's median probe column is the same 43.5, so the frame is
+    not "stray" and is NOT reported as LADO_EQUIVOCADO: only the two
+    detectors disagree. This is the situation of the shipped
+    laser/frame_05 (probe 44.5 against shape cx 60.5).
+    """
+    pixels = body_pixels()
+    for y in range(34, 46):
+        for x in range(20, 68):
+            pixels[(x, y)] = BRASS
+    twin = dict(pixels)
+    twin[(39, 40)] = BODY  # a different frame with the same probe and shape
+    states = states_for(tmp_path, [pixels, twin])
+    assert states == {"FIRMA_AMBIGUA"}
+
+
+def test_a_taller_frame_is_ESCALADO(tmp_path):
+    """One frame's silhouette height strays from the clip's median.
+
+    The height is the silhouette's bounding-box height, so the outlier
+    is a body that is visibly taller: rows 10..69 instead of rows
+    20..64 (60 px against 45 px, a 33% deviation against a 15%
+    tolerance). The two other frames share the median's height, so
+    only the outlier is flagged.
+    """
+    tall = body_pixels(top=10, height=60)
+    healthy = body_pixels()
+    twin = body_pixels()
+    twin[(39, 40)] = BODY  # same height, different frame
+    states = states_for(tmp_path, [tall, healthy, twin])
+    assert states == {"ESCALADO"}
+
+
 def test_healthy_set_has_no_failures(tmp_path):
     build_set(tmp_path, [body_pixels()])
     findings, _ = audit_set(load_set("synthetic", root=tmp_path))
@@ -225,8 +270,13 @@ def test_json_report_is_pure_json():
 
     # The exit code is NOT asserted: the auditor exits 1 while the two
     # turned-around frames are still in the art, and that is correct.
-    assert "pygame" not in stdout.lower(), stdout[:200]
-    assert "Hello from" not in stdout, stdout[:200]
+    #
+    # The banner check is POSITIONAL, not a substring search: a finding
+    # detail could legitimately contain the word "pygame" one day, and a
+    # substring search would false-positive on it. A banner always
+    # PRECEDES the JSON, so the first non-blank byte must be "{".
+    assert stdout.lstrip().startswith("{"), stdout[:200]
+    assert "Hello from the pygame community" not in stdout, stdout[:200]
 
     report = json.loads(stdout)
     assert "set" in report

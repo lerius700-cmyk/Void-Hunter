@@ -274,7 +274,13 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                     if plain is None:
                         shield_source = "missing"
                         findings.append(
-                            Finding(clip.id, frame_no, "AUSENTE", "shield plate not found")
+                            Finding(
+                                clip.id,
+                                frame_no,
+                                "AUSENTE",
+                                "no plate measured: the shape rule found no "
+                                "solid run",
+                            )
                         )
                     elif rule.probe is not None and probe_col is None:
                         # The shape rule found a solid run, but the
@@ -283,11 +289,12 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                         # measured is the BODY, not the plate.
                         #
                         # The two states are not interchangeable. AUSENTE
-                        # says "the art is missing the feature";
-                        # FUERA_DE_RANGO says "the feature is there but the
-                        # measurement is not credible". Only the probe can
-                        # tell them apart: the shape rule cannot, because a
-                        # body is a solid run just like a plate is.
+                        # says "the plate was not measured";
+                        # FUERA_DE_RANGO says "the plate was measured and
+                        # the measurement is not credible". Only the probe
+                        # can tell them apart: the shape rule cannot,
+                        # because a body is a solid run just like a plate
+                        # is.
                         #
                         # A manifest that declares no probe keeps the old
                         # behaviour: the shape rule alone decides.
@@ -297,8 +304,8 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                                 clip.id,
                                 frame_no,
                                 "AUSENTE",
-                                "shield plate not found (the shape rule measured "
-                                "the body)",
+                                "no plate measured: the probe found no plate "
+                                "and the shape rule measured the body",
                             )
                         )
                     else:
