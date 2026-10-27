@@ -1404,8 +1404,11 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 import pygame  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+# The repository root gives `src.anim.manifest`; the tools directory gives
+# the `sprite_pipeline` package this file belongs to.
+for _entry in (str(ROOT), str(ROOT / "tools")):
+    if _entry not in sys.path:
+        sys.path.insert(0, _entry)
 
 from src.anim.manifest import AnimSet, Clip, load_set  # noqa: E402
 from src.anim.measure import (  # noqa: E402
@@ -1417,6 +1420,7 @@ from src.anim.measure import (  # noqa: E402
     silhouette_bbox,
     silhouette_height,
 )
+from sprite_pipeline import ensure_display  # noqa: E402
 
 STATES = (
     "COLAPSADO",
@@ -1914,7 +1918,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     pygame.init()
-    pygame.display.set_mode((320, 480))
+    ensure_display()
 
     try:
         anim_set = load_set(args.set)
@@ -2417,9 +2421,10 @@ def test_every_feature_says_where_it_came_from(audit):
     on those.
 
     NOTE: these counters are the ground truth of the shipped art. They
-    MUST be re-validated after Task 6 mirrors javelin/frame_03 and
-    purple_bullet/frame_06: those two frames become measurable, so the
-    counts move.
+    were re-validated after Task 6 mirrored javelin/frame_03 and
+    purple_bullet/frame_06: the counts did NOT move (53/7 and 59/1),
+    because the shape rule still measures the BODY in those two frames --
+    they stay FUERA_DE_RANGO and keep being interpolated.
     """
     _, measurements = audit
     shield_sources = Counter(m.shield_source for m in measurements)
@@ -2458,10 +2463,12 @@ def test_the_report_still_documents_the_art_problem(audit):
     The findings must keep reporting the frames whose plate is missing
     from the drawing, otherwise the report lies about the source art.
 
-    NOTE: these three frames are hard-coded and MUST be re-validated
-    after Task 6 mirrors javelin/frame_03 and purple_bullet/frame_06 --
-    mirroring moves the clip's probe median, and with it the set of
-    frames the auditor flags.
+    NOTE: these three frames are hard-coded and were re-validated after
+    Task 6 mirrored javelin/frame_03 and purple_bullet/frame_06. The
+    mirroring moved the clip's probe median, and with it the set of frames
+    the auditor flags -- but these three are still reported: the two
+    mirrored frames keep their FUERA_DE_RANGO finding (the shape rule
+    measures the body, not the plate, in them).
     """
     findings, _ = audit
     reported = {f"{f.clip}/frame_{f.frame:02d}" for f in findings}
@@ -2641,15 +2648,86 @@ import sys
 from pathlib import Path
 
 import pygame
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
 
-from sprite_pipeline.repair import mirror_frame  # noqa: E402
+from src.anim.manifest import load_set  # noqa: E402
+from src.anim.measure import silhouette_bbox  # noqa: E402
+from sprite_pipeline.audit import Finding  # noqa: E402
+from sprite_pipeline.repair import (  # noqa: E402
+    mirror_frame,
+    repair_set,
+    repad_frame,
+)
+
+W, H = 96, 80
+TRANSPARENT = (0, 0, 0, 0)
+BODY = (160, 110, 50, 255)
 
 
+def _surface(pixels: dict[tuple[int, int], tuple]) -> pygame.Surface:
+    surf = pygame.Surface((W, H), pygame.SRCALPHA, 32)
+    surf.fill(TRANSPARENT)
+    for (x, y), colour in pixels.items():
+        surf.set_at((x, y), colour)
+    return surf
+
+
+def _rect(x0: int, y0: int, x1: int, y1: int) -> dict[tuple[int, int], tuple]:
+    """Pixels of a filled rectangle, `x1`/`y1` exclusive."""
+    return {
+        (x, y): BODY
+        for y in range(y0, y1)
+        for x in range(x0, x1)
+    }
+
+
+def _margins(surf: pygame.Surface) -> tuple[int, int, int, int]:
+    """The four margins of the silhouette, as the auditor measures them."""
+    bbox = silhouette_bbox(surf)
+    assert bbox is not None, "the surface has no silhouette"
+    left, top, right, bottom = bbox
+    w, h = surf.get_size()
+    return (left, top, w - right, h - bottom)
+
+
+def _synthetic_set(tmp_path: Path, pixels: dict[tuple[int, int], tuple]):
+    """A one-frame set on disk, loaded through the real manifest loader."""
+    set_dir = tmp_path / "synthetic"
+    clip_dir = set_dir / "idle"
+    clip_dir.mkdir(parents=True)
+    pygame.image.save(_surface(pixels), str(clip_dir / "frame_00.png"))
+    (set_dir / "manifest.toml").write_text(
+        """[meta]
+name = "SYNTHETIC"
+version = 1
+canvas = [96, 80]
+anchor = [48, 40]
+sided = "right"
+
+[[clips]]
+id = "idle"
+dir = "idle"
+frames = 1
+fps = 10
+loop = true
+
+[[parts]]
+id = "body"
+draw = "frames"
+pivot = "centroid"
+z = 0
+""",
+        encoding="utf-8",
+    )
+    return load_set("synthetic", root=tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# The mirror primitive.
+# ---------------------------------------------------------------------------
 def test_mirror_flips_the_pixels(tmp_path):
     path = tmp_path / "frame_00.png"
     surf = pygame.Surface((96, 80), pygame.SRCALPHA, 32)
@@ -2697,6 +2775,181 @@ def test_mirror_keeps_the_canvas_size(tmp_path):
     mirror_frame(path)
     after = pygame.image.load(str(path)).convert_alpha()
     assert after.get_size() == (96, 80)
+
+
+# ---------------------------------------------------------------------------
+# The re-pad primitive.
+#
+# The shipped GOLIATH frames are NOT cut off, so the CORTADO repair is never
+# exercised by the real assets: without a synthetic frame here, a repair that
+# is inert could stay inert forever.
+# ---------------------------------------------------------------------------
+def test_repad_gives_the_silhouette_a_margin_on_every_side(tmp_path):
+    """A sprite touching the LEFT edge is moved inward.
+
+    The canvas keeps its size and the sprite keeps its size: it is MOVED
+    inside its own canvas, never scaled.
+    """
+    path = tmp_path / "frame_00.png"
+    pygame.image.save(_surface(_rect(0, 30, 41, 50)), str(path))
+
+    assert repad_frame(path, min_margin=3) is True
+
+    after = pygame.image.load(str(path)).convert_alpha()
+    assert after.get_size() == (W, H)
+
+    left, top, right, bottom = _margins(after)
+    assert left >= 3, f"left margin {left}"
+    assert top >= 3, f"top margin {top}"
+    assert right >= 3, f"right margin {right}"
+    assert bottom >= 3, f"bottom margin {bottom}"
+
+    # The silhouette itself is unchanged: same size, same pixel count. The
+    # repair moves the art, it does not redraw it.
+    bbox = silhouette_bbox(after)
+    assert bbox is not None
+    assert (bbox[2] - bbox[0], bbox[3] - bbox[1]) == (41, 20)
+    assert sum(after.get_at((x, y))[3] != 0 for y in range(H) for x in range(W)) == (
+        41 * 20
+    )
+
+
+def test_repad_also_fixes_a_silhouette_on_the_right_edge(tmp_path):
+    """The shift may go LEFT: a sprite touching the right edge moves left."""
+    path = tmp_path / "frame_00.png"
+    pygame.image.save(_surface(_rect(55, 30, 96, 50)), str(path))
+
+    assert repad_frame(path, min_margin=3) is True
+
+    after = pygame.image.load(str(path)).convert_alpha()
+    left, top, right, bottom = _margins(after)
+    assert left >= 3, f"left margin {left}"
+    assert top >= 3, f"top margin {top}"
+    assert right >= 3, f"right margin {right}"
+    assert bottom >= 3, f"bottom margin {bottom}"
+    assert after.get_size() == (W, H)
+
+
+def test_repad_fixes_a_silhouette_that_touches_the_bottom_edge(tmp_path):
+    """The vertical axis is handled like the horizontal one."""
+    path = tmp_path / "frame_00.png"
+    pygame.image.save(_surface(_rect(20, 60, 50, 80)), str(path))
+
+    assert repad_frame(path, min_margin=3) is True
+
+    after = pygame.image.load(str(path)).convert_alpha()
+    left, top, right, bottom = _margins(after)
+    assert left >= 3, f"left margin {left}"
+    assert top >= 3, f"top margin {top}"
+    assert right >= 3, f"right margin {right}"
+    assert bottom >= 3, f"bottom margin {bottom}"
+
+
+def test_repad_leaves_a_healthy_frame_alone(tmp_path):
+    """A frame that already has the margin is not rewritten."""
+    path = tmp_path / "frame_00.png"
+    pygame.image.save(_surface(_rect(20, 30, 60, 50)), str(path))
+    before = path.read_bytes()
+
+    assert repad_frame(path, min_margin=3) is False
+    assert path.read_bytes() == before
+
+
+def test_repad_reports_failure_when_no_shift_can_help(tmp_path):
+    """A silhouette that spans the whole canvas cannot be re-padded.
+
+    No translation gives it a margin on both sides, so the repair must say
+    it did nothing instead of claiming a success it cannot deliver.
+    """
+    path = tmp_path / "frame_00.png"
+    pygame.image.save(_surface(_rect(0, 0, W, H)), str(path))
+    before = path.read_bytes()
+
+    assert repad_frame(path, min_margin=3) is False
+    assert path.read_bytes() == before
+
+
+# ---------------------------------------------------------------------------
+# The repair PASS: dry by default, and honest about what it did.
+# ---------------------------------------------------------------------------
+def test_repair_set_is_dry_by_default(tmp_path):
+    """Without apply=True the pass reports what it WOULD do and writes
+    nothing."""
+    anim_set = _synthetic_set(tmp_path, _rect(20, 30, 60, 50))
+    frame = anim_set.path / "idle" / "frame_00.png"
+    before = frame.read_bytes()
+
+    actions = repair_set(
+        anim_set,
+        [Finding("idle", 0, "LADO_EQUIVOCADO", "probe col 10.0")],
+    )
+
+    assert actions == ["would mirror idle/frame_00"]
+    assert frame.read_bytes() == before
+
+
+def test_repair_set_applies_when_asked(tmp_path):
+    anim_set = _synthetic_set(tmp_path, _rect(20, 30, 60, 50))
+    frame = anim_set.path / "idle" / "frame_00.png"
+    before = frame.read_bytes()
+
+    actions = repair_set(
+        anim_set,
+        [Finding("idle", 0, "LADO_EQUIVOCADO", "probe col 10.0")],
+        apply=True,
+    )
+
+    assert actions == ["mirrored idle/frame_00"]
+    assert frame.read_bytes() != before
+
+
+def test_repair_set_dry_and_applied_words_differ(tmp_path):
+    """A dry run and a real run never print the same line."""
+    anim_set = _synthetic_set(tmp_path, _rect(20, 30, 60, 50))
+    findings = [Finding("idle", 0, "LADO_EQUIVOCADO", "probe col 10.0")]
+
+    dry = repair_set(anim_set, findings)
+    applied = repair_set(anim_set, findings, apply=True)
+
+    assert dry != applied
+    assert all(a.startswith("would ") for a in dry)
+    assert all(not a.startswith("would ") for a in applied)
+
+
+def test_repair_set_reports_only_what_it_actually_did(tmp_path):
+    """A repair that could not be performed is NOT reported.
+
+    The frame's silhouette spans the whole canvas, so the re-pad cannot
+    succeed. The pass must return an empty list instead of claiming a
+    repair it did not make.
+    """
+    anim_set = _synthetic_set(tmp_path, _rect(0, 0, W, H))
+    frame = anim_set.path / "idle" / "frame_00.png"
+    before = frame.read_bytes()
+
+    actions = repair_set(
+        anim_set,
+        [Finding("idle", 0, "CORTADO", "silhouette margins L0 T0 R0 B0")],
+        apply=True,
+    )
+
+    assert actions == []
+    assert frame.read_bytes() == before
+
+
+def test_repair_set_reports_a_re_pad_that_worked(tmp_path):
+    anim_set = _synthetic_set(tmp_path, _rect(0, 30, 41, 50))
+    frame = anim_set.path / "idle" / "frame_00.png"
+    before = frame.read_bytes()
+
+    actions = repair_set(
+        anim_set,
+        [Finding("idle", 0, "CORTADO", "silhouette margins L0 T30 R55 B30")],
+        apply=True,
+    )
+
+    assert actions == ["re-padded idle/frame_00"]
+    assert frame.read_bytes() != before
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -2732,6 +2985,7 @@ from typing import TYPE_CHECKING
 import pygame
 
 from src.anim.manifest import AnimSet
+from src.anim.measure import silhouette_bbox
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard for type checkers
     from sprite_pipeline.audit import Finding
@@ -2749,30 +3003,60 @@ def mirror_frame(path: Path) -> bool:
     return True
 
 
+def _shift_for_margins(low: int, high: int, min_margin: int) -> int | None:
+    """How far to move a silhouette that has `low` px before it and `high`
+    px after it, so that both margins reach `min_margin`.
+
+    Returns None when no shift can do that: the silhouette is then wider
+    than the canvas minus two margins, and the only thing that would fix
+    it is scaling -- which pixel art does not get.
+
+    The shift is the smallest one that gives the too-close side its
+    margin, and it never pushes the content past the opposite edge.
+    """
+    if low >= min_margin and high >= min_margin:
+        return 0
+    if low + high < 2 * min_margin:
+        return None
+    if low < min_margin:
+        return min_margin - low
+    return -(min_margin - high)
+
+
 def repad_frame(path: Path, min_margin: int = 3) -> bool:
     """Move the silhouette inward so it never touches the canvas edge.
 
     The visual content is untouched -- only its position inside the canvas
-    shifts -- and the anchors recompute on the next audit.
+    shifts -- and the anchors recompute on the next audit. The canvas
+    keeps its size: the sprite is MOVED inside its own canvas, never
+    scaled.
+
+    The bounding box comes from `src.anim.measure.silhouette_bbox`, the
+    SAME helper the auditor uses to raise the CORTADO finding, so the
+    repair and the finding can never disagree about what "cut off" means.
+    (pygame's `Surface.get_alpha()` is NOT that helper: it returns the
+    surface's alpha VALUE -- the int 255 for a per-pixel-alpha surface --
+    and never a channel to measure.)
+
+    Returns True when the file was written.
     """
     surf = pygame.image.load(str(path)).convert_alpha()
     w, h = surf.get_size()
-    # get_alpha() returns the alpha channel surface for a per-pixel-alpha
-    # surface, and None (or an int) for the other kinds -- only the
-    # surface carries the bounding box.
-    alpha = surf.get_alpha()
-    bbox = alpha.getbbox() if isinstance(alpha, pygame.Surface) else None
+    bbox = silhouette_bbox(surf)
     if bbox is None:
         return False
     left, top, right, bottom = bbox
-    margins = (left, top, w - right, h - bottom)
-    if min(margins) >= min_margin:
+    if min(left, top, w - right, h - bottom) >= min_margin:
         return False
 
-    dx = max(0, min_margin - margins[0])
-    dy = max(0, min_margin - margins[1])
-    if w - margins[2] - dx < min_margin:
-        dx = max(0, min_margin - margins[2])
+    dx = _shift_for_margins(left, w - right, min_margin)
+    dy = _shift_for_margins(top, h - bottom, min_margin)
+    if dx is None or dy is None:
+        # No translation can give the silhouette its margin on every side.
+        return False
+    if dx == 0 and dy == 0:
+        return False
+
     out = pygame.Surface((w, h), pygame.SRCALPHA, 32)
     out.fill((0, 0, 0, 0))
     out.blit(surf, (dx, dy))
@@ -2785,8 +3069,12 @@ def repair_set(
 ) -> list[str]:
     """Apply the repairs implied by the findings.
 
-    Returns the list of actions taken (or that would be taken when
-    apply=False).
+    Returns the list of actions ACTUALLY taken. With apply=False the
+    actions are the ones that WOULD be taken and the wording says so, so a
+    dry run and a real run never print the same line.
+
+    A repair that could not be performed is NOT reported: the list is
+    what happened, not what was attempted.
 
     The frame is looked up as `<set>/<clip id>/frame_NN.png`. Every clip of
     the shipped GOLIATH manifest declares `dir` equal to its `id`, so the
@@ -2799,16 +3087,24 @@ def repair_set(
             path = anim_set.path / finding.clip / f"frame_{finding.frame:02d}.png"
             if not path.is_file():
                 continue
-            actions.append(f"mirror {finding.clip}/frame_{finding.frame:02d}")
-            if apply:
-                mirror_frame(path)
+            if not apply:
+                actions.append(
+                    f"would mirror {finding.clip}/frame_{finding.frame:02d}"
+                )
+                continue
+            if mirror_frame(path):
+                actions.append(f"mirrored {finding.clip}/frame_{finding.frame:02d}")
         elif finding.state == "CORTADO":
             path = anim_set.path / finding.clip / f"frame_{finding.frame:02d}.png"
             if not path.is_file():
                 continue
-            actions.append(f"re-pad {finding.clip}/frame_{finding.frame:02d}")
-            if apply:
-                repad_frame(path)
+            if not apply:
+                actions.append(
+                    f"would re-pad {finding.clip}/frame_{finding.frame:02d}"
+                )
+                continue
+            if repad_frame(path):
+                actions.append(f"re-padded {finding.clip}/frame_{finding.frame:02d}")
     return actions
 ```
 
@@ -2825,6 +3121,11 @@ Create `tools/sprite_pipeline/run.py`:
 
 Steps: validate -> audit -> repair -> re-audit -> anchors -> report.
 Exits 1 when the final audit still has a FAIL.
+
+Without --fix the command WRITES NOTHING: it validates the manifest,
+audits the art and reports. The anchors are written only by --fix, after
+the repair and the re-audit, so they always carry the repaired
+measurements -- and a dry run can never regress the generated file.
 """
 from __future__ import annotations
 
@@ -2851,6 +3152,7 @@ for _entry in (str(ROOT), str(ROOT / "tools")):
 import pygame  # noqa: E402
 
 from src.anim.manifest import load_set  # noqa: E402
+from sprite_pipeline import ensure_display  # noqa: E402
 from sprite_pipeline.audit import (  # noqa: E402
     FAIL_STATES,
     audit_set,
@@ -2869,7 +3171,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     pygame.init()
-    pygame.display.set_mode((320, 480))
+    ensure_display()
 
     try:
         anim_set = load_set(args.set)
@@ -2883,11 +3185,27 @@ def main(argv: list[str] | None = None) -> int:
     if args.fix:
         actions = repair_set(anim_set, findings, apply=True)
         findings, measurements = audit_set(anim_set)
-
-    write_anchors(anim_set, measurements, anim_set.path / "anchors.toml")
+        # The anchors are written AFTER the repair and the re-audit, so
+        # they carry the repaired measurements, never the pre-repair ones.
+        write_anchors(anim_set, measurements, anim_set.path / "anchors.toml")
 
     fails = [f for f in findings if f.state in FAIL_STATES]
     warns = [f for f in findings if f.state not in FAIL_STATES]
+
+    # Count FRAMES, exactly like the auditor does: a frame can carry two
+    # findings (javelin/frame_03 was FUERA_DE_RANGO *and*
+    # LADO_EQUIVOCADO), so the number of findings and the number of
+    # frames are different numbers. The summary says which one it reports.
+    flagged = {(f.clip, f.frame) for f in findings}
+    failing = {(f.clip, f.frame) for f in findings if f.state in FAIL_STATES}
+    total = sum(c.frames for c in anim_set.clips.values())
+    summary = {
+        "frames_total": total,
+        "frames_with_findings": len(flagged),
+        "frames_failing": len(failing),
+        "frames_warning": len(flagged) - len(failing),
+        "findings_total": len(findings),
+    }
 
     if args.json:
         print(
@@ -2903,20 +3221,23 @@ def main(argv: list[str] | None = None) -> int:
                         {"clip": f.clip, "frame": f.frame, "state": f.state, "detail": f.detail}
                         for f in warns
                     ],
+                    "summary": summary,
                 },
                 indent=2,
             )
         )
     else:
         for action in actions:
-            print(f"repaired: {action}")
+            print(action)
         for f in fails:
             print(f"  FAIL {f.clip}/frame_{f.frame:02d}  {f.state}: {f.detail}")
         for f in warns:
             print(f"  WARN {f.clip}/frame_{f.frame:02d}  {f.state}: {f.detail}")
         print(
-            f"{anim_set.name}: {len(fails)} FAIL, {len(warns)} WARN, "
-            f"{len(measurements)} frames measured"
+            f"{anim_set.name}: {summary['frames_with_findings']}/"
+            f"{summary['frames_total']} frames with findings "
+            f"({summary['frames_failing']} FAIL, {summary['frames_warning']} WARN), "
+            f"{summary['findings_total']} findings"
         )
 
     return 1 if fails else 0
