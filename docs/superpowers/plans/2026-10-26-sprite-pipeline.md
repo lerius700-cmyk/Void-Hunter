@@ -2973,7 +2973,16 @@ Create `tools/sprite_pipeline/repair.py`:
 Each failure state is repaired at the layer where it is actually fixable:
 
     LADO_EQUIVOCADO  build (PNG)  mirror the frame horizontally
-    CORTADO          build (PNG)  re-pad onto a fresh transparent canvas
+     CORTADO          build (PNG)  re-pad onto a fresh transparent canvas,
+                               WHERE A TRANSLATION EXISTS: the sprite is
+                               MOVED inside its own canvas (never scaled --
+                               pixel art does not survive resampling), and a
+                               silhouette that cannot be translated at all
+                               is left alone and reported. The repair's
+                               min_margin must also be <= the auditor's
+                               threshold (margin < 2) or a frame the auditor
+                               flags stays unrepairable.
+
     FUERA_DE_RANGO   anchors      interpolate from the neighbouring frames
     AUSENTE          anchors      interpolate from the neighbouring frames
     FIRMA_AMBIGUA    config       widen detect.warm_fallback
