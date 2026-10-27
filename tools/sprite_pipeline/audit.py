@@ -261,6 +261,7 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                     eye_source = "missing"
 
             # --- shield plate ---------------------------------------------
+            probe_col = probe_cols[i]
             shield = None
             shield_source = "measured"
             if rule is not None:
@@ -274,6 +275,31 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                         shield_source = "missing"
                         findings.append(
                             Finding(clip.id, frame_no, "AUSENTE", "shield plate not found")
+                        )
+                    elif rule.probe is not None and probe_col is None:
+                        # The shape rule found a solid run, but the
+                        # INDEPENDENT probe (the plate's colour signature)
+                        # found no plate at all: what the shape rule
+                        # measured is the BODY, not the plate.
+                        #
+                        # The two states are not interchangeable. AUSENTE
+                        # says "the art is missing the feature";
+                        # FUERA_DE_RANGO says "the feature is there but the
+                        # measurement is not credible". Only the probe can
+                        # tell them apart: the shape rule cannot, because a
+                        # body is a solid run just like a plate is.
+                        #
+                        # A manifest that declares no probe keeps the old
+                        # behaviour: the shape rule alone decides.
+                        shield_source = "missing"
+                        findings.append(
+                            Finding(
+                                clip.id,
+                                frame_no,
+                                "AUSENTE",
+                                "shield plate not found (the shape rule measured "
+                                "the body)",
+                            )
                         )
                     else:
                         shield_source = "out_of_range"
@@ -289,7 +315,6 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                 else:
                     shield = ellipse
 
-                probe_col = probe_cols[i]
                 if probe_col is not None:
                     # --- LADO_EQUIVOCADO: turned-around character ----------
                     # This check must NOT depend on the shape measurement.
