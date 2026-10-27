@@ -2973,15 +2973,7 @@ Create `tools/sprite_pipeline/repair.py`:
 Each failure state is repaired at the layer where it is actually fixable:
 
     LADO_EQUIVOCADO  build (PNG)  mirror the frame horizontally
-    CORTADO          build (PNG)  re-pad onto a fresh transparent canvas,
-                               WHERE A TRANSLATION EXISTS: the sprite is
-                               MOVED inside its own canvas (never scaled --
-                               pixel art does not survive resampling), and a
-                               silhouette that cannot be translated at all
-                               is left alone and reported. The repair's
-                               min_margin must also be <= the auditor's
-                               threshold (margin < 2) or a frame the auditor
-                               flags stays unrepairable.
+    CORTADO          build (PNG)  re-pad onto a fresh transparent canvas
     FUERA_DE_RANGO   anchors      interpolate from the neighbouring frames
     AUSENTE          anchors      interpolate from the neighbouring frames
     FIRMA_AMBIGUA    config       widen detect.warm_fallback
@@ -3339,6 +3331,15 @@ Seven of GOLIATH's frames have an implausible shield ellipse (the plate is
 missing from the art or the arm is measured instead). A constant fallback
 would pin the oval to a fixed point while the arm moves. Interpolating
 from the frames around it keeps the oval on the arm.
+
+The READER has to keep two things apart:
+
+  * a feature the generator could not measure is written as a ZERO
+    PLACEHOLDER, and only its `*_source` field tells that apart from a
+    feature genuinely measured at the origin;
+  * an unresolved feature must stay None -- the eye laser must not be
+    launched from the corner of the canvas, and the oval must not be
+    drawn at the corner of the screen.
 """
 from __future__ import annotations
 
@@ -3350,10 +3351,63 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 import sys
 from pathlib import Path
 
+import pygame
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src.anim.measure import interpolate  # noqa: E402
+
+# A synthetic anchor table: the shipped assets have ZERO unresolved
+# features (53 measured / 7 interpolated shields, 59 / 1 eyes), so the
+# unresolved path is exercised here instead.
+SYNTHETIC_ANCHORS = """
+[meta]
+generated_by = "test"
+
+[[anchors]]
+clip = "javelin"
+frame = 0
+body_dx = -3
+body_dy = 2
+eye = [51, 19]
+eye_source = "measured"
+shield = [60.5, 40.5, 8.5, 10.5]
+shield_source = "measured"
+
+[[anchors]]
+clip = "javelin"
+frame = 1
+body_dx = -3
+body_dy = 2
+eye = [0, 0]
+eye_source = "missing"
+shield = [0.0, 0.0, 0.0, 0.0]
+shield_source = "out_of_range"
+
+[[anchors]]
+clip = "javelin"
+frame = 2
+body_dx = -3
+body_dy = 2
+eye = [0, 0]
+eye_source = "measured"
+shield = [60.5, 40.5, 8.5, 10.5]
+shield_source = "measured"
+"""
+
+
+def _load_synthetic(tmp_path: Path):
+    from src.anim.anchors import load_anchors
+
+    path = tmp_path / "anchors.toml"
+    path.write_text(SYNTHETIC_ANCHORS, encoding="utf-8")
+    return load_anchors(path)
+
+
+# --------------------------------------------------------------------------
+# the interpolation itself
+# --------------------------------------------------------------------------
 
 
 def test_interpolates_a_gap():
@@ -3366,7 +3420,19 @@ def test_keeps_a_measured_value():
 
 
 def test_returns_none_without_neighbours():
-    assert interpolate([None, None, 12.0], 0) is None
+    """No measured value anywhere: there is nothing to interpolate from."""
+    assert interpolate([None, None, None], 1) is None
+
+
+def test_falls_back_to_the_only_neighbour():
+    """One side only: the missing tangent collapses onto that side.
+
+    The first frame of a clip has no left neighbour. Falling back to the
+    right one keeps it resolvable, which is what the auditor needs to
+    reconstruct a plate the art forgot.
+    """
+    assert interpolate([None, None, 12.0], 0) == 12.0
+    assert interpolate([12.0, None, None], 2) == 12.0
 
 
 def test_interpolates_at_the_edges():
@@ -3374,6 +3440,11 @@ def test_interpolates_at_the_edges():
     value = interpolate([None, 10.0, 12.0], 0)
     assert value is not None
     assert 10.0 <= value <= 12.0
+
+
+# --------------------------------------------------------------------------
+# the reader
+# --------------------------------------------------------------------------
 
 
 def test_goliath_has_no_unresolved_plates():
@@ -3389,6 +3460,191 @@ def test_goliath_has_no_unresolved_plates():
         if entry.shield_source in ("missing", "out_of_range")
     ]
     assert not unresolved, "unresolved plates: " + ", ".join(unresolved)
+
+
+def test_the_shipped_set_reconstructs_what_it_could_not_measure():
+    """The interpolated frames are RECONSTRUCTED, not defaulted.
+
+    death/frame_09 is a heap of wreckage with no eye left to find: its eye
+    comes from death/frame_08 while its plate is measured in that very
+    frame. javelin/frame_03 is the other way round: the plate was painted
+    on the wrong side, so the plate is interpolated while the eye is
+    measured.
+    """
+    from src.anim.anchors import load_anchors
+    from src.anim.manifest import load_set
+
+    anim_set = load_set("goliath")
+    anchors = load_anchors(anim_set.path / "anchors.toml")
+
+    wreck = anchors.get("death", 9)
+    assert wreck is not None
+    assert wreck.eye_source == "interpolated"
+    assert wreck.eye is not None
+    assert wreck.shield_source == "measured"
+    assert wreck.shield is not None
+
+    javelin = anchors.get("javelin", 3)
+    assert javelin is not None
+    assert javelin.shield_source == "interpolated"
+    assert javelin.shield is not None
+    assert javelin.eye_source == "measured"
+    assert javelin.eye is not None
+
+
+def test_every_frame_of_the_shipped_set_is_resolved():
+    """60 frames, 60 resolved plates, 60 resolved eyes."""
+    from src.anim.anchors import load_anchors
+    from src.anim.manifest import load_set
+
+    anim_set = load_set("goliath")
+    anchors = load_anchors(anim_set.path / "anchors.toml")
+    assert len(anchors.entries) == sum(c.frames for c in anim_set.clips.values())
+    for (clip, frame), entry in anchors.entries.items():
+        assert entry.shield is not None, f"{clip}/{frame:02d} has no plate"
+        assert entry.eye is not None, f"{clip}/{frame:02d} has no eye"
+
+
+def test_an_unresolved_feature_stays_none(tmp_path):
+    """The zero placeholder is NOT a position.
+
+    The generator writes `eye = [0, 0]` for an eye it could not find.
+    Reading that as a real position would launch the laser from the
+    corner of the canvas.
+    """
+    anchors = _load_synthetic(tmp_path)
+
+    unresolved = anchors.get("javelin", 1)
+    assert unresolved is not None
+    assert unresolved.eye is None
+    assert unresolved.eye_source == "missing"
+    assert unresolved.shield is None
+    assert unresolved.shield_source == "out_of_range"
+
+
+def test_a_measured_feature_at_the_origin_is_not_none(tmp_path):
+    """The SOURCE is what tells "measured at (0, 0)" from "not measured"."""
+    anchors = _load_synthetic(tmp_path)
+
+    measured = anchors.get("javelin", 2)
+    assert measured is not None
+    assert measured.eye == (0, 0)
+    assert measured.eye_source == "measured"
+    assert measured.shield == (60.5, 40.5, 8.5, 10.5)
+    assert measured.shield_source == "measured"
+
+
+def test_the_anchor_table_is_keyed_by_clip_id(tmp_path):
+    """The clip id is the key; the clip DIRECTORY names the PNG."""
+    anchors = _load_synthetic(tmp_path)
+    assert ("javelin", 0) in anchors.entries
+    assert anchors.get("javelin", 99) is None
+
+
+# --------------------------------------------------------------------------
+# the compositor
+# --------------------------------------------------------------------------
+
+
+def test_the_compositor_finds_the_frame_png():
+    """The PNG lives in the clip's DIRECTORY, inside the set."""
+    from src.anim.anchors import load_anchors
+    from src.anim.clip import ClipPlayer
+    from src.anim.manifest import load_set
+
+    anim_set = load_set("goliath")
+    anchors = load_anchors(anim_set.path / "anchors.toml")
+    player = ClipPlayer(anim_set, anchors)
+
+    surf = player.surface("javelin", 3)
+    assert surf is not None, "the frame PNG was not found"
+    assert surf.get_size() == anim_set.canvas
+
+
+def test_the_compositor_puts_the_body_on_the_anchor():
+    """The character's centre of mass lands on the world anchor."""
+    from src.anim.anchors import load_anchors
+    from src.anim.clip import ClipPlayer
+    from src.anim.manifest import load_set
+    from src.anim.measure import alpha_centroid
+
+    anim_set = load_set("goliath")
+    anchors = load_anchors(anim_set.path / "anchors.toml")
+    player = ClipPlayer(anim_set, anchors)
+
+    target = pygame.Surface((240, 360), pygame.SRCALPHA)
+    player.draw(target, "javelin", 3, origin=(120, 180))
+
+    centroid = alpha_centroid(target)
+    assert centroid is not None, "nothing was drawn"
+    assert abs(centroid[0] - 120) <= 1.0
+    assert abs(centroid[1] - 180) <= 1.0
+
+
+def test_the_oval_geometry_follows_the_anchor():
+    """The oval sits on the plate, with the manifest's nudge and scale."""
+    from src.anim.anchors import load_anchors
+    from src.anim.manifest import load_set
+    from src.anim.parts import shield_ellipse_rect
+
+    anim_set = load_set("goliath")
+    anchors = load_anchors(anim_set.path / "anchors.toml")
+    part = anim_set.part("shield_plate")
+    anchor = anchors.get("javelin", 3)
+    assert anchor is not None and anchor.shield is not None
+
+    rect = shield_ellipse_rect(part, anchor, origin=(120, 180), canvas=anim_set.canvas)
+    assert rect is not None
+
+    cx, cy, rx, ry = anchor.shield
+    # The same arithmetic the shipped runtime does (src/ui/
+    # gameplay_runtime.py::_goliath_shield_ellipse).
+    expected_x = 120 - 96 // 2 + anchor.body_dx + round(cx) + part.offset[0]
+    expected_y = 180 - 80 // 2 + anchor.body_dy + round(cy) + part.offset[1]
+    assert abs(rect.centerx - expected_x) <= 1
+    assert abs(rect.centery - expected_y) <= 1
+    assert rect.width == max(2, int(round(rx * part.scale[0]))) * 2
+    assert rect.height == max(2, int(round(ry * part.scale[1]))) * 2
+
+
+def test_an_unresolved_plate_draws_no_oval(tmp_path):
+    """No credible position -> no oval. It must not land on the origin."""
+    from src.anim.manifest import load_set
+    from src.anim.parts import draw_part, shield_ellipse_rect
+
+    anchors = _load_synthetic(tmp_path)
+    anim_set = load_set("goliath")
+    part = anim_set.part("shield_plate")
+    anchor = anchors.get("javelin", 1)
+    assert anchor is not None and anchor.shield is None
+
+    assert (
+        shield_ellipse_rect(part, anchor, (120, 180), anim_set.canvas) is None
+    )
+
+    target = pygame.Surface((240, 360), pygame.SRCALPHA)
+    draw_part(target, part, None, anchor, (120, 180), anim_set.canvas)
+    assert target.get_bounding_rect().width == 0
+
+
+def test_the_clip_follows_the_manifest_fps():
+    """The timing comes from the manifest, not from a hardcoded constant."""
+    from src.anim.anchors import load_anchors
+    from src.anim.clip import ClipPlayer
+    from src.anim.manifest import load_set
+
+    anim_set = load_set("goliath")
+    anchors = load_anchors(anim_set.path / "anchors.toml")
+    player = ClipPlayer(anim_set, anchors)
+
+    assert anim_set.clip("javelin").fps == 10
+    assert player.state("javelin", 0.0).frame == 0
+    assert player.state("javelin", 0.1).frame == 1
+    assert player.state("javelin", 0.25).frame == 2
+    # a looping clip wraps around
+    assert player.state("javelin", 1.05).frame == 0
+    # a one-shot clip holds on its last frame
+    assert player.state("death", 99.0).frame == 9
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -3449,6 +3705,12 @@ class AnchorSet:
     entries: dict[tuple[str, int], FrameAnchor]
 
     def get(self, clip_id: str, frame: int) -> FrameAnchor | None:
+        """The measurement of one frame, or None when it is not in the table.
+
+        The key is the CLIP ID (the manifest's `clip.id`), NOT the clip's
+        directory: the two are allowed to differ, and the sprite path is
+        built from the directory.
+        """
         return self.entries.get((clip_id, frame))
 
 
@@ -3524,6 +3786,12 @@ Every part is positioned relative to the canvas anchor, not to the world
 anchor directly: the body is blitted at (origin - canvas/2 + body_offset)
 and the shield ellipse at (origin - canvas/2 + body_offset + plate + nudge).
 Sharing the body offset is what keeps the oval glued to the plate.
+
+The base is the CANVAS half-size, not the viewport half-size: the canvas
+holds the character and its anchor sits at the canvas centre, so the
+canvas' top-left corner lands on (origin - canvas/2 + body_offset) and the
+character's visual centre of mass lands on `origin` -- which is the same
+arithmetic the shipped runtime does with its 96x80 canvas.
 """
 from __future__ import annotations
 
@@ -3531,6 +3799,67 @@ import pygame
 
 from src.anim.anchors import FrameAnchor
 from src.anim.manifest import Part
+
+# The cold-steel colour of an uncharged shield: the same (96, 104, 124)
+# the shipped runtime uses for `_shield_charge_color(0.0)`.
+COLD_STEEL = (96, 104, 124)
+
+# BLOQUE 67 (user request): the shield oval is INVISIBLE. The shipped
+# runtime draws only the heat layer (which grows with the charge) and the
+# impact flash -- the oval itself is never painted. The flag below keeps
+# the drawing path available (and reviewable) without changing what the
+# player sees; the GEOMETRY is what the runtime needs, and that comes from
+# `shield_ellipse_rect`.
+DRAW_SHIELD_OVAL = False
+
+
+def _base(
+    anchor: FrameAnchor, origin: tuple[int, int], canvas: tuple[int, int]
+) -> tuple[int, int]:
+    """The top-left corner of the frame's canvas in world coordinates.
+
+    Every part of the frame shares this base: the body is the canvas
+    itself, and the oval is the plate's position inside that canvas. That
+    shared base is what keeps the oval glued to the plate.
+    """
+    ox, oy = origin
+    return (
+        ox - canvas[0] // 2 + anchor.body_dx,
+        oy - canvas[1] // 2 + anchor.body_dy,
+    )
+
+
+def shield_ellipse_rect(
+    part: Part,
+    anchor: FrameAnchor | None,
+    origin: tuple[int, int],
+    canvas: tuple[int, int],
+) -> pygame.Rect | None:
+    """The world-space rect of the shield oval, or None when unresolved.
+
+    The oval's centre is the plate's own position inside the canvas, moved
+    by the part's `offset` (the nudge) and sized by the part's `scale` (the
+    horizontal thinning). Both come from the manifest, so the manifest and
+    the baked measurement can never disagree.
+
+    None when the frame carries no anchor, or when the plate is UNRESOLVED:
+    an unresolved feature has no credible position, and guessing one would
+    put the oval in the corner of the screen.
+    """
+    if anchor is None or anchor.shield is None:
+        return None
+    base_x, base_y = _base(anchor, origin, canvas)
+    cx, cy, rx, ry = anchor.shield
+    centre_x = int(base_x + cx + part.offset[0])
+    centre_y = int(base_y + cy + part.offset[1])
+    scaled_rx = max(2, int(round(rx * part.scale[0])))
+    scaled_ry = max(2, int(round(ry * part.scale[1])))
+    return pygame.Rect(
+        centre_x - scaled_rx,
+        centre_y - scaled_ry,
+        scaled_rx * 2,
+        scaled_ry * 2,
+    )
 
 
 def draw_part(
@@ -3548,34 +3877,30 @@ def draw_part(
     """
     if anchor is None:
         return
-    ox, oy = origin
-    base_x = ox - canvas[0] // 2 + anchor.body_dx
-    base_y = oy - canvas[1] // 2 + anchor.body_dy
 
     if part.draw == "frames":
         if surf is None:
             return
+        base_x, base_y = _base(anchor, origin, canvas)
         target.blit(surf, (base_x, base_y))
         return
 
     if part.draw == "ellipse":
-        cx, cy, rx, ry = anchor.shield
-        centre = (int(base_x + cx + part.offset[0]), int(base_y + cy + part.offset[1]))
-        scaled_rx = max(2, int(round(rx * part.scale[0])))
-        scaled_ry = max(2, int(round(ry * part.scale[1])))
-        pygame.draw.ellipse(
-            target,
-            (96, 104, 124),
-            pygame.Rect(
-                centre[0] - scaled_rx,
-                centre[1] - scaled_ry,
-                scaled_rx * 2,
-                scaled_ry * 2,
-            ),
-        )
+        rect = shield_ellipse_rect(part, anchor, origin, canvas)
+        if rect is None:
+            # Unresolved plate: there is no credible position to draw it
+            # at, and the canvas origin is not one of them.
+            return
+        if not DRAW_SHIELD_OVAL:
+            # The oval is invisible by design (BLOQUE 67): the runtime
+            # paints the heat layer and the impact flash instead.
+            return
+        pygame.draw.ellipse(target, COLD_STEEL, rect)
         return
 
     if part.draw == "point":
+        # The eye is an ANCHOR, not a picture: the runtime reads its
+        # position from the anchor table to launch the beam.
         return
 
     if part.draw == "procedural":
@@ -3600,6 +3925,7 @@ depends on a constant hardcoded in the boss class.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import pygame
 
@@ -3622,6 +3948,9 @@ class ClipPlayer:
     def __init__(self, anim_set: AnimSet, anchors: AnchorSet) -> None:
         self.set = anim_set
         self.anchors = anchors
+        # The frames are loaded once and kept: a clip is played at 10-30 fps
+        # and the PNG is decoded from disk every time otherwise.
+        self._surface_cache: dict[Path, pygame.Surface] = {}
 
     def state(self, clip_id: str, elapsed: float) -> ClipState:
         """The frame index for `elapsed` seconds into `clip_id`."""
@@ -3636,13 +3965,37 @@ class ClipPlayer:
             index = min(index, clip.frames - 1)
         return ClipState(clip=clip, frame=index)
 
-    def surface(self, clip_id: str, frame: int) -> pygame.Surface | None:
-        """The PNG of one frame, or None when it is missing."""
-        from src.ui.scenes import _load_sprite
+    def frame_at(self, clip_id: str, elapsed: float) -> int:
+        """The frame index for `elapsed` seconds into `clip_id`."""
+        return self.state(clip_id, elapsed).frame
 
+    def surface(self, clip_id: str, frame: int) -> pygame.Surface | None:
+        """The PNG of one frame, or None when it is missing.
+
+        The CLIP DIRECTORY is what names the PNG, not the clip id: the two
+        are allowed to differ, and the anchor table is keyed by the clip
+        ID. The frame lives inside the set's own directory, next to the
+        manifest and the anchor table that describe it -- the art and its
+        measurement can never come from different trees.
+
+        The loader is deliberately LOCAL: `src/anim/` is the data layer and
+        must not depend on `src/ui/` (the type gate runs mypy over
+        `src/anim/`, and importing the UI module from here would drag its
+        errors into that gate).
+        """
         clip = self.set.clip(clip_id)
-        name = f"{clip.dir}/frame_{frame:02d}.png"
-        return _load_sprite(name)
+        path = self.set.path / clip.dir / f"frame_{frame:02d}.png"
+        cached = self._surface_cache.get(path)
+        if cached is not None:
+            return cached
+        if not path.is_file():
+            return None
+        try:
+            loaded = pygame.image.load(str(path)).convert_alpha()
+        except pygame.error:
+            return None
+        self._surface_cache[path] = loaded
+        return loaded
 
     def draw(
         self,
@@ -3655,10 +4008,10 @@ class ClipPlayer:
         """Draw the parts of one frame, in z order."""
         wanted = set(part_ids) if part_ids else None
         parts = sorted(self.set.parts, key=lambda p: p.z)
+        anchor = self.anchors.get(clip_id, frame)
         for part in parts:
             if wanted is not None and part.id not in wanted:
                 continue
-            anchor = self.anchors.get(clip_id, frame)
             surf = self.surface(clip_id, frame) if part.draw == "frames" else None
             draw_part(target, part, surf, anchor, origin, self.set.canvas)
 ```
