@@ -6,6 +6,11 @@
 
 Steps: validate -> audit -> repair -> re-audit -> anchors -> report.
 Exits 1 when the final audit still has a FAIL.
+
+Without --fix the command WRITES NOTHING: it validates the manifest,
+audits the art and reports. The anchors are written only by --fix, after
+the repair and the re-audit, so they always carry the repaired
+measurements -- and a dry run can never regress the generated file.
 """
 from __future__ import annotations
 
@@ -32,6 +37,7 @@ for _entry in (str(ROOT), str(ROOT / "tools")):
 import pygame  # noqa: E402
 
 from src.anim.manifest import load_set  # noqa: E402
+from sprite_pipeline import ensure_display  # noqa: E402
 from sprite_pipeline.audit import (  # noqa: E402
     FAIL_STATES,
     audit_set,
@@ -50,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     pygame.init()
-    pygame.display.set_mode((320, 480))
+    ensure_display()
 
     try:
         anim_set = load_set(args.set)
@@ -64,11 +70,27 @@ def main(argv: list[str] | None = None) -> int:
     if args.fix:
         actions = repair_set(anim_set, findings, apply=True)
         findings, measurements = audit_set(anim_set)
-
-    write_anchors(anim_set, measurements, anim_set.path / "anchors.toml")
+        # The anchors are written AFTER the repair and the re-audit, so
+        # they carry the repaired measurements, never the pre-repair ones.
+        write_anchors(anim_set, measurements, anim_set.path / "anchors.toml")
 
     fails = [f for f in findings if f.state in FAIL_STATES]
     warns = [f for f in findings if f.state not in FAIL_STATES]
+
+    # Count FRAMES, exactly like the auditor does: a frame can carry two
+    # findings (javelin/frame_03 was FUERA_DE_RANGO *and*
+    # LADO_EQUIVOCADO), so the number of findings and the number of
+    # frames are different numbers. The summary says which one it reports.
+    flagged = {(f.clip, f.frame) for f in findings}
+    failing = {(f.clip, f.frame) for f in findings if f.state in FAIL_STATES}
+    total = sum(c.frames for c in anim_set.clips.values())
+    summary = {
+        "frames_total": total,
+        "frames_with_findings": len(flagged),
+        "frames_failing": len(failing),
+        "frames_warning": len(flagged) - len(failing),
+        "findings_total": len(findings),
+    }
 
     if args.json:
         print(
@@ -84,20 +106,23 @@ def main(argv: list[str] | None = None) -> int:
                         {"clip": f.clip, "frame": f.frame, "state": f.state, "detail": f.detail}
                         for f in warns
                     ],
+                    "summary": summary,
                 },
                 indent=2,
             )
         )
     else:
         for action in actions:
-            print(f"repaired: {action}")
+            print(action)
         for f in fails:
             print(f"  FAIL {f.clip}/frame_{f.frame:02d}  {f.state}: {f.detail}")
         for f in warns:
             print(f"  WARN {f.clip}/frame_{f.frame:02d}  {f.state}: {f.detail}")
         print(
-            f"{anim_set.name}: {len(fails)} FAIL, {len(warns)} WARN, "
-            f"{len(measurements)} frames measured"
+            f"{anim_set.name}: {summary['frames_with_findings']}/"
+            f"{summary['frames_total']} frames with findings "
+            f"({summary['frames_failing']} FAIL, {summary['frames_warning']} WARN), "
+            f"{summary['findings_total']} findings"
         )
 
     return 1 if fails else 0

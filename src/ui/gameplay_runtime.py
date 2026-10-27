@@ -6031,9 +6031,10 @@ class GameplayRuntime:
         vw, vh = 96, 80
         # BLOQUE 73.2: shift the sprite so the body's visual centroid lands
         # on the world anchor (cx, cy) instead of on the canvas anchor
-        # (vw//2, vh//2). Frames that lean (javelin/frame_03 is dx=+20)
-        # would otherwise crowd the right viewport edge. `_goliath_shield_center`
-        # applies the same offset, so the shield tracks the body exactly.
+        # (vw//2, vh//2). Frames that lean (javelin/frame_03 is dx=-19 since
+        # BLOQUE 74 mirrored it) would otherwise crowd the right viewport
+        # edge. `_goliath_shield_center` applies the same offset, so the
+        # shield tracks the body exactly.
         centroid_dx, centroid_dy = get_sprite_centroid_offset(
             self._boss.animation_path
         )

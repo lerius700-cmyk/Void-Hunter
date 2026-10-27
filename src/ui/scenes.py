@@ -139,8 +139,9 @@ def _load_sprite(name: str) -> Optional[pygame.Surface]:
 # ---------------------------------------------------------------------------
 # BLOQUE 66.3 canvas anchor: all GOLIATH frames are 96x80 and the design
 # intent is for the body silhouette to be centred around (col 48, row 40).
-# Frames whose body leans (javelin/frame_03 is dx=+20) are re-aligned so
-# the visible body, not the canvas, lands on the world anchor.
+# Frames whose body leans (javelin/frame_03 is dx=-19 since BLOQUE 74
+# mirrored it) are re-aligned so the visible body, not the canvas, lands
+# on the world anchor.
 _GOLIATH_ANCHOR_X = 48
 _GOLIATH_ANCHOR_Y = 40
 

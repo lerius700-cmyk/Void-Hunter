@@ -106,9 +106,10 @@ def test_every_feature_says_where_it_came_from(audit):
     on those.
 
     NOTE: these counters are the ground truth of the shipped art. They
-    MUST be re-validated after Task 6 mirrors javelin/frame_03 and
-    purple_bullet/frame_06: those two frames become measurable, so the
-    counts move.
+    were re-validated after Task 6 mirrored javelin/frame_03 and
+    purple_bullet/frame_06: the counts did NOT move (53/7 and 59/1),
+    because the shape rule still measures the BODY in those two frames --
+    they stay FUERA_DE_RANGO and keep being interpolated.
     """
     _, measurements = audit
     shield_sources = Counter(m.shield_source for m in measurements)
@@ -147,10 +148,12 @@ def test_the_report_still_documents_the_art_problem(audit):
     The findings must keep reporting the frames whose plate is missing
     from the drawing, otherwise the report lies about the source art.
 
-    NOTE: these three frames are hard-coded and MUST be re-validated
-    after Task 6 mirrors javelin/frame_03 and purple_bullet/frame_06 --
-    mirroring moves the clip's probe median, and with it the set of
-    frames the auditor flags.
+    NOTE: these three frames are hard-coded and were re-validated after
+    Task 6 mirrored javelin/frame_03 and purple_bullet/frame_06. The
+    mirroring moved the clip's probe median, and with it the set of frames
+    the auditor flags -- but these three are still reported: the two
+    mirrored frames keep their FUERA_DE_RANGO finding (the shape rule
+    measures the body, not the plate, in them).
     """
     findings, _ = audit
     reported = {f"{f.clip}/frame_{f.frame:02d}" for f in findings}

@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 import pygame
 
 from src.anim.manifest import AnimSet
+from src.anim.measure import silhouette_bbox
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard for type checkers
     from sprite_pipeline.audit import Finding
@@ -38,30 +39,60 @@ def mirror_frame(path: Path) -> bool:
     return True
 
 
+def _shift_for_margins(low: int, high: int, min_margin: int) -> int | None:
+    """How far to move a silhouette that has `low` px before it and `high`
+    px after it, so that both margins reach `min_margin`.
+
+    Returns None when no shift can do that: the silhouette is then wider
+    than the canvas minus two margins, and the only thing that would fix
+    it is scaling -- which pixel art does not get.
+
+    The shift is the smallest one that gives the too-close side its
+    margin, and it never pushes the content past the opposite edge.
+    """
+    if low >= min_margin and high >= min_margin:
+        return 0
+    if low + high < 2 * min_margin:
+        return None
+    if low < min_margin:
+        return min_margin - low
+    return -(min_margin - high)
+
+
 def repad_frame(path: Path, min_margin: int = 3) -> bool:
     """Move the silhouette inward so it never touches the canvas edge.
 
     The visual content is untouched -- only its position inside the canvas
-    shifts -- and the anchors recompute on the next audit.
+    shifts -- and the anchors recompute on the next audit. The canvas
+    keeps its size: the sprite is MOVED inside its own canvas, never
+    scaled.
+
+    The bounding box comes from `src.anim.measure.silhouette_bbox`, the
+    SAME helper the auditor uses to raise the CORTADO finding, so the
+    repair and the finding can never disagree about what "cut off" means.
+    (pygame's `Surface.get_alpha()` is NOT that helper: it returns the
+    surface's alpha VALUE -- the int 255 for a per-pixel-alpha surface --
+    and never a channel to measure.)
+
+    Returns True when the file was written.
     """
     surf = pygame.image.load(str(path)).convert_alpha()
     w, h = surf.get_size()
-    # get_alpha() returns the alpha channel surface for a per-pixel-alpha
-    # surface, and None (or an int) for the other kinds -- only the
-    # surface carries the bounding box.
-    alpha = surf.get_alpha()
-    bbox = alpha.getbbox() if isinstance(alpha, pygame.Surface) else None
+    bbox = silhouette_bbox(surf)
     if bbox is None:
         return False
     left, top, right, bottom = bbox
-    margins = (left, top, w - right, h - bottom)
-    if min(margins) >= min_margin:
+    if min(left, top, w - right, h - bottom) >= min_margin:
         return False
 
-    dx = max(0, min_margin - margins[0])
-    dy = max(0, min_margin - margins[1])
-    if w - margins[2] - dx < min_margin:
-        dx = max(0, min_margin - margins[2])
+    dx = _shift_for_margins(left, w - right, min_margin)
+    dy = _shift_for_margins(top, h - bottom, min_margin)
+    if dx is None or dy is None:
+        # No translation can give the silhouette its margin on every side.
+        return False
+    if dx == 0 and dy == 0:
+        return False
+
     out = pygame.Surface((w, h), pygame.SRCALPHA, 32)
     out.fill((0, 0, 0, 0))
     out.blit(surf, (dx, dy))
@@ -74,8 +105,12 @@ def repair_set(
 ) -> list[str]:
     """Apply the repairs implied by the findings.
 
-    Returns the list of actions taken (or that would be taken when
-    apply=False).
+    Returns the list of actions ACTUALLY taken. With apply=False the
+    actions are the ones that WOULD be taken and the wording says so, so a
+    dry run and a real run never print the same line.
+
+    A repair that could not be performed is NOT reported: the list is
+    what happened, not what was attempted.
 
     The frame is looked up as `<set>/<clip id>/frame_NN.png`. Every clip of
     the shipped GOLIATH manifest declares `dir` equal to its `id`, so the
@@ -88,14 +123,22 @@ def repair_set(
             path = anim_set.path / finding.clip / f"frame_{finding.frame:02d}.png"
             if not path.is_file():
                 continue
-            actions.append(f"mirror {finding.clip}/frame_{finding.frame:02d}")
-            if apply:
-                mirror_frame(path)
+            if not apply:
+                actions.append(
+                    f"would mirror {finding.clip}/frame_{finding.frame:02d}"
+                )
+                continue
+            if mirror_frame(path):
+                actions.append(f"mirrored {finding.clip}/frame_{finding.frame:02d}")
         elif finding.state == "CORTADO":
             path = anim_set.path / finding.clip / f"frame_{finding.frame:02d}.png"
             if not path.is_file():
                 continue
-            actions.append(f"re-pad {finding.clip}/frame_{finding.frame:02d}")
-            if apply:
-                repad_frame(path)
+            if not apply:
+                actions.append(
+                    f"would re-pad {finding.clip}/frame_{finding.frame:02d}"
+                )
+                continue
+            if repad_frame(path):
+                actions.append(f"re-padded {finding.clip}/frame_{finding.frame:02d}")
     return actions

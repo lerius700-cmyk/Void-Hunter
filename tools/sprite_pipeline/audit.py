@@ -31,8 +31,11 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 import pygame  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+# The repository root gives `src.anim.manifest`; the tools directory gives
+# the `sprite_pipeline` package this file belongs to.
+for _entry in (str(ROOT), str(ROOT / "tools")):
+    if _entry not in sys.path:
+        sys.path.insert(0, _entry)
 
 from src.anim.manifest import AnimSet, Clip, load_set  # noqa: E402
 from src.anim.measure import (  # noqa: E402
@@ -44,6 +47,7 @@ from src.anim.measure import (  # noqa: E402
     silhouette_bbox,
     silhouette_height,
 )
+from sprite_pipeline import ensure_display  # noqa: E402
 
 STATES = (
     "COLAPSADO",
@@ -541,7 +545,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     pygame.init()
-    pygame.display.set_mode((320, 480))
+    ensure_display()
 
     try:
         anim_set = load_set(args.set)
