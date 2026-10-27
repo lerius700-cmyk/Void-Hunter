@@ -933,6 +933,10 @@ caching. Used by the auditor (offline) and by the tests.
 Everything works on the ALPHA channel unless the rule says otherwise, so a
 transparent canvas never contributes to a measurement.
 
+ONE EXCEPTION to the module-wide alpha cut (ALPHA_MIN = 32): `alpha_centroid`
+counts every pixel with alpha != 0, for parity with the shipped runtime's
+registration offset. See that function's docstring for why.
+
 Performance: one full-frame pass with get_at over all 60 GOLIATH frames
 costs 0.09 s, which is fine for an offline tool. numpy is NOT used --
 BLOQUE 58.14 allows it for the pause-screen lowpass only.
@@ -954,6 +958,13 @@ def alpha_centroid(surf: pygame.Surface) -> tuple[float, float] | None:
     character at a different offset inside the canvas in every frame, and
     the offset needed to put its visual centre of mass back on the anchor
     spans -16..+20 px across the 60 GOLIATH frames.
+
+    ALPHA CUT: this function counts every pixel with alpha != 0, NOT the
+    alpha > ALPHA_MIN (32) cut the rest of this module uses. That is
+    deliberate parity with the shipped runtime's
+    `get_sprite_centroid_offset` (src/ui/scenes.py), which tests `a == 0`
+    too: the centroid has to agree with the runtime's registration offset
+    to the pixel, so it may not use a stricter cut than the runtime does.
     """
     w, h = surf.get_size()
     sum_a = sum_x = sum_y = 0
@@ -1037,7 +1048,10 @@ def color_centroid(
     """Centroid of the pixels that satisfy a colour rule.
 
     `band` is (top, bottom) in rows; `col_range` is (first, last) in
-    columns. Both default to the whole surface. None when nothing matches.
+    columns. When either is None it falls back to the window the RULE
+    declares (`head_band` and `col_range` respectively), and to the whole
+    surface only when the rule declares no window at all. None when
+    nothing matches.
 
     `warm` is an optional WarmRule: when given, the pixels it matches are
     dropped before the signature is applied. The PROBE needs this -- the
@@ -1220,8 +1234,9 @@ def interpolate(values: list[float | None], index: int) -> float | None:
     while right2 < len(values) and values[right2] is None:
         right2 += 1
     # The scans above stop on a measured value, so left2 / right2 hold one
-    # whenever the index is in range; the None checks are the type-safe
-    # spelling of that invariant and fall back to the nearest neighbour.
+    # whenever the index is in range. The None checks below are the
+    # type-safe spelling of that invariant for mypy; they are NOT a
+    # separate fallback path and cannot be reached in practice.
     p0 = values[left2] if left2 >= 0 else None
     p3 = values[right2] if right2 < len(values) else None
     if p0 is None:
