@@ -34,7 +34,6 @@ from src.ui.gameplay_runtime import GameplayRuntime, ScorePopup  # noqa: E402
 def _init_pygame():
     pygame.init()
     yield
-    pygame.quit()
 
 
 def _noop_transition(state: GameState) -> None:

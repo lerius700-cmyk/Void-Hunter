@@ -78,13 +78,12 @@ def test_draw_goliath_uses_sprite_when_animation_path_exists():
     animation_path key.
 
     NOTE: pygame.image.load().convert_alpha() needs a video mode set.
-    After test_gameplay_runtime.py's autouse pygame.quit(), the display
-    module may be marked initialized but no video mode is active. We
-    force a fresh set_mode here so convert_alpha works.
+    tests/conftest.py guarantees one is live for every test, but we still
+    force a fresh set_mode here so convert_alpha works on a known mode.
     """
     # Force a fresh video mode. Always call set_mode, even if display
-    # reports as "initialized" — after a prior pygame.quit() the mode
-    # can be lost while the module still reports init=True.
+    # reports as "initialized" — the mode can be lost while the module
+    # still reports init=True.
     if not pygame.get_init():
         pygame.init()
     pygame.display.set_mode((1, 1))

@@ -20,7 +20,6 @@ def _init_pygame():
     pygame.init()
     pygame.display.set_mode((1, 1))
     yield
-    pygame.quit()
 
 
 def test_title_scene_instantiates_with_video_assets():

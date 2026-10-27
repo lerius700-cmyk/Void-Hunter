@@ -56,7 +56,6 @@ def test_draw_asteroid_with_hit_flash_does_not_crash():
     ast.hit()
     # Should not raise even if sprite is missing
     draw_asteroid_with_hit_flash(target, ast)
-    pygame.quit()
 
 
 def test_asteroid_flash_preserves_shape_at_70_percent_opacity():
@@ -113,8 +112,6 @@ def test_asteroid_flash_preserves_shape_at_70_percent_opacity():
     if not found_sprite_pixel:
         pytest.skip("All asteroid sprite pixels are white; cannot verify flash")
 
-    pygame.quit()
-
 
 def test_asteroid_flash_uses_helper_from_asteroid_module():
     """BLOQUE 71.1: the helper `_build_white_flash_overlay` should be
@@ -140,4 +137,3 @@ def test_asteroid_flash_uses_helper_from_asteroid_module():
     r, g, b, a = overlay.get_at((1, 0))
     # Transparent pixel in the original should be transparent in the overlay
     assert a == 0, f"Overlay should be transparent where sprite is transparent, got alpha={a}"
-    pygame.quit()
