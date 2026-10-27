@@ -240,11 +240,7 @@ pivot = "detect"
 z     = 1
 offset = [0, 3]         # GOLIATH_SHIELD_DX / GOLIATH_SHIELD_DY
 scale  = [0.78, 1.0]    # GOLIATH_SHIELD_RX_SCALE
-detect = { method = "shape", band = [28, 54], side = "right", min_col = 50,
-           ranges = { rx = [6.5, 11.0], ry = [9.0, 13.0] },
-           exclude = [[255, 220, 80], [240, 200, 120]],
-           probe = { method = "color", r_min = 185, g_min = 145, b_max = 130,
-                     r_minus_b_min = 70 } }
+detect = { method = "shape", band = [28, 54], side = "right", min_col = 50, ranges = { rx = [6.5, 11.0], ry = [9.0, 13.0] }, exclude = [[255, 220, 80], [240, 200, 120]], probe = { method = "color", r_min = 185, g_min = 145, b_max = 130, r_minus_b_min = 70 } }
 on_missing = "interpolate"
 
 [[parts]]
@@ -252,8 +248,7 @@ id    = "eye"
 draw  = "point"
 pivot = "detect"
 z     = 2
-detect = { method = "color", head_band = [0, 30], col_range = [24, 70],
-           r_min = 170, rg_min = 70 }
+detect = { method = "color", head_band = [0, 30], col_range = [24, 70], r_min = 170, rg_min = 70 }
 on_missing = "interpolate"
 
 [[parts]]

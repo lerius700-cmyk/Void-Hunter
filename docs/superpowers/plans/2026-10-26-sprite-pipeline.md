@@ -508,11 +508,7 @@ scale  = [0.78, 1.0]     # GOLIATH_SHIELD_RX_SCALE
 # `exclude` drops the two baked eye-beam colours that also satisfy the
 # brass signature. Without it the detector measures the beam instead of
 # the plate (BLOQUE 73.4 shipped that bug in get_sprite_arm_anchor).
-detect = { method = "shape", band = [28, 54], side = "right", min_col = 50,
-           ranges = { rx = [6.5, 11.0], ry = [9.0, 13.0] },
-           exclude = [[255, 220, 80], [240, 200, 120]],
-           probe = { method = "color", r_min = 185, g_min = 145, b_max = 130,
-                     r_minus_b_min = 70 } }
+detect = { method = "shape", band = [28, 54], side = "right", min_col = 50, ranges = { rx = [6.5, 11.0], ry = [9.0, 13.0] }, exclude = [[255, 220, 80], [240, 200, 120]], probe = { method = "color", r_min = 185, g_min = 145, b_max = 130, r_minus_b_min = 70 } }
 on_missing = "interpolate"
 
 [[parts]]
@@ -520,8 +516,7 @@ id    = "eye"
 draw  = "point"
 pivot = "detect"
 z     = 2
-detect = { method = "color", head_band = [0, 30], col_range = [24, 70],
-           r_min = 170, rg_min = 70 }
+detect = { method = "color", head_band = [0, 30], col_range = [24, 70], r_min = 170, rg_min = 70 }
 on_missing = "interpolate"
 
 [[parts]]
@@ -1593,11 +1588,7 @@ pivot = "detect"
 z = 1
 offset = [0, 3]
 scale = [0.78, 1.0]
-detect = {{ method = "shape", band = [28, 54], side = "right", min_col = 50,
-           ranges = {{ rx = [6.5, 11.0], ry = [9.0, 13.0] }},
-           exclude = [[255, 220, 80], [240, 200, 120]],
-           probe = {{ method = "color", r_min = 185, g_min = 145, b_max = 130,
-                     r_minus_b_min = 70 }} }}
+detect = {{ method = "shape", band = [28, 54], side = "right", min_col = 50, ranges = {{ rx = [6.5, 11.0], ry = [9.0, 13.0] }}, exclude = [[255, 220, 80], [240, 200, 120]], probe = {{ method = "color", r_min = 185, g_min = 145, b_max = 130, r_minus_b_min = 70 }} }}
 on_missing = "interpolate"
 
 [[parts]]
@@ -1605,8 +1596,7 @@ id = "eye"
 draw = "point"
 pivot = "detect"
 z = 2
-detect = {{ method = "color", head_band = [0, 30], col_range = [24, 70],
-           r_min = 170, rg_min = 70 }}
+detect = {{ method = "color", head_band = [0, 30], col_range = [24, 70], r_min = 170, rg_min = 70 }}
 on_missing = "interpolate"
 """
     (set_dir / "manifest.toml").write_text(
