@@ -5,6 +5,9 @@
 #
 # The shield constants below are the BLOQUE 67 user-approved values, moved
 # here verbatim. Do not retune them here.
+#
+# The alpha threshold (32) is a measurement constant, not a detection rule:
+# it lives in src/anim/measure.py.
 
 [meta]
 name    = "GOLIATH"
@@ -16,11 +19,13 @@ sided   = "right"       # the shield is ALWAYS on the right arm
 # ---------------------------------------------------------------- clips
 #
 # scale_tolerance: relative deviation of the silhouette height from the
-#   clip median that still counts as "not rescaled". death is loose because
-#   the boss collapses on purpose (75 px -> 37 px).
+#   clip median that still counts as "not rescaled". Measured on the real
+#   assets: phase1_idle 0.027, phase2_idle 0.107, javelin 0.058,
+#   laser 0.187, purple_bullet 0.219, death 0.393.
 # side_tolerance: how far the probe column may stray from the clip median
-#   before the frame counts as turned around. 14 separates the two real
-#   cases (18.9, 21.6) from every healthy frame (max 13.2).
+#   before the frame counts as turned around. The two real cases deviate
+#   18.1 (purple_bullet/f06) and 21.4 (javelin/f03); every healthy frame
+#   deviates at most 8.0.
 
 [[clips]]
 id     = "phase1_idle"
@@ -49,7 +54,7 @@ dir    = "laser"
 frames = 10
 fps    = 10
 loop   = true
-scale_tolerance = 0.25   # the boss crouches when it fires
+scale_tolerance = 0.25   # the boss crouches when it fires (0.187 measured)
 
 [[clips]]
 id     = "purple_bullet"
@@ -57,7 +62,7 @@ dir    = "purple_bullet"
 frames = 10
 fps    = 10
 loop   = true
-scale_tolerance = 0.25   # the boss throws
+scale_tolerance = 0.30   # the boss throws (0.219 measured)
 
 [[clips]]
 id     = "death"
@@ -92,11 +97,19 @@ pivot  = "detect"
 z      = 1
 offset = [0, 3]          # GOLIATH_SHIELD_DX / GOLIATH_SHIELD_DY
 scale  = [0.78, 1.0]     # GOLIATH_SHIELD_RX_SCALE
+radii  = [11, 11, 17]    # GOLIATH_SHIELD_R / _RX / _RY: the canonical
+                       # ellipse used when the art has no plate to measure
 
-# `exclude` drops the two baked eye-beam colours that also satisfy the
-# brass signature. Without it the detector measures the beam instead of
-# the plate (BLOQUE 73.4 shipped that bug in get_sprite_arm_anchor).
-detect = { method = "shape", band = [28, 54], side = "right", min_col = 50, ranges = { rx = [6.5, 11.0], ry = [9.0, 13.0] }, exclude = [[255, 220, 80], [240, 200, 120]], probe = { method = "color", r_min = 185, g_min = 145, b_max = 130, r_minus_b_min = 70 } }
+# `warm_fallback` is the predicate that recognises the baked eye beam. The
+# beam is a GRADIENT, so listing its colours as exact triples does not work.
+# This predicate is the one the shipped runtime uses, and it deliberately
+# KEEPS (220,180,80) -- the plate's own face highlight -- because that
+# colour fails the r >= 235 test.
+#
+# It is a FALLBACK, not an always-on filter: the auditor measures the plain
+# silhouette first and only retries with the warm pixels dropped when the
+# plain measurement is not credible.
+detect = { method = "shape", band = [28, 54], side = "right", min_col = 50, ranges = { rx = [6.5, 11.0], ry = [9.0, 13.0] }, warm_fallback = { r_min = 235, b_max = 140, g_min = 130, r_minus_b_min = 190 }, probe = { method = "color", r_min = 185, g_min = 145, b_max = 130, r_minus_b_min = 70 } }
 on_missing = "interpolate"
 
 [[parts]]

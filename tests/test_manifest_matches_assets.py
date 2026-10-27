@@ -19,16 +19,16 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src.anim.manifest import ManifestError, load_set
+from src.anim.manifest import DetectRule, ManifestError, WarmRule, load_set
 
 
 @pytest.fixture(scope="module")
 def display():
-    """Dummy display: `convert_alpha()` needs a video mode to read sprites."""
+    """pygame needs a video mode before convert_alpha() works."""
     import pygame
 
     pygame.init()
-    pygame.display.set_mode((1, 1))
+    pygame.display.set_mode((320, 480))
     yield
 
 
@@ -85,8 +85,62 @@ def test_shield_constants_were_moved_verbatim(goliath):
     shield = goliath.part("shield_plate")
     assert shield.offset == (0, 3)
     assert shield.scale == (0.78, 1.0)
+    assert shield.radii == (11.0, 11.0, 17.0)
+
+
+def test_shield_rule_declares_the_warm_fallback(goliath):
+    rule = goliath.part("shield_plate").detect
+    assert rule is not None
+    assert rule.warm_fallback is not None
+    assert rule.warm_fallback.r_min == 235
+    assert rule.warm_fallback.b_max == 140
+    assert rule.warm_fallback.g_min == 130
+    assert rule.warm_fallback.r_minus_b_min == 190
+
+
+def test_warm_rule_matches_the_whole_beam_and_keeps_the_plate_highlight():
+    """The beam is a gradient: exact RGB triples do not cover it.
+
+    (220,180,80) is the plate's own face highlight and must NOT be
+    discarded, or the plate stops being measurable.
+    """
+    rule = WarmRule(r_min=235, b_max=140, g_min=130, r_minus_b_min=190)
+    assert rule.matches(255, 220, 80) is True
+    assert rule.matches(240, 200, 120) is True
+    assert rule.matches(255, 140, 60) is True
+    assert rule.matches(255, 80, 40) is True
+    assert rule.matches(220, 180, 80) is False
 
 
 def test_unknown_set_raises():
     with pytest.raises(ManifestError):
         load_set("no_existe")
+
+
+# ---------------------------------------------------------------------------
+# The ManifestError contract: a malformed manifest must fail LOUDLY and with
+# the manifest's own error type, never with a bare IndexError/KeyError.
+# ---------------------------------------------------------------------------
+def test_unknown_detect_method_raises():
+    """A misspelled method must not flow into the auditor unchallenged."""
+    with pytest.raises(ManifestError):
+        DetectRule.from_dict({"method": "shapeh"})
+
+
+def test_unknown_detect_side_raises():
+    with pytest.raises(ManifestError):
+        DetectRule.from_dict({"method": "shape", "side": "middle"})
+
+
+def test_bad_pair_arity_raises_manifest_error():
+    """`band = [28]` used to raise a bare IndexError."""
+    with pytest.raises(ManifestError):
+        DetectRule.from_dict({"method": "shape", "band": [28]})
+
+
+def test_unknown_clip_and_part_raise():
+    set_ = load_set("goliath")
+    with pytest.raises(ManifestError):
+        set_.clip("no_such_clip")
+    with pytest.raises(ManifestError):
+        set_.part("no_such_part")

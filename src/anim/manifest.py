@@ -17,13 +17,90 @@ from __future__ import annotations
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 SETS_ROOT = ROOT / "Assets" / "sprites" / "bosses"
 
+VALID_METHODS = ("shape", "color")
+VALID_SIDES = ("left", "right")
+
 
 class ManifestError(ValueError):
-    """The manifest is malformed, or it contradicts the assets on disk."""
+    """The manifest is malformed: a bad value, a missing field, a duplicate
+    id, or a rule that cannot be applied.
+
+    It does NOT mean "the manifest disagrees with the assets" -- the loader
+    never looks at the assets. That check lives in the auditor and in
+    tests/test_manifest_matches_assets.py.
+    """
+
+
+def _as_int_pair(value: Any, name: str) -> tuple[int, int]:
+    """Read a two-element integer pair, rejecting anything else."""
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise ManifestError(f"{name} must be a pair of integers, got {value!r}")
+    try:
+        return (int(value[0]), int(value[1]))
+    except (TypeError, ValueError) as exc:
+        raise ManifestError(f"{name} must be a pair of integers, got {value!r}") from exc
+
+
+def _as_float_pair(value: Any, name: str) -> tuple[float, float]:
+    """Read a two-element float pair, rejecting anything else."""
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise ManifestError(f"{name} must be a pair of numbers, got {value!r}")
+    try:
+        return (float(value[0]), float(value[1]))
+    except (TypeError, ValueError) as exc:
+        raise ManifestError(f"{name} must be a pair of numbers, got {value!r}") from exc
+
+
+def _as_float_triple(value: Any, name: str) -> tuple[float, float, float]:
+    """Read a three-element float triple, rejecting anything else."""
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        raise ManifestError(f"{name} must be three numbers, got {value!r}")
+    try:
+        return (float(value[0]), float(value[1]), float(value[2]))
+    except (TypeError, ValueError) as exc:
+        raise ManifestError(f"{name} must be three numbers, got {value!r}") from exc
+
+
+@dataclass(frozen=True)
+class WarmRule:
+    """The predicate that recognises the colours of a baked eye beam.
+
+    The beam is a GRADIENT, so listing its colours as exact RGB triples
+    does not work: most of the beam's pixels are near, but not equal to,
+    the four colours it was painted with. This predicate is the one the
+    shipped runtime uses (src/ui/scenes.py), and it deliberately KEEPS
+    (220,180,80) -- the plate's own face highlight -- because that colour
+    fails the `r >= 235` test.
+
+    It is a FALLBACK: the measurement is taken on the plain silhouette
+    first, and only retried with the warm pixels dropped when the plain
+    result is not credible. That is the shipped two-pass behaviour.
+    """
+
+    r_min: int = 0
+    b_max: int = 255
+    g_min: int = 0
+    r_minus_b_min: int = 0
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "WarmRule":
+        return cls(
+            r_min=int(raw.get("r_min", 0)),
+            b_max=int(raw.get("b_max", 255)),
+            g_min=int(raw.get("g_min", 0)),
+            r_minus_b_min=int(raw.get("r_minus_b_min", 0)),
+        )
+
+    def matches(self, r: int, g: int, b: int) -> bool:
+        """True when the colour belongs to the baked beam."""
+        if r < self.r_min or b > self.b_max:
+            return False
+        return g >= self.g_min or (r - b) >= self.r_minus_b_min
 
 
 @dataclass(frozen=True)
@@ -32,6 +109,11 @@ class DetectRule:
 
     `method` is "shape" (the feature is found by the outline of a solid
     block of pixels) or "color" (it is found by a colour signature).
+
+    `warm_fallback` is the optional predicate that recognises a baked
+    effect whose colours collide with the feature. It is only used as a
+    retry: measure the plain silhouette first, and drop the warm pixels
+    only when the plain measurement is not credible.
 
     `probe` is an optional colour signature used ONLY to answer "which side
     is the feature on?". The shape rule cannot detect a turned-around
@@ -52,30 +134,37 @@ class DetectRule:
     r_minus_b_min: int = 0
     rx_range: tuple[float, float] = (0.0, 0.0)
     ry_range: tuple[float, float] = (0.0, 0.0)
-    exclude: tuple[tuple[int, int, int], ...] = ()
+    warm_fallback: WarmRule | None = None
     probe: "DetectRule | None" = None
 
     @classmethod
-    def from_dict(cls, raw: dict) -> "DetectRule":
+    def from_dict(cls, raw: dict[str, Any]) -> "DetectRule":
+        method = raw.get("method", "")
+        if method not in VALID_METHODS:
+            raise ManifestError(
+                f"unknown detect method {method!r} (expected one of {VALID_METHODS})"
+            )
+        side = raw.get("side")
+        if side is not None and side not in VALID_SIDES:
+            raise ManifestError(f"unknown detect side {side!r}")
         ranges = raw.get("ranges") or {}
-        rx = tuple(ranges.get("rx", (0.0, 0.0)))
-        ry = tuple(ranges.get("ry", (0.0, 0.0)))
+        warm_raw = raw.get("warm_fallback")
         probe_raw = raw.get("probe")
         return cls(
-            method=str(raw.get("method", "")),
-            side=raw.get("side"),
+            method=str(method),
+            side=side,
             min_col=int(raw.get("min_col", 0)),
-            band=tuple(raw.get("band", (0, 0))),
-            col_range=tuple(raw.get("col_range", (0, 0))),
-            head_band=tuple(raw.get("head_band", (0, 0))),
+            band=_as_int_pair(raw.get("band", (0, 0)), "band"),
+            col_range=_as_int_pair(raw.get("col_range", (0, 0)), "col_range"),
+            head_band=_as_int_pair(raw.get("head_band", (0, 0)), "head_band"),
             r_min=int(raw.get("r_min", 0)),
             g_min=int(raw.get("g_min", 0)),
             b_max=int(raw.get("b_max", 255)),
             rg_min=int(raw.get("rg_min", 0)),
             r_minus_b_min=int(raw.get("r_minus_b_min", 0)),
-            rx_range=(float(rx[0]), float(rx[1])),
-            ry_range=(float(ry[0]), float(ry[1])),
-            exclude=tuple(tuple(int(v) for v in c) for c in raw.get("exclude", ())),
+            rx_range=_as_float_pair(ranges.get("rx", (0.0, 0.0)), "ranges.rx"),
+            ry_range=_as_float_pair(ranges.get("ry", (0.0, 0.0)), "ranges.ry"),
+            warm_fallback=WarmRule.from_dict(warm_raw) if warm_raw else None,
             probe=cls.from_dict(probe_raw) if probe_raw else None,
         )
 
@@ -90,6 +179,9 @@ class Part:
 
     pivot is "centroid" (auto: alpha-weighted centroid of the silhouette),
     "detect" (auto: the detection rule below) or "fixed".
+
+    `radii` carries the canonical radii (R, RX, RY) of a shape feature:
+    the ellipse to fall back to when the art does not contain the feature.
     """
 
     id: str
@@ -98,6 +190,7 @@ class Part:
     z: int
     offset: tuple[int, int]
     scale: tuple[float, float]
+    radii: tuple[float, float, float] | None
     detect: DetectRule | None
     on_missing: str
 
@@ -161,13 +254,13 @@ def load_set(name: str, root: Path = SETS_ROOT) -> AnimSet:
     clips: dict[str, Clip] = {}
     for entry in raw.get("clips", []):
         clip_id = entry.get("id")
-        if not clip_id:
+        if not isinstance(clip_id, str) or not clip_id:
             raise ManifestError(f"{name}: a clip has no id")
         if clip_id in clips:
             raise ManifestError(f"{name}: duplicate clip id {clip_id!r}")
         clips[clip_id] = Clip(
             id=clip_id,
-            dir=entry.get("dir", clip_id),
+            dir=str(entry.get("dir", clip_id)),
             frames=int(entry.get("frames", 0)),
             fps=float(entry.get("fps", 10)),
             loop=bool(entry.get("loop", True)),
@@ -180,17 +273,23 @@ def load_set(name: str, root: Path = SETS_ROOT) -> AnimSet:
     parts: list[Part] = []
     for entry in raw.get("parts", []):
         part_id = entry.get("id")
-        if not part_id:
+        if not isinstance(part_id, str) or not part_id:
             raise ManifestError(f"{name}: a part has no id")
         detect_raw = entry.get("detect")
+        radii_raw = entry.get("radii")
         parts.append(
             Part(
                 id=part_id,
                 draw=str(entry.get("draw", "frames")),
                 pivot=str(entry.get("pivot", "centroid")),
                 z=int(entry.get("z", 0)),
-                offset=tuple(entry.get("offset", (0, 0))),
-                scale=tuple(entry.get("scale", (1.0, 1.0))),
+                offset=_as_int_pair(entry.get("offset", (0, 0)), "offset"),
+                scale=_as_float_pair(entry.get("scale", (1.0, 1.0)), "scale"),
+                radii=(
+                    _as_float_triple(radii_raw, "radii")
+                    if radii_raw is not None
+                    else None
+                ),
                 detect=DetectRule.from_dict(detect_raw) if detect_raw else None,
                 on_missing=str(entry.get("on_missing", "fallback")),
             )
@@ -201,8 +300,8 @@ def load_set(name: str, root: Path = SETS_ROOT) -> AnimSet:
     return AnimSet(
         name=str(meta.get("name", name)),
         version=int(meta.get("version", 1)),
-        canvas=tuple(meta.get("canvas", (0, 0))),
-        anchor=tuple(meta.get("anchor", (0, 0))),
+        canvas=_as_int_pair(meta.get("canvas", (0, 0)), "meta.canvas"),
+        anchor=_as_int_pair(meta.get("anchor", (0, 0)), "meta.anchor"),
         sided=meta.get("sided"),
         path=path,
         clips=clips,
