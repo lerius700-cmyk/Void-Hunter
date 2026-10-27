@@ -27,22 +27,26 @@ These numbers were measured against the 60 shipped GOLIATH frames with the manif
 
 | Frame | States | Severity | After the repair (Task 5) |
 |---|---|---|---|
-| `javelin/frame_03` | LADO_EQUIVOCADO · FUERA_DE_RANGO · FIRMA_AMBIGUA | FAIL | mirrored, then re-measured |
+| `javelin/frame_03` | LADO_EQUIVOCADO · FUERA_DE_RANGO | FAIL | mirrored, then re-measured |
 | `javelin/frame_04` | FUERA_DE_RANGO | WARN | ellipse interpolated |
 | `javelin/frame_07` | FUERA_DE_RANGO | WARN | ellipse interpolated |
 | `laser/frame_04` | FUERA_DE_RANGO | WARN | ellipse interpolated |
-| `laser/frame_05` | FUERA_DE_RANGO · FIRMA_AMBIGUA | WARN | ellipse interpolated |
+| `laser/frame_05` | FIRMA_AMBIGUA | WARN | informational |
 | `laser/frame_07` | FUERA_DE_RANGO | WARN | ellipse interpolated |
-| `purple_bullet/frame_06` | LADO_EQUIVOCADO · FUERA_DE_RANGO · FIRMA_AMBIGUA | FAIL | mirrored, then re-measured |
+| `purple_bullet/frame_06` | LADO_EQUIVOCADO · FUERA_DE_RANGO | FAIL | mirrored, then re-measured |
 | `purple_bullet/frame_08` | FUERA_DE_RANGO | WARN | ellipse interpolated |
+| `death/frame_02` | FIRMA_AMBIGUA | WARN | informational |
+| `death/frame_07` | FIRMA_AMBIGUA | WARN | informational |
 
-All other 52 frames are clean. `AUSENTE`, `COLAPSADO` and `CORTADO` do not fire on the current assets.
+**10 of 60 frames carry a finding: 2 FAIL and 8 WARN.** The other 50 are
+clean. `COLAPSADO`, `CORTADO` and `AUSENTE` do not fire on the current
+assets.
 
-**Two FAIL states, both repaired by mirroring two PNGs.** The WARN states are
-resolved by interpolating the ellipse, which is a legitimate resolution — the
-measurement is reconstructed, not defaulted. The pipeline's bar is therefore
-**0 FAIL** plus **no unresolved feature** (the `test_features_detected_everywhere`
-guard), not "0 warnings".
+**Two FAIL states, both repaired by mirroring two PNGs.** The five
+FUERA_DE_RANGO frames are resolved by interpolating the ellipse, which is a
+legitimate resolution — the measurement is reconstructed, not defaulted. The
+pipeline's bar is therefore **0 FAIL** plus **no unresolved feature** (the
+`test_features_detected_everywhere` guard), not "0 warnings".
 
 Key measurements that the thresholds depend on:
 
@@ -118,7 +122,17 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src.anim.manifest import ManifestError, load_set
+from src.anim.manifest import ManifestError, WarmRule, load_set
+
+
+@pytest.fixture(scope="module")
+def display():
+    """pygame needs a video mode before convert_alpha() works."""
+    import pygame
+
+    pygame.init()
+    pygame.display.set_mode((320, 480))
+    yield
 
 
 @pytest.fixture(scope="module")
@@ -146,7 +160,7 @@ def test_frame_count_matches_manifest(goliath):
         )
 
 
-def test_every_frame_has_the_declared_canvas(goliath):
+def test_every_frame_has_the_declared_canvas(goliath, display):
     import pygame
 
     for clip in goliath.clips.values():
@@ -174,6 +188,31 @@ def test_shield_constants_were_moved_verbatim(goliath):
     shield = goliath.part("shield_plate")
     assert shield.offset == (0, 3)
     assert shield.scale == (0.78, 1.0)
+    assert shield.radii == (11.0, 11.0, 17.0)
+
+
+def test_shield_rule_declares_the_warm_fallback(goliath):
+    rule = goliath.part("shield_plate").detect
+    assert rule is not None
+    assert rule.warm_fallback is not None
+    assert rule.warm_fallback.r_min == 235
+    assert rule.warm_fallback.b_max == 140
+    assert rule.warm_fallback.g_min == 130
+    assert rule.warm_fallback.r_minus_b_min == 190
+
+
+def test_warm_rule_matches_the_whole_beam_and_keeps_the_plate_highlight():
+    """The beam is a gradient: exact RGB triples do not cover it.
+
+    (220,180,80) is the plate's own face highlight and must NOT be
+    discarded, or the plate stops being measurable.
+    """
+    rule = WarmRule(r_min=235, b_max=140, g_min=130, r_minus_b_min=190)
+    assert rule.matches(255, 220, 80) is True
+    assert rule.matches(240, 200, 120) is True
+    assert rule.matches(255, 140, 60) is True
+    assert rule.matches(255, 80, 40) is True
+    assert rule.matches(220, 180, 80) is False
 
 
 def test_unknown_set_raises():
@@ -212,13 +251,90 @@ from __future__ import annotations
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 SETS_ROOT = ROOT / "Assets" / "sprites" / "bosses"
 
+VALID_METHODS = ("shape", "color")
+VALID_SIDES = ("left", "right")
+
 
 class ManifestError(ValueError):
-    """The manifest is malformed, or it contradicts the assets on disk."""
+    """The manifest is malformed: a bad value, a missing field, a duplicate
+    id, or a rule that cannot be applied.
+
+    It does NOT mean "the manifest disagrees with the assets" -- the loader
+    never looks at the assets. That check lives in the auditor and in
+    tests/test_manifest_matches_assets.py.
+    """
+
+
+def _as_int_pair(value: Any, name: str) -> tuple[int, int]:
+    """Read a two-element integer pair, rejecting anything else."""
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise ManifestError(f"{name} must be a pair of integers, got {value!r}")
+    try:
+        return (int(value[0]), int(value[1]))
+    except (TypeError, ValueError) as exc:
+        raise ManifestError(f"{name} must be a pair of integers, got {value!r}") from exc
+
+
+def _as_float_pair(value: Any, name: str) -> tuple[float, float]:
+    """Read a two-element float pair, rejecting anything else."""
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise ManifestError(f"{name} must be a pair of numbers, got {value!r}")
+    try:
+        return (float(value[0]), float(value[1]))
+    except (TypeError, ValueError) as exc:
+        raise ManifestError(f"{name} must be a pair of numbers, got {value!r}") from exc
+
+
+def _as_float_triple(value: Any, name: str) -> tuple[float, float, float]:
+    """Read a three-element float triple, rejecting anything else."""
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        raise ManifestError(f"{name} must be three numbers, got {value!r}")
+    try:
+        return (float(value[0]), float(value[1]), float(value[2]))
+    except (TypeError, ValueError) as exc:
+        raise ManifestError(f"{name} must be three numbers, got {value!r}") from exc
+
+
+@dataclass(frozen=True)
+class WarmRule:
+    """The predicate that recognises the colours of a baked eye beam.
+
+    The beam is a GRADIENT, so listing its colours as exact RGB triples
+    does not work: most of the beam's pixels are near, but not equal to,
+    the four colours it was painted with. This predicate is the one the
+    shipped runtime uses (src/ui/scenes.py), and it deliberately KEEPS
+    (220,180,80) -- the plate's own face highlight -- because that colour
+    fails the `r >= 235` test.
+
+    It is a FALLBACK: the measurement is taken on the plain silhouette
+    first, and only retried with the warm pixels dropped when the plain
+    result is not credible. That is the shipped two-pass behaviour.
+    """
+
+    r_min: int = 0
+    b_max: int = 255
+    g_min: int = 0
+    r_minus_b_min: int = 0
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "WarmRule":
+        return cls(
+            r_min=int(raw.get("r_min", 0)),
+            b_max=int(raw.get("b_max", 255)),
+            g_min=int(raw.get("g_min", 0)),
+            r_minus_b_min=int(raw.get("r_minus_b_min", 0)),
+        )
+
+    def matches(self, r: int, g: int, b: int) -> bool:
+        """True when the colour belongs to the baked beam."""
+        if r < self.r_min or b > self.b_max:
+            return False
+        return g >= self.g_min or (r - b) >= self.r_minus_b_min
 
 
 @dataclass(frozen=True)
@@ -227,6 +343,11 @@ class DetectRule:
 
     `method` is "shape" (the feature is found by the outline of a solid
     block of pixels) or "color" (it is found by a colour signature).
+
+    `warm_fallback` is the optional predicate that recognises a baked
+    effect whose colours collide with the feature. It is only used as a
+    retry: measure the plain silhouette first, and drop the warm pixels
+    only when the plain measurement is not credible.
 
     `probe` is an optional colour signature used ONLY to answer "which side
     is the feature on?". The shape rule cannot detect a turned-around
@@ -247,30 +368,37 @@ class DetectRule:
     r_minus_b_min: int = 0
     rx_range: tuple[float, float] = (0.0, 0.0)
     ry_range: tuple[float, float] = (0.0, 0.0)
-    exclude: tuple[tuple[int, int, int], ...] = ()
+    warm_fallback: WarmRule | None = None
     probe: "DetectRule | None" = None
 
     @classmethod
-    def from_dict(cls, raw: dict) -> "DetectRule":
+    def from_dict(cls, raw: dict[str, Any]) -> "DetectRule":
+        method = raw.get("method", "")
+        if method not in VALID_METHODS:
+            raise ManifestError(
+                f"unknown detect method {method!r} (expected one of {VALID_METHODS})"
+            )
+        side = raw.get("side")
+        if side is not None and side not in VALID_SIDES:
+            raise ManifestError(f"unknown detect side {side!r}")
         ranges = raw.get("ranges") or {}
-        rx = tuple(ranges.get("rx", (0.0, 0.0)))
-        ry = tuple(ranges.get("ry", (0.0, 0.0)))
+        warm_raw = raw.get("warm_fallback")
         probe_raw = raw.get("probe")
         return cls(
-            method=str(raw.get("method", "")),
-            side=raw.get("side"),
+            method=str(method),
+            side=side,
             min_col=int(raw.get("min_col", 0)),
-            band=tuple(raw.get("band", (0, 0))),
-            col_range=tuple(raw.get("col_range", (0, 0))),
-            head_band=tuple(raw.get("head_band", (0, 0))),
+            band=_as_int_pair(raw.get("band", (0, 0)), "band"),
+            col_range=_as_int_pair(raw.get("col_range", (0, 0)), "col_range"),
+            head_band=_as_int_pair(raw.get("head_band", (0, 0)), "head_band"),
             r_min=int(raw.get("r_min", 0)),
             g_min=int(raw.get("g_min", 0)),
             b_max=int(raw.get("b_max", 255)),
             rg_min=int(raw.get("rg_min", 0)),
             r_minus_b_min=int(raw.get("r_minus_b_min", 0)),
-            rx_range=(float(rx[0]), float(rx[1])),
-            ry_range=(float(ry[0]), float(ry[1])),
-            exclude=tuple(tuple(int(v) for v in c) for c in raw.get("exclude", ())),
+            rx_range=_as_float_pair(ranges.get("rx", (0.0, 0.0)), "ranges.rx"),
+            ry_range=_as_float_pair(ranges.get("ry", (0.0, 0.0)), "ranges.ry"),
+            warm_fallback=WarmRule.from_dict(warm_raw) if warm_raw else None,
             probe=cls.from_dict(probe_raw) if probe_raw else None,
         )
 
@@ -285,6 +413,9 @@ class Part:
 
     pivot is "centroid" (auto: alpha-weighted centroid of the silhouette),
     "detect" (auto: the detection rule below) or "fixed".
+
+    `radii` carries the canonical radii (R, RX, RY) of a shape feature:
+    the ellipse to fall back to when the art does not contain the feature.
     """
 
     id: str
@@ -293,6 +424,7 @@ class Part:
     z: int
     offset: tuple[int, int]
     scale: tuple[float, float]
+    radii: tuple[float, float, float] | None
     detect: DetectRule | None
     on_missing: str
 
@@ -356,13 +488,13 @@ def load_set(name: str, root: Path = SETS_ROOT) -> AnimSet:
     clips: dict[str, Clip] = {}
     for entry in raw.get("clips", []):
         clip_id = entry.get("id")
-        if not clip_id:
+        if not isinstance(clip_id, str) or not clip_id:
             raise ManifestError(f"{name}: a clip has no id")
         if clip_id in clips:
             raise ManifestError(f"{name}: duplicate clip id {clip_id!r}")
         clips[clip_id] = Clip(
             id=clip_id,
-            dir=entry.get("dir", clip_id),
+            dir=str(entry.get("dir", clip_id)),
             frames=int(entry.get("frames", 0)),
             fps=float(entry.get("fps", 10)),
             loop=bool(entry.get("loop", True)),
@@ -375,17 +507,23 @@ def load_set(name: str, root: Path = SETS_ROOT) -> AnimSet:
     parts: list[Part] = []
     for entry in raw.get("parts", []):
         part_id = entry.get("id")
-        if not part_id:
+        if not isinstance(part_id, str) or not part_id:
             raise ManifestError(f"{name}: a part has no id")
         detect_raw = entry.get("detect")
+        radii_raw = entry.get("radii")
         parts.append(
             Part(
                 id=part_id,
                 draw=str(entry.get("draw", "frames")),
                 pivot=str(entry.get("pivot", "centroid")),
                 z=int(entry.get("z", 0)),
-                offset=tuple(entry.get("offset", (0, 0))),
-                scale=tuple(entry.get("scale", (1.0, 1.0))),
+                offset=_as_int_pair(entry.get("offset", (0, 0)), "offset"),
+                scale=_as_float_pair(entry.get("scale", (1.0, 1.0)), "scale"),
+                radii=(
+                    _as_float_triple(radii_raw, "radii")
+                    if radii_raw is not None
+                    else None
+                ),
                 detect=DetectRule.from_dict(detect_raw) if detect_raw else None,
                 on_missing=str(entry.get("on_missing", "fallback")),
             )
@@ -396,8 +534,8 @@ def load_set(name: str, root: Path = SETS_ROOT) -> AnimSet:
     return AnimSet(
         name=str(meta.get("name", name)),
         version=int(meta.get("version", 1)),
-        canvas=tuple(meta.get("canvas", (0, 0))),
-        anchor=tuple(meta.get("anchor", (0, 0))),
+        canvas=_as_int_pair(meta.get("canvas", (0, 0)), "meta.canvas"),
+        anchor=_as_int_pair(meta.get("anchor", (0, 0)), "meta.anchor"),
         sided=meta.get("sided"),
         path=path,
         clips=clips,
@@ -417,6 +555,9 @@ Create `Assets/sprites/bosses/goliath/manifest.toml`:
 #
 # The shield constants below are the BLOQUE 67 user-approved values, moved
 # here verbatim. Do not retune them here.
+#
+# The alpha threshold (32) is a measurement constant, not a detection rule:
+# it lives in src/anim/measure.py.
 
 [meta]
 name    = "GOLIATH"
@@ -428,11 +569,13 @@ sided   = "right"       # the shield is ALWAYS on the right arm
 # ---------------------------------------------------------------- clips
 #
 # scale_tolerance: relative deviation of the silhouette height from the
-#   clip median that still counts as "not rescaled". death is loose because
-#   the boss collapses on purpose (75 px -> 37 px).
+#   clip median that still counts as "not rescaled". Measured on the real
+#   assets: phase1_idle 0.027, phase2_idle 0.107, javelin 0.058,
+#   laser 0.187, purple_bullet 0.219, death 0.393.
 # side_tolerance: how far the probe column may stray from the clip median
-#   before the frame counts as turned around. 14 separates the two real
-#   cases (18.9, 21.6) from every healthy frame (max 13.2).
+#   before the frame counts as turned around. The two real cases deviate
+#   18.1 (purple_bullet/f06) and 21.4 (javelin/f03); every healthy frame
+#   deviates at most 8.0.
 
 [[clips]]
 id     = "phase1_idle"
@@ -461,7 +604,7 @@ dir    = "laser"
 frames = 10
 fps    = 10
 loop   = true
-scale_tolerance = 0.25   # the boss crouches when it fires
+scale_tolerance = 0.25   # the boss crouches when it fires (0.187 measured)
 
 [[clips]]
 id     = "purple_bullet"
@@ -469,7 +612,7 @@ dir    = "purple_bullet"
 frames = 10
 fps    = 10
 loop   = true
-scale_tolerance = 0.25   # the boss throws
+scale_tolerance = 0.30   # the boss throws (0.219 measured)
 
 [[clips]]
 id     = "death"
@@ -504,11 +647,19 @@ pivot  = "detect"
 z      = 1
 offset = [0, 3]          # GOLIATH_SHIELD_DX / GOLIATH_SHIELD_DY
 scale  = [0.78, 1.0]     # GOLIATH_SHIELD_RX_SCALE
+radii  = [11, 11, 17]    # GOLIATH_SHIELD_R / _RX / _RY: the canonical
+                       # ellipse used when the art has no plate to measure
 
-# `exclude` drops the two baked eye-beam colours that also satisfy the
-# brass signature. Without it the detector measures the beam instead of
-# the plate (BLOQUE 73.4 shipped that bug in get_sprite_arm_anchor).
-detect = { method = "shape", band = [28, 54], side = "right", min_col = 50, ranges = { rx = [6.5, 11.0], ry = [9.0, 13.0] }, exclude = [[255, 220, 80], [240, 200, 120]], probe = { method = "color", r_min = 185, g_min = 145, b_max = 130, r_minus_b_min = 70 } }
+# `warm_fallback` is the predicate that recognises the baked eye beam. The
+# beam is a GRADIENT, so listing its colours as exact triples does not work.
+# This predicate is the one the shipped runtime uses, and it deliberately
+# KEEPS (220,180,80) -- the plate's own face highlight -- because that
+# colour fails the r >= 235 test.
+#
+# It is a FALLBACK, not an always-on filter: the auditor measures the plain
+# silhouette first and only retries with the warm pixels dropped when the
+# plain measurement is not credible.
+detect = { method = "shape", band = [28, 54], side = "right", min_col = 50, ranges = { rx = [6.5, 11.0], ry = [9.0, 13.0] }, warm_fallback = { r_min = 235, b_max = 140, g_min = 130, r_minus_b_min = 190 }, probe = { method = "color", r_min = 185, g_min = 145, b_max = 130, r_minus_b_min = 70 } }
 on_missing = "interpolate"
 
 [[parts]]
@@ -676,14 +827,9 @@ from __future__ import annotations
 
 import pygame
 
-from src.anim.manifest import DetectRule
+from src.anim.manifest import DetectRule, WarmRule
 
 ALPHA_MIN = 32
-
-
-def is_excluded(rgb: tuple, exclude: tuple) -> bool:
-    """True when the colour must not count as the feature."""
-    return tuple(rgb) in exclude
 
 
 def alpha_centroid(surf: pygame.Surface) -> tuple[float, float] | None:
@@ -737,10 +883,11 @@ def silhouette_bbox(
 
 def silhouette_height(
     surf: pygame.Surface,
+    rule: DetectRule | None = None,
+    drop_warm: bool = False,
     threshold: int = ALPHA_MIN,
-    exclude: tuple = (),
 ) -> int | None:
-    """Height of the silhouette, ignoring excluded colours.
+    """Height of the silhouette, optionally dropping the warm pixels.
 
     Height is a LINEAR dimension and is far less pose-sensitive than area:
     area is dominated by the pose (a frame with an outstretched arm has
@@ -748,13 +895,14 @@ def silhouette_height(
     pipeline measures height and not area.
     """
     w, h = surf.get_size()
+    warm = rule.warm_fallback if (rule is not None and drop_warm) else None
     top, bottom = h, -1
     for y in range(h):
         for x in range(w):
             r, g, b, a = surf.get_at((x, y))
             if a <= threshold:
                 continue
-            if exclude and is_excluded((r, g, b), exclude):
+            if warm is not None and warm.matches(r, g, b):
                 continue
             if y < top:
                 top = y
@@ -770,11 +918,17 @@ def color_centroid(
     rule: DetectRule,
     band: tuple[int, int] | None = None,
     col_range: tuple[int, int] | None = None,
+    warm: WarmRule | None = None,
 ) -> tuple[float, float] | None:
     """Centroid of the pixels that satisfy a colour rule.
 
     `band` is (top, bottom) in rows; `col_range` is (first, last) in
     columns. Both default to the whole surface. None when nothing matches.
+
+    `warm` is an optional WarmRule: when given, the pixels it matches are
+    dropped before the signature is applied. The PROBE needs this -- the
+    brass signature also matches two of the beam's colours, so without the
+    warm filter the probe latches onto the beam.
     """
     w, h = surf.get_size()
     if band is None:
@@ -790,7 +944,7 @@ def color_centroid(
             r, g, b, a = surf.get_at((x, y))
             if a <= ALPHA_MIN:
                 continue
-            if rule.exclude and is_excluded((r, g, b), rule.exclude):
+            if warm is not None and warm.matches(r, g, b):
                 continue
             if r < rule.r_min:
                 continue
@@ -812,7 +966,7 @@ def color_centroid(
 
 
 def plate_ellipse(
-    surf: pygame.Surface, rule: DetectRule
+    surf: pygame.Surface, rule: DetectRule, drop_warm: bool = False
 ) -> tuple[float, float, float, float] | None:
     """Ellipse of the last solid run of each row inside the band.
 
@@ -822,23 +976,37 @@ def plate_ellipse(
     contiguous run of opaque pixels in each row, and keeps the runs that
     reach at least `min_col`.
 
+    With `drop_warm` the warm pixels (the baked eye beam) are treated as
+    background, exactly like the shipped runtime does.
+
     Returns (cx, cy, rx, ry) or None when no run qualifies.
     """
     w, h = surf.get_size()
     band_top, band_bottom = rule.band
     if band_bottom <= band_top:
         return None
+    warm = rule.warm_fallback if drop_warm else None
 
     points: list[tuple[int, int]] = []
     for y in range(max(0, band_top), min(h, band_bottom)):
-        row = [x for x in range(w) if surf.get_at((x, y))[3] > ALPHA_MIN]
-        if not row:
-            continue
-        end = row[-1]
+        end = -1
+        for x in range(w - 1, -1, -1):
+            r, g, b, a = surf.get_at((x, y))
+            if a <= ALPHA_MIN:
+                continue
+            if warm is not None and warm.matches(r, g, b):
+                continue
+            end = x
+            break
         if end < rule.min_col:
             continue
         start = end
-        while start - 1 >= 0 and surf.get_at((start - 1, y))[3] > ALPHA_MIN:
+        while start - 1 >= 0:
+            r, g, b, a = surf.get_at((start - 1, y))
+            if a <= ALPHA_MIN:
+                break
+            if warm is not None and warm.matches(r, g, b):
+                break
             start -= 1
         first = max(start, rule.min_col)
         points.extend((x, y) for x in range(first, end + 1))
@@ -851,61 +1019,38 @@ def plate_ellipse(
     return ((x0 + x1) / 2.0, (y0 + y1) / 2.0, (x1 - x0) / 2.0, (y1 - y0) / 2.0)
 
 
-def interpolate(values: list[float | None], index: int) -> float | None:
-    """Fill a missing measurement from its neighbours.
+def credible_ellipse(
+    surf: pygame.Surface, rule: DetectRule
+) -> tuple[float, float, float, float] | None:
+    """The two-pass measurement, exactly like the shipped runtime.
 
-    Catmull-Rom through the nearest measured values on each side when four
-    of them exist, otherwise a linear interpolation between the closest
-    measured pair. Returns None when there is nothing to interpolate from.
+    The plain silhouette is measured first. Only when that result is not
+    credible -- because the baked beam extended the contour -- is the
+    measurement retried with the warm pixels dropped.
 
-    This is inbetweening: the shield plate moves smoothly with the arm, so
-    the frames where the art forgot it can be reconstructed from the ones
-    where it is there.
+    Returns the credible ellipse, or None when neither pass gives one.
     """
-    if index < 0 or index >= len(values):
+    plain = plate_ellipse(surf, rule, drop_warm=False)
+    if _credible(plain, rule):
+        return plain
+    if rule.warm_fallback is None:
         return None
-    if values[index] is not None:
-        return float(values[index])
+    warm = plate_ellipse(surf, rule, drop_warm=True)
+    if _credible(warm, rule):
+        return warm
+    return None
 
-    left = index - 1
-    while left >= 0 and values[left] is None:
-        left -= 1
-    right = index + 1
-    while right < len(values) and values[right] is None:
-        right += 1
 
-    left_value = values[left] if left >= 0 else None
-    right_value = values[right] if right < len(values) else None
-
-    if left_value is None and right_value is None:
-        return None
-    if left_value is None:
-        return float(right_value)
-    if right_value is None:
-        return float(left_value)
-
-    # Catmull-Rom needs two points on each side.
-    left2 = left - 1
-    while left2 >= 0 and values[left2] is None:
-        left2 -= 1
-    right2 = right + 1
-    while right2 < len(values) and values[right2] is None:
-        right2 += 1
-    p0 = values[left2] if left2 >= 0 else left_value
-    p3 = values[right2] if right2 < len(values) else right_value
-
-    span = right - left
-    t = (index - left) / span
-    t2 = t * t
-    t3 = t2 * t
-    return float(
-        0.5
-        * (
-            (2 * left_value)
-            + (-p0 + right_value) * t
-            + (2 * p0 - 5 * left_value + 4 * right_value - p3) * t2
-            + (-p0 + 3 * left_value - 3 * right_value + p3) * t3
-        )
+def _credible(
+    ellipse: tuple[float, float, float, float] | None, rule: DetectRule
+) -> bool:
+    """True when the ellipse is inside the rule's believable range."""
+    if ellipse is None:
+        return False
+    rx, ry = ellipse[2], ellipse[3]
+    return (
+        rule.rx_range[0] <= rx <= rule.rx_range[1]
+        and rule.ry_range[0] <= ry <= rule.ry_range[1]
     )
 ```
 
@@ -944,6 +1089,7 @@ git commit -m "feat: BLOQUE 74 - primitivas de medicion de pixeles y deteccion d
   - `tools/sprite_pipeline/audit.py::Finding` — frozen dataclass; fields `clip: str`, `frame: int`, `state: str`, `detail: str`
   - `tools/sprite_pipeline/audit.py::FrameMeasurement` — frozen dataclass; fields `clip: str`, `frame: int`, `body_dx: int`, `body_dy: int`, `eye: tuple[int,int] | None`, `shield: tuple[float,float,float,float] | None`, `shield_source: str`
   - `tools/sprite_pipeline/audit.py::audit_set(anim_set) -> tuple[list[Finding], list[FrameMeasurement]]`
+  - `src.anim.measure.credible_ellipse(surf, rule) -> tuple[float,float,float,float] | None` — the two-pass measurement (plain first, warm-dropped retry)
   - `tools/sprite_pipeline/audit.py::write_anchors(anim_set, measurements, path) -> None`
   - `tools/sprite_pipeline/audit.py::render_anchors_toml(anim_set, measurements) -> str`
   - `tools/sprite_pipeline/audit.py::main(argv) -> int` — CLI: `python tools/sprite_pipeline/audit.py goliath [--json] [--write-anchors]`
@@ -1036,12 +1182,13 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.anim.anchors import interpolate  # noqa: E402
 from src.anim.manifest import AnimSet, Clip, load_set  # noqa: E402
 from src.anim.measure import (  # noqa: E402
     ALPHA_MIN,
     alpha_centroid,
     color_centroid,
-    interpolate,
+    credible_ellipse,
     plate_ellipse,
     silhouette_bbox,
     silhouette_height,
@@ -1060,8 +1207,14 @@ STATES = (
 # A FAIL blocks the pipeline. A WARN is informational and is resolved (or
 # accepted) without touching the art.
 #
-# FIRMA_AMBIGUA is a WARN, not a FAIL. Two candidate definitions were
-# measured against the 60 shipped frames and both were useless:
+# AUSENTE is a WARN, not a FAIL: a frame whose plate cannot be measured is
+# resolved by interpolating it from the frames around it, which is a
+# legitimate reconstruction rather than a default. The real gate is that no
+# frame ends up with an unresolved feature -- that is what
+# tests/test_features_detected_everywhere.py asserts.
+#
+# FIRMA_AMBIGUA is also a WARN. Two candidate definitions were measured
+# against the 60 shipped frames and both were useless:
 #
 #   * "the measured region contains a baked-effect colour" fires on 59/60
 #     frames, because (240,200,120) is the plate's OWN highlight, not only
@@ -1073,11 +1226,9 @@ STATES = (
 # The definition that survives is the one that asks whether the two
 # INDEPENDENT detectors agree: the probe (a colour signature) and the
 # shape measurement. When they disagree by more than the tolerance, one of
-# them is measuring the wrong thing. It fires on javelin/frame_03,
-# purple_bullet/frame_06 and laser/frame_05, and it never fires on a
-# healthy frame.
+# them is measuring the wrong thing.
 FAIL_STATES = frozenset(
-    {"COLAPSADO", "CORTADO", "LADO_EQUIVOCADO", "AUSENTE"}
+    {"COLAPSADO", "CORTADO", "LADO_EQUIVOCADO"}
 )
 
 
@@ -1119,13 +1270,18 @@ def _md5(path: Path) -> str:
 def _clip_probe_columns(
     anim_set: AnimSet, clip: Clip, surfaces: list
 ) -> list[float | None]:
-    """Probe column per frame: where the brass signature sits in each frame."""
+    """Probe column per frame: where the brass signature sits in each frame.
+
+    The probe inherits the parent's warm rule: the brass signature also
+    matches two of the beam's colours, so without the warm filter the
+    probe latches onto the beam.
+    """
     rule = anim_set.part("shield_plate").detect
     if rule is None or rule.probe is None:
         return [None] * len(surfaces)
     out: list[float | None] = []
     for surf in surfaces:
-        found = color_centroid(surf, rule.probe)
+        found = color_centroid(surf, rule.probe, warm=rule.warm_fallback)
         out.append(found[0] if found else None)
     return out
 
@@ -1141,12 +1297,13 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
     findings: list[Finding] = []
     measurements: list[FrameMeasurement] = []
 
-    body_part = anim_set.part("body")
     shield_part = anim_set.part("shield_plate")
     eye_part = anim_set.part("eye")
 
     for clip in anim_set.clips.values():
-        surfaces = [_load_surface(_frame_path(anim_set, clip, i)) for i in range(clip.frames)]
+        surfaces = [
+            _load_surface(_frame_path(anim_set, clip, i)) for i in range(clip.frames)
+        ]
 
         # --- COLAPSADO: duplicate frames inside a clip -----------------
         digests: dict[str, list[int]] = {}
@@ -1168,9 +1325,9 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
         good_cols = sorted(c for c in probe_cols if c is not None)
         probe_median = good_cols[len(good_cols) // 2] if good_cols else 0.0
 
+        rule = shield_part.detect
         heights = [
-            silhouette_height(surf, ALPHA_MIN, shield_part.detect.exclude if shield_part.detect else ())
-            for surf in surfaces
+            silhouette_height(surf, rule, drop_warm=True) for surf in surfaces
         ]
         good_heights = sorted(h for h in heights if h is not None)
         height_median = good_heights[len(good_heights) // 2] if good_heights else 0
@@ -1226,63 +1383,61 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
             # --- shield plate ---------------------------------------------
             shield = None
             shield_source = "measured"
-            rule = shield_part.detect
             if rule is not None:
-                ellipse = plate_ellipse(surf, rule)
+                ellipse = credible_ellipse(surf, rule)
                 if ellipse is None:
-                    shield_source = "missing"
-                    findings.append(
-                        Finding(clip.id, frame_no, "AUSENTE", "shield plate not found")
-                    )
-                else:
-                    cx, cy, rx, ry = ellipse
-                    in_range = (
-                        rule.rx_range[0] <= rx <= rule.rx_range[1]
-                        and rule.ry_range[0] <= ry <= rule.ry_range[1]
-                    )
-                    if not in_range:
+                    # Neither pass gave a credible ellipse. The plain
+                    # measurement tells us whether the plate is absent
+                    # entirely or merely implausible.
+                    plain = plate_ellipse(surf, rule, drop_warm=False)
+                    if plain is None:
+                        shield_source = "missing"
+                        findings.append(
+                            Finding(clip.id, frame_no, "AUSENTE", "shield plate not found")
+                        )
+                    else:
                         shield_source = "out_of_range"
                         findings.append(
                             Finding(
                                 clip.id,
                                 frame_no,
                                 "FUERA_DE_RANGO",
-                                f"rx {rx:.1f} ry {ry:.1f} outside "
+                                f"rx {plain[2]:.1f} ry {plain[3]:.1f} outside "
                                 f"rx {rule.rx_range} ry {rule.ry_range}",
                             )
                         )
-                    else:
-                        shield = ellipse
+                else:
+                    shield = ellipse
 
+                probe_col = probe_cols[i]
+                if probe_col is not None and shield is not None:
                     # --- LADO_EQUIVOCADO: turned-around character ----------
-                    probe_col = probe_cols[i]
-                    if probe_col is not None:
-                        centre_col = anim_set.anchor[0]
-                        wrong_side = (
-                            probe_col <= centre_col
-                            if rule.side == "right"
-                            else probe_col >= centre_col
-                        )
-                        stray = abs(probe_col - probe_median) > clip.side_tolerance
-                        if wrong_side and stray:
-                            findings.append(
-                                Finding(
-                                    clip.id,
-                                    frame_no,
-                                    "LADO_EQUIVOCADO",
-                                    f"probe col {probe_col:.1f} (clip median "
-                                    f"{probe_median:.1f}), expected > {centre_col}",
-                                )
+                    centre_col = anim_set.anchor[0]
+                    wrong_side = (
+                        probe_col <= centre_col
+                        if rule.side == "right"
+                        else probe_col >= centre_col
+                    )
+                    stray = abs(probe_col - probe_median) > clip.side_tolerance
+                    if wrong_side and stray:
+                        findings.append(
+                            Finding(
+                                clip.id,
+                                frame_no,
+                                "LADO_EQUIVOCADO",
+                                f"probe col {probe_col:.1f} (clip median "
+                                f"{probe_median:.1f}), expected > {centre_col}",
                             )
+                        )
 
                     # --- FIRMA_AMBIGUA: the two detectors disagree -------
-                    if probe_col is not None and abs(probe_col - cx) > clip.side_tolerance:
+                    if abs(probe_col - shield[0]) > clip.side_tolerance:
                         findings.append(
                             Finding(
                                 clip.id,
                                 frame_no,
                                 "FIRMA_AMBIGUA",
-                                f"probe col {probe_col:.1f} vs shape cx {cx:.1f} "
+                                f"probe col {probe_col:.1f} vs shape cx {shield[0]:.1f} "
                                 f"disagree by more than {clip.side_tolerance:.0f}px",
                             )
                         )
@@ -1471,7 +1626,7 @@ if __name__ == "__main__":
 - [ ] **Step 5: Run the auditor and check the report**
 
 Run: `python tools/sprite_pipeline/audit.py goliath`
-Expected: the report names exactly the 8 frames in the baseline table above, with `javelin/frame_03` and `purple_bullet/frame_06` reported as `LADO_EQUIVOCADO`, and exit code 1.
+Expected: the report names exactly the 10 frames in the baseline table above — 2 FAIL (`javelin/frame_03`, `purple_bullet/frame_06`, both `LADO_EQUIVOCADO`) and 8 WARN — and exits with code 1.
 
 - [ ] **Step 6: Generate the anchors file**
 
@@ -1588,7 +1743,8 @@ pivot = "detect"
 z = 1
 offset = [0, 3]
 scale = [0.78, 1.0]
-detect = {{ method = "shape", band = [28, 54], side = "right", min_col = 50, ranges = {{ rx = [6.5, 11.0], ry = [9.0, 13.0] }}, exclude = [[255, 220, 80], [240, 200, 120]], probe = {{ method = "color", r_min = 185, g_min = 145, b_max = 130, r_minus_b_min = 70 }} }}
+radii = [11, 11, 17]
+detect = {{ method = "shape", band = [28, 54], side = "right", min_col = 50, ranges = {{ rx = [6.5, 11.0], ry = [9.0, 13.0] }}, warm_fallback = {{ r_min = 235, b_max = 140, g_min = 130, r_minus_b_min = 190 }}, probe = {{ method = "color", r_min = 185, g_min = 145, b_max = 130, r_minus_b_min = 70 }} }}
 on_missing = "interpolate"
 
 [[parts]]

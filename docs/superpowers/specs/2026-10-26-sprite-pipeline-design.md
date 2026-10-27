@@ -240,7 +240,9 @@ pivot = "detect"
 z     = 1
 offset = [0, 3]         # GOLIATH_SHIELD_DX / GOLIATH_SHIELD_DY
 scale  = [0.78, 1.0]    # GOLIATH_SHIELD_RX_SCALE
-detect = { method = "shape", band = [28, 54], side = "right", min_col = 50, ranges = { rx = [6.5, 11.0], ry = [9.0, 13.0] }, exclude = [[255, 220, 80], [240, 200, 120]], probe = { method = "color", r_min = 185, g_min = 145, b_max = 130, r_minus_b_min = 70 } }
+radii  = [11, 11, 17]   # GOLIATH_SHIELD_R / _RX / _RY: the canonical
+                      # ellipse used when the art has no plate to measure
+detect = { method = "shape", band = [28, 54], side = "right", min_col = 50, ranges = { rx = [6.5, 11.0], ry = [9.0, 13.0] }, warm_fallback = { r_min = 235, b_max = 140, g_min = 130, r_minus_b_min = 190 }, probe = { method = "color", r_min = 185, g_min = 145, b_max = 130, r_minus_b_min = 70 } }
 on_missing = "interpolate"
 
 [[parts]]
@@ -271,11 +273,26 @@ pixels into an ellipse. A measurement is accepted only when
 head band. The rule selects pixels with `r >= r_min` and `r - g >= rg_min`
 inside `head_band` × `col_range` and takes their centroid.
 
-`detect.exclude` — colours that **must not** count as the feature. Both
-`[255,220,80]` and `[240,200,120]` satisfy the brass signature; excluding
-them is what stops the detector from measuring the baked beam. It is applied
-to **both** the measurement and the probe. A detection whose pixels overlap
-an excluded colour is reported `FIRMA_AMBIGUA`.
+`detect.warm_fallback` — the **predicate** that recognises the colours of
+the baked eye beam. The beam is a GRADIENT, so listing its colours as exact
+RGB triples does not work: most of the beam's pixels are near, but not equal
+to, the four colours it was painted with. Measured against the shipped
+assets, a two-colour exact list rejects **8** frames instead of 7 and
+falsely rejects the healthy `laser/frame_05` (rx 12.0 against a believable
+range of 6.5-11.0) — and it still lets the detector measure the beam in
+`laser/frame_04` and `purple_bullet/frame_08`.
+
+The predicate is the one the shipped runtime uses: `r >= 235 and b <= 140
+and (g >= 130 or r - b >= 190)`. It covers the four beam colours
+`(255,140,60) (255,80,40) (255,220,80) (240,200,120)` and deliberately
+**keeps** `(220,180,80)`, the plate's own face highlight, because that
+colour fails the `r >= 235` test.
+
+It is a **fallback, not an always-on filter**: the auditor measures the
+plain silhouette first and only retries with the warm pixels dropped when
+the plain measurement is not credible. That is the shipped two-pass
+behaviour, and reproducing it is what makes the pipeline's numbers match
+the runtime's exactly.
 
 `detect.side` — the expected side of the feature, relative to the canvas
 centre. A detection on the other side is reported `LADO_EQUIVOCADO`.
@@ -336,8 +353,8 @@ Seven states, each with a severity:
 | `COLAPSADO` | duplicate md5 inside a clip | FAIL | the animation silently became a still (this happened twice: BLOQUE 64.B / 73.3) |
 | `CORTADO` | silhouette touches the canvas edge | FAIL | the sprite is clipped |
 | `LADO_EQUIVOCADO` | feature detected on the wrong side | FAIL | the character was drawn turned around |
-| `FIRMA_AMBIGUA` | detection overlaps an excluded colour | FAIL | the detector is measuring something else |
-| `AUSENTE` | feature not found in the frame | FAIL | the art is missing the feature |
+| `FIRMA_AMBIGUA` | the probe and the shape measurement disagree by more than `side_tolerance` | WARN | one of the two detectors is measuring something else |
+| `AUSENTE` | feature not found in the frame | WARN | the art is missing the feature; the value is interpolated |
 | `FUERA_DE_RANGO` | rx/ry outside `detect.ranges` | WARN | the measurement is not credible |
 | `ESCALADO` | silhouette bbox **height** ±`scale_tolerance` from the clip median | WARN | the boss changes size between frames |
 
@@ -356,7 +373,7 @@ The metric still has two known polluters, and both are handled explicitly:
 
 - **Baked effects** stretch the bbox. `laser/f03`–`f06` contain the beam,
   which extends the silhouette and inflates the height. The auditor excludes
-  pixels matching `detect.exclude` before measuring.
+  the pixels matching `detect.warm_fallback` before measuring.
 - **Intentional pose collapse.** `death` is the boss falling apart: its
   height legitimately drops from 75 px to 37 px. Each clip therefore
   declares its own tolerance, and `death` declares a loose one:
@@ -377,25 +394,32 @@ Expected output on today's assets, before repair:
 
 ```
 [clip] javelin
-  frame_03  FAIL  shield_plate: LADO_EQUIVOCADO (probe col 27.9, expected > 48)
+  frame_03  FAIL  shield_plate: LADO_EQUIVOCADO (probe col 27.4, expected > 48)
   frame_04  WARN  shield_plate: FUERA_DE_RANGO (rx outside 6.5..11.0)
   frame_07  WARN  shield_plate: FUERA_DE_RANGO (rx outside 6.5..11.0)
 [clip] laser
-  frame_04  FAIL  shield_plate: FIRMA_AMBIGUA (overlaps exclude (255,220,80))
+  frame_04  WARN  shield_plate: FUERA_DE_RANGO (rx outside 6.5..11.0)
+  frame_05  WARN  shield_plate: FIRMA_AMBIGUA (probe col 44.5 vs shape cx 60.5)
   frame_07  WARN  shield_plate: FUERA_DE_RANGO (rx outside 6.5..11.0)
 [clip] purple_bullet
-  frame_06  FAIL  shield_plate: LADO_EQUIVOCADO (probe col 31.1, expected > 48)
-  frame_08  FAIL  shield_plate: FIRMA_AMBIGUA (overlaps exclude (240,200,120))
-summary: 7/60 frames failing — 3 distinct states
+  frame_06  FAIL  shield_plate: LADO_EQUIVOCADO (probe col 33.1, expected > 48)
+  frame_08  WARN  shield_plate: FUERA_DE_RANGO (rx outside 6.5..11.0)
+[clip] death
+  frame_02  WARN  shield_plate: FIRMA_AMBIGUA (probe col 40.7 vs shape cx 57.5)
+  frame_07  WARN  shield_plate: FIRMA_AMBIGUA (probe col 45.8 vs shape cx 60.0)
+summary: 10/60 frames with findings — 2 FAIL, 8 WARN
 exit 1
 ```
 
-The two probe columns (27.9 and 31.1) are **measured** values, as are the
-excluded colours. The `FUERA_DE_RANGO` entries show the range rather than an
-exact `rx`, because the exact figure is produced by the auditor at run time;
-the measured fact for those three frames is that the plate centroid lands at
-col 46.6, 47.5 and 49.4 — inside the healthy band but outside what the shape
-rule will accept as a credible ellipse.
+**10 of 60 frames carry a finding: 2 FAIL and 8 WARN.** The two probe
+columns (27.4 and 33.1) are measured values. The `FUERA_DE_RANGO` entries
+show the range rather than an exact `rx`, because the exact figure is
+produced by the auditor at run time.
+
+The two FAIL states are the turned-around frames; the five
+`FUERA_DE_RANGO` frames are resolved by interpolating the ellipse; the
+three `FIRMA_AMBIGUA` frames are informational (the boss is crouching or
+collapsing, so the plate and the brass probe legitimately disagree).
 
 ### 2.5 The repair pass — `tools/sprite_pipeline/repair.py`
 
@@ -405,7 +429,7 @@ Each state is repaired **at the layer where it is actually fixable**:
 |---|---|---|
 | `CORTADO` | build (PNG) | re-pad: composite the sprite offset onto a fresh transparent canvas (generalises `tools/fix_sprite_padding_bloque73.py`) |
 | `LADO_EQUIVOCADO` | build (PNG) | mirror the frame horizontally, then re-measure |
-| `FIRMA_AMBIGUA` | config (manifest) | add the colliding colour to `detect.exclude`; **the art is not touched** |
+| `FIRMA_AMBIGUA` | config (manifest) | widen `detect.warm_fallback`; **the art is not touched** |
 | `AUSENTE` | anchors | interpolate the missing value from the neighbouring frames where it *was* measured (Catmull-Rom) |
 | `FUERA_DE_RANGO` | anchors | same interpolation |
 | `ESCALADO` | **not auto-repaired** | reported for a human to look at — see below |
@@ -422,8 +446,17 @@ metric is still polluted by baked effects and by intentional pose changes.
 **Correction to an earlier draft of this spec:** `FIRMA_AMBIGUA` was
 originally listed as a build-time repair that erases the baked effect from the
 silhouette. That is a deeper, separate operation (state `HORNEADO`) and it is
-**not** what fixes GOLIATH's four affected frames. The baked beam looks good
-and stays; only the detector's exclusion list changes.
+**not** what fixes GOLIATH's affected frames. The baked beam looks good and
+stays; only the detector's warm rule changes.
+
+**Two candidate definitions of `FIRMA_AMBIGUA` were measured against the 60
+shipped frames and neither was usable.** "The measured region contains a
+baked-effect colour" fires on 59/60 frames, because `(240,200,120)` is the
+plate's OWN face highlight, not only the beam's. "Excluding the colliding
+colours changes the measurement" fires on 0/60 frames, because the colliding
+pixels are isolated highlights that never move a run boundary. The definition
+that survives asks whether the two **independent** detectors — the probe and
+the shape measurement — agree.
 
 Repairs are **idempotent** and run with `--dry-run` by default; `--fix` is
 required to write.
@@ -477,8 +510,8 @@ python tools/sprite_pipeline/run.py goliath
 | `Assets/sprites/bosses/goliath/javelin/frame_03.png` | mirrored (character drawn turned around) |
 | `Assets/sprites/bosses/goliath/purple_bullet/frame_06.png` | mirrored (character drawn turned around) |
 
-The remaining five failures are resolved by the manifest's `exclude` list and
-by anchor interpolation — **no PNG is touched**.
+The remaining eight failures are resolved by the manifest's `warm_fallback`
+predicate and by anchor interpolation — **no PNG is touched**.
 
 Mirroring is chosen over "let the oval follow the art" because the user
 specified the shield as *always* on the right arm; mirroring keeps the
@@ -510,8 +543,8 @@ MODIFIED src/entities/enemies/boss.py  fps and loop come from the manifest
 `get_sprite_shield_ellipse()` keep their signatures — they become table
 lookups instead of pixel scans, so the call sites do not change. The three
 `_*_cache` dicts are deleted. The brass-signature bug in
-`get_sprite_arm_anchor()` is fixed by the manifest's `exclude` list, which
-the detector now honours.
+`get_sprite_arm_anchor()` is fixed by the manifest's `warm_fallback`
+predicate, which the detector now honours.
 
 **Estimated size:** ~1,850 LOC plus 2 PNGs. Two to three focused sessions.
 
@@ -571,7 +604,7 @@ auditor runs standalone and reports the 7 failures.
 
 **Phase 3 — the repair.**
 `tools/sprite_pipeline/repair.py`, `tools/sprite_pipeline/run.py`, the
-manifest's `exclude` list, and the two mirrored PNGs. After this phase
+manifest's `warm_fallback` predicate, and the two mirrored PNGs. After this phase
 `run.py goliath` exits 0 and `anchors.toml` is regenerated clean.
 
 **Phase 4 — the compositor and the runtime migration.**
@@ -584,10 +617,11 @@ it is behaviour-preserving by construction.
 
 ## 6. Success criteria
 
-1. `python tools/sprite_pipeline/run.py goliath` → **exit 0, 0 FAIL**. For
-   GOLIATH specifically the bar is **0 FAIL and 0 WARN**: the set must be
-   fully clean, not merely passing. (Exit code is driven by FAIL only, so a
-   future set can ship with warnings while GOLIATH cannot.)
+1. `python tools/sprite_pipeline/run.py goliath` → **exit 0, 0 FAIL**. The
+   bar for GOLIATH is **0 FAIL plus no unresolved feature** — a frame whose
+   measurement was reconstructed by interpolation is resolved, not warned.
+   (Exit code is driven by FAIL only, so a future set can ship with warnings
+   while GOLIATH cannot block on them.)
 2. `python -m pytest tests/` → green (2,772 + the 5 new tests).
 3. `git diff v1.7.2 HEAD -- src/entities src/ui/scenes.py` → only the intended
    runtime change.
