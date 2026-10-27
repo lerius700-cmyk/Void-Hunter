@@ -13,6 +13,7 @@ los números reales de la suite.
 |---------|------|-------------|
 | `HANDOFF-ASTEROIDES-2026-09-09.md` | Handoff | Cierre del rework de asteroides (BLOQUE 70 → v1.3.0) |
 | `HANDOFF-GOLIATH-PORT-V140-2026-10-23.md` | Handoff | Port de GOLIATH + menú post-cinematica a la línea v1.4.0 (BLOQUE 67 → v1.7.2). Incluye los 3 bugs de packaging y el revert del sistema de armas |
+| `HANDOFF-SPRITE-PIPELINE-2026-10-27.md` | Handoff | BLOQUE 74: pipeline de sprites (manifiesto + auditor + anclas horneadas). Incluye qué es el pipeline, los 7 estados, los truth anchors y lo que NO está hecho (el `.exe` no se reconstruyó, el camino congelado no se ejercitó) |
 
 ---
 

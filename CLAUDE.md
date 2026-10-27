@@ -2,15 +2,15 @@
 
 **Perfil SF/SM:** Lite
 **Schema target:** `.synapse` 2.2.0 (acepta 2.1.0 legacy)
-**Versión actual:** v1.7.2 (BLOQUE 67 — línea v1.4.0 + GOLIATH + menú post-cinematica)
+**Versión actual:** v1.7.2 (BLOQUE 74 — pipeline de sprites; línea v1.4.0 + GOLIATH + menú post-cinematica)
 **Tipo:** CODE (Python + pygame 2.6, stdlib only + numpy para lowpass audio)
-**Test count:** 2,772 pass + 8 fail pre-existentes + 7 skipped (2,787 total)
+**Test count:** 2,880 pass + 1 fail pre-existente + 6 skipped (2,887 total)
 
 ---
 
 ## ¿Qué ES / Qué NO ES
 
-**ES:** un shmup vertical 8-bit pixelart portrait 320×480 a 120 FPS, con 4 bosses (GOLIATH / HYDRA / PHANTOM / NEMESIS), modo roguelike con seed/RNG, formación Star Fox 64 + bezier paths, 24 SFX procedurales, 2 BGMs streaming, pausa con lowpass, selector de 5 naves × 5 animaciones × 8 frames, 4 videos cinemáticos (2 standalone 9:16 + 2 in-game), galería in-game de spritesheets + videos, **menú post-cinematica** (NEW GAME / BOSS TIME / BACKGROUND), **GOLIATH con el escudo medido sobre su placa** (brazo derecho, óvalo invisible, capa de calor + parpadeo, láser naranja grueso) y **el fondo morado del "Asteroid Approach" de v1.4.0** (6 tiles en `Assets/background/tiles/act1/`). ~27.7K LOC en 86 archivos Python + ~22.8K LOC de tests en 96 archivos.
+**ES:** un shmup vertical 8-bit pixelart portrait 320×480 a 120 FPS, con 4 bosses (GOLIATH / HYDRA / PHANTOM / NEMESIS), modo roguelike con seed/RNG, formación Star Fox 64 + bezier paths, 24 SFX procedurales, 2 BGMs streaming, pausa con lowpass, selector de 5 naves × 5 animaciones × 8 frames, 4 videos cinemáticos (2 standalone 9:16 + 2 in-game), galería in-game de spritesheets + videos, **menú post-cinematica** (NEW GAME / BOSS TIME / BACKGROUND), **GOLIATH con el escudo medido sobre su placa** (brazo derecho, óvalo invisible, capa de calor + parpadeo, láser naranja grueso), **el fondo morado del "Asteroid Approach" de v1.4.0** (6 tiles en `Assets/background/tiles/act1/`) y un **pipeline de sprites** (BLOQUE 74) que hornea las anclas de GOLIATH en build time: `src/anim/` (manifiesto + medición + compositor) y `tools/sprite_pipeline/` (auditor + reparación). ~28.9K LOC en 92 archivos Python + ~25.3K LOC de tests en 104 archivos de test.
 
 **NO ES:** un MMO, un roguelike 2D con vista top-down, un juego online, un servicio con backend, un proyecto que requiere Truth Anchors de runtime (puertos localhost, ss, pgrep). Es una app standalone pygame que se compila con PyInstaller.
 
@@ -24,10 +24,10 @@
 L1  CLAUDE.md            ← identidad + reglas globales (ESTE ARCHIVO)
 L1.5 CONTEXT.md          ← Switch de contexto (ADUANA + silos + Token Budget)
 
-L2  src/                 ← código fuente (27.7K LOC, 86 archivos, 14 sistemas)
-L2  tests/               ← 2,787 tests pytest (96 archivos)
+L2  src/                 ← código fuente (28.9K LOC, 92 archivos, 15 sistemas)
+L2  tests/               ← 2,887 tests pytest (104 archivos de test)
 L2  Assets/              ← binarios (sprites, audio, galaxy panels, tiles, BGM, video)
-L2  tools/               ← scripts de captura / debug / generación (incl. video_gen/, tiles/)
+L2  tools/               ← scripts de captura / debug / generación (incl. video_gen/, tiles/, sprite_pipeline/)
 L2  build.spec           ← PyInstaller onefile
 L2  main.py              ← entry point
 
@@ -56,6 +56,9 @@ L3  docs/references/     ← assets de referencia (sprites, paneles)
 | Sprite sheets | `Assets/sprites/player_ships/ship_*_spritesheet.png` | No editar a mano — regenerar con `tools/build_sprite_sheet.py` | R (REFERENCE) |
 | Audio dev | `tools/*.{py,ps1,bat}` | Captura / debug / generación, no productiva | R (REFERENCE) |
 | Video gen | `tools/video_gen/**` | Genera assets de video. No es productiva del juego | R (REFERENCE) |
+| Manifiesto de animación | `Assets/sprites/bosses/*/manifest.toml` | Se edita **a mano**: es la spec del set (canvas, clips, tolerancias, reglas de detección). Lo valida `src/anim/manifest.py` | R (REFERENCE) |
+| Anclas horneadas | `Assets/sprites/bosses/*/anchors.toml` | **Generado** por `python tools/sprite_pipeline/run.py <set> --fix`. NUNCA editar a mano | R (REFERENCE) |
+| Pipeline de sprites | `tools/sprite_pipeline/**` | Auditor + reparación + generación de `anchors.toml`. Dev-only, no es productiva del juego | R (REFERENCE) |
 | Builds | `dist/`, `build/` | Output PyInstaller, gitignored | S (SKIP) |
 | Release artifacts | `release/` | Output deliverables (videos standalone, etc.), gitignored | S (SKIP) |
 | Caché | `.mypy_cache/`, `.ruff_cache/`, `.pytest_cache/`, `__pycache__/` | Gitignored | S (SKIP) |
@@ -73,6 +76,8 @@ L3  docs/references/     ← assets de referencia (sprites, paneles)
 9. **El óvalo del escudo es INVISIBLE**: no se dibujan el cuerpo, el borde ni el remache. Solo la **capa de calor** (roja al primer impacto, se calienta al cargar) y la **capa de impacto** (parpadeo de 0.30 s por disparo). `GOLIATH_SHIELD_HIT_FLASH_S = 0.30`.
 10. **`build.spec` bundlea la raíz de `Assets/` con un glob**, no con una lista a mano. Un asset suelto en la raíz (ej. `imagen fondo del juego.jpg`, el fondo pintado del boss fight) se quedaba afuera del `.exe` y hacía que la pelea se viera **negra con estrellas**. Cubierto por `tests/test_build_spec_assets.py`.
 11. **Los tiles del "Asteroid Approach"** (`Assets/background/tiles/act1/`, 6 PNG, 78 KB) están commiteados: nunca se commitearon y por eso v1.4.0 crasheaba al arrancar. No regenerar con AI — son los originales, pintados a mano.
+12. **El runtime NO mide el arte (BLOQUE 74).** La medición de las features de cada frame (ojo, placa del escudo, silueta) se hace **en build time** y se hornea en `Assets/sprites/bosses/<set>/anchors.toml`; el juego solo lee esa tabla. El manifiesto (`manifest.toml`) es la **spec** del set y se edita a mano: canvas, clips (id ↔ dir), fps, tolerancias y reglas de detección. `src/anim/` no importa `tools/`; `tools/sprite_pipeline/` sí importa `src/anim/`.
+13. **Un solo umbral para el re-pad.** `CORTADO_MARGIN` (`src/anim/measure.py`) es el margen que el auditor marca por debajo y el que la reparación persigue: dos umbrales distintos dejaban frames que el auditor marcaba y la reparación no podía arreglar (para siempre).
 
 ---
 
@@ -120,27 +125,30 @@ void-hunter/
 ├── requirements-dev.txt        ← dev/test deps
 ├── pyproject.toml              ← tool config (ruff, mypy, pytest)
 │
-├── src/                        ← L2 código (86 archivos, 27.7K LOC)
+├── src/                        ← L2 código (92 archivos, 28.9K LOC)
 │   ├── core/                   ← game loop, settings, scene_manager
 │   ├── audio/                  ← synth + music (BLOQUE 58.14)
 │   ├── systems/                ← parallax, wave_manager, bezier, tile_manager, etc.
 │   ├── entities/               ← player, enemy, boss, projectile
 │   ├── ui/                     ← scenes, gameplay_runtime, HUD, video_player
+│   ├── anim/                   ← manifiesto + medición + compositor de animaciones (BLOQUE 74)
 │   ├── movement/               ← formation, paths
 │   ├── roguelike/              ← seed, level_gen, form_gen, replay
 │   └── utils/                  ← palette, easing
 │
-├── tests/                      ← L2 (2,787 tests, BLOQUE 1-67)
+├── tests/                      ← L2 (2,887 tests, BLOQUE 1-74)
 │
 ├── Assets/                     ← L2 binarios
 │   ├── background/             ← galaxy_panel_*.png, galaxy_sprite_*.png
 │   │   └── tiles/act1/         ← 6 tiles del "Asteroid Approach" (BLOQUE 64)
 │   ├── sprites/                ← ship sprites, enemy sprites, GOLIATH frames, VFX
+│   │   └── bosses/goliath/     ← 60 frames + manifest.toml (spec) + anchors.toml (horneado)
 │   ├── *.wav                   ← BGM + voice clips
 │   └── keep kept - Lerius - soundtrack gameplay_lp600.wav
 │
 ├── tools/                      ← L2 dev-only (no productiva)
 │   ├── capture/                ← scripts de screenshot
+│   ├── sprite_pipeline/        ← pipeline de sprites: audit.py, run.py, repair.py (BLOQUE 74)
 │   ├── tiles/                  ← pipeline del fondo Asteroid Approach (generate_tiles.py + ai_gen/)
 │   ├── debug_*.py              ← debug tools
 │   ├── test_*.py               ← ad-hoc tests
@@ -203,32 +211,37 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 
 | Métrica | Valor | Fuente (Truth Anchor) |
 |---------|-------|------------------------|
-| Líneas de código (src/) | 27,694 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
-| Archivos Python (src/) | 86 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
-| Tests (tests/) | 2,772 pass + 8 fail pre-existentes + 7 skipped | `python -m pytest tests/ --tb=no` |
-| LOC tests/ | 22,773 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
+| Líneas de código (src/) | 28,929 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
+| Archivos Python (src/) | 92 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
+| Tests (tests/) | 2,880 pass + 1 fail pre-existente + 6 skipped (2,887 total) | `python -m pytest tests/ --tb=no` |
+| LOC tests/ | 25,340 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
 | Silos SF+SM | 9 (Lite) | `Get-ChildItem docs -Directory \| Measure-Object` |
 | Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
-| Versión | v1.7.2 (BLOQUE 67) | `git log --oneline -1` |
-| Rama | bloquec-67-goliath-port | `git branch --show-current` |
+| Versión | v1.7.2 (BLOQUE 74 **no** bumpea la versión: la release es posterior) | `git log --oneline -1` |
+| Rama | bloquec-74-sprite-pipeline | `git branch --show-current` |
 | Remote | github.com/lerius700-cmyk/Void-Hunter | `git remote -v` |
-| Build .exe | `dist/void-hunter.exe` ~278 MB (onefile) | `Get-Item dist/void-hunter.exe` |
+| Build .exe | **no reconstruido** en BLOQUE 74 — el de v1.7.2 (278 MB) está en `../bloquec-67-goliath-port/dist/` | `Get-Item ../bloquec-67-goliath-port/dist/void-hunter.exe` |
 | Tiles Asteroid Approach | 6 PNG (320×480) en `Assets/background/tiles/act1/` | `Get-ChildItem Assets/background/tiles/act1/*.png` |
 | Frames GOLIATH | 60 PNG (6 anim × 10) en `Assets/sprites/bosses/goliath/` | `Get-ChildItem Assets/sprites/bosses/goliath/*/frame_*.png` |
+| Manifiesto + anclas de GOLIATH | 1 `manifest.toml` (spec) + 1 `anchors.toml` (horneado) | `Get-ChildItem Assets/sprites/bosses/goliath/*.toml` |
 | Videos cinemáticos (standalone) | 4 mp4 (1080×1920 + 540×960) en `release/videos/` | `Get-ChildItem release/videos/*.mp4` |
 | Videos cinemáticos (in-game) | 660 PNG frames en `Assets/video/{title,zoom}/frames/` | `Get-ChildItem Assets/video/*/frames/frame_*.png` |
 | Sprite sheets (in-game) | 5 PNGs en `Assets/sprites/player_ships/ship_*_spritesheet.png` | `Get-ChildItem Assets/sprites/player_ships/*_spritesheet.png` |
 
-> **Nota:** los 8 tests que fallan son **pre-existentes** (5 de `test_sub_boss_*`
-> por contaminación de estado entre tests, 2 de `test_asteroid_sprites.py` y
-> 1 de `test_paths.py::test_paths_no_star_shapes` que es una aserción real
-> de geometría del LissajousPath). No son regresiones del port.
+> **Nota:** el único test que falla es **pre-existente**:
+> `tests/test_paths.py::test_paths_no_star_shapes`, una aserción real de
+> geometría del LissajousPath. No es una regresión de BLOQUE 74.
 >
-> Esta rama es la **línea v1.4.0** (BLOQUE 71) + BLOQUE 67. `master` es otra
-> línea (v1.6.3) y tiene features que esta línea no tiene — ver la
-> decisión 7 en "Decisiones arquitectónicas no negociables".
-
+> Los 8 tests que fallaban en la línea v1.7.2 (5 de `test_sub_boss_*` + 2
+> de `test_asteroid_sprites.py`) eran contaminación de estado entre tests:
+> el fixture `tests/conftest.py` los arregló, así que hoy fallan 0 de 8.
+>
+> Esta rama es la **línea v1.4.0** (BLOQUE 71) + BLOQUE 67 + BLOQUE 74.
+> `master` es otra línea (v1.6.3) y tiene features que esta línea no tiene
+> — ver la decisión 7 en "Decisiones arquitectónicas no negociables".
+>
 > **Regla:** si una métrica cambia, regenerar este bloque con el comando de la columna "Fuente". NUNCA editar a mano.
+
 
 ---
 
@@ -262,3 +275,15 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
   - **Releases**: v1.7.0 (`.exe` sin el fondo del boss fight) → v1.7.1 (con el sistema de armas de más) → **v1.7.2 (la correcta)**.
   - **Handoff**: `docs/handoffs/HANDOFF-GOLIATH-PORT-V140-2026-10-23.md`.
   - STATUS:GENERATED regenerado: 27,694 LOC / 86 files en `src/`, 22,773 LOC en `tests/`, 2,787 tests, 9 silos.
+- **2026-10-27 (BLOQUE 74 — pipeline de sprites, sin bump de versión)** — Worktree `.worktrees/bloquec-74-sprite-pipeline`, sobre la línea v1.7.2. El runtime **deja de medir el arte**: la medición se hace en build time y se hornea.
+  - **Nuevo subsistema `src/anim/`** (6 archivos): `manifest.py` (manifiesto declarativo + validación), `measure.py` (medición por píxel: silueta, centroide, elipse creíble), `parts.py` (reglas de detección declaradas), `anchors.py` (lector de la tabla horneada), `clip.py` (compositor: manifiesto + anclas + caché de frames), `__init__.py`.
+  - **Nuevo tool `tools/sprite_pipeline/`**: `audit.py` (7 estados: COLAPSADO / CORTADO / LADO_EQUIVOCADO / FIRMA_AMBIGUA / AUSENTE / FUERA_DE_RANGO / ESCALADO), `repair.py` (reparaciones deterministas e idempotentes), `run.py` (validate → audit → repair → re-audit → anchors → report).
+  - **`Assets/sprites/bosses/goliath/manifest.toml`** (spec, editada a mano) + **`anchors.toml`** (generado): el canvas, los 6 clips (id ↔ dir), los fps, las tolerancias y las reglas de detección viven en el manifiesto; la medición de los 60 frames vive en la tabla horneada.
+  - **El runtime lee las anclas horneadas** (`src/ui/scenes.py`): el ojo, la placa del escudo y el centroide son lookups, no escaneos de píxeles (3.9 ms por frame → un lookup).
+  - **Umbral único `CORTADO_MARGIN`** (`src/anim/measure.py`): el auditor marca por debajo y la reparación persigue exactamente el mismo valor. Con dos umbrales, un frame marcado podía no ser reparable nunca y `run.py --fix` exiting 1 para siempre.
+  - **El camino congelado se resuelve perezoso**: `src/anim/manifest.py` no calcula la raíz del repo al importar, y el set se parsea una sola vez (`loaded_set`).
+  - **La ruta del sprite y el canvas salen del manifiesto**: `Boss.animation_path` usa `clip.dir` y el runtime usa `meta.canvas` — el canvas es una propiedad del set, no una constante del juego.
+  - **Auditoría del branch completo**: "Ready to merge: With fixes" (0 Critical, 3 Important, 8 Minor). Los Important y los Minor de esta ola están cerrados: umbral único, documentación del BLOQUE ausente, clip `"idle"` inexistente en `tools/capture/capture_goliath_phase1.py` y `tests/test_goliath_sprite.py`, memoización de `_clip_id_for_dir`, directorio del clip desde el manifiesto, canvas desde el manifiesto, docstring obsoleto, test del pipeline contra el árbol real y `ROOT` calculado al importar.
+  - **No bumpea la versión**: la release y el `.exe` son de otra ola (el `.exe` no se reconstruyó).
+  - **Handoff**: `docs/handoffs/HANDOFF-SPRITE-PIPELINE-2026-10-27.md`. **Session report**: `docs/session-reports/SESSION_REPORT_BLOQUE_74.md`.
+  - STATUS:GENERATED regenerado: 28,929 LOC / 92 files en `src/`, 25,340 LOC en `tests/`, 2,887 tests, 9 silos.

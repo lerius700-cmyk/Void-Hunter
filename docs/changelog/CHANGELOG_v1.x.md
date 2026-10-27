@@ -2390,3 +2390,97 @@ los ya documentados (5 de `test_sub_boss_*` por contaminación de estado,
   thick shot (A), laser (S), flamethrower (D), double blue laser (F)
   + RMB input handler + mouse wheel cycling + 4 new bullets + 4 new
   powerup icons + 4 new SFX.
+
+---
+
+## BLOQUE 74 — Pipeline de sprites: el runtime deja de medir el arte (2026-10-27)
+
+Worktree `.worktrees/bloquec-74-sprite-pipeline`, rama
+`bloquec-74-sprite-pipeline`, sobre la línea v1.7.2 (BLOQUE 67).
+**No bumpea la versión**: la release y el `.exe` son de otra ola.
+
+### Qué es
+
+El runtime **medía el arte** en la primera vez que veía un frame: escaneaba
+los píxeles del PNG para encontrar el ojo y la placa del escudo (3.9 ms por
+frame, 60 frames). Eso es trabajo de build time, no de runtime.
+
+BLOQUE 74 separa las dos cosas:
+
+- **`manifest.toml`** (en `Assets/sprites/bosses/goliath/`) es la **spec** del
+  set, editada a mano: canvas, anchor, clips (id ↔ dir), fps, tolerancias y
+  las reglas de detección.
+- **`anchors.toml`** es el **resultado generado**: la medición de los 60
+  frames. El juego solo lo lee.
+
+### El subsistema
+
+- **`src/anim/`** (6 archivos): `manifest.py` (manifiesto declarativo +
+  validación), `measure.py` (medición por píxel), `parts.py` (reglas de
+  detección declaradas), `anchors.py` (lector de la tabla horneada),
+  `clip.py` (compositor: manifiesto + anclas + caché de frames).
+- **`tools/sprite_pipeline/`**: `audit.py` (7 estados), `repair.py`
+  (reparaciones deterministas e idempotentes), `run.py`
+  (validate → audit → repair → re-audit → anchors → report).
+
+Los 7 estados del auditor: `COLAPSADO`, `CORTADO`, `LADO_EQUIVOCADO`,
+`FIRMA_AMBIGUA`, `AUSENTE`, `FUERA_DE_RANGO`, `ESCALADO`. Los tres primeros
+son FAIL; los otros cuatro son WARN (se resuelven por interpolación, por
+aceptación o no se reparan: el pixel art no se reescala).
+
+### Comandos
+
+```powershell
+python tools/sprite_pipeline/audit.py goliath            # auditar (exit 1 si hay FAIL)
+python tools/sprite_pipeline/run.py goliath              # dry run: NO escribe nada
+python tools/sprite_pipeline/run.py goliath --fix        # repara, re-audita y re-hornea anchors.toml
+python tools/sprite_pipeline/run.py goliath --root <dir> # sobre una COPIA del set
+```
+
+`--fix` es el único comando que escribe, y escribe **después** de la
+re-auditoría: las anclas siempre llevan la medición post-reparación.
+
+### Ola final de fixes (review "Ready to merge: With fixes")
+
+0 Critical, 3 Important, 8 Minor. Todo cerrado:
+
+| # | Qué | Dónde |
+|---|-----|-------|
+| A1 | **Un solo umbral.** El auditor marcaba `CORTADO` por debajo de 2 px y el re-pad persigue 3 px: un frame marcado podía no ser reparable nunca y `run.py --fix` exiting 1 para siempre. Ahora los dos usan `CORTADO_MARGIN` (`src/anim/measure.py`). | `src/anim/measure.py`, `tools/sprite_pipeline/{audit,repair}.py` |
+| A2 | **BLOQUE 74 documentado.** Antes el branch no estaba en ningún documento del proyecto. | `CLAUDE.md`, `CONTEXT.md`, `.synapse`, este changelog, handoff, session report |
+| A3 | **Un clip que no existe.** `"idle"` no es un clip de GOLIATH (son `phase1_idle`, `phase2_idle`, `javelin`, `laser`, `purple_bullet`, `death`): la captura y el test apuntaban a un directorio inexistente y el test **se saltaba a sí mismo**. | `tools/capture/capture_goliath_phase1.py`, `tests/test_goliath_sprite.py` |
+| B1 | `_clip_id_for_dir` escaneaba los clips en cada lookup (67 por frame). Memoizado: **1.61× más rápido** en el camino real. | `src/ui/scenes.py` |
+| B2 | El re-pad resolvía el directorio desde el **id** del clip. Ahora lo resuelve desde `clip.dir` del manifiesto. | `tools/sprite_pipeline/repair.py` |
+| B3 | El path del sprite y el canvas estaban **hardcodeados** (`bosses/goliath/<state>/…`, `96, 80`). Ahora salen del manifiesto (`clip.dir`, `meta.canvas`): el canvas es una propiedad del set, no una constante del juego. | `src/entities/enemies/boss.py`, `src/ui/gameplay_runtime.py` |
+| B4 | Docstring obsoleto: `_goliath_eye_position` decía que el ojo se buscaba por color en runtime. | `src/ui/gameplay_runtime.py` |
+| B5 | `test_sprite_pipeline_run.py` corría `--fix` contra el **árbol real**: podía reescribir `anchors.toml` y espejar el arte commiteado a mitad de suite. Ahora corre contra una **copia** en `tmp_path` (`--root` nuevo). | `tests/test_sprite_pipeline_run.py`, `tools/sprite_pipeline/{audit,run}.py` |
+| B6 | `src/anim/manifest.py` calculaba `ROOT` al importar. Ahora es perezoso: el build congelado no arrastra el árbol de código. | `src/anim/manifest.py` |
+
+### Lo que NO se hizo (a propósito)
+
+- **El `.exe` no se reconstruyó.** La release es de otra ola.
+- **La versión no se bumpea.** Sigue siendo v1.7.2.
+- **El camino congelado está implementado pero no ejercitado**: `src/anim/manifest.py`
+  resuelve `<_MEIPASS>/Assets/sprites/bosses` y `build.spec` bundlea
+  `Assets/sprites` (con el `manifest.toml` y el `anchors.toml` adentro), pero
+  eso no se puede verificar sin rebuildear el `.exe`.
+- Los diferidos del review que se dejaron **ship-as-is**: el crash de
+  `hud.py` bajo un plugin de fault-injection, la incapacidad del re-pad de
+  trasladar una silueta a canvas completo, la cobertura sintética de
+  `CORTADO`, la diferencia entre radios canónicos y radios mediana, y ruff.
+
+### Verificación
+
+- Suite: `2,880 pass + 1 fail pre-existente + 6 skipped` (2.887 total). El único
+  fail es `tests/test_paths.py::test_paths_no_star_shapes`, una aserción real
+  de geometría del LissajousPath (pre-existente, no es una regresión).
+- `python -m mypy src/anim/` → 0 errores.
+- `python tools/sprite_pipeline/audit.py goliath` → `10/60 frames with findings
+  (0 FAIL, 10 WARN)`, exit 0.
+- `python tools/sprite_pipeline/run.py goliath --fix` → no repara nada, no
+  cambia ningún archivo, exit 0, `git status --short` limpio.
+- `python main.py --check` → 15 scenes, 18 waves, 4 bosses.
+- `python main.py --boss goliath --easy --duration 60` → 60 s, exit 0.
+
+Handoff: `docs/handoffs/HANDOFF-SPRITE-PIPELINE-2026-10-27.md`.
+Session report: `docs/session-reports/SESSION_REPORT_BLOQUE_74.md`.

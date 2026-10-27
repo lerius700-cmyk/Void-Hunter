@@ -1,6 +1,6 @@
 # 🏛️ Switch de Contexto — VOID HUNTER
 
-**Versión:** 1.3.0 (línea v1.7.2 / BLOQUE 67)
+**Versión:** 1.4.0 (línea v1.7.2 / BLOQUE 74)
 **Propósito:** Navegación entre silos del proyecto VOID HUNTER.
 **Perfil SF/SM:** Lite
 **Schema target:** `.synapse` 2.2.0 (acepta 2.1.0 legacy)
@@ -25,10 +25,13 @@ Regla: entrar por L1 → L1.5 → identificar silo → leer CONTEXT.md del silo 
 |------|------|-----------|-----------|
 | **L1** | `CLAUDE.md` | Identidad + reglas globales | Siempre (inducción) |
 | **L1.5** | `CONTEXT.md` | Switch de contexto | Antes de cualquier tarea |
-| **L2** | `src/` | Código fuente (27.7K LOC, 86 archivos, 14 sistemas) | Implementar features |
-| **L2** | `tests/` | 2,787 tests pytest (~22.8K LOC, 96 archivos) | TDD / regression |
+| **L2** | `src/` | Código fuente (28.9K LOC, 92 archivos, 15 sistemas) | Implementar features |
+| **L2** | `src/anim/` | Manifiesto + medición + compositor de animaciones (BLOQUE 74) | Tocar el arte de GOLIATH o las anclas |
+| **L2** | `tests/` | 2,887 tests pytest (~25.3K LOC, 104 archivos de test) | TDD / regression |
 | **L2** | `Assets/` | Binarios (sprites, audio, galaxy panels, tiles, video) | Solo lectura, regenerar con `tools/` |
+| **L2** | `Assets/sprites/bosses/goliath/` | 60 frames + `manifest.toml` (spec) + `anchors.toml` (horneado) | Cambiar el set de GOLIATH |
 | **L2** | `tools/` | Dev-only (captura, debug, generación, video_gen) | Verificar visuales, generar assets |
+| **L2** | `tools/sprite_pipeline/` | Pipeline de sprites: `audit.py`, `repair.py`, `run.py` (BLOQUE 74) | Auditar / repara / re-hornear un set |
 | **L3** | `docs/arch/CONTEXT.md` | Arquitectura + roadmap + GDD | Decisiones de diseño |
 | **L3** | `docs/changelog/CONTEXT.md` | Changelog histórico | "¿qué se intentó antes?" |
 | **L3** | `docs/bloques/CONTEXT.md` | Checklists de BLOQUE (mega + user) | Tracking de features |
@@ -53,10 +56,12 @@ Regla: entrar por L1 → L1.5 → identificar silo → leer CONTEXT.md del silo 
 | `.synapse` | L (LOAD) | Estado del root |
 | `docs/*/CONTEXT.md` | L (LOAD) | Misión del silo |
 | `src/**/*.py` | L (LOAD) | Código del producto |
+| `src/anim/**/*.py` | L (LOAD) | Manifiesto + medición + compositor (BLOQUE 74) |
 | `tests/**/*.py` | L (LOAD) | Tests del producto |
 | `docs/arch/ARCHITECTURE.md` | L (LOAD) | Mapa del sistema |
 | `docs/changelog/CHANGELOG_v1.x.md` | L (LOAD) | Historia de cambios |
 | `main.py` / `build.spec` | L (LOAD) | Entry point + build |
+| `Assets/sprites/bosses/*/manifest.toml` | L (LOAD) | La spec del set (editada a mano) |
 | `README.md` | R (REFERENCE) | Doc pública |
 | `requirements.txt` / `pyproject.toml` | R (REFERENCE) | Configuración |
 | `docs/ROADMAP.md` / `docs/MEGA_BLOQUE_58.8_CHECKLIST.md` | R (REFERENCE) | Roadmap + tracking |
@@ -64,9 +69,11 @@ Regla: entrar por L1 → L1.5 → identificar silo → leer CONTEXT.md del silo 
 | `Assets/**/*.wav` | R (REFERENCE) | Audio assets |
 | `Assets/video/**/*.png` | R (REFERENCE) | Video frames cinemáticos (no editar) |
 | `Assets/sprites/player_ships/*_spritesheet.png` | R (REFERENCE) | Sprite sheets de naves |
+| `Assets/sprites/bosses/*/anchors.toml` | R (REFERENCE) | Anclas horneadas (generadas, no editar a mano) |
 | `Assets/background/tiles/act1/*.png` | R (REFERENCE) | 6 tiles del fondo Asteroid Approach (no editar a mano) |
 | `release/videos/*.mp4` | R (REFERENCE) | Videos standalone (share externos) |
 | `tools/**/*.py` | R (REFERENCE) | Dev tools (no productiva) |
+| `tools/sprite_pipeline/**` | R (REFERENCE) | Pipeline de sprites (auditor + reparación) |
 | `tools/playtest_out/**/*.png` | R (REFERENCE) | Visual proofs |
 | `tools/video_gen/**` | R (REFERENCE) | Pipeline de generación de video |
 | `tools/tiles/**` | R (REFERENCE) | Pipeline del fondo Asteroid Approach (`generate_tiles.py` + `ai_gen/`) |
@@ -118,6 +125,9 @@ Estos no son runtime bridges, son referencias a recursos externos que el agente 
 | Encode mp4 from frames | `python tools/video_gen/encode_mp4.py <frames_dir> <out.mp4> <w> <h> <fps>` | Generar mp4 standalone desde PNGs |
 | Build ship sprite sheets | `python tools/build_sprite_sheet.py [ship_id]` | Generar ship_NN_spritesheet.png (5 anims × 8 frames en un PNG) |
 | Video integration smoke test | `python tools/test_video_integration.py` | Headless smoke test del VideoPlayer + scenes |
+| Auditar un set de sprites | `python tools/sprite_pipeline/audit.py goliath` | 7 estados sobre los 60 frames de GOLIATH (exit 1 si hay FAIL) |
+| Auditar un set sin tocar el repo | `python tools/sprite_pipeline/audit.py goliath --root <dir>` | Igual, pero sobre otra copia del set |
+| Pipeline completo (repara + re-hornea) | `python tools/sprite_pipeline/run.py goliath --fix` | audit → repair → re-audit → `anchors.toml` → report (dry run: sin `--fix` no escribe nada) |
 
 ---
 
@@ -147,6 +157,18 @@ Target: `7/7` compliance Lite. Si baja, correr remediación.
 
 ## Historial de cambios estructurales
 
+- **2026-10-27 (BLOQUE 74)** — Pipeline de sprites (el runtime deja de medir el arte):
+  - Nuevo subsistema `src/anim/` (manifiesto + medición + compositor) y nuevo tool
+    `tools/sprite_pipeline/` (auditor + reparación + pipeline).
+  - La tabla de silos suma tres filas de ruteo: `src/anim/`,
+    `Assets/sprites/bosses/goliath/` y `tools/sprite_pipeline/`.
+  - Tokens: `src/anim/**/*.py` y `Assets/sprites/bosses/*/manifest.toml` pasan a
+    L (LOAD); `anchors.toml` y `tools/sprite_pipeline/**` a R (REFERENCE).
+  - Bridges externos: `audit.py` y `run.py` (con `--root` para trabajar sobre una
+    copia del set).
+  - `CLAUDE.md` L1: identidad, mapa del edificio, matriz de soberanía, decisiones
+    12 y 13, estructura del proyecto, bloque `STATUS:GENERATED` regenerado e
+    historial.
 - **2026-10-25 (BLOQUE 67)** — Línea v1.4.0 + GOLIATH + menú post-cinematica (v1.7.2):
   - Silo nuevo `docs/handoffs/` (handoffs cross-session) con su `CONTEXT.md`.
   - `docs/arch/` gana el silo de handoffs en la tabla de silos.
