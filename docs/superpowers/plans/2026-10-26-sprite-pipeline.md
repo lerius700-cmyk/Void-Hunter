@@ -1634,6 +1634,7 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                     eye_source = "missing"
 
             # --- shield plate ---------------------------------------------
+            probe_col = probe_cols[i]
             shield = None
             shield_source = "measured"
             if rule is not None:
@@ -1647,6 +1648,31 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                         shield_source = "missing"
                         findings.append(
                             Finding(clip.id, frame_no, "AUSENTE", "shield plate not found")
+                        )
+                    elif rule.probe is not None and probe_col is None:
+                        # The shape rule found a solid run, but the
+                        # INDEPENDENT probe (the plate's colour signature)
+                        # found no plate at all: what the shape rule
+                        # measured is the BODY, not the plate.
+                        #
+                        # The two states are not interchangeable. AUSENTE
+                        # says "the art is missing the feature";
+                        # FUERA_DE_RANGO says "the feature is there but the
+                        # measurement is not credible". Only the probe can
+                        # tell them apart: the shape rule cannot, because a
+                        # body is a solid run just like a plate is.
+                        #
+                        # A manifest that declares no probe keeps the old
+                        # behaviour: the shape rule alone decides.
+                        shield_source = "missing"
+                        findings.append(
+                            Finding(
+                                clip.id,
+                                frame_no,
+                                "AUSENTE",
+                                "shield plate not found (the shape rule measured "
+                                "the body)",
+                            )
                         )
                     else:
                         shield_source = "out_of_range"
@@ -1662,7 +1688,6 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                 else:
                     shield = ellipse
 
-                probe_col = probe_cols[i]
                 if probe_col is not None:
                     # --- LADO_EQUIVOCADO: turned-around character ----------
                     # This check must NOT depend on the shape measurement.
@@ -1996,6 +2021,8 @@ import os
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -2091,14 +2118,16 @@ def body_pixels(cx: int = 40, width: int = 20, top: int = 20, height: int = 45):
     return pixels
 
 
-@pytest.fixture(autouse=True)
-def _pygame():
+@pytest.fixture(scope="module", autouse=True)
+def display():
+    """pygame needs a video mode before convert_alpha() works."""
     pygame.init()
     pygame.display.set_mode((320, 480))
+    yield
 
 
 def states_for(tmp_path: Path, frames) -> set[str]:
-    set_dir = build_set(tmp_path, frames)
+    build_set(tmp_path, frames)
     anim_set = load_set("synthetic", root=tmp_path)
     findings, _ = audit_set(anim_set)
     return {f.state for f in findings}
@@ -2118,7 +2147,11 @@ def test_sprite_at_the_edge_is_CORTADO(tmp_path):
 
 
 def test_plate_on_the_left_is_LADO_EQUIVOCADO(tmp_path):
-    pixels = body_pixels(cx=40)
+    # The plate MOVES to the left: it is removed from the arm first, so the
+    # probe sees the brass of a single plate. (Adding a second plate on
+    # the left would leave the probe's centroid on the centre line -- see
+    # test_a_plate_on_both_sides_is_not_LADO_EQUIVOCADO.)
+    pixels = {k: v for k, v in body_pixels().items() if v != BRASS}
     for y in range(34, 46):
         for x in range(30, 38):
             pixels[(x, y)] = BRASS
@@ -2136,17 +2169,77 @@ def test_missing_plate_is_AUSENTE(tmp_path):
 def test_implausible_ellipse_is_FUERA_DE_RANGO(tmp_path):
     """A 2 px wide plate cannot be the shield."""
     pixels = body_pixels()
+    # The plate is NARROWED to 2 px: the brass it does not have any more
+    # is erased, not painted over (painting brass over brass would leave
+    # the frame untouched and the clip would be reported as COLAPSADO).
     for y in range(34, 46):
-        for x in range(60, 62):
-            pixels[(x, y)] = BRASS
+        for x in range(62, 68):
+            pixels.pop((x, y), None)
     states = states_for(tmp_path, [pixels, body_pixels()])
     assert "FUERA_DE_RANGO" in states
 
 
 def test_healthy_set_has_no_failures(tmp_path):
-    findings, _ = audit_set(load_set("synthetic", root=build_set(tmp_path, [body_pixels()])))
+    build_set(tmp_path, [body_pixels()])
+    findings, _ = audit_set(load_set("synthetic", root=tmp_path))
     fails = [f for f in findings if f.state in FAIL_STATES]
     assert not fails, [f.detail for f in fails]
+
+
+def test_a_plate_on_both_sides_is_not_LADO_EQUIVOCADO(tmp_path):
+    """The probe reports the CENTROID of the brass pixels.
+
+    A frame that carries a plate on both sides has its centroid on the
+    centre line, so it is not a turned-around frame and must not be
+    flagged. A turned-around character has the plate MOVED to the other
+    side, not a second plate added.
+    """
+    pixels = body_pixels(cx=40)
+    for y in range(34, 46):
+        for x in range(30, 38):
+            pixels[(x, y)] = BRASS
+    states = states_for(tmp_path, [pixels, body_pixels()])
+    assert "LADO_EQUIVOCADO" not in states
+
+
+# ---------------------------------------------------------------------------
+# The CLI contract: `--json` must write ONLY JSON to stdout.
+# ---------------------------------------------------------------------------
+def test_json_report_is_pure_json():
+    """pygame prints its support banner to STDOUT when it is imported.
+
+    That banner would make the report unparseable, so the auditor sets
+    PYGAME_HIDE_SUPPORT_PROMPT before importing pygame. This test is the
+    guard that keeps it that way: move the import above the
+    setdefault and this fails.
+
+    stdout and stderr are captured SEPARATELY (no pipe): a pipe would
+    add a shell artefact to the bytes, not a defect of the tool.
+    """
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools" / "sprite_pipeline" / "audit.py"),
+            "goliath",
+            "--json",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        timeout=300,
+    )
+    stdout = proc.stdout.decode("utf-8")
+    stderr = proc.stderr.decode("utf-8")
+
+    # The exit code is NOT asserted: the auditor exits 1 while the two
+    # turned-around frames are still in the art, and that is correct.
+    assert "pygame" not in stdout.lower(), stdout[:200]
+    assert "Hello from" not in stdout, stdout[:200]
+
+    report = json.loads(stdout)
+    assert "set" in report
+    assert isinstance(report["set"], str)
+    assert isinstance(report["findings"], list)
+    assert stderr == "", stderr
 ```
 
 - [ ] **Step 2: Run the test to verify it passes or fails for the right reason**
@@ -2176,12 +2269,24 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
 
 from src.anim.manifest import load_set  # noqa: E402
 from sprite_pipeline.audit import audit_set  # noqa: E402
+
+
+@pytest.fixture(scope="module", autouse=True)
+def display():
+    """pygame needs a video mode before convert_alpha() works."""
+    import pygame
+
+    pygame.init()
+    pygame.display.set_mode((320, 480))
+    yield
 
 
 def test_every_frame_resolves_the_shield_plate():
