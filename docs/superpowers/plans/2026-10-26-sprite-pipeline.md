@@ -2614,9 +2614,13 @@ Create `tests/test_sprite_pipeline_repair.py`:
 """BLOQUE 74: the repair pass must be deterministic and idempotent.
 
 Mirroring is the repair for a turned-around character. It must flip the
-sprite inside its own canvas (not move it), it must be idempotent (a
-second run must not flip it back), and it must leave every other frame
-byte-identical.
+sprite inside its own canvas (not move it), and it must leave every other
+frame byte-identical.
+
+The flip itself is an INVOLUTION -- mirroring twice restores the original
+pixels. What is idempotent is the repair PASS: it only acts on a
+LADO_EQUIVOCADO finding, and once the frame has been mirrored the next
+audit finds none, so a second `--fix` changes nothing.
 """
 from __future__ import annotations
 
@@ -2652,7 +2656,14 @@ def test_mirror_flips_the_pixels(tmp_path):
     assert after.get_at((10, 10))[3] == 0
 
 
-def test_mirror_is_idempotent(tmp_path):
+def test_mirror_is_an_involution(tmp_path):
+    """Mirroring twice restores the original pixels.
+
+    The flip is its own inverse -- that is a property of the primitive, not
+    a bug. What is idempotent is the REPAIR PASS: it only acts on a
+    LADO_EQUIVOCADO finding, and once the frame has been mirrored the next
+    audit finds none, so the second run does nothing.
+    """
     path = tmp_path / "frame_00.png"
     surf = pygame.Surface((96, 80), pygame.SRCALPHA, 32)
     surf.fill((0, 0, 0, 0))
@@ -2660,9 +2671,13 @@ def test_mirror_is_idempotent(tmp_path):
     pygame.image.save(surf, str(path))
 
     mirror_frame(path)
-    first = path.read_bytes()
+    once = pygame.image.load(str(path)).convert_alpha()
     mirror_frame(path)
-    assert path.read_bytes() == first
+    twice = pygame.image.load(str(path)).convert_alpha()
+
+    assert once.get_at((85, 10)) == (255, 0, 0, 255)
+    assert twice.get_at((10, 10)) == (255, 0, 0, 255)
+    assert twice.get_at((85, 10))[3] == 0
 
 
 def test_mirror_keeps_the_canvas_size(tmp_path):
@@ -2896,6 +2911,21 @@ git status --short Assets/sprites/bosses/goliath/
 ```
 
 Expected: exactly two modified PNGs, `javelin/frame_03.png` and `purple_bullet/frame_06.png`.
+
+**The state after the repair, measured on a copy of the assets:**
+
+| | frames con hallazgo | FAIL | escudo | ojo | sin resolver |
+|---|---|---|---|---|---|
+| antes | 10 | **2** (`javelin/f03`, `purple_bullet/f06`) | 53 measured / 7 interpolated | 59 / 1 | 0 |
+| despues | 10 | **0** | 53 measured / 7 interpolated | 59 / 1 | 0 |
+
+The two FAIL states are gone and the counters are UNCHANGED: the two mirrored
+frames stay `FUERA_DE_RANGO` (the shape rule still measures the body, not the
+plate, in them), so they keep being interpolated exactly as before. The
+clip medians do move -- javelin's goes from 49.0 to 49.19 and purple_bullet's
+from 51.2 to 51.97 -- but no frame crosses the side threshold, and the
+mirrored frames land at probe columns 67.6 and 61.9, both on the right of the
+centre, which is what the rule asks for.
 
 - [ ] **Step 7: Re-run the guards that were red**
 
