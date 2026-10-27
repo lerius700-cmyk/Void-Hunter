@@ -10,10 +10,14 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 import math
 import random
 import sys
-from pathlib import Path
+from pathlib import Path, PurePath
 
 import pygame
 
+from src.anim.anchors import AnchorSet, FrameAnchor, load_anchors
+from src.anim.clip import ClipPlayer
+from src.anim.manifest import AnimSet, load_set
+from src.anim.parts import canonical_shield_ellipse
 from src.core.scene_manager import GameState, Scene
 from src.core.settings import INTERNAL_H, INTERNAL_W
 from src.utils.palette import PALETTE
@@ -135,287 +139,204 @@ def _load_sprite(name: str) -> Optional[pygame.Surface]:
 
 
 # ---------------------------------------------------------------------------
-# BLOQUE 73.2: GOLIATH sprite measurement helpers (ported from BLOQUE 66)
+# BLOQUE 74: GOLIATH anchors, read from the baked table
 # ---------------------------------------------------------------------------
+# The measurement of every frame is baked at BUILD time by
+# tools/sprite_pipeline/audit.py into
+# Assets/sprites/bosses/goliath/anchors.toml. The runtime used to scan the
+# sprite's pixels the first time it saw a frame (3.9 ms per frame, 60
+# frames): now every anchor is a dict lookup.
+#
+# The clip DIRECTORY and the clip ID are not necessarily the same string
+# (the manifest maps one to the other), and the sprite path the runtime
+# holds is relative to Assets/sprites/ ("bosses/goliath/<dir>/frame_NN.png"),
+# so the lookup takes the LAST directory of the path as the clip's name.
+#
 # BLOQUE 66.3 canvas anchor: all GOLIATH frames are 96x80 and the design
 # intent is for the body silhouette to be centred around (col 48, row 40).
 # Frames whose body leans (javelin/frame_03 is dx=-19 since BLOQUE 74
 # mirrored it) are re-aligned so the visible body, not the canvas, lands
 # on the world anchor.
-_GOLIATH_ANCHOR_X = 48
-_GOLIATH_ANCHOR_Y = 40
 
-# Caches. Both are keyed by the sprite's path-relative name, matching
-# `_load_sprite`. Cleared by tests that swap sprite files at runtime.
-_sprite_centroid_cache: dict[str, tuple[int, int]] = {}
-_sprite_arm_anchor_cache: dict[str, tuple[int, int]] = {}
-_sprite_eye_anchor_cache: dict[str, tuple[int, int]] = {}
+_anchor_set_cache: AnchorSet | None = None
+_manifest_cache: AnimSet | None = None
+_manifest_failed = False
+_clip_player_cache: ClipPlayer | None = None
+
+
+def _load_manifest() -> AnimSet | None:
+    """The GOLIATH manifest, loaded once."""
+    global _manifest_cache, _manifest_failed
+    if _manifest_cache is None and not _manifest_failed:
+        try:
+            _manifest_cache = load_set("goliath")
+        except (OSError, ValueError):
+            _manifest_failed = True
+    return _manifest_cache
+
+
+def _load_anchor_set() -> AnchorSet:
+    """The baked anchor table. One read, then a dict lookup."""
+    global _anchor_set_cache
+    if _anchor_set_cache is None:
+        anim_set = _load_manifest()
+        if anim_set is None:
+            return AnchorSet(entries={})
+        try:
+            _anchor_set_cache = load_anchors(anim_set.path / "anchors.toml")
+        except (OSError, ValueError):
+            _anchor_set_cache = AnchorSet(entries={})
+    return _anchor_set_cache
+
+
+def get_clip_player() -> ClipPlayer | None:
+    """The GOLIATH compositor: manifest + baked anchors + the frame cache.
+
+    The compositor owns the 60 PNGs. The UI's own sprite cache must NOT
+    keep a second copy of them: two caches of the same 1.76 MB is RAM the
+    game does not need.
+
+    None when the manifest or the anchor table cannot be read -- the
+    runtime then falls back to the plain sprite blit.
+    """
+    global _clip_player_cache
+    if _clip_player_cache is None:
+        anim_set = _load_manifest()
+        if anim_set is None:
+            return None
+        anchors = _load_anchor_set()
+        if not anchors.entries:
+            return None
+        _clip_player_cache = ClipPlayer(anim_set, anchors)
+    return _clip_player_cache
+
+
+def clear_anchor_cache() -> None:
+    """Drop the loaded table, the manifest and the compositor.
+
+    The tests that swap the art at runtime call this, so the next read
+    picks up the new files.
+    """
+    global _anchor_set_cache, _manifest_cache, _manifest_failed
+    global _clip_player_cache
+    _anchor_set_cache = None
+    _manifest_cache = None
+    _manifest_failed = False
+    _clip_player_cache = None
+
+
+def _clip_id_for_dir(clip_dir: str) -> str | None:
+    """Map a clip's directory name to its clip id."""
+    anim_set = _load_manifest()
+    if anim_set is None:
+        return None
+    for clip in anim_set.clips.values():
+        if clip.dir == clip_dir:
+            return clip.id
+    return None
+
+
+def _anchor_for(name: str) -> FrameAnchor | None:
+    """The baked anchor of a sprite, by its path-relative name.
+
+    `name` is "<clip dir>/frame_NN.png" or the longer
+    "bosses/goliath/<clip dir>/frame_NN.png" the runtime holds: only the
+    LAST directory names the clip. The anchor table is keyed by (clip id,
+    frame index), and the clip directory and the clip id are not
+    necessarily the same string -- the manifest maps one to the other.
+    """
+    anchors = _load_anchor_set()
+    if not anchors.entries or "/" not in name:
+        return None
+    filename = name.rpartition("/")[2]
+    if not filename.startswith("frame_") or not filename.endswith(".png"):
+        return None
+    try:
+        index = int(filename[len("frame_"):-len(".png")])
+    except ValueError:
+        return None
+    clip_id = _clip_id_for_dir(PurePath(name).parent.name)
+    if clip_id is None:
+        return None
+    return anchors.get(clip_id, index)
+
+
+def _canonical_shield_ellipse() -> tuple[float, float, float, float]:
+    """The canonical ellipse: the manifest's radii at the canonical centre.
+
+    BLOQUE 74: this is what a frame WITHOUT a measurement gets. The
+    alternative -- no ellipse at all -- would delete the shield's hitbox
+    and leave the laser with nowhere to come from.
+    """
+    anim_set = _load_manifest()
+    part = None
+    if anim_set is not None:
+        try:
+            part = anim_set.part("shield_plate")
+        except ValueError:
+            part = None
+    return canonical_shield_ellipse(part)
+
+
+def get_sprite_centroid_offset(name: str) -> tuple[int, int]:
+    """(dx, dy) that puts the sprite's centroid on the world anchor.
+
+    BLOQUE 74: this used to scan the sprite's pixels the first time a
+    frame was seen (3.9 ms). The measurement is now baked into
+    anchors.toml at build time; this is a dict lookup.
+    """
+    anchor = _anchor_for(name)
+    if anchor is None:
+        return (0, 0)
+    return (anchor.body_dx, anchor.body_dy)
 
 
 def get_sprite_eye_anchor(name: str) -> tuple[int, int]:
-    """BLOQUE 66.4l (ported in 73.4): sprite-local (col, row) of the eye.
+    """Sprite-local (col, row) of the eye.
 
-    The eye laser used to start at a constant offset from the boss anchor
-    (sprite row 24), but a pixel scan of the red eye shows it sits at row 18
-    in phase1_idle and row 22 in javelin/laser -- so the beam started 2-6 px
-    BELOW the eye every frame, reading as if it came from the chest.
-
-    Locating the eye per frame means the beam starts where the player can
-    see the eye, in every animation. The eye is the sprite's saturated
-    red pixels inside the head band; we take their centroid.
+    BLOQUE 74: baked. The eye moves between frames (rows 13 to 28 across
+    the set), so a fixed offset could never work -- the laser used to
+    start 2 to 6 px below the eye and read as if it came from the chest.
 
     The eye anchor is NOT centroid-corrected: it is a sprite-local pixel
     position, so the caller adds the same centroid shift the sprite blit
     uses. See `_draw_eye_laser`.
     """
-    if name in _sprite_eye_anchor_cache:
-        return _sprite_eye_anchor_cache[name]
-
-    surf = _load_sprite(name)
-    if surf is None:
-        _sprite_eye_anchor_cache[name] = (48, 20)
+    anchor = _anchor_for(name)
+    if anchor is None or anchor.eye is None:
         return (48, 20)
-    w, h = surf.get_size()
-
-    # Saturated red inside the head band (rows 0..29, body columns).
-    eye = [
-        (px, py)
-        for py in range(min(30, h))
-        for px in range(24, min(70, w))
-        if surf.get_at((px, py))[3] > 32
-        and surf.get_at((px, py))[0] > 170
-        and surf.get_at((px, py))[0] - surf.get_at((px, py))[1] > 70
-    ]
-    if not eye:
-        _sprite_eye_anchor_cache[name] = (48, 20)
-        return (48, 20)
-
-    anchor = (
-        int(round(sum(p[0] for p in eye) / len(eye))),
-        int(round(sum(p[1] for p in eye) / len(eye))),
-    )
-    _sprite_eye_anchor_cache[name] = anchor
-    return anchor
-
-
-def get_sprite_centroid_offset(name: str) -> tuple[int, int]:
-    """(dx, dy) that aligns the sprite's alpha-weighted centroid on (48, 40).
-
-    Computed once per sprite at first call and cached. Returns (0, 0) for
-    sprites whose metadata is unavailable (missing file, missing alpha, or
-    an empty silhouette) so callers degrade to a plain centred blit instead
-    of raising.
-    """
-    if name in _sprite_centroid_cache:
-        return _sprite_centroid_cache[name]
-    surf = _load_sprite(name)
-    if surf is None:
-        _sprite_centroid_cache[name] = (0, 0)
-        return (0, 0)
-    w, h = surf.get_size()
-    sum_a = sum_x = sum_y = 0
-    for y in range(h):
-        for x in range(w):
-            a = surf.get_at((x, y))[3]
-            if a == 0:
-                continue
-            sum_a += a
-            sum_x += x * a
-            sum_y += y * a
-    if sum_a == 0:
-        _sprite_centroid_cache[name] = (0, 0)
-        return (0, 0)
-    cx = sum_x / sum_a
-    cy = sum_y / sum_a
-    offset = (
-        int(round(_GOLIATH_ANCHOR_X - cx)),
-        int(round(_GOLIATH_ANCHOR_Y - cy)),
-    )
-    _sprite_centroid_cache[name] = offset
-    return offset
-
-
-def get_sprite_arm_anchor(name: str) -> tuple[int, int]:
-    """Sprite-local (col, row) of GOLIATH's shield plate.
-
-    GOLIATH's sprite already carries a brass shield disc on his left arm.
-    That disc is the anchor the runtime's translucent oval is mounted on,
-    so the plate the player sees and the hitbox the bullets test are the
-    same object.
-
-    Located by colour, not by canvas edge: the brass plate reads as a warm
-    high-luminance cluster (R high, G mid-high, B low) inside the gold
-    armour, and it is reliably the ONLY such cluster in the sprite. The
-    right edge of the silhouette is the javelin shaft, which would put the
-    oval off the body.
-
-    Returns the canvas anchor for an empty or missing sprite, and caches
-    per sprite path.
-    """
-    if name in _sprite_arm_anchor_cache:
-        return _sprite_arm_anchor_cache[name]
-    surf = _load_sprite(name)
-    fallback = (_GOLIATH_ANCHOR_X, _GOLIATH_ANCHOR_Y)
-    if surf is None:
-        _sprite_arm_anchor_cache[name] = fallback
-        return fallback
-    w, h = surf.get_size()
-    hits: list[tuple[int, int]] = []
-    for y in range(h):
-        for x in range(w):
-            r, g, b, a = surf.get_at((x, y))
-            if a == 0:
-                continue
-            # Brass plate signature: warm, bright, blue-poor.
-            if r > 185 and g > 145 and b < 130 and r > b + 70:
-                hits.append((x, y))
-    if not hits:
-        _sprite_arm_anchor_cache[name] = fallback
-        return fallback
-    col = sum(p[0] for p in hits) / len(hits)
-    row = sum(p[1] for p in hits) / len(hits)
-    # BLOQUE 73.3 sanity clamp. The brass signature also fires on small
-    # highlights elsewhere (a pauldron rivet, the javelin's iron tip, the
-    # helmet crest). Those land far from the body centre, so reject any
-    # match outside a box around the canvas anchor — the plate is always
-    # on the torso, never at the sprite's extremities. Without this, the
-    # oval jumped to col 66 (off the body) in purple_bullet/f00 and to
-    # col 28 (inside the torso) in javelin/f03.
-    col = min(max(col, _GOLIATH_ANCHOR_X - 6), _GOLIATH_ANCHOR_X + 6)
-    row = min(max(row, _GOLIATH_ANCHOR_Y - 8), _GOLIATH_ANCHOR_Y + 8)
-    anchor = (int(round(col)), int(round(row)))
-    _sprite_arm_anchor_cache[name] = anchor
-    return anchor
+    return anchor.eye
 
 
 # ---------------------------------------------------------------------------
-# BLOQUE 67: elipse que encaja EXACTAMENTE en la placa del escudo
+# BLOQUE 74: la elipse del escudo sale de la tabla horneada
 # ---------------------------------------------------------------------------
-# GOLIATH lleva el escudo en el brazo derecho (columnas ~58-68 del sprite),
-# no en el izquierdo. La elipse tiene que caER sobre la silueta de esa
-# placa, no flotar al lado.
+# GOLIATH lleva el escudo en el brazo derecho, y la elipse tiene que caer
+# SOBRE la placa: por eso se midio por FORMA (la ultima placa de pixeles
+# solidos de cada fila en la banda media), no por color -- la placa usa la
+# MISMA paleta que el cuerpo (160,110,50).
 #
-# La placa se mide por FORMA, no por color: usa la MISMA paleta que el
-# cuerpo (160,110,50), asi que la unica firma posible es el contorno.
-# El escudo es el ultimo bloque de pixeles solidos de cada fila en la
-# banda media (debajo del hombro, arriba de las piernas).
-#
-# _GOLIATH_SHIELD_BAND: banda vertical donde vive la placa.
-# _GOLIATH_SHIELD_RIGHT_MIN: columna desde la que el escudo puede empezar.
-#   Es el lado derecho; el recorte evita que el bloque se coma el torso.
-# _GOLIATH_SHIELD_FALLBACK: elipse canonica cuando la medicion falla
-#   (sprite ausente o frame degenerado). Es la mediana de las 60
-#   mediciones validas.
-_GOLIATH_SHIELD_BAND = (28, 54)
-_GOLIATH_SHIELD_RIGHT_MIN = 50
-_GOLIATH_SHIELD_FALLBACK = (60.5, 40.5, 8.5, 10.5)
-# Rango en el que una medicion se considera creible. Debajo de estos
-# valores el bloque encontrado es un fragmento (el brazo, la pata, el
-# proyectil) y no la placa: en ese caso se usa la elipse canonica.
-_GOLIATH_SHIELD_RX_RANGE = (6.5, 11.0)
-_GOLIATH_SHIELD_RY_RANGE = (9.0, 13.0)
-
-_sprite_shield_ellipse_cache: dict[str, tuple[float, float, float, float]] = {}
-
-
-def _measure_shield_lobe(
-    surf: pygame.Surface,
-    drop_warm: bool,
-) -> Optional[tuple[float, float, float, float]]:
-    """Elipse del lobulo izquierdo o derecho de la silueta del cuerpo.
-
-    ``drop_warm`` descarta los brillos calidos (los del haz del ojo, que
-    esta horneado en los frames de ataque y extiende el contorno fuera
-    del cuerpo). Como son pixeles INTERIORES, quitarlos no cambia la
-    silueta; lo que hace es que el haz deje de contar como escudo.
-    """
-    w, h = surf.get_size()
-    body = [[False] * w for _ in range(h)]
-    for y in range(h):
-        for x in range(w):
-            r, g, b, a = surf.get_at((x, y))
-            if a <= 32:
-                continue
-            if drop_warm and r >= 235 and b <= 140 and (g >= 130 or r - b >= 190):
-                # Colores del HAZ DEL OJO horneado en los frames de ataque:
-                # (255,140,60) (255,80,40) (255,220,80) (240,200,120).
-                # El (220,180,80) de la cara del escudo NO se descarta:
-                # ese es el brillo de la placa.
-                continue
-            body[y][x] = True
-
-    band_top, band_bottom = _GOLIATH_SHIELD_BAND
-    right_pts: list[tuple[int, int]] = []
-    for y in range(band_top, min(band_bottom, h)):
-        row = body[y]
-        xs = [x for x in range(w) if row[x]]
-        if not xs:
-            continue
-        end = xs[-1]
-        start = end
-        while start - 1 >= 0 and row[start - 1]:
-            start -= 1
-        if end >= _GOLIATH_SHIELD_RIGHT_MIN:
-            right_pts.extend((x, y) for x in range(max(start, _GOLIATH_SHIELD_RIGHT_MIN), end + 1))
-
-    def _ellipse(pts: list[tuple[int, int]]) -> Optional[tuple[float, float, float, float]]:
-        if not pts:
-            return None
-        xs = [p[0] for p in pts]
-        ys = [p[1] for p in pts]
-        x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
-        return ((x0 + x1) / 2.0, (y0 + y1) / 2.0, (x1 - x0) / 2.0, (y1 - y0) / 2.0)
-
-    def _sane(e: Optional[tuple[float, float, float, float]]) -> bool:
-        if e is None:
-            return False
-        _, _, rx, ry = e
-        return (
-            _GOLIATH_SHIELD_RX_RANGE[0] <= rx <= _GOLIATH_SHIELD_RX_RANGE[1]
-            and _GOLIATH_SHIELD_RY_RANGE[0] <= ry <= _GOLIATH_SHIELD_RY_RANGE[1]
-        )
-
-    # El lado derecho es el caso normal: el escudo esta en el brazo
-    # derecho de GOLIATH.
-    #
-    # NO se busca el lado izquierdo, y es deliberado. En los frames con
-    # el cuerpo girado (lanzamiento del javelin) el escudo pasa al otro
-    # lado, pero el lobulo izquierdo de esos frames es indistinguible del
-    # BRAZO: se midio y el detector elegia el brazo en 2 frames del
-    # `laser` (cx=38, ovalo flotando sobre el torso). Dejarlo en la
-    # posicion canonica es mucho mejor que mandarlo al lado equivocado:
-    # los 60 frames quedan con cx en [57, 63.5], siempre a la derecha.
-    right = _ellipse(right_pts)
-    if _sane(right):
-        return right
-    return None
+# Esa medicion ya no se hace en runtime: la hace el auditor (build time) y
+# queda escrita en anchors.toml. El runtime solo la lee.
 
 
 def get_sprite_shield_ellipse(name: str) -> tuple[float, float, float, float]:
-    """BLOQUE 67: (cx, cy, rx, ry) sprite-local de la elipse del escudo.
+    """Sprite-local (cx, cy, rx, ry) de la elipse del escudo.
 
-    La elipse se dimensiona con la silueta REAL de la placa del escudo en
-    ese frame, para que encaje perfecto. La primera pasada usa el alpha
-    tal cual; si el resultado es disparatado (el haz del ojo horneado en
-    los frames de ataque, o el proyectil) se reintenta descartando los
-    brillos calidos.
+    BLOQUE 74: la elipse sale de la tabla horneada. Los frames donde el
+    arte NO tiene placa (el haz del ojo horneado o el proyectil la tapan)
+    traen la elipse INTERPOLADA de sus vecinos, asi que el ovalo sigue la
+    placa en vez de clavarse en una constante.
 
-    Devuelve la elipse canonica (_GOLIATH_SHIELD_FALLBACK) si el sprite no
-    existe o si el frame es degenerado.
+    Un frame sin medicion alguna (no esta en la tabla, o su placa quedo sin
+    resolver) recibe la elipse CANONICA: los radios canonicos del manifest
+    en el centro canonico. La alternativa -- no devolver nada -- le
+    borraria el hitbox al escudo y le dejaria al laser sin origen.
     """
-    if name in _sprite_shield_ellipse_cache:
-        return _sprite_shield_ellipse_cache[name]
-    surf = _load_sprite(name)
-    if surf is None:
-        _sprite_shield_ellipse_cache[name] = _GOLIATH_SHIELD_FALLBACK
-        return _GOLIATH_SHIELD_FALLBACK
-    result = _measure_shield_lobe(surf, drop_warm=False)
-    if result is None:
-        result = _measure_shield_lobe(surf, drop_warm=True)
-    if result is None:
-        result = _GOLIATH_SHIELD_FALLBACK
-    _sprite_shield_ellipse_cache[name] = result
-    return result
+    anchor = _anchor_for(name)
+    if anchor is None or anchor.shield is None:
+        return _canonical_shield_ellipse()
+    return anchor.shield
 
 
 # Map enemy kind value → sprite PNG filename (BLOQUE 58.47)

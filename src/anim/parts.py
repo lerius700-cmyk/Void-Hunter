@@ -37,10 +37,22 @@ COLD_STEEL = (96, 104, 124)
 # `shield_ellipse_rect`.
 DRAW_SHIELD_OVAL = False
 
+# BLOQUE 74: the CANONICAL plate centre and the CANONICAL radii.
+#
+# The centre is the median of the 60 measured plate centres (the baked
+# table's cx spans 57.0..63.5 and its cy 39.5..42.5). It is where the
+# plate sits on the canvas when a frame carries no measurement of its own.
+CANONICAL_PLATE_CENTRE = (60.5, 40.5)
+
+# The canonical radii (R, RX, RY), used when the manifest declares none.
+# They are the BLOQUE 67 user-approved sizes, the same ones the runtime
+# keeps in GOLIATH_SHIELD_R / _RX / _RY.
+DEFAULT_RADII = (11.0, 11.0, 17.0)
+
 # A frame that is missing from the anchor table still has a body: only its
 # REGISTRATION CORRECTION is unknown, so it degrades to a plain centred
-# blit instead of making the character disappear. The oval stays absent --
-# without a measurement there is no credible position for it.
+# blit instead of making the character disappear. The oval keeps the
+# canonical geometry -- see `canonical_shield_ellipse`.
 NO_OFFSET = FrameAnchor(
     body_dx=0,
     body_dy=0,
@@ -49,6 +61,22 @@ NO_OFFSET = FrameAnchor(
     shield=None,
     shield_source="missing",
 )
+
+
+def canonical_shield_ellipse(part: Part | None) -> tuple[float, float, float, float]:
+    """The canonical ellipse: the manifest's radii at the canonical centre.
+
+    BLOQUE 74: this is the POLICY for a frame whose plate could not be
+    resolved. The alternative -- no ellipse at all -- would delete the
+    shield's hitbox and leave the laser with nowhere to come from, so the
+    oval keeps the canonical size at the canonical place instead of
+    vanishing.
+    """
+    radii = part.radii if part is not None else None
+    if radii is None:
+        radii = DEFAULT_RADII
+    _r, rx, ry = radii
+    return (CANONICAL_PLATE_CENTRE[0], CANONICAL_PLATE_CENTRE[1], rx, ry)
 
 
 def _base(
@@ -80,14 +108,19 @@ def shield_ellipse_rect(
     horizontal thinning). Both come from the manifest, so the manifest and
     the baked measurement can never disagree.
 
-    None when the frame carries no anchor, or when the plate is UNRESOLVED:
-    an unresolved feature has no credible position, and guessing one would
-    put the oval in the corner of the screen.
+    BLOQUE 74: a frame whose plate could NOT be resolved gets the CANONICAL
+    ellipse -- the manifest's radii at the canonical centre -- instead of no
+    oval at all. The oval is invisible either way (DRAW_SHIELD_OVAL is
+    False); what matters is that the geometry the hitbox and the laser
+    read still exists.
     """
-    if anchor is None or anchor.shield is None:
-        return None
+    if anchor is None:
+        anchor = NO_OFFSET
+    if anchor.shield is None:
+        cx, cy, rx, ry = canonical_shield_ellipse(part)
+    else:
+        cx, cy, rx, ry = anchor.shield
     base_x, base_y = _base(anchor, origin, canvas)
-    cx, cy, rx, ry = anchor.shield
     centre_x = int(base_x + cx + part.offset[0])
     centre_y = int(base_y + cy + part.offset[1])
     scaled_rx = max(2, int(round(rx * part.scale[0])))
@@ -114,12 +147,15 @@ def draw_part(
     `canvas` is the set's canvas size, (width, height).
 
     A frame that is missing from the anchor table still draws its body
-    (without the registration correction); everything that needs a
-    measurement -- the oval, the eye -- stays undrawn.
+    (without the registration correction); the oval falls back to the
+    canonical geometry and the eye stays undrawn.
     """
     if anchor is None:
-        if part.draw != "frames" or surf is None:
+        if part.draw == "frames" and surf is None:
             return
+        # A frame that is not in the table still draws: the body without
+        # its registration correction, and the oval at the canonical
+        # place (the oval is invisible anyway -- DRAW_SHIELD_OVAL is False).
         anchor = NO_OFFSET
 
     if part.draw == "frames":
@@ -132,8 +168,6 @@ def draw_part(
     if part.draw == "ellipse":
         rect = shield_ellipse_rect(part, anchor, origin, canvas)
         if rect is None:
-            # Unresolved plate: there is no credible position to draw it
-            # at, and the canvas origin is not one of them.
             return
         if not DRAW_SHIELD_OVAL:
             # The oval is invisible by design (BLOQUE 67): the runtime

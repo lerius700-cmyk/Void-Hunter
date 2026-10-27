@@ -356,10 +356,21 @@ def test_the_oval_geometry_follows_the_anchor():
     assert rect.height == max(2, int(round(ry * part.scale[1]))) * 2
 
 
-def test_an_unresolved_plate_draws_no_oval(tmp_path):
-    """No credible position -> no oval. It must not land on the origin."""
+def test_an_unresolved_plate_keeps_the_canonical_oval(tmp_path):
+    """BLOQUE 74: no credible position -> the CANONICAL oval.
+
+    The policy changed in BLOQUE 74. The oval used to disappear when the
+    plate could not be resolved, which deleted the shield's hitbox and
+    left the laser with no origin. Now the frame keeps the canonical
+    ellipse -- the manifest's radii at the canonical centre -- and it must
+    not land on the origin either.
+    """
     from src.anim.manifest import load_set
-    from src.anim.parts import draw_part, shield_ellipse_rect
+    from src.anim.parts import (
+        CANONICAL_PLATE_CENTRE,
+        draw_part,
+        shield_ellipse_rect,
+    )
 
     anchors = _load_synthetic(tmp_path)
     anim_set = load_set("goliath")
@@ -367,13 +378,24 @@ def test_an_unresolved_plate_draws_no_oval(tmp_path):
     anchor = anchors.get("javelin", 1)
     assert anchor is not None and anchor.shield is None
 
-    assert (
-        shield_ellipse_rect(part, anchor, (120, 180), anim_set.canvas) is None
+    rect = shield_ellipse_rect(part, anchor, (120, 180), anim_set.canvas)
+    assert rect is not None
+    assert rect.centerx != 0 and rect.centery != 0
+    expected_x = (
+        120 - 96 // 2 + anchor.body_dx + CANONICAL_PLATE_CENTRE[0] + part.offset[0]
     )
+    expected_y = (
+        180 - 80 // 2 + anchor.body_dy + CANONICAL_PLATE_CENTRE[1] + part.offset[1]
+    )
+    assert abs(rect.centerx - expected_x) <= 1
+    assert abs(rect.centery - expected_y) <= 1
+    _r, rx, ry = part.radii
+    assert rect.width == max(2, int(round(rx * part.scale[0]))) * 2
+    assert rect.height == max(2, int(round(ry * part.scale[1]))) * 2
 
     target = pygame.Surface((240, 360), pygame.SRCALPHA)
     draw_part(target, part, None, anchor, (120, 180), anim_set.canvas)
-    assert target.get_bounding_rect().width == 0
+    assert target.get_bounding_rect().width == 0, "the oval must stay invisible"
 
 
 def test_the_clip_follows_the_manifest_fps():

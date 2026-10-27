@@ -120,7 +120,14 @@ class Boss:
     animation_state: str = "phase1_idle"
     animation_frame: int = 0
     animation_timer: float = 0.0
+    # BLOQUE 74: the timing of the clip the boss is playing. The defaults
+    # below are the class constants; the runtime overrides them from the
+    # manifest (manifest.toml declares each clip's fps and frame count),
+    # so a clip can run at its own rate without touching this class.
+    animation_frame_duration: float = 0.10
+    animation_frame_count: int = 10
     ANIMATION_FRAME_DURATION: ClassVar[float] = 0.10  # 10 fps, 1.0s per loop
+    ANIMATION_FRAME_COUNT: ClassVar[int] = 10
     # BLOQUE 60: eye laser cooldown (phase 2 only) — decremented by
     # gameplay_runtime. When it hits 0 in phase 2, attack idx 9 fires
     # (a long red downward beam) and the cd is reset to 3.0s. Default
@@ -153,6 +160,10 @@ class Boss:
         self.animation_state = "phase1_idle"
         self.animation_frame = 0
         self.animation_timer = 0.0
+        # BLOQUE 74: the timing starts from the defaults; the runtime
+        # replaces it with the manifest's values for the clip in play.
+        self.animation_frame_duration = self.ANIMATION_FRAME_DURATION
+        self.animation_frame_count = self.ANIMATION_FRAME_COUNT
         self.attack_anim_timer = 0.0
         # BLOQUE 60: reset the eye laser countdown. First laser fires 3s
         # after the boss enters phase 2 (the runtime only decrements it
@@ -176,12 +187,14 @@ class Boss:
         return f"bosses/goliath/{self.animation_state}/frame_{self.animation_frame:02d}.png"
 
     def update_animation(self, dt: float) -> None:
-        """BLOQUE 64.B: advance the animation frame.
+        """BLOQUE 74: advance the animation frame.
 
         - Looping anims (phase1_idle, phase2_idle, javelin, laser,
-          purple_bullet) wrap frame 9 → 0.
-        - One-shot anim ("death") holds at frame 9 forever.
-        - The 6th anim is "death" only; the other 5 all loop.
+          purple_bullet) wrap the last frame -> 0.
+        - One-shot anim ("death") holds on its last frame forever.
+
+        The duration and the frame count come from the manifest, so a clip
+        can run at its own fps without touching this class.
 
         The runtime ticks ``attack_anim_timer`` separately — when an attack
         anim's timer expires, the runtime restores the default idle
@@ -190,15 +203,15 @@ class Boss:
         if dt <= 0.0:
             return
         self.animation_timer += dt
-        if self.animation_timer < self.ANIMATION_FRAME_DURATION:
+        if self.animation_timer < self.animation_frame_duration:
             return
-        self.animation_timer -= self.ANIMATION_FRAME_DURATION
+        self.animation_timer -= self.animation_frame_duration
         if self.animation_state == "death":
-            if self.animation_frame < 9:
+            if self.animation_frame < self.animation_frame_count - 1:
                 self.animation_frame += 1
         else:
             # All 5 non-death anims loop.
-            self.animation_frame = (self.animation_frame + 1) % 10
+            self.animation_frame = (self.animation_frame + 1) % self.animation_frame_count
 
     def set_animation_state(self, new_state: str) -> None:
         """BLOQUE 64.B: switch the animation state and reset the frame.

@@ -14,13 +14,34 @@ for the pause-screen lowpass only).
 """
 from __future__ import annotations
 
+import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-SETS_ROOT = ROOT / "Assets" / "sprites" / "bosses"
+
+
+def _sets_root() -> Path:
+    """Where the animated sets live.
+
+    Running from source: <project root>/Assets/sprites/bosses.
+
+    Frozen (PyInstaller, onefile): the bundle is extracted to a temporary
+    directory and the Assets are dropped in `<_MEIPASS>/Assets/...`, so the
+    sets are read from THERE. This is the same probe the audio and the
+    tiling image use (src/audio/music.py, src/ui/tiling_image.py): the
+    manifest is the ONE place that resolves the assets of an animated set,
+    so the runtime never needs a second, divergent probe.
+    """
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        return Path(meipass) / "Assets" / "sprites" / "bosses"
+    return ROOT / "Assets" / "sprites" / "bosses"
+
+
+SETS_ROOT = _sets_root()
 
 VALID_METHODS = ("shape", "color")
 VALID_SIDES = ("left", "right")

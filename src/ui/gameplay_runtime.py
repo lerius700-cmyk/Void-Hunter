@@ -114,10 +114,11 @@ def _goliath_shield_ellipse(runtime: "GameplayRuntime") -> tuple[int, int, int, 
     all read it, so the picture, what the bullets collide with and where
     the beam comes from can never disagree.
 
-    The ellipse is measured from the current frame's sprite silhouette, so
-    it tracks the plate exactly as the arm moves. When the sprite is
-    missing or the frame is degenerate, the fallback half-size
-    (GOLIATH_SHIELD_RX / GOLIATH_SHIELD_RY) is used.
+    The ellipse is read from the BAKED anchor table (anchors.toml), so it
+    tracks the plate exactly as the arm moves: the auditor measured every
+    frame at build time and the runtime only looks the answer up. When the
+    boss is missing, the fallback half-size (GOLIATH_SHIELD_RX /
+    GOLIATH_SHIELD_RY) is used.
     """
     from src.ui.scenes import get_sprite_centroid_offset, get_sprite_shield_ellipse
 
@@ -557,6 +558,45 @@ class GameplayRuntime:
             3: BossId.NEMESIS,  # PHANTOM + NEMESIS: default to final
         }.get(self._act, BossId.GOLIATH)
         self._boss = self._bosses.spawn(boss_id)
+        # BLOQUE 74: the clip's timing comes from the manifest, not from a
+        # constant baked into the boss class.
+        self._apply_manifest_anim_timing()
+
+    # ------------------------------------------------------------------
+    # BLOQUE 74: the boss's animation is driven by the manifest
+    # ------------------------------------------------------------------
+    def _apply_manifest_anim_timing(self) -> None:
+        """Hand the boss the fps and the frame count of its current clip.
+
+        manifest.toml declares each clip's fps and frame count, so a clip
+        can run at its own rate without touching the boss class. The boss
+        class only carries the defaults.
+        """
+        if self._boss is None:
+            return
+        from src.ui.scenes import get_clip_player
+
+        player = get_clip_player()
+        if player is None:
+            return
+        clip = player.set.clips.get(self._boss.animation_state)
+        if clip is None:
+            return
+        if clip.fps > 0:
+            self._boss.animation_frame_duration = 1.0 / clip.fps
+        if clip.frames > 0:
+            self._boss.animation_frame_count = clip.frames
+
+    def _set_boss_animation(self, state: str) -> None:
+        """Switch the boss's clip and re-read that clip's timing.
+
+        Every state change goes through here, so the timing can never be
+        the one of the PREVIOUS clip.
+        """
+        if self._boss is None:
+            return
+        self._boss.set_animation_state(state)
+        self._apply_manifest_anim_timing()
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -2124,7 +2164,7 @@ class GameplayRuntime:
                         idle_state = (
                             "phase2_idle" if self._boss.phase >= 2 else "phase1_idle"
                         )
-                        self._boss.set_animation_state(idle_state)
+                        self._set_boss_animation(idle_state)
                 # BLOQUE 67: el laser del ojo se reasigna a la x del ojo
                 # DESPUES de que el boss se mueva Y de que se resuelva la
                 # animacion de ataque, asi que usa la pose final del
@@ -2188,7 +2228,7 @@ class GameplayRuntime:
             self._start_goliath_spear_throw()
             # BLOQUE 64.B: trigger the "javelin" anim for 0.5s
             from src.entities.enemies.boss import ATTACK_ANIM_DURATIONS_S
-            self._boss.set_animation_state("javelin")
+            self._set_boss_animation("javelin")
             self._boss.attack_anim_timer = ATTACK_ANIM_DURATIONS_S["javelin"]
             return
         bx, by = self._boss.x, self._boss.y + 12
@@ -2205,7 +2245,7 @@ class GameplayRuntime:
             # BLOQUE 64.B: aimed attack in phase 2 uses "purple_bullet" anim
             if self._boss.id == BossId.GOLIATH and self._boss.phase >= 2:
                 from src.entities.enemies.boss import ATTACK_ANIM_DURATIONS_S
-                self._boss.set_animation_state("purple_bullet")
+                self._set_boss_animation("purple_bullet")
                 self._boss.attack_anim_timer = ATTACK_ANIM_DURATIONS_S["purple_bullet"]
         elif attack == 1:
             # 3-spread
@@ -2228,7 +2268,7 @@ class GameplayRuntime:
             # BLOQUE 64.B: ring attack in phase 2 uses "purple_bullet" anim
             if self._boss.id == BossId.GOLIATH and self._boss.phase >= 2:
                 from src.entities.enemies.boss import ATTACK_ANIM_DURATIONS_S
-                self._boss.set_animation_state("purple_bullet")
+                self._set_boss_animation("purple_bullet")
                 self._boss.attack_anim_timer = ATTACK_ANIM_DURATIONS_S["purple_bullet"]
         elif attack == 9:
             # BLOQUE 60: GOLIATH Phase 2 eye laser — straight red beam
@@ -2262,7 +2302,7 @@ class GameplayRuntime:
             # BLOQUE 64.B: trigger the "laser" anim for 0.7s
             if self._boss.id == BossId.GOLIATH:
                 from src.entities.enemies.boss import ATTACK_ANIM_DURATIONS_S
-                self._boss.set_animation_state("laser")
+                self._set_boss_animation("laser")
                 self._boss.attack_anim_timer = ATTACK_ANIM_DURATIONS_S["laser"]
 
     def _goliath_eye_position(self) -> tuple[int, int]:
@@ -2830,7 +2870,7 @@ class GameplayRuntime:
         bx, by = self._boss.x, self._boss.y
         boss_id = self._boss.id
         # BLOQUE 64.B: trigger the "death" anim (one-shot, holds last frame)
-        self._boss.set_animation_state("death")
+        self._set_boss_animation("death")
         score = BOSS_CONFIGS[boss_id].score
         self._scoring.on_kill(score, is_boss=True)
         self._scoring.on_boss_defeated(BOSS_CONFIGS[boss_id].name)
@@ -6014,8 +6054,7 @@ class GameplayRuntime:
         """
         if self._boss is None:
             return
-        from src.ui.scenes import _load_sprite, get_sprite_centroid_offset
-        sprite = _load_sprite(self._boss.animation_path) if self._boss else None
+        from src.ui.scenes import get_clip_player, get_sprite_centroid_offset
         # Per-state bob amplitude. The procedural frame motion is the main
         # source of life; this is a tiny global sway on top.
         anim = self._boss.animation_state if self._boss else "phase1_idle"
@@ -6040,8 +6079,28 @@ class GameplayRuntime:
         )
         blit_x = cx - vw // 2 + centroid_dx
         blit_y = cy - vh // 2 + int(bob) + centroid_dy
-        if sprite is not None:
-            target.blit(sprite, (blit_x, blit_y))
+        # BLOQUE 74: the boss is composed through the ClipPlayer, which
+        # owns the manifest, the baked anchors AND the frame cache. The UI's
+        # own sprite cache must not keep a second copy of the 60 frames
+        # (1.76 MB of PNG decoded twice).
+        player = get_clip_player()
+        if player is not None and anim in player.set.clips:
+            player.draw(
+                target,
+                anim,
+                self._boss.animation_frame,
+                (cx, cy + int(bob)),
+                part_ids=("body",),
+            )
+        else:
+            # The manifest or the table could not be read: fall back to the
+            # plain sprite blit, the way the runtime behaved before the
+            # pipeline existed.
+            from src.ui.scenes import _load_sprite
+
+            sprite = _load_sprite(self._boss.animation_path)
+            if sprite is not None:
+                target.blit(sprite, (blit_x, blit_y))
         # BLOQUE 73.2: the shield is a translucent OVAL mounted on the
         # boss's left arm. It recolours as the player charges it — iron at
         # 0 hits, mid-blue through the middle band, bright cyan-white when
