@@ -2727,10 +2727,14 @@ writes explicitly.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pygame
 
 from src.anim.manifest import AnimSet
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard for type checkers
+    from sprite_pipeline.audit import Finding
 
 
 def mirror_frame(path: Path) -> bool:
@@ -2753,7 +2757,11 @@ def repad_frame(path: Path, min_margin: int = 3) -> bool:
     """
     surf = pygame.image.load(str(path)).convert_alpha()
     w, h = surf.get_size()
-    bbox = surf.get_alpha().getbbox() if surf.get_alpha() else None
+    # get_alpha() returns the alpha channel surface for a per-pixel-alpha
+    # surface, and None (or an int) for the other kinds -- only the
+    # surface carries the bounding box.
+    alpha = surf.get_alpha()
+    bbox = alpha.getbbox() if isinstance(alpha, pygame.Surface) else None
     if bbox is None:
         return False
     left, top, right, bottom = bbox
@@ -2773,12 +2781,17 @@ def repad_frame(path: Path, min_margin: int = 3) -> bool:
 
 
 def repair_set(
-    anim_set: AnimSet, findings, *, apply: bool = False
+    anim_set: AnimSet, findings: list["Finding"], *, apply: bool = False
 ) -> list[str]:
     """Apply the repairs implied by the findings.
 
     Returns the list of actions taken (or that would be taken when
     apply=False).
+
+    The frame is looked up as `<set>/<clip id>/frame_NN.png`. Every clip of
+    the shipped GOLIATH manifest declares `dir` equal to its `id`, so the
+    clip id IS the directory name; a set that ever separates the two would
+    need the manifest's `dir` here instead.
     """
     actions: list[str] = []
     for finding in findings:
@@ -2817,12 +2830,23 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
+# pygame prints its support banner to STDOUT when the module is imported,
+# which would corrupt the --json report. This has to be set BEFORE the
+# import below (same guard as tools/sprite_pipeline/audit.py).
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+
 ROOT = Path(__file__).resolve().parent.parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+# The package lives in tools/sprite_pipeline/, so BOTH the repository root
+# (for `src.anim.manifest`) and the tools directory (for
+# `sprite_pipeline.audit`) have to be importable when this file is run as
+# a script.
+for _entry in (str(ROOT), str(ROOT / "tools")):
+    if _entry not in sys.path:
+        sys.path.insert(0, _entry)
 
 import pygame  # noqa: E402
 
