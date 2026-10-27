@@ -23,7 +23,7 @@
 
 ## Measured baseline (the auditor's expected output before repair)
 
-These numbers were measured against the 60 shipped GOLIATH frames with the manifest's `exclude` list applied. The auditor's output in Task 4 is asserted against exactly this table.
+These numbers were measured against the 60 shipped GOLIATH frames with the manifest's `warm_fallback` predicate applied, and with the clip median computed as the true median (`statistics.median`, the average of the two middle values — NOT the upper-middle element, which shifts the threshold by up to 0.2 px). The auditor's output in Task 4 is asserted against exactly this table.
 
 | Frame | States | Severity | After the repair (Task 5) |
 |---|---|---|---|
@@ -50,10 +50,11 @@ pipeline's bar is therefore **0 FAIL** plus **no unresolved feature** (the
 
 Key measurements that the thresholds depend on:
 
-- **Probe (brass signature, `exclude` applied)** detects the plate in **60/60** frames. Probe column per clip: `phase1_idle` median 50.7 (max deviation 1.8), `phase2_idle` 50.7 (2.9), `javelin` 49.0 (**21.6** at f03), `laser` 49.7 (5.3), `purple_bullet` 51.9 (**18.9** at f06, 13.2 at f08), `death` 52.5 (11.8 at f02).
-- **`side_tolerance = 14`** separates the two turned-around frames (18.9, 21.6) from every healthy frame (max 13.2). It is declared per clip in the manifest.
-- **Shape ellipse** is measurable in **60/60** frames, but 8 are implausible: `javelin/f03` rx=2.0, `javelin/f04` rx=3.5, `javelin/f07` rx=5.0, `laser/f04` rx=16.0, `laser/f05` rx=12.0, `laser/f07` rx=11.5, `purple_bullet/f06` rx=5.0, `purple_bullet/f08` rx=15.0.
-- **Height metric** (silhouette bbox height, `exclude` applied): `laser/f05` 61 vs median 75 (19%), `purple_bullet/f07` 57 vs 73 (22%), `death/f04` 75 vs 61 (23%), `death/f08` 39 (36%), `death/f09` 37 (39%). Per-clip `scale_tolerance` values below make all of these intentional.
+- **Probe (brass signature, warm filter applied)** detects the plate in **60/60** frames. Probe median per clip: `phase1_idle` 50.6 (max healthy deviation 1.9), `phase2_idle` 50.7 (3.0), `javelin` 48.8 (**21.4** at f03), `laser` 49.5 (5.5), `purple_bullet` 51.2 (**18.2** at f06), `death` 51.6 (10.9).
+- **`side_tolerance = 14`** separates the two turned-around frames (18.2, 21.4) from every healthy frame. The next-largest deviation among the frames that sit on the wrong side of the centre is `death/frame_02` at 10.9 — a margin of 3.1, so the threshold is not on a knife edge. It is declared per clip in the manifest.
+- **Shape ellipse** is measurable in **60/60** frames with the two-pass rule, but 7 are not credible: `javelin/f03`, `javelin/f04`, `javelin/f07`, `laser/f04`, `laser/f07`, `purple_bullet/f06`, `purple_bullet/f08`. The two turned-around frames are repaired by mirroring; the other five are resolved by interpolation.
+- **Height metric** (silhouette bbox height, warm pixels excluded): `laser/f05` 61 vs median 75 (18.7%), `purple_bullet/f07` 57 vs 73 (21.9%), `death/f04` 75 vs 61 (23%), `death/f08` 39 (36%), `death/f09` 37 (39%). The per-clip `scale_tolerance` values below make all of these intentional.
+- **FIRMA_AMBIGUA** fires where the probe and the shape measurement disagree by more than `side_tolerance`: `laser/f05` (16.0), `death/f02` (16.8), `death/f07` (14.2). The largest disagreement among the remaining frames is 11.5 (`purple_bullet/f01`) — a margin of 2.5.
 
 ---
 
@@ -711,10 +712,10 @@ git commit -m "feat: BLOQUE 74 - manifest declarativo de sets de animacion + el 
   - `src.anim.measure.ALPHA_MIN: int` = `32`
   - `src.anim.measure.alpha_centroid(surf: pygame.Surface) -> tuple[float, float] | None`
   - `src.anim.measure.silhouette_bbox(surf: pygame.Surface, threshold: int = ALPHA_MIN) -> tuple[int, int, int, int] | None`
-  - `src.anim.measure.silhouette_height(surf: pygame.Surface, threshold: int = ALPHA_MIN, exclude: tuple = ()) -> int | None`
-  - `src.anim.measure.color_centroid(surf: pygame.Surface, rule: DetectRule, band=None, col_range=None) -> tuple[float, float] | None`
-  - `src.anim.measure.plate_ellipse(surf: pygame.Surface, rule: DetectRule) -> tuple[float, float, float, float] | None`
-  - `src.anim.measure.is_excluded(rgb: tuple, exclude: tuple) -> bool`
+  - `src.anim.measure.silhouette_height(surf: pygame.Surface, rule: DetectRule | None = None, drop_warm: bool = False, threshold: int = ALPHA_MIN) -> int | None`
+  - `src.anim.measure.color_centroid(surf: pygame.Surface, rule: DetectRule, band: tuple[int,int] | None = None, col_range: tuple[int,int] | None = None, warm: WarmRule | None = None) -> tuple[float, float] | None`
+  - `src.anim.measure.plate_ellipse(surf: pygame.Surface, rule: DetectRule, drop_warm: bool = False) -> tuple[float, float, float, float] | None`
+  - `src.anim.measure.credible_ellipse(surf: pygame.Surface, rule: DetectRule) -> tuple[float, float, float, float] | None` — the two-pass measurement: plain silhouette first, warm-dropped retry
   - `src.anim.measure.interpolate(values: list[float | None], index: int) -> float | None` — Catmull-Rom (linear fallback) over the nearest measured neighbours
 
 - [ ] **Step 1: Write the failing test**
@@ -1061,6 +1062,64 @@ def _credible(
         rule.rx_range[0] <= rx <= rule.rx_range[1]
         and rule.ry_range[0] <= ry <= rule.ry_range[1]
     )
+
+
+def interpolate(values: list[float | None], index: int) -> float | None:
+    """Fill a missing measurement from its neighbours.
+
+    Catmull-Rom through the nearest measured values on each side when four
+    of them exist, otherwise a linear interpolation between the closest
+    measured pair. Returns None when there is nothing to interpolate from.
+
+    This is inbetweening: the shield plate moves smoothly with the arm, so
+    the frames where the art forgot it can be reconstructed from the ones
+    where it is there.
+    """
+    if index < 0 or index >= len(values):
+        return None
+    if values[index] is not None:
+        return float(values[index])
+
+    left = index - 1
+    while left >= 0 and values[left] is None:
+        left -= 1
+    right = index + 1
+    while right < len(values) and values[right] is None:
+        right += 1
+
+    left_value = values[left] if left >= 0 else None
+    right_value = values[right] if right < len(values) else None
+
+    if left_value is None and right_value is None:
+        return None
+    if left_value is None:
+        return float(right_value)
+    if right_value is None:
+        return float(left_value)
+
+    # Catmull-Rom needs two points on each side.
+    left2 = left - 1
+    while left2 >= 0 and values[left2] is None:
+        left2 -= 1
+    right2 = right + 1
+    while right2 < len(values) and values[right2] is None:
+        right2 += 1
+    p0 = values[left2] if left2 >= 0 else left_value
+    p3 = values[right2] if right2 < len(values) else right_value
+
+    span = right - left
+    t = (index - left) / span
+    t2 = t * t
+    t3 = t2 * t
+    return float(
+        0.5
+        * (
+            (2 * left_value)
+            + (-p0 + right_value) * t
+            + (2 * p0 - 5 * left_value + 4 * right_value - p3) * t2
+            + (-p0 + 3 * left_value - 3 * right_value + p3) * t3
+        )
+    )
 ```
 
 - [ ] **Step 4: Run the test to verify it fails for the RIGHT reason**
@@ -1191,13 +1250,13 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.anim.anchors import interpolate  # noqa: E402
 from src.anim.manifest import AnimSet, Clip, load_set  # noqa: E402
 from src.anim.measure import (  # noqa: E402
     ALPHA_MIN,
     alpha_centroid,
     color_centroid,
     credible_ellipse,
+    interpolate,
     plate_ellipse,
     silhouette_bbox,
     silhouette_height,
