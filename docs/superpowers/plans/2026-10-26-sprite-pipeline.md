@@ -60,7 +60,7 @@ Key measurements that the thresholds depend on:
 - **Shape ellipse** is measurable in **60/60** frames with the two-pass rule, but 7 are not credible: `javelin/f03`, `javelin/f04`, `javelin/f07`, `laser/f04`, `laser/f07`, `purple_bullet/f06`, `purple_bullet/f08`. The two turned-around frames are repaired by mirroring; the other five are resolved by interpolation.
 - **Height metric** (silhouette bbox height, warm pixels excluded), against the TRUE median: `laser/f05` 61 vs median 73.0 (16.4%), `purple_bullet/f07` 57 vs 72.5 (21.4%), `death/f04` 75 vs 60.0 (25%), `death/f08` 39 (35%), `death/f09` 37 (38.3%). The per-clip `scale_tolerance` values below make all of these intentional.
 - **FIRMA_AMBIGUA** fires where the probe and the shape measurement disagree by more than `side_tolerance`: `laser/f05` (16.0), `death/f02` (16.8), `death/f07` (14.2). The largest disagreement among the remaining frames is 11.5 (`purple_bullet/f01`) — a margin of 2.5.
-- **Max height deviation per clip** (true median): `phase1_idle` 0.027, `phase2_idle` 0.107, `javelin` 0.066, `laser` 0.164, `purple_bullet` 0.214, `death` 0.383. Every clip's `scale_tolerance` clears its own maximum by at least 0.086 — the tightest are `laser` (0.164 vs 0.25) and `purple_bullet` (0.214 vs 0.30).
+- **Max height deviation per clip** (true median): `phase1_idle` 0.027, `phase2_idle` 0.107, `javelin` 0.066, `laser` 0.164, `purple_bullet` 0.214, `death` 0.383. Every clip's `scale_tolerance` clears its own maximum, and the margins are: `phase1_idle` 0.123, `phase2_idle` **0.043** (0.107 vs 0.15 — the tightest), `javelin` 0.084, `laser` 0.086, `purple_bullet` 0.086, `death` 0.217.
 
 ---
 
