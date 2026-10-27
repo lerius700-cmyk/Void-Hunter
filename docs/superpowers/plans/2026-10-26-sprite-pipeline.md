@@ -25,7 +25,7 @@
 
 These numbers were measured against the 60 shipped GOLIATH frames with the manifest's `warm_fallback` predicate applied, and with the clip median computed as the true median (`statistics.median`, the average of the two middle values — NOT the upper-middle element, which shifts the threshold by up to 0.2 px). The auditor's output in Task 4 is asserted against exactly this table.
 
-| Frame | States | Severity | After the repair (Task 5) |
+| Frame | States | Severity | After the repair (Task 6) |
 |---|---|---|---|
 | `javelin/frame_03` | LADO_EQUIVOCADO · FUERA_DE_RANGO | FAIL | mirrored, then re-measured |
 | `javelin/frame_04` | FUERA_DE_RANGO | WARN | ellipse interpolated |
@@ -836,7 +836,7 @@ side of the canvas centre AND it strays more than `side_tolerance` from
 the clip's median probe column. Both conditions are needed: death/frame_02
 is legitimately at column 40.7 because the boss is collapsing.
 
-This test FAILS until Task 5 mirrors javelin/frame_03 and
+This test FAILS until Task 6 mirrors javelin/frame_03 and
 purple_bullet/frame_06.
 """
 from __future__ import annotations
@@ -1264,7 +1264,7 @@ def interpolate(values: list[float | None], index: int) -> float | None:
 Run: `python -m pytest tests/test_manifest_side_consistency.py --tb=short`
 Expected: `test_every_clip_detects_the_plate` PASSES; `test_plate_is_on_the_declared_side` FAILS with a message naming `javelin/frame_03` and `purple_bullet/frame_06`.
 
-This is the expected red state: the test is the proof that the auditor will catch the turned-around frames. Task 5 turns it green.
+This is the expected red state: the test is the proof that the auditor will catch the turned-around frames. Task 6 turns it green.
 
 - [ ] **Step 5: Run the full suite to confirm nothing else broke**
 
@@ -1352,7 +1352,7 @@ def test_anchors_toml_is_up_to_date(display):
     assert current == rendered, (
         "anchors.toml is stale -- regenerate it with "
         "`python tools/sprite_pipeline/audit.py goliath --write-anchors` "
-        "(BLOQUE 74 Task 5 adds `python tools/sprite_pipeline/run.py "
+        "(BLOQUE 74 Task 6 adds `python tools/sprite_pipeline/run.py "
         "goliath --fix` as the one-step fix)"
     )
 ```
@@ -2340,7 +2340,7 @@ def test_the_report_still_documents_the_art_problem():
 Run: `python -m pytest tests/test_features_detected_everywhere.py --tb=short`
 Expected: all PASS. The auditor interpolates the out-of-range frames, so the measurement is already resolved — but `test_the_report_still_documents_the_art_problem` confirms the findings still name the broken frames.
 
-The red state lives in Task 2's `test_manifest_side_consistency`, which stays red until Task 5 mirrors the two turned-around frames.
+The red state lives in Task 2's `test_manifest_side_consistency`, which stays red until Task 6 mirrors the two turned-around frames.
 
 - [ ] **Step 5: Commit**
 
@@ -2351,7 +2351,96 @@ git commit -m "test: BLOQUE 74 - cobertura del auditor y del guard de features"
 
 ---
 
-### Task 5: The repair pass and the pipeline command
+### Task 5: Fix the suite's pygame contamination — a `tests/conftest.py`
+
+**Files:**
+- Create: `tests/conftest.py`
+- Modify: `tests/test_gameplay_runtime.py` (drop the destructive teardown)
+- Modify: `tests/test_asteroid_hit_flash.py` (drop the destructive teardown)
+- Modify: `tests/test_player_sprite_sheet.py` (drop the destructive teardown)
+- Modify: `tests/test_video_player.py` (drop the destructive teardown)
+- Modify: `tests/test_cinematic_scene.py` (drop the destructive teardown)
+- Modify: `tests/test_gallery_scene.py` (drop the destructive teardown)
+
+**Interfaces:**
+- Consumes: nothing from earlier tasks. This task is independent of the sprite pipeline.
+- Produces:
+  - `tests/conftest.py` — an autouse fixture guaranteeing a live video system for every test
+  - a **stable** suite baseline: the same failure count regardless of collection order
+
+**Why this task exists.**
+
+Seven of the eight "pre-existing failures" the project has documented are
+**pollution casualties, not real defects**. Six test modules call
+`pygame.quit()` in teardown, which leaves the video system uninitialised for
+whatever runs next, and there is no `tests/conftest.py` to restore it.
+
+Measured on this branch:
+
+| Run | Result |
+|---|---|
+| `pytest tests/test_sub_boss_full_flow.py tests/test_sub_boss_real_flow.py` | exit 0 -- the 5 pass in isolation |
+| `pytest tests/test_gameplay_runtime.py tests/test_sub_boss_*.py` | 5 failed -- `pygame.error: video system not initialized` at `src/ui/gameplay_runtime.py:721` |
+| `pytest tests/test_asteroid_hit_flash.py tests/test_asteroid_sprites.py` | 2 failed -- `cannot convert without pygame.display initialized` at `src/entities/asteroid.py:175` |
+| `pytest tests/test_asteroid_sprites.py` alone | 23 passed |
+
+And the decisive one: with the new `tests/test_sprite_pipeline_audit.py` present but `tests/test_gameplay_runtime.py` running in between, the five sub-boss tests **still fail**. The heal in the full-suite run comes only from `test_sprite_pipeline_audit.py` sorting alphabetically between `test_gameplay_runtime.py` and `test_sub_boss_*`.
+
+So the suite's green-ness is a property of **collection order**, not of the code. A rename, a `-p randomly`, an `--ignore`, or any new teardown before `test_sub_boss_*` silently resurrects five failures. Only `tests/test_paths.py::test_paths_no_star_shapes` is a genuine assertion failure.
+
+**What to do.**
+
+1. Create `tests/conftest.py` with an autouse fixture that guarantees a live video mode before each test. Use exactly this content:
+
+```python
+"""BLOQUE 74: shared pytest fixtures.
+
+Several test modules used to call pygame.quit() in teardown, which left the
+video system uninitialised for whatever ran next. That turned seven of the
+documented "pre-existing failures" into pure collection-order accidents: the
+same tests pass in isolation and fail depending on where pytest put them.
+The fixture below makes the video system survive every test, so the suite's
+result no longer depends on alphabetical order.
+"""
+from __future__ import annotations
+
+import os
+
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _live_video_system():
+    """Guarantee a live video mode for every test.
+
+    pygame.quit() in another module's teardown tears the video system down;
+    pygame.display.set_mode() brings it back. Only the display is restored
+    -- the rest of pygame's state stays as the previous module left it.
+    """
+    import pygame
+
+    if not pygame.display.get_init():
+        pygame.display.set_mode((320, 480))
+    yield
+```
+
+2. Remove the destructive `pygame.quit()` teardowns from the six modules listed above. They are the cause, and leaving them in place means the next module that quits pygame re-breaks the suite. The fixture is the belt; removing the teardowns is the braces.
+
+3. Run the suite and record the new baseline.
+
+**Acceptance:**
+- `python -m pytest tests/ --tb=no` -> the same failure count with and without the new module, and the same with the modules reordered. Concretely: the five `test_sub_boss_*` and the two `test_asteroid_sprites.py` failures must be GONE, and the count must not depend on order.
+- Verify the order independence explicitly: run `pytest tests/test_gameplay_runtime.py tests/test_sub_boss_*.py` and confirm it now passes.
+- The remaining failures must be only `tests/test_paths.py::test_paths_no_star_shapes` (a genuine assertion) and `tests/test_manifest_side_consistency.py::test_plate_is_on_the_declared_side` (red by design until Task 6 mirrors the frames).
+- `python -m pytest tests/test_asteroid_sprites.py --tb=no` -> passes.
+- `python -m mypy src/anim/` -> still 0 errors.
+
+**Note:** this task also invalidates the hard-coded frame names in `tests/test_features_detected_everywhere.py` (Task 6 mirrors two frames and shifts the clip medians). Re-validate them in Task 6, not here.
+
+### Task 6: The repair pass and the pipeline command
 
 **Files:**
 - Create: `tools/sprite_pipeline/repair.py`
@@ -2671,7 +2760,7 @@ git commit -m "fix: BLOQUE 74 - repara los frames de GOLIATH con el personaje gi
 
 ---
 
-### Task 6: The anchor table reader and the compositor
+### Task 7: The anchor table reader and the compositor
 
 **Files:**
 - Create: `src/anim/anchors.py`
@@ -3011,7 +3100,7 @@ git commit -m "feat: BLOQUE 74 - interpolacion de anchors, render de parts y cli
 
 ---
 
-### Task 7: Migrate the runtime to the baked anchors
+### Task 8: Migrate the runtime to the baked anchors
 
 **Files:**
 - Modify: `src/ui/scenes.py` (the three anchor functions read the table)
@@ -3020,7 +3109,7 @@ git commit -m "feat: BLOQUE 74 - interpolacion de anchors, render de parts y cli
 - Test: `tests/test_goliath_runtime_uses_baked_anchors.py`
 
 **Interfaces:**
-- Consumes: `src.anim.anchors` (Task 6), `src.anim.manifest` (Task 1), `src.anim.clip` (Task 6).
+- Consumes: `src.anim.anchors` (Task 7), `src.anim.manifest` (Task 1), `src.anim.clip` (Task 7).
 - Produces:
   - `src.ui.scenes.get_sprite_centroid_offset(name: str) -> tuple[int, int]` — unchanged signature, now a table lookup
   - `src.ui.scenes.get_sprite_eye_anchor(name: str) -> tuple[int, int]` — unchanged signature
