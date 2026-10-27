@@ -4390,7 +4390,11 @@ COLD_STEEL = (96, 104, 124)
 
 # BLOQUE 67 (user request): the shield oval is INVISIBLE. The shipped
 # runtime draws only the heat layer (which grows with the charge) and the
-# impact flash -- the oval itself is never painted. The flag below keeps
+# impact flash -- the oval itself is never painted. Both layers are
+# ELLIPTICAL: the heat layer is an elliptical glow (a faint elliptical
+# fill plus an elliptical rim) drawn on a SQUARE-SIZED surface of
+# (rx + ry) * 2 px, and the impact flash is an elliptical blink. The
+# surface is square; the drawing is not. The flag below keeps
 # the drawing path available (and reviewable) without changing what the
 # player sees; the GEOMETRY is what the runtime needs, and that comes from
 # `shield_ellipse_rect`.
@@ -4530,7 +4534,9 @@ def draw_part(
             return
         if not DRAW_SHIELD_OVAL:
             # The oval is invisible by design (BLOQUE 67): the runtime
-            # paints the heat layer and the impact flash instead.
+            # paints the heat layer and the impact flash instead. Both
+            # are elliptical (the heat layer on a square-sized surface
+            # of (rx + ry) * 2 px).
             return
         pygame.draw.ellipse(target, COLD_STEEL, rect)
         return

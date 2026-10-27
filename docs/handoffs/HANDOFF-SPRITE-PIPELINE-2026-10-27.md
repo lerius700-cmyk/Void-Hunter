@@ -141,7 +141,12 @@ Un truth anchor es un hecho que se puede volver a medir. Los de este BLOQUE:
   queda detrás de `DRAW_SHIELD_OVAL = False`. Sólo se ven la capa de calor y
   el parpadeo de impacto.
 - **El `+1` de inflación del hitbox** del escudo.
-- **La capa de calor con forma cuadrada** del escudo cargado.
+- **La capa de calor del escudo cargado**: un **resplandor elíptico** (relleno
+  elíptico tenue + borde elíptico, más un borde elíptico interior), dibujado
+  sobre una superficie **cuadrada** de `(rx + ry) * 2` px. Ojo: la superficie es
+  cuadrada, **el dibujo es elíptico** (`pygame.draw.ellipse`). La capa de
+  impacto también es elíptica. El óvalo del escudo sigue **invisible**: de las
+  dos capas, sólo se pintan la de calor y la de impacto.
 - **Los umbrales `LADO_EQUIVOCADO` / `FUERA_DE_RANGO`** declarados en el
   manifiesto.
 - **`CORTADO_MARGIN`** (2 px) — si cambia, cambia en el constante compartido.

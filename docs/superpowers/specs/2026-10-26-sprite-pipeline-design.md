@@ -123,6 +123,12 @@ inconsistency, scale drift, baked effects) get rediscovered three more times.
 - **No change to the GOLIATH shield constants.** `DX=0, DY=3, RX=11, RY=17,
   R=11` and `RX_SCALE=0.78` are user-approved and are moved into the manifest
   verbatim, not retuned.
+- **No change to how the GOLIATH shield is painted.** The oval stays
+  **INVISIBLE** (BLOQUE 67): the only two layers the player sees are the
+  charge heat layer and the impact flash, and both are **elliptical**. The
+  heat layer is an elliptical glow (a faint elliptical fill plus an elliptical
+  rim) drawn on a **square-sized** surface of `(rx + ry) * 2` px: the surface
+  is square, the drawing is not.
 - **Not a Godot replacement.** The engine work is phase 2 and phase 3 (§9).
 
 ---
