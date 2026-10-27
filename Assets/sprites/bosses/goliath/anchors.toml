@@ -139,9 +139,9 @@ shield_source = "measured"
 [[anchors]]
 clip = "javelin"
 frame = 3
-body_dx = 20
+body_dx = -19
 body_dy = 4
-eye = [33, 21]
+eye = [62, 21]
 eye_source = "measured"
 shield = [57.4, 40.5, 7.4, 12.5]
 shield_source = "interpolated"
@@ -569,9 +569,9 @@ shield_source = "measured"
 [[anchors]]
 clip = "purple_bullet"
 frame = 6
-body_dx = 15
+body_dx = -14
 body_dy = 4
-eye = [33, 18]
+eye = [62, 18]
 eye_source = "measured"
 shield = [62.2, 40.5, 9.4, 12.5]
 shield_source = "interpolated"
