@@ -90,8 +90,9 @@ Key measurements that the thresholds depend on:
 - Produces:
   - `src.anim.manifest.SETS_ROOT: Path` — `Assets/sprites/bosses`
   - `src.anim.manifest.ManifestError(ValueError)`
-  - `src.anim.manifest.DetectRule` — frozen dataclass; fields `method: str`, `side: str | None`, `min_col: int`, `band: tuple[int,int]`, `col_range: tuple[int,int]`, `head_band: tuple[int,int]`, `r_min: int`, `g_min: int`, `b_max: int`, `rg_min: int`, `r_minus_b_min: int`, `rx_range: tuple[float,float]`, `ry_range: tuple[float,float]`, `exclude: tuple[tuple[int,int,int], ...]`, `probe: DetectRule | None`; classmethod `from_dict(raw: dict) -> DetectRule`
-  - `src.anim.manifest.Part` — frozen dataclass; fields `id: str`, `draw: str`, `pivot: str`, `z: int`, `offset: tuple[int,int]`, `scale: tuple[float,float]`, `detect: DetectRule | None`, `on_missing: str`
+  - `src.anim.manifest.DetectRule` — frozen dataclass; fields `method: str`, `side: str | None`, `min_col: int`, `band: tuple[int,int]`, `col_range: tuple[int,int]`, `head_band: tuple[int,int]`, `r_min: int`, `g_min: int`, `b_max: int`, `rg_min: int`, `r_minus_b_min: int`, `rx_range: tuple[float,float]`, `ry_range: tuple[float,float]`, `warm_fallback: WarmRule | None`, `probe: DetectRule | None`; classmethod `from_dict(raw: dict[str, Any]) -> DetectRule`
+  - `src.anim.manifest.WarmRule` — frozen dataclass; fields `r_min: int`, `b_max: int`, `g_min: int`, `r_minus_b_min: int`; classmethod `from_dict(raw: dict[str, Any]) -> WarmRule`; method `matches(r: int, g: int, b: int) -> bool`
+  - `src.anim.manifest.Part` — frozen dataclass; fields `id: str`, `draw: str`, `pivot: str`, `z: int`, `offset: tuple[int,int]`, `scale: tuple[float,float]`, `radii: tuple[float,float,float] | None`, `detect: DetectRule | None`, `on_missing: str`
   - `src.anim.manifest.Clip` — frozen dataclass; fields `id: str`, `dir: str`, `frames: int`, `fps: float`, `loop: bool`, `scale_tolerance: float`, `side_tolerance: float`
   - `src.anim.manifest.AnimSet` — frozen dataclass; fields `name: str`, `version: int`, `canvas: tuple[int,int]`, `anchor: tuple[int,int]`, `sided: str | None`, `path: Path`, `clips: dict[str, Clip]`, `parts: list[Part]`; methods `clip(clip_id) -> Clip`, `part(part_id) -> Part`
   - `src.anim.manifest.load_set(name: str, root: Path = SETS_ROOT) -> AnimSet`
@@ -679,7 +680,15 @@ z    = 3
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `python -m pytest tests/test_manifest_matches_assets.py --tb=short`
-Expected: PASS, 8 tests
+Expected: PASS, 10 tests. The brief's test module has room for a few more
+(the error branches of `ManifestError` deserve coverage); 14 is what the
+implementer shipped.
+
+Also run the project's type gate — `mypy>=1.5` is declared in
+`requirements-dev.txt`, and `pyproject.toml` sets `strict = true`:
+
+Run: `python -m mypy src/anim/`
+Expected: 0 errors.
 
 - [ ] **Step 6: Commit**
 
