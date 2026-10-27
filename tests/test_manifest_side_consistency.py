@@ -23,6 +23,7 @@ import os
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
+import statistics
 import sys
 from pathlib import Path
 
@@ -74,14 +75,18 @@ def test_plate_is_on_the_declared_side(goliath):
     for clip in goliath.clips.values():
         cols = probe_columns(goliath, clip)
         good = sorted(c for c in cols if c is not None)
-        median = good[len(good) // 2]
+        # The TRUE median (the average of the two middle values), so this
+        # test reports the same deviations the manifest justifies its
+        # side_tolerance against.
+        median = statistics.median(good)
         for i, col in enumerate(cols):
             if col is None:
                 continue
-            wrong_side = col <= centre if rule.side == "right" else col >= centre
+            wrong_side = col < centre if rule.side == "right" else col > centre
             stray = abs(col - median) > clip.side_tolerance
             if wrong_side and stray:
                 offenders.append(
-                    f"{clip.id}/frame_{i:02d} (probe col {col:.1f}, median {median:.1f})"
+                    f"{clip.id}/frame_{i:02d} "
+                    f"(probe col {col:.1f}, median {median:.1f})"
                 )
     assert not offenders, "plate on the wrong side: " + ", ".join(offenders)
