@@ -2563,7 +2563,11 @@ def _live_video_system():
 
     if not pygame.get_init():
         pygame.init()
-    if not pygame.display.get_init():
+    # The surface, not the subsystem: pygame.init() leaves display.get_init()
+    # True while get_surface() is still None, and a None surface makes
+    # Surface.convert_alpha() raise, which src/ui/gameplay_runtime.py
+    # swallows into a silently empty sprite cache.
+    if pygame.display.get_surface() is None:
         pygame.display.set_mode((320, 480))
     yield
 ```
