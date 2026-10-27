@@ -2606,6 +2606,12 @@ shipped game would be wrong. Change those four to `(320, 480)`.
 
 **Note:** this task also invalidates the hard-coded frame names in `tests/test_features_detected_everywhere.py` (Task 6 mirrors two frames and shifts the clip medians). Re-validate them in Task 6, not here.
 
+**Note on `CORTADO`:** no GOLIATH frame is actually cut off, so the re-pad
+path is exercised only by SYNTHETIC frames (5 tests in
+`tests/test_sprite_pipeline_repair.py` plus 5 more on the re-pad itself). The
+shipped art has zero `CORTADO` findings. The path is proven, but it is
+proven on synthetic input, not on the real assets.
+
 ### Task 6: The repair pass and the pipeline command
 
 **Files:**
@@ -2967,7 +2973,15 @@ Create `tools/sprite_pipeline/repair.py`:
 Each failure state is repaired at the layer where it is actually fixable:
 
     LADO_EQUIVOCADO  build (PNG)  mirror the frame horizontally
-    CORTADO          build (PNG)  re-pad onto a fresh transparent canvas
+    CORTADO          build (PNG)  re-pad onto a fresh transparent canvas,
+                               WHERE A TRANSLATION EXISTS: the sprite is
+                               MOVED inside its own canvas (never scaled --
+                               pixel art does not survive resampling), and a
+                               silhouette that cannot be translated at all
+                               is left alone and reported. The repair's
+                               min_margin must also be <= the auditor's
+                               threshold (margin < 2) or a frame the auditor
+                               flags stays unrepairable.
     FUERA_DE_RANGO   anchors      interpolate from the neighbouring frames
     AUSENTE          anchors      interpolate from the neighbouring frames
     FIRMA_AMBIGUA    config       widen detect.warm_fallback
@@ -3250,12 +3264,13 @@ if __name__ == "__main__":
 - [ ] **Step 5: Run the repair test to verify it passes**
 
 Run: `python -m pytest tests/test_sprite_pipeline_repair.py --tb=short`
-Expected: PASS, 3 tests
+Expected: PASS, 13 tests (3 mirror tests + 5 repair_set tests + 5 more
+covering the re-pad on synthetic cut-off frames)
 
 - [ ] **Step 6: Run the pipeline with --fix**
 
 Run: `python tools/sprite_pipeline/run.py goliath --fix`
-Expected: two `repaired: mirror ...` lines (`javelin/frame_03`, `purple_bullet/frame_06`), then the summary.
+Expected: two `mirrored ...` lines (`javelin/frame_03`, `purple_bullet/frame_06`) -- the applied run reports the past tense, the dry run reports `would mirror ...` -- then the summary.
 
 **Verify the two PNGs really changed and only those two:**
 
