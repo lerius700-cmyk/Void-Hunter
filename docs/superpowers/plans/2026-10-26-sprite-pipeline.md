@@ -1292,7 +1292,7 @@ git commit -m "feat: BLOQUE 74 - primitivas de medicion de pixeles y deteccion d
   - `tools/sprite_pipeline/audit.py::STATES` — the seven state names, in severity order: `COLAPSADO`, `CORTADO`, `LADO_EQUIVOCADO`, `FIRMA_AMBIGUA`, `AUSENTE`, `FUERA_DE_RANGO`, `ESCALADO`
   - `tools/sprite_pipeline/audit.py::FAIL_STATES` — `frozenset({"COLAPSADO", "CORTADO", "LADO_EQUIVOCADO"})`. AUSENTE and FIRMA_AMBIGUA are WARNs: a frame whose plate cannot be measured is resolved by interpolation, and a probe/shape disagreement is informational.
   - `tools/sprite_pipeline/audit.py::Finding` — frozen dataclass; fields `clip: str`, `frame: int`, `state: str`, `detail: str`
-  - `tools/sprite_pipeline/audit.py::FrameMeasurement` — frozen dataclass; fields `clip: str`, `frame: int`, `body_dx: int`, `body_dy: int`, `eye: tuple[int,int] | None`, `shield: tuple[float,float,float,float] | None`, `shield_source: str`
+  - `tools/sprite_pipeline/audit.py::FrameMeasurement` — frozen dataclass; fields `clip: str`, `frame: int`, `body_dx: int`, `body_dy: int`, `eye: tuple[int,int] | None`, `eye_source: str`, `shield: tuple[float,float,float,float] | None`, `shield_source: str`. Both `*_source` fields are one of `measured`, `interpolated`, `missing`, `out_of_range`; the last two mean UNRESOLVED, and the feature is written to anchors.toml as a zero placeholder.
   - `tools/sprite_pipeline/audit.py::audit_set(anim_set) -> tuple[list[Finding], list[FrameMeasurement]]`
   - `src.anim.measure.credible_ellipse(surf, rule) -> tuple[float,float,float,float] | None` — the two-pass measurement (plain first, warm-dropped retry)
   - `tools/sprite_pipeline/audit.py::write_anchors(anim_set, measurements, path) -> None`
@@ -2579,7 +2579,7 @@ git commit -m "fix: BLOQUE 74 - repara los frames de GOLIATH con el personaje gi
 - Consumes: `src.anim.manifest` (Task 1), `src.anim.measure` (Task 2), `tools.sprite_pipeline.audit` (Task 3).
 - Produces:
   - `src.anim.anchors.AnchorSet` — frozen dataclass; field `entries: dict[tuple[str, int], FrameAnchor]`
-  - `src.anim.anchors.FrameAnchor` — frozen dataclass; fields `body_dx: int`, `body_dy: int`, `eye: tuple[int,int]`, `shield: tuple[float,float,float,float]`, `shield_source: str`
+  - `src.anim.anchors.FrameAnchor` — frozen dataclass; fields `body_dx: int`, `body_dy: int`, `eye: tuple[int,int] | None`, `eye_source: str`, `shield: tuple[float,float,float,float] | None`, `shield_source: str`. The eye and the shield are INDEPENDENT: either can be measured, interpolated, or unresolved. A `None` feature (written to the file as a zero placeholder) must stay `None` on read — loading `eye = [0, 0]` as a real position would put the laser in the corner of the canvas.
   - `src.anim.anchors.load_anchors(path: Path) -> AnchorSet`
   - `src.anim.parts.draw_part(target, part: Part, surf, anchor: FrameAnchor, origin: tuple[int,int]) -> None`
   - `src.anim.clip.ClipPlayer` — `__init__(anim_set: AnimSet, anchors: AnchorSet)`, `clip(clip_id: str) -> ClipPlayer.ClipState`, method `frame_at(elapsed: float) -> int`
