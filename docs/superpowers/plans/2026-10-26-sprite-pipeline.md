@@ -620,6 +620,13 @@ def loaded_set(name: str, root: Path | None = None) -> AnimSet | None:
     the result is kept. A set whose manifest is missing or malformed
     returns None: the caller falls back to its own defaults instead of
     crashing the game.
+
+    "Malformed" covers a manifest with a SYNTAX error: `tomllib` raises
+    `TOMLDecodeError`, which is a `ValueError` and NOT a `ManifestError`.
+    The manifest is hand-edited, so a half-written file is a plausible
+    state -- it must degrade, not break the game loop. This is the same
+    contract as the UI's own loader (`src/ui/scenes.py::_load_manifest`):
+    the two loaders must never disagree about what "unreadable" means.
     """
     key = (name, root)
     cached = _LOADED.get(key)
@@ -627,10 +634,23 @@ def loaded_set(name: str, root: Path | None = None) -> AnimSet | None:
         return cached
     try:
         anim_set = load_set(name, root)
-    except (ManifestError, OSError):
+    except (OSError, ValueError):
+        # ValueError covers ManifestError (a subclass) AND
+        # tomllib.TOMLDecodeError: a broken manifest degrades to None.
         return None
     _LOADED[key] = anim_set
     return anim_set
+
+
+def clear_loaded_cache() -> None:
+    """Drop the cached manifests.
+
+    The runtime swaps the art at runtime (the tests do), so a manifest
+    that changed on disk must be re-read. `src/ui/scenes.py` calls this
+    from `clear_anchor_cache()`: the two caches hold the SAME file, so
+    they have to be dropped together.
+    """
+    _LOADED.clear()
 
 
 def load_set(name: str, root: Path | None = None) -> AnimSet:
@@ -4390,11 +4410,7 @@ COLD_STEEL = (96, 104, 124)
 
 # BLOQUE 67 (user request): the shield oval is INVISIBLE. The shipped
 # runtime draws only the heat layer (which grows with the charge) and the
-# impact flash -- the oval itself is never painted. Both layers are
-# ELLIPTICAL: the heat layer is an elliptical glow (a faint elliptical
-# fill plus an elliptical rim) drawn on a SQUARE-SIZED surface of
-# (rx + ry) * 2 px, and the impact flash is an elliptical blink. The
-# surface is square; the drawing is not. The flag below keeps
+# impact flash -- the oval itself is never painted. The flag below keeps
 # the drawing path available (and reviewable) without changing what the
 # player sees; the GEOMETRY is what the runtime needs, and that comes from
 # `shield_ellipse_rect`.
@@ -4534,9 +4550,7 @@ def draw_part(
             return
         if not DRAW_SHIELD_OVAL:
             # The oval is invisible by design (BLOQUE 67): the runtime
-            # paints the heat layer and the impact flash instead. Both
-            # are elliptical (the heat layer on a square-sized surface
-            # of (rx + ry) * 2 px).
+            # paints the heat layer and the impact flash instead.
             return
         pygame.draw.ellipse(target, COLD_STEEL, rect)
         return
