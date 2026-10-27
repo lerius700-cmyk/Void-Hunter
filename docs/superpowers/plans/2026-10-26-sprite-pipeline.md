@@ -836,7 +836,7 @@ side of the canvas centre AND it strays more than `side_tolerance` from
 the clip's median probe column. Both conditions are needed: death/frame_02
 is legitimately at column 40.7 because the boss is collapsing.
 
-This test FAILS until Task 6 mirrors javelin/frame_03 and
+This test FAILS until Task 5 mirrors javelin/frame_03 and
 purple_bullet/frame_06.
 """
 from __future__ import annotations
@@ -1352,7 +1352,7 @@ def test_anchors_toml_is_up_to_date(display):
     assert current == rendered, (
         "anchors.toml is stale -- regenerate it with "
         "`python tools/sprite_pipeline/audit.py goliath --write-anchors` "
-        "(BLOQUE 74 Task 6 adds `python tools/sprite_pipeline/run.py "
+        "(BLOQUE 74 Task 5 adds `python tools/sprite_pipeline/run.py "
         "goliath --fix` as the one-step fix)"
     )
 ```
@@ -1647,7 +1647,13 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                     if plain is None:
                         shield_source = "missing"
                         findings.append(
-                            Finding(clip.id, frame_no, "AUSENTE", "shield plate not found")
+                            Finding(
+                                clip.id,
+                                frame_no,
+                                "AUSENTE",
+                                "no plate measured: the shape rule found no "
+                                "solid run",
+                            )
                         )
                     elif rule.probe is not None and probe_col is None:
                         # The shape rule found a solid run, but the
@@ -1656,11 +1662,12 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                         # measured is the BODY, not the plate.
                         #
                         # The two states are not interchangeable. AUSENTE
-                        # says "the art is missing the feature";
-                        # FUERA_DE_RANGO says "the feature is there but the
-                        # measurement is not credible". Only the probe can
-                        # tell them apart: the shape rule cannot, because a
-                        # body is a solid run just like a plate is.
+                        # says "the plate was not measured";
+                        # FUERA_DE_RANGO says "the plate was measured and
+                        # the measurement is not credible". Only the probe
+                        # can tell them apart: the shape rule cannot,
+                        # because a body is a solid run just like a plate
+                        # is.
                         #
                         # A manifest that declares no probe keeps the old
                         # behaviour: the shape rule alone decides.
@@ -1670,8 +1677,8 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                                 clip.id,
                                 frame_no,
                                 "AUSENTE",
-                                "shield plate not found (the shape rule measured "
-                                "the body)",
+                                "no plate measured: the probe found no plate "
+                                "and the shape rule measured the body",
                             )
                         )
                     else:
@@ -2011,6 +2018,9 @@ The auditor is the gate that stops a broken set from entering the repo.
 If the auditor itself is wrong, it silently blesses broken art. These
 tests feed it synthetic frames, one per state, and assert the verdict.
 
+All SEVEN states are covered here: COLAPSADO, CORTADO, LADO_EQUIVOCADO,
+FIRMA_AMBIGUA, AUSENTE, FUERA_DE_RANGO and ESCALADO.
+
 Synthetic frames are built in a temporary directory with a temporary
 manifest, so nothing here touches the shipped assets.
 """
@@ -2040,7 +2050,6 @@ W, H = 96, 80
 TRANSPARENT = (0, 0, 0, 0)
 BRASS = (200, 170, 60)
 BODY = (160, 110, 50)
-BEAM = (255, 220, 80)
 
 
 def write_frame(path: Path, pixels: dict[tuple[int, int], tuple]) -> None:
@@ -2051,8 +2060,8 @@ def write_frame(path: Path, pixels: dict[tuple[int, int], tuple]) -> None:
     pygame.image.save(surf, str(path))
 
 
-def build_set(tmp_path: Path, frames: list[dict[tuple[int, int], tuple]]) -> Path:
-    """Write a one-clip set and return its directory."""
+def build_set(tmp_path: Path, frames: list[dict[tuple[int, int], tuple]]) -> None:
+    """Write a one-clip set into `tmp_path`."""
     set_dir = tmp_path / "synthetic"
     clip_dir = set_dir / "idle"
     clip_dir.mkdir(parents=True)
@@ -2073,7 +2082,11 @@ frames = {n}
 fps = 10
 loop = true
 scale_tolerance = 0.15
-side_tolerance = 14.0
+# The tolerance the synthetic cases are tuned for. The shipped GOLIATH
+# manifest uses 14.0; here 10.0 keeps every case off the edge of its
+# threshold (the LADO case is 15 px away, so it clears it by 5 px and
+# not by 1).
+side_tolerance = 10.0
 
 [[parts]]
 id = "body"
@@ -2103,7 +2116,6 @@ on_missing = "interpolate"
     (set_dir / "manifest.toml").write_text(
         manifest.format(n=len(frames)), encoding="utf-8"
     )
-    return set_dir
 
 
 def body_pixels(cx: int = 40, width: int = 20, top: int = 20, height: int = 45):
@@ -2179,6 +2191,46 @@ def test_implausible_ellipse_is_FUERA_DE_RANGO(tmp_path):
     assert "FUERA_DE_RANGO" in states
 
 
+def test_probe_and_shape_disagree_is_FIRMA_AMBIGUA(tmp_path):
+    """The two independent detectors disagree by more than the tolerance.
+
+    The brass is a wide slab that STARTS left of the shape rule's
+    min_col (50), so the shape rule still measures the arm (a credible
+    ellipse at cx 58.5) while the probe's centroid sits at 43.5. The two
+    detectors are 15 px apart, which is more than the 10 px tolerance.
+
+    The clip's median probe column is the same 43.5, so the frame is
+    not "stray" and is NOT reported as LADO_EQUIVOCADO: only the two
+    detectors disagree. This is the situation of the shipped
+    laser/frame_05 (probe 44.5 against shape cx 60.5).
+    """
+    pixels = body_pixels()
+    for y in range(34, 46):
+        for x in range(20, 68):
+            pixels[(x, y)] = BRASS
+    twin = dict(pixels)
+    twin[(39, 40)] = BODY  # a different frame with the same probe and shape
+    states = states_for(tmp_path, [pixels, twin])
+    assert states == {"FIRMA_AMBIGUA"}
+
+
+def test_a_taller_frame_is_ESCALADO(tmp_path):
+    """One frame's silhouette height strays from the clip's median.
+
+    The height is the silhouette's bounding-box height, so the outlier
+    is a body that is visibly taller: rows 10..69 instead of rows
+    20..64 (60 px against 45 px, a 33% deviation against a 15%
+    tolerance). The two other frames share the median's height, so
+    only the outlier is flagged.
+    """
+    tall = body_pixels(top=10, height=60)
+    healthy = body_pixels()
+    twin = body_pixels()
+    twin[(39, 40)] = BODY  # same height, different frame
+    states = states_for(tmp_path, [tall, healthy, twin])
+    assert states == {"ESCALADO"}
+
+
 def test_healthy_set_has_no_failures(tmp_path):
     build_set(tmp_path, [body_pixels()])
     findings, _ = audit_set(load_set("synthetic", root=tmp_path))
@@ -2232,8 +2284,13 @@ def test_json_report_is_pure_json():
 
     # The exit code is NOT asserted: the auditor exits 1 while the two
     # turned-around frames are still in the art, and that is correct.
-    assert "pygame" not in stdout.lower(), stdout[:200]
-    assert "Hello from" not in stdout, stdout[:200]
+    #
+    # The banner check is POSITIONAL, not a substring search: a finding
+    # detail could legitimately contain the word "pygame" one day, and a
+    # substring search would false-positive on it. A banner always
+    # PRECEDES the JSON, so the first non-blank byte must be "{".
+    assert stdout.lstrip().startswith("{"), stdout[:200]
+    assert "Hello from the pygame community" not in stdout, stdout[:200]
 
     report = json.loads(stdout)
     assert "set" in report
@@ -2258,6 +2315,13 @@ A feature is "resolved" when the auditor measured it, or when the repair
 interpolated it from the frames around it. The guard fails when a frame
 still has an unresolved feature -- that is the case where the runtime would
 fall back to a constant and the shield would stop tracking the arm.
+
+Resolution is not the same as measurement. Every feature also carries its
+PROVENANCE (`measured` / `interpolated` / `missing` / `out_of_range`), and
+the two features of a frame are resolved INDEPENDENTLY: an interpolated eye
+does not make an interpolated shield. The coverage guard above cannot see
+the difference -- a reconstructed eye satisfies `m.eye is not None` -- so
+the provenance is asserted here.
 """
 from __future__ import annotations
 
@@ -2267,8 +2331,10 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import sys
+from collections import Counter
 from pathlib import Path
 
+import pygame
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -2282,16 +2348,24 @@ from sprite_pipeline.audit import audit_set  # noqa: E402
 @pytest.fixture(scope="module", autouse=True)
 def display():
     """pygame needs a video mode before convert_alpha() works."""
-    import pygame
-
     pygame.init()
     pygame.display.set_mode((320, 480))
     yield
 
 
-def test_every_frame_resolves_the_shield_plate():
-    anim_set = load_set("goliath")
-    _, measurements = audit_set(anim_set)
+@pytest.fixture(scope="module")
+def goliath():
+    return load_set("goliath")
+
+
+@pytest.fixture(scope="module")
+def audit(display, goliath):
+    """The auditor's verdict on the 60 shipped frames, measured ONCE."""
+    return audit_set(goliath)
+
+
+def test_every_frame_resolves_the_shield_plate(audit):
+    _, measurements = audit
     unresolved = [
         f"{m.clip}/frame_{m.frame:02d}"
         for m in measurements
@@ -2303,9 +2377,8 @@ def test_every_frame_resolves_the_shield_plate():
     )
 
 
-def test_every_frame_resolves_the_eye():
-    anim_set = load_set("goliath")
-    _, measurements = audit_set(anim_set)
+def test_every_frame_resolves_the_eye(audit):
+    _, measurements = audit
     missing = [
         f"{m.clip}/frame_{m.frame:02d}"
         for m in measurements
@@ -2314,21 +2387,83 @@ def test_every_frame_resolves_the_eye():
     assert not missing, "eye anchor not found in: " + ", ".join(missing)
 
 
-def test_every_frame_has_a_body_offset():
-    anim_set = load_set("goliath")
-    _, measurements = audit_set(anim_set)
-    assert len(measurements) == sum(c.frames for c in anim_set.clips.values())
-    assert all(isinstance(m.body_dx, int) for m in measurements)
+def test_every_frame_has_a_body_offset(audit, goliath):
+    """The registration correction stays a plausible offset.
+
+    `body_dx` / `body_dy` move the sprite so that its visual centre of
+    mass lands on the anchor. The shipped frames need -16..+20 px
+    horizontally and -12..+5 px vertically; a bigger jump would mean the
+    centroid is broken, not that the art changed.
+    """
+    _, measurements = audit
+    assert len(measurements) == sum(c.frames for c in goliath.clips.values())
+    assert all(
+        abs(m.body_dx) <= 32 and abs(m.body_dy) <= 32 for m in measurements
+    ), [
+        f"{m.clip}/frame_{m.frame:02d} body offset {m.body_dx},{m.body_dy}"
+        for m in measurements
+        if abs(m.body_dx) > 32 or abs(m.body_dy) > 32
+    ]
+    # The correction is a real measurement, not a constant zero.
+    assert any(m.body_dx != 0 or m.body_dy != 0 for m in measurements)
 
 
-def test_the_report_still_documents_the_art_problem():
+def test_every_feature_says_where_it_came_from(audit):
+    """Every feature carries its provenance, and nothing is unresolved.
+
+    `measured` = the detector found it in this frame. `interpolated` = it
+    was reconstructed from the frames around it. `missing` and
+    `out_of_range` mean UNRESOLVED -- the guards above would have failed
+    on those.
+
+    NOTE: these counters are the ground truth of the shipped art. They
+    MUST be re-validated after Task 5 mirrors javelin/frame_03 and
+    purple_bullet/frame_06: those two frames become measurable, so the
+    counts move.
+    """
+    _, measurements = audit
+    shield_sources = Counter(m.shield_source for m in measurements)
+    eye_sources = Counter(m.eye_source for m in measurements)
+    assert shield_sources == {"measured": 53, "interpolated": 7}, dict(
+        shield_sources
+    )
+    assert eye_sources == {"measured": 59, "interpolated": 1}, dict(eye_sources)
+
+
+def test_the_eye_and_the_shield_are_resolved_independently(audit):
+    """One feature can be reconstructed while the other is measured.
+
+    death/frame_09 has no eye left to find -- by the last frame of the
+    death clip the boss is a heap of wreckage -- so its eye is
+    interpolated from death/frame_08 while its shield is measured in that
+    very frame. javelin/frame_03 is the other way round: the plate was
+    painted on the wrong side, so the shield is interpolated while the
+    eye is measured.
+    """
+    _, measurements = audit
+    by_frame = {(m.clip, m.frame): m for m in measurements}
+
+    wreck = by_frame[("death", 9)]
+    assert wreck.eye_source == "interpolated"
+    assert wreck.shield_source == "measured"
+
+    javelin = by_frame[("javelin", 3)]
+    assert javelin.shield_source == "interpolated"
+    assert javelin.eye_source == "measured"
+
+
+def test_the_report_still_documents_the_art_problem(audit):
     """The interpolation fixes the measurement, not the art.
 
     The findings must keep reporting the frames whose plate is missing
     from the drawing, otherwise the report lies about the source art.
+
+    NOTE: these three frames are hard-coded and MUST be re-validated
+    after Task 5 mirrors javelin/frame_03 and purple_bullet/frame_06 --
+    mirroring moves the clip's probe median, and with it the set of
+    frames the auditor flags.
     """
-    anim_set = load_set("goliath")
-    findings, _ = audit_set(anim_set)
+    findings, _ = audit
     reported = {f"{f.clip}/frame_{f.frame:02d}" for f in findings}
     assert "javelin/frame_04" in reported
     assert "laser/frame_05" in reported
