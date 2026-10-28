@@ -1,0 +1,128 @@
+# BLOQUE 74: SPEC of the GOLIATH animation set. Hand-edited.
+#
+# Verified by: tools/sprite_pipeline/audit.py
+# Design: docs/superpowers/specs/2026-10-26-sprite-pipeline-design.md
+#
+# The shield constants below are the BLOQUE 67 user-approved values, moved
+# here verbatim. Do not retune them here.
+#
+# The alpha threshold (32) is a measurement constant, not a detection rule:
+# it lives in src/anim/measure.py.
+
+[meta]
+name    = "GOLIATH"
+version = 1
+canvas  = [96, 80]      # every frame of every clip
+anchor  = [48, 40]      # where the boss sits in the world
+sided   = "right"       # the shield is ALWAYS on the right arm
+
+# ---------------------------------------------------------------- clips
+#
+# scale_tolerance: relative deviation of the silhouette height from the
+#   clip median that still counts as "not rescaled". Measured on the real
+#   assets: phase1_idle 0.027, phase2_idle 0.107, javelin 0.066,
+#   laser 0.164, purple_bullet 0.214, death 0.383.
+# side_tolerance: how far the probe column may stray from the clip median
+#   before the frame counts as turned around. The two real cases deviate
+#   21.4 (javelin/f03) and 18.2 (purple_bullet/f06). The next-largest
+#   deviation among the frames that sit on the wrong side of the centre is
+#   death/frame_02 at 10.9 -- a margin of 3.1, so the threshold is not on
+#   a knife edge.
+
+[[clips]]
+id     = "phase1_idle"
+dir    = "phase1_idle"
+frames = 10
+fps    = 10
+loop   = true
+
+[[clips]]
+id     = "phase2_idle"
+dir    = "phase2_idle"
+frames = 10
+fps    = 10
+loop   = true
+
+[[clips]]
+id     = "javelin"
+dir    = "javelin"
+frames = 10
+fps    = 10
+loop   = true
+
+[[clips]]
+id     = "laser"
+dir    = "laser"
+frames = 10
+fps    = 10
+loop   = true
+scale_tolerance = 0.25   # the boss crouches when it fires (0.164 measured)
+
+[[clips]]
+id     = "purple_bullet"
+dir    = "purple_bullet"
+frames = 10
+fps    = 10
+loop   = true
+scale_tolerance = 0.30   # the boss throws (0.214 measured)
+
+[[clips]]
+id     = "death"
+dir    = "death"
+frames = 10
+fps    = 10
+loop   = false             # one-shot: holds on the last frame
+scale_tolerance = 0.60     # the boss collapses -- that IS the animation
+
+# ---------------------------------------------------------------- parts
+#
+#   draw = "frames"      one PNG per frame of the current clip
+#   draw = "ellipse"     procedural primitive (the invisible shield oval)
+#   draw = "point"       an anchor only, draws nothing (the eye)
+#   draw = "procedural"  runtime effect; never baked into the art
+#
+#   pivot = "centroid"   auto: alpha-weighted centroid of the silhouette
+#   pivot = "detect"     auto: the detection rule declared below
+#
+#   on_missing = "interpolate" | "fallback" | "skip"
+
+[[parts]]
+id    = "body"
+draw  = "frames"
+pivot = "centroid"
+z     = 0
+
+[[parts]]
+id     = "shield_plate"
+draw   = "ellipse"
+pivot  = "detect"
+z      = 1
+offset = [0, 3]          # GOLIATH_SHIELD_DX / GOLIATH_SHIELD_DY
+scale  = [0.78, 1.0]     # GOLIATH_SHIELD_RX_SCALE
+radii  = [11, 11, 17]    # GOLIATH_SHIELD_R / _RX / _RY: the canonical
+                       # ellipse used when the art has no plate to measure
+
+# `warm_fallback` is the predicate that recognises the baked eye beam. The
+# beam is a GRADIENT, so listing its colours as exact triples does not work.
+# This predicate is the one the shipped runtime uses, and it deliberately
+# KEEPS (220,180,80) -- the plate's own face highlight -- because that
+# colour fails the r >= 235 test.
+#
+# It is a FALLBACK, not an always-on filter: the auditor measures the plain
+# silhouette first and only retries with the warm pixels dropped when the
+# plain measurement is not credible.
+detect = { method = "shape", band = [28, 54], side = "right", min_col = 50, ranges = { rx = [6.5, 11.0], ry = [9.0, 13.0] }, warm_fallback = { r_min = 235, b_max = 140, g_min = 130, r_minus_b_min = 190 }, probe = { method = "color", r_min = 185, g_min = 145, b_max = 130, r_minus_b_min = 70 } }
+on_missing = "interpolate"
+
+[[parts]]
+id    = "eye"
+draw  = "point"
+pivot = "detect"
+z     = 2
+detect = { method = "color", head_band = [0, 30], col_range = [24, 70], r_min = 170, rg_min = 70 }
+on_missing = "interpolate"
+
+[[parts]]
+id   = "fx_eye_beam"
+draw = "procedural"
+z    = 3

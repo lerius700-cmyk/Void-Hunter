@@ -99,7 +99,11 @@ class HUD:
         self.initialized: bool = False
 
     def _ensure_fonts(self) -> None:
-        if self.initialized:
+        # The fast path also has to check that the font subsystem is still
+        # up: pygame.quit() invalidates the cached Font objects natively
+        # (a render on a dead Font is an access violation, not a Python
+        # exception), and `initialized` alone would keep handing them out.
+        if self.initialized and pygame.font.get_init():
             return
         try:
             if not pygame.font.get_init():

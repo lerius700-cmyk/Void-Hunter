@@ -10,6 +10,7 @@
 |---------|------|-------------|
 | `SESSION_REPORT_BLOQUES_18-53.txt` | Reporte | Resumen consolidado de BLOQUEs 18 al 53 (~35 BLOQUEs de feature) |
 | `SESSION_REPORT_BLOQUE_67.md` | Reporte | Línea v1.4.0 + GOLIATH + menú post-cinematica: los 3 bugs reales encontrados y las reglas que quedan escritas |
+| `SESSION_REPORT_BLOQUE_74.md` | Reporte | Pipeline de sprites: el runtime deja de medir el arte (manifiesto + auditor + anclas horneadas). Los 3 bugs de la ola final y las reglas que quedan escritas |
 
 > **Nota:** este archivo es `.txt` (no `.md`) porque es un dump consolidado. El check de Tree Integrity cuenta solo `.md`, pero el contenido sigue siendo documentación válida.
 
@@ -21,6 +22,7 @@
 |-----------------|---------------|-------|
 | `CONTEXT.md` | L (LOAD) | Misión del silo |
 | `SESSION_REPORT_*.txt` | R (REFERENCE) | Reportes históricos (consultar al retomar) |
+| `SESSION_REPORT_*.md` | R (REFERENCE) | Reportes por BLOQUE (consultar al retomar) |
 
 > Las tres marcas `L (LOAD)`, `S (SKIP)`, `R (REFERENCE)` aparecen literalmente.
 

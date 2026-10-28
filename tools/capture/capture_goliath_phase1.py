@@ -44,14 +44,18 @@ b.y = cfg.anchor_y
 b.move_t = 0.0
 
 # BLOQUE 60: switch to the idle sprite. The boss spawns in "intro"
-# (set by Boss.on_spawn); we want a clean mid-screen shot of "idle".
+# (set by Boss.on_spawn); we want a clean mid-screen shot of the idle.
+# BLOQUE 74: the clip is "phase1_idle" -- the clip IDs are phase1_idle,
+# phase2_idle, javelin, laser, purple_bullet and death. There is no "idle".
 b.hp = b.max_hp
 b.phase = 1
-b.animation_state = "idle"
+b.animation_state = "phase1_idle"
 b.animation_frame = 0
 b.animation_timer = 0.0
 
 # Save the screenshot.
+# BLOQUE 74: the name follows the sibling capture scripts (the phase-2
+# one writes "goliath_phase2_mid.png"), not the older "bloque_NN_" prefix.
 out = ROOT / "tools" / "playtest_out" / "goliath_phase1_mid.png"
 out.parent.mkdir(parents=True, exist_ok=True)
 surf = pygame.Surface((320, 480))
