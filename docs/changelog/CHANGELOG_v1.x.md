@@ -2395,9 +2395,8 @@ los ya documentados (5 de `test_sub_boss_*` por contaminación de estado,
 
 ## BLOQUE 74 — Pipeline de sprites: el runtime deja de medir el arte (2026-10-27)
 
-Worktree `.worktrees/bloquec-74-sprite-pipeline`, rama
-`bloquec-74-sprite-pipeline`, sobre la línea v1.7.2 (BLOQUE 67).
-**No bumpea la versión**: la release y el `.exe` son de otra ola.
+Rama `bloquec-74-sprite-pipeline` (mergeada en `bloquec-67-goliath-port`,
+la línea v1.4.0, tag `v1.7.2`), publicada como **v1.8.0**.
 
 ### Qué es
 
@@ -2456,14 +2455,23 @@ re-auditoría: las anclas siempre llevan la medición post-reparación.
 | B5 | `test_sprite_pipeline_run.py` corría `--fix` contra el **árbol real**: podía reescribir `anchors.toml` y espejar el arte commiteado a mitad de suite. Ahora corre contra una **copia** en `tmp_path` (`--root` nuevo). | `tests/test_sprite_pipeline_run.py`, `tools/sprite_pipeline/{audit,run}.py` |
 | B6 | `src/anim/manifest.py` calculaba `ROOT` al importar. Ahora es perezoso: el build congelado no arrastra el árbol de código. | `src/anim/manifest.py` |
 
-### Lo que NO se hizo (a propósito)
+### Release v1.8.0
 
-- **El `.exe` no se reconstruyó.** La release es de otra ola.
-- **La versión no se bumpea.** Sigue siendo v1.7.2.
-- **El camino congelado está implementado pero no ejercitado**: `src/anim/manifest.py`
-  resuelve `<_MEIPASS>/Assets/sprites/bosses` y `build.spec` bundlea
-  `Assets/sprites` (con el `manifest.toml` y el `anchors.toml` adentro), pero
-  eso no se puede verificar sin rebuildear el `.exe`.
+Esta ola **sí bumpea la versión** y **sí reconstruye el `.exe`**:
+
+- `.exe` reconstruido con PyInstaller desde la línea v1.4.0 (278 MB).
+- El **camino congelado quedó ejercitado**: el `.exe` extrae a
+  `<_MEIPASS>/Assets/sprites/bosses/` y ahí están el `manifest.toml` y el
+  `anchors.toml`. Verificado leyendo el bundle con el lector de archives de
+  PyInstaller y en vivo, mientras el `.exe` corría el boss fight.
+- `void-hunter.exe --check` → 15 scenes / 18 waves / 4 bosses.
+  `void-hunter.exe --boss goliath --easy --duration 25` → exit 0.
+- Un fix de portabilidad salió justo del merge: con `core.autocrlf=true` y sin
+  `.gitattributes` el mismo `manifest.toml` se materializa como LF en un
+  checkout y CRLF en otro, y el `manifest_sha256` se calculaba sobre bytes
+  crudos → el test de frescura se ponía rojo en la mitad de los checkouts sin
+  que cambiara el arte. Ahora el hash es sobre texto normalizado, con test de
+  regresión.
 - Los diferidos del review que se dejaron **ship-as-is**: el crash de
   `hud.py` bajo un plugin de fault-injection, la incapacidad del re-pad de
   trasladar una silueta a canvas completo, la cobertura sintética de

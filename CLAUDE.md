@@ -2,9 +2,9 @@
 
 **Perfil SF/SM:** Lite
 **Schema target:** `.synapse` 2.2.0 (acepta 2.1.0 legacy)
-**Versión actual:** v1.7.2 (BLOQUE 74 — pipeline de sprites; línea v1.4.0 + GOLIATH + menú post-cinematica)
+**Versión actual:** v1.8.0 (BLOQUE 74 — pipeline de sprites; línea v1.4.0 + GOLIATH + menú post-cinematica)
 **Tipo:** CODE (Python + pygame 2.6, stdlib only + numpy para lowpass audio)
-**Test count:** 2,880 pass + 1 fail pre-existente + 6 skipped (2,887 total)
+**Test count:** 2,886 pass + 1 fail pre-existente + 6 skipped (2,893 total)
 
 ---
 
@@ -211,16 +211,16 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 
 | Métrica | Valor | Fuente (Truth Anchor) |
 |---------|-------|------------------------|
-| Líneas de código (src/) | 28,929 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
+| Líneas de código (src/) | 28953 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
 | Archivos Python (src/) | 92 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
-| Tests (tests/) | 2,880 pass + 1 fail pre-existente + 6 skipped (2,887 total) | `python -m pytest tests/ --tb=no` |
-| LOC tests/ | 25,340 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
+| Tests (tests/) | 2.886 pass + 1 fail pre-existente + 6 skipped (2.893 total) | `python -m pytest tests/ --tb=no` |
+| LOC tests/ | 25552 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
 | Silos SF+SM | 9 (Lite) | `Get-ChildItem docs -Directory \| Measure-Object` |
 | Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
-| Versión | v1.7.2 (BLOQUE 74 **no** bumpea la versión: la release es posterior) | `git log --oneline -1` |
-| Rama | bloquec-74-sprite-pipeline | `git branch --show-current` |
+| Versión | v1.8.0 (BLOQUE 74 — pipeline de sprites) | `git log --oneline -1` |
+| Rama | bloquec-67-goliath-port | `git branch --show-current` |
 | Remote | github.com/lerius700-cmyk/Void-Hunter | `git remote -v` |
-| Build .exe | **no reconstruido** en BLOQUE 74 — el de v1.7.2 (278 MB) está en `../bloquec-67-goliath-port/dist/` | `Get-Item ../bloquec-67-goliath-port/dist/void-hunter.exe` |
+| Build .exe | **reconstruido** para v1.8.0 (278.0 MB) en `dist/void-hunter.exe` — el path congelado (`<_MEIPASS>/Assets/sprites/bosses`) verificado con el manifest y los anchors dentro del bundle | `Get-Item ../bloquec-67-goliath-port/dist/void-hunter.exe` |
 | Tiles Asteroid Approach | 6 PNG (320×480) en `Assets/background/tiles/act1/` | `Get-ChildItem Assets/background/tiles/act1/*.png` |
 | Frames GOLIATH | 60 PNG (6 anim × 10) en `Assets/sprites/bosses/goliath/` | `Get-ChildItem Assets/sprites/bosses/goliath/*/frame_*.png` |
 | Manifiesto + anclas de GOLIATH | 1 `manifest.toml` (spec) + 1 `anchors.toml` (horneado) | `Get-ChildItem Assets/sprites/bosses/goliath/*.toml` |
@@ -284,6 +284,6 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
   - **El camino congelado se resuelve perezoso**: `src/anim/manifest.py` no calcula la raíz del repo al importar, y el set se parsea una sola vez (`loaded_set`).
   - **La ruta del sprite y el canvas salen del manifiesto**: `Boss.animation_path` usa `clip.dir` y el runtime usa `meta.canvas` — el canvas es una propiedad del set, no una constante del juego.
   - **Auditoría del branch completo**: "Ready to merge: With fixes" (0 Critical, 3 Important, 8 Minor). Los Important y los Minor de esta ola están cerrados: umbral único, documentación del BLOQUE ausente, clip `"idle"` inexistente en `tools/capture/capture_goliath_phase1.py` y `tests/test_goliath_sprite.py`, memoización de `_clip_id_for_dir`, directorio del clip desde el manifiesto, canvas desde el manifiesto, docstring obsoleto, test del pipeline contra el árbol real y `ROOT` calculado al importar.
-  - **No bumpea la versión**: la release y el `.exe` son de otra ola (el `.exe` no se reconstruyó).
+  - **Release v1.8.0**: el `.exe` se reconstruyó sobre el tag `v1.8.0` (278 MB) y el path congelado (`<_MEIPASS>/Assets/sprites/bosses`) quedó verificado con el `manifest.toml` y el `anchors.toml` dentro del bundle. La versión SÍ se bumpea a v1.8.0 en esta release.
   - **Handoff**: `docs/handoffs/HANDOFF-SPRITE-PIPELINE-2026-10-27.md`. **Session report**: `docs/session-reports/SESSION_REPORT_BLOQUE_74.md`.
-  - STATUS:GENERATED regenerado: 28,929 LOC / 92 files en `src/`, 25,340 LOC en `tests/`, 2,887 tests, 9 silos.
+  - STATUS:GENERATED regenerado: 28,953 LOC / 92 files en `src/`, 25,552 LOC en `tests/`, 2,893 tests, 9 silos.
