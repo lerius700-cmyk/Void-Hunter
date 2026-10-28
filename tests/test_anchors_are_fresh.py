@@ -49,3 +49,38 @@ def test_anchors_toml_is_up_to_date(display):
         "(BLOQUE 74 Task 6 adds `python tools/sprite_pipeline/run.py "
         "goliath --fix` as the one-step fix)"
     )
+
+
+def test_the_manifest_hash_survives_a_crlf_checkout(tmp_path, display):
+    """The freshness check must not depend on the checkout's line endings.
+
+    With core.autocrlf=true and no .gitattributes, the same manifest blob
+    materialises as LF on one machine and CRLF on another. A hash over the
+    RAW BYTES made the anchors look stale on half the checkouts, which is
+    how this was found: merging the branch into another worktree turned
+    the freshness test red with no change to the art.
+    """
+    import shutil
+
+    from sprite_pipeline.audit import audit_set, render_anchors_toml
+
+    source = load_set("goliath")
+    copy_dir = tmp_path / "goliath"
+    shutil.copytree(source.path, copy_dir)
+
+    manifest = copy_dir / "manifest.toml"
+    original = manifest.read_text(encoding="utf-8")
+    manifest.write_bytes(original.replace("\n", "\r\n").encode("utf-8"))
+    assert b"\r\n" in manifest.read_bytes(), "the CRLF rewrite did not apply"
+
+    crlf_set = load_set("goliath", root=copy_dir.parent)
+    _, crlf_measurements = audit_set(crlf_set)
+    crlf_rendered = render_anchors_toml(crlf_set, crlf_measurements)
+
+    _, lf_measurements = audit_set(source)
+    lf_rendered = render_anchors_toml(source, lf_measurements)
+
+    assert crlf_rendered == lf_rendered, (
+        "the manifest hash changed with the line endings -- the anchors "
+        "would look stale on a CRLF checkout"
+    )
