@@ -24,16 +24,25 @@ import hashlib
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
+# The tree this tool belongs to. NOT a hardcoded path: the repository is
+# worked on by more than one agent, each in its own worktree, and a
+# generator that measured a FIXED tree would rewrite a sibling agent's
+# CLAUDE.md and leave that agent with a stale one -- silently, with no
+# error. `VH_WT` is only an explicit override.
 ROOT = Path(
-    os.environ.get(
-        "VH_WT",
-        r"F:\AI\MM\void-hunter\.worktrees\bloquec-75-sprite-migration",
-    )
-)
+    os.environ.get("VH_WT", str(Path(__file__).resolve().parent.parent))
+).resolve()
+
+# The repository root, which for a linked worktree is two levels up
+# (`.worktrees/<name>` -> `.worktrees` -> the root). The canonical .exe
+# lives in the root's `dist/`, not in a worktree's.
+REPO_ROOT = ROOT.parent.parent if ROOT.parent.name == ".worktrees" else ROOT
+
 RELEASE_BRANCH = "bloquec-67-goliath-port"
-PY = r"F:\AI\MM\void-hunter\.venv\Scripts\python.exe"
+PY = sys.executable or r"F:\AI\MM\void-hunter\.venv\Scripts\python.exe"
 CLAUDE = ROOT / "CLAUDE.md"
 
 # BLOQUE 75: there is ONE canonical .exe now. The release worktree used
@@ -43,8 +52,38 @@ CLAUDE = ROOT / "CLAUDE.md"
 # too. A block that lies and a generator that agrees with the lie is
 # worse than either alone: the next regeneration puts the broken anchor
 # back.
-REPO_ROOT = Path(r"F:\AI\MM\void-hunter")
 BINARY_REL = "dist/void-hunter-v1.8.0.exe"
+
+# The failures this project KNOWS about, by test id. The block says
+# whether the failures are the known pre-existing ones, and that claim
+# needs the names: a number alone cannot tell a known failure from a
+# new one.
+KNOWN_PREEXISTING_FAILURES = {
+    "tests/test_paths.py::test_paths_no_star_shapes",
+}
+
+
+def parse_pytest_summary(tail: str) -> tuple[int, int, int]:
+    """(failed, passed, skipped) out of a pytest summary line.
+
+    The line is not a fixed sentence. It is "9 passed in 0.18s" when
+    everything is green, "1 failed, 11 passed in 0.22s" when there are
+    no skips, and the order of the counts varies. Each count is read on
+    its own, and a missing one is zero.
+    """
+    failed = re.search(r"(\d+) failed", tail)
+    passed = re.search(r"(\d+) passed", tail)
+    skipped = re.search(r"(\d+) skipped", tail)
+    return (
+        int(failed.group(1)) if failed else 0,
+        int(passed.group(1)) if passed else 0,
+        int(skipped.group(1)) if skipped else 0,
+    )
+
+
+def parse_pytest_failures(output: str) -> list[str]:
+    """The test ids pytest reported as FAILED, in the order it listed them."""
+    return re.findall(r"^FAILED (\S+)", output, flags=re.MULTILINE)
 
 
 def run(cmd: list[str], cwd: Path = ROOT) -> str:
@@ -123,27 +162,37 @@ def main() -> int:
         encoding="utf-8",
         errors="replace",
     )
-    tail = pytest.stdout.strip().splitlines()[-1]
-    match = re.search(r"(\d+) failed, (\d+) passed, (\d+) skipped", tail)
-    if not match:
+    output = pytest.stdout.strip()
+    tail = output.splitlines()[-1] if output else ""
+    failed, passed, skipped = parse_pytest_summary(tail)
+    total = failed + passed + skipped
+    if total == 0:
         print(f"could not read the pytest summary: {tail}")
         return 1
-    failed, passed, skipped = (
-        int(match.group(1)),
-        int(match.group(2)),
-        int(match.group(3)),
-    )
-    total = failed + passed + skipped
+    failure_ids = parse_pytest_failures(output)
+    unknown = [f for f in failure_ids if f not in KNOWN_PREEXISTING_FAILURES]
 
     print(f"src LOC={src_loc} files={src_files} | tests LOC={tests_loc}")
     print(f"suite: {passed} pass / {failed} fail / {skipped} skipped ({total})")
     print(f"silos={n_silos} exe={exe_mb}MB branch={branch}")
+    if failure_ids:
+        print(f"failing: {', '.join(failure_ids)}")
+
+    # The label says whether the failures are the KNOWN ones. A number
+    # alone cannot tell a known failure from a new one, so the names are
+    # what the label is built from.
+    if failed == 0:
+        fail_label = "0 fail"
+    elif unknown:
+        fail_label = f"{failed} fail (NO pre-existente: {', '.join(unknown)})"
+    else:
+        fail_label = f"{failed} fail pre-existente"
 
     rows = {
         "Líneas de código (src/)": f"{src_loc}",
         "Archivos Python (src/)": f"{src_files}",
         "Tests (tests/)": (
-            f"{passed:,} pass + {failed} fail pre-existente + {skipped} skipped "
+            f"{passed:,} pass + {fail_label} + {skipped} skipped "
             f"({total:,} total)"
         ).replace(",", "."),
         "LOC tests/": f"{tests_loc}",

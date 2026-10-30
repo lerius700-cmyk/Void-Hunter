@@ -517,16 +517,24 @@ def test_the_lowpass_cutoff_does_not_leak_out_of_this_module() -> None:
     """The cutoff lives in a module-level cache, and this module must not
     leave it changed for the rest of the suite.
 
-    \\	est_set_lowpass_cutoff_hz_clamps_range\\ clamps the cutoff to
+    `test_set_lowpass_cutoff_hz_clamps_range` clamps the cutoff to
     8000 Hz. Left there, the next test that exercises the pause filter
     writes the filtered track NEXT TO THE SOURCE -- generating
-    \Assets/keep kept - Lerius - soundtrack gameplay_lp8000.wav\, 61 MB,
+    `Assets/keep kept - Lerius - soundtrack gameplay_lp8000.wav`, 61 MB,
     inside whatever tree the suite runs in. That is how the file ended
-    up committed on \master\ in the first place.
+    up committed on `master` in the first place.
+
+    The environment override is popped first: `VOID_HUNTER_LP_HZ` wins
+    over the module cache, so with it set the assertion would be about
+    the environment and not about the leak this test is about.
     """
     from src.audio import music
 
-    assert music.get_lowpass_cutoff_hz() == pytest.approx(600.0, abs=1.0), (
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("VOID_HUNTER_LP_HZ", None)
+        cutoff = music.get_lowpass_cutoff_hz()
+
+    assert cutoff == pytest.approx(600.0, abs=1.0), (
         "the lowpass cutoff leaked out of this module: the pause filter "
         "will generate a 61 MB WAV into the source tree"
     )

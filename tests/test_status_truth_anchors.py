@@ -5,22 +5,32 @@ each metric, the command that measures it. A truth anchor that points at
 a path that no longer exists is worse than no block at all: it looks
 verifiable and is not.
 
-This module reads the block and checks that the file each truth anchor
-names actually exists, and that the generator that rewrites the block
-agrees with it. The build row is the one that broke: the release
-worktree's `dist/` was archived during the repo cleanup, and the row
-still pointed there.
+This module reads the block and checks the two properties the
+repository owns:
 
-The two checks together are the point. A block that lies and a generator
-that agrees with the lie are worse than either alone: the next
-regeneration puts the broken anchor back.
+* the build row names the canonical binary, and the generator that
+  writes the block measures the SAME file -- a block that lies and a
+  generator that agrees with the lie is worse than either alone;
+* the build artifact, when this machine has it, is really there.
+
+The artifact itself is a BUILD OUTPUT: it is gitignored, and a fresh
+clone does not have it. Its absence is not a defect of the repository,
+so the test that needs it skips instead of failing -- otherwise the
+suite would go red on CI for a reason that has nothing to do with the
+code.
 """
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tools"))
+
+from regen_status import BINARY_REL, REPO_ROOT  # noqa: E402
 
 
 def _status_rows() -> list[tuple[str, str, str]]:
@@ -41,13 +51,12 @@ def _status_rows() -> list[tuple[str, str, str]]:
 
 
 def _source_path(source: str) -> Path | None:
-    """The file a truth anchor names, resolved against the repo root."""
+    """The file a truth anchor names."""
     match = re.search(r"`([^`]*void-hunter[^`]*\.exe)`", source)
     if not match:
         return None
     # The source is a command; the path is its last token.
-    candidate = Path(match.group(1).split()[-1])
-    return candidate if candidate.is_absolute() else (ROOT / candidate)
+    return Path(match.group(1).split()[-1])
 
 
 def test_the_status_block_has_rows():
@@ -60,18 +69,19 @@ def test_the_status_block_has_rows():
     assert "Build .exe" in metrics
 
 
-def test_the_build_truth_anchor_resolves():
-    """The build row names a file that exists.
+def test_the_build_truth_anchor_names_the_canonical_binary():
+    """The build row names the file the generator measures.
 
     This is the anchor that broke when the duplicated v1.8.0 binary was
-    archived: the row pointed at the release worktree's `dist/`, and that
-    copy no longer exists.
+    archived: the row pointed at the release worktree's `dist/`, and
+    that copy no longer exists.
     """
     rows = dict((metric, source) for metric, _, source in _status_rows())
     path = _source_path(rows["Build .exe"])
     assert path is not None, f"the build row names no file: {rows['Build .exe']!r}"
-    assert path.is_file(), (
-        f"the build truth anchor points at {path}, which does not exist"
+    assert path == REPO_ROOT / BINARY_REL, (
+        f"the build row names {path}, but the generator measures "
+        f"{REPO_ROOT / BINARY_REL}"
     )
 
 
@@ -89,3 +99,16 @@ def test_the_generator_writes_the_same_binary_the_block_shows():
         f"the generator does not mention {path.name!r}: it would rewrite "
         "the build row with a different path"
     )
+
+
+def test_the_build_artifact_is_there_when_this_machine_has_it():
+    """The artifact is real when it is there.
+
+    It is a build output, so it is not in the repository and a fresh
+    clone does not have it. When this machine DOES have it, the anchor
+    has to point at a real file.
+    """
+    path = REPO_ROOT / BINARY_REL
+    if not path.is_file():
+        pytest.skip("this machine has no build artifact")
+    assert path.stat().st_size > 0
