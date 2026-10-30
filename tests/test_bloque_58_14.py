@@ -24,6 +24,24 @@ from unittest import mock
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _restore_lowpass_state():
+    """The lowpass cutoff lives in a MODULE-LEVEL cache.
+
+    A test that changes it must not change it for the rest of the suite.
+    The pause filter writes the filtered track NEXT TO THE SOURCE, so a
+    cutoff left at 8000 Hz makes the next test that exercises the filter
+    generate a 61 MB WAV inside the working tree -- a file the repository
+    does not have, in whatever tree the suite runs in.
+    """
+    from src.audio import music
+
+    before = dict(music._pause_filter_cache)
+    yield
+    music._pause_filter_cache.clear()
+    music._pause_filter_cache.update(before)
+
+
 # ---------------------------------------------------------------------------
 # 1. apply_lowpass_to_wav — basic behaviour
 # ---------------------------------------------------------------------------
@@ -490,3 +508,25 @@ def test_pause_scene_get_pause_stats_dispatches_to_current_scene() -> None:
     fake.scenes = {}
     stats = cb()
     assert stats == {}
+
+
+# ---------------------------------------------------------------------------
+# 8. the module-level lowpass state does not leak
+# ---------------------------------------------------------------------------
+def test_the_lowpass_cutoff_does_not_leak_out_of_this_module() -> None:
+    """The cutoff lives in a module-level cache, and this module must not
+    leave it changed for the rest of the suite.
+
+    \\	est_set_lowpass_cutoff_hz_clamps_range\\ clamps the cutoff to
+    8000 Hz. Left there, the next test that exercises the pause filter
+    writes the filtered track NEXT TO THE SOURCE -- generating
+    \Assets/keep kept - Lerius - soundtrack gameplay_lp8000.wav\, 61 MB,
+    inside whatever tree the suite runs in. That is how the file ended
+    up committed on \master\ in the first place.
+    """
+    from src.audio import music
+
+    assert music.get_lowpass_cutoff_hz() == pytest.approx(600.0, abs=1.0), (
+        "the lowpass cutoff leaked out of this module: the pause filter "
+        "will generate a 61 MB WAV into the source tree"
+    )

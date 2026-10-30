@@ -12,6 +12,49 @@
 
 ---
 
+## Corrections found while executing (2026-10-30)
+
+The plan was written from the design, and the design was written from
+measurements. Executing it surfaced four things the design could not
+know. They are applied and verified; this section is the record.
+
+1. **Task 1 Step 8 named a file that does not exist on the release
+   line.** `tools/sprite_pipeline/verify_contract.py` was added by the
+   BLOQUE 75 scaffolding (`c07db14`), so it is NOT in
+   `bloquec-67-goliath-port`. The baseline is cut from the release
+   line, so the guard that runs there is `audit.py` (read-only without
+   `--write-anchors`). Verified: `10/60 frames with findings (0 FAIL,
+   10 WARN)`, exit 0.
+
+2. **Running anything inside the baseline dirties it, and the dirt is
+   61 MB.** `tests/test_bloque_58_14.py` clamped the lowpass cutoff to
+   8000 Hz and left it there; the next test that exercises the pause
+   filter then writes `Assets/keep kept - Lerius - soundtrack
+   gameplay_lp8000.wav` (60.94 MB) NEXT TO THE SOURCE TRACK. On a
+   fresh checkout of the release line that is a file the repository
+   does not have, written into the tree. It is how that WAV ended up
+   committed on `master`. Fixed as Task 2b; the baseline was re-cut
+   afterwards and is pristine again.
+
+3. **The baseline was validated by running the suite inside it, which
+   is what dirtied it.** The validation copy was moved to the archive
+   as `baseline_pollution/` (evidence, not trash) and a fresh baseline
+   was cut. The rule this establishes: **the restore point is cut
+   clean and never run in; the sandbox is a separate worktree** (the
+   other agent's `bloquec-75-migration-spec`).
+
+4. **The tool needs a path subset, and it needs to tell contamination
+   from litter.** Two fixes: `verify()` takes an optional `paths` list
+   so a partial copy can be compared against the same subset of the
+   tree; and an extra file that the repository's `.gitignore` ignores
+   is reported as `ignored-extra` with its total size, not as
+   contamination. The line is the repository's own rule, and it turns
+   out to matter: `Assets/*_lp*.wav` has been in the release line's
+   `.gitignore` since BLOQUE 74, so the generated WAV is a byproduct,
+   not source.
+
+---
+
 ## Global Constraints
 
 These apply to EVERY task. They are not restated per task.
@@ -141,11 +184,21 @@ Expected: `2 failed`? No — expected `1 failed, 2886 passed, 6 skipped`. The si
 ```powershell
 $py = 'F:\AI\MM\void-hunter\.venv\Scripts\python.exe'
 Push-Location 'F:\AI\MM\void-hunter-baseline-v1.8.0'
-& $py tools\sprite_pipeline\verify_contract.py goliath
+& $py tools\sprite_pipeline\audit.py goliath
 Pop-Location
 ```
 
-Expected: `CONTRACT OK`, exit 0.
+Expected: `summary: 10/60 frames with findings (0 FAIL, 10 WARN)`, exit 0.
+
+> `verify_contract.py` is BLOQUE 75 scaffolding and is NOT in the release
+> line. `audit.py` is the guard that exists there, and it is read-only
+> without `--write-anchors`. Running `run.py --fix` here would REWRITE
+> `anchors.toml` with CRLF and break the byte-for-byte comparison of
+> Step 5 — do not run it in the copy.
+>
+> **This is the step that dirties the copy** (see "Corrections" #2 and
+> #3). Run it, record the result, and then re-cut the baseline before
+> Step 9.
 
 - [ ] **Step 9: Record the baseline's identity**
 
@@ -462,6 +515,99 @@ Expected: `checked=2267`, no missing/extra/mismatched, `CLEAN COPY OK`, exit 0.
 ```bash
 git add tools/verify_clean_copy.py tests/test_verify_clean_copy.py
 git commit -m "test: BLOQUE 75 - la herramienta que prueba que una copia del arbol esta limpia"
+```
+
+---
+
+### Task 2b: Stop the suite from writing 61 MB into the working tree
+
+**Files:**
+- Modify: `tests/test_bloque_58_14.py` (an autouse fixture + one test)
+
+**Interfaces:**
+- Consumes: `src.audio.music.set_lowpass_cutoff_hz(hz: float)` and the module-level `_pause_filter_cache`.
+- Produces: a suite that leaves the working tree exactly as it found it.
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `tests/test_bloque_58_14.py`:
+
+```python
+def test_the_lowpass_cutoff_does_not_leak_out_of_this_module() -> None:
+    """The cutoff lives in a module-level cache, and this module must not
+    leave it changed for the rest of the suite.
+
+    `test_set_lowpass_cutoff_hz_clamps_range` clamps the cutoff to
+    8000 Hz. Left there, the next test that exercises the pause filter
+    writes the filtered track NEXT TO THE SOURCE -- generating
+    `Assets/keep kept - Lerius - soundtrack gameplay_lp8000.wav`, 61 MB,
+    inside whatever tree the suite runs in. That is how the file ended
+    up committed on `master` in the first place.
+    """
+    from src.audio import music
+
+    assert music.get_lowpass_cutoff_hz() == pytest.approx(600.0, abs=1.0), (
+        "the lowpass cutoff leaked out of this module: the pause filter "
+        "will generate a 61 MB WAV into the source tree"
+    )
+```
+
+- [ ] **Step 2: Run the MODULE, not the test**
+
+Run: `python -m pytest tests\test_bloque_58_14.py --tb=line`
+
+Expected: FAIL with `Obtained: 8000.0, Expected: 600.0`. Running the
+single test in isolation PASSES — the leak only shows when the clamp
+test ran first. That is why the assertion lives at the end of the
+module.
+
+- [ ] **Step 3: Add the fixture**
+
+Insert after the imports of `tests/test_bloque_58_14.py`:
+
+```python
+@pytest.fixture(autouse=True)
+def _restore_lowpass_state():
+    """The lowpass cutoff lives in a MODULE-LEVEL cache.
+
+    A test that changes it must not change it for the rest of the suite.
+    The pause filter writes the filtered track NEXT TO THE SOURCE, so a
+    cutoff left at 8000 Hz makes the next test that exercises the filter
+    generate a 61 MB WAV inside the working tree -- a file the repository
+    does not have, in whatever tree the suite runs in.
+    """
+    from src.audio import music
+
+    before = dict(music._pause_filter_cache)
+    yield
+    music._pause_filter_cache.clear()
+    music._pause_filter_cache.update(before)
+```
+
+- [ ] **Step 4: Run the module again**
+
+Run: `python -m pytest tests\test_bloque_58_14.py --tb=line`
+
+Expected: `23 passed`.
+
+- [ ] **Step 5: Prove it on the filesystem, not on the assertion**
+
+```powershell
+$wt = 'F:\AI\MM\void-hunter\.worktrees\bloquec-75-sprite-migration'
+$wav = "$wt\Assets\keep kept - Lerius - soundtrack gameplay_lp8000.wav"
+if (Test-Path $wav) { Move-Item $wav "F:\AI\MM\_vh_archive_2026-10-30\generated_lp_wavs\" -Force }
+cd $wt
+python -m pytest tests/ --tb=no
+if (Test-Path $wav) { "STILL GENERATED" } else { "not regenerated" }
+```
+
+Expected: the WAV is NOT recreated.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add tests/test_bloque_58_14.py
+git commit -m "fix: BLOQUE 75 - el cutoff del lowpass no se escapa del modulo de tests"
 ```
 
 ---
