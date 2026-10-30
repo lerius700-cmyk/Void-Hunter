@@ -20,6 +20,7 @@ Usage:
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import subprocess
@@ -31,10 +32,19 @@ ROOT = Path(
         r"F:\AI\MM\void-hunter\.worktrees\bloquec-75-sprite-migration",
     )
 )
-RELEASE_WT = ROOT.parent / "bloquec-67-goliath-port"
 RELEASE_BRANCH = "bloquec-67-goliath-port"
 PY = r"F:\AI\MM\void-hunter\.venv\Scripts\python.exe"
 CLAUDE = ROOT / "CLAUDE.md"
+
+# BLOQUE 75: there is ONE canonical .exe now. The release worktree used
+# to carry a byte-identical copy in its own dist/, and that copy was
+# archived during the repo cleanup -- so the build row has to name the
+# survivor, in the repository root, and the generator has to name it
+# too. A block that lies and a generator that agrees with the lie is
+# worse than either alone: the next regeneration puts the broken anchor
+# back.
+REPO_ROOT = Path(r"F:\AI\MM\void-hunter")
+BINARY_REL = "dist/void-hunter-v1.8.0.exe"
 
 
 def run(cmd: list[str], cwd: Path = ROOT) -> str:
@@ -71,6 +81,22 @@ def pyfiles(folder: str) -> int:
     return int(out)
 
 
+def _sha256(path: Path) -> str:
+    """The SHA256 of a file, or 'n/d' when it is not there.
+
+    The build row carries the hash so that "the .exe" names ONE file:
+    there were two byte-identical copies before the cleanup, and a row
+    that names a path cannot tell them apart.
+    """
+    if not path.is_file():
+        return "n/d"
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest().upper()
+
+
 def main() -> int:
     text = CLAUDE.read_text(encoding="utf-8")
 
@@ -79,7 +105,7 @@ def main() -> int:
     src_files = pyfiles("src")
     n_silos = len([p for p in (ROOT / "docs").iterdir() if p.is_dir()])
 
-    exe = RELEASE_WT / "dist" / "void-hunter.exe"
+    exe = REPO_ROOT / BINARY_REL
     exe_mb = round(exe.stat().st_size / 1024 / 1024, 1) if exe.is_file() else 0
 
     branch = run(["git", "branch", "--show-current"])
@@ -124,10 +150,18 @@ def main() -> int:
         "Silos SF+SM": f"{n_silos} (Lite)",
         "Rama": branch,
         "Build .exe": (
-            f"**reconstruido** para v1.8.0 ({exe_mb} MB) en `dist/void-hunter.exe` "
+            f"**reconstruido** para v1.8.0 ({exe_mb} MB) en `{BINARY_REL}` "
             "— el path congelado (`<_MEIPASS>/Assets/sprites/bosses`) verificado con "
-            "el manifest y los anchors dentro del bundle"
+            f"el manifest y los anchors dentro del bundle; SHA256 `{_sha256(exe)}`"
         ),
+    }
+
+    # The SOURCE column of a row is usually the command that measures the
+    # value, and it is preserved from the block. When the thing being
+    # measured MOVES, the source moves with it -- so the generator owns
+    # both columns for the rows whose subject moved.
+    sources = {
+        "Build .exe": f"`Get-Item {exe}`",
     }
 
     out: list[str] = []
@@ -136,7 +170,8 @@ def main() -> int:
         row = re.match(r"^\| ([^|]+?) \| (.*?) \| (.*?) \|$", line)
         if row and row.group(1).strip() in rows:
             key = row.group(1).strip()
-            line = f"| {key} | {rows[key]} | {row.group(3)} |"
+            source = sources.get(key, row.group(3))
+            line = f"| {key} | {rows[key]} | {source} |"
             changed += 1
         out.append(line)
 
