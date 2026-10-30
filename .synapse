@@ -1,11 +1,11 @@
 {
   "synapse_version": "2.2.0",
-  "last_verification_utc": "2026-10-30T03:37:17Z",
+  "last_verification_utc": "2026-10-30T04:04:41Z",
   "system_status": "healthy",
   "active_bridges": {},
   "short_term_memory": {
     "current_objective": "BLOQUE 75: andamiaje de contexto multi-agente sobre la linea v1.8.0 (rama bloquec-75-sprite-migration). El repo es el unico canal: prompt versionado en docs/superpowers/prompts/, harness verify_contract.py en tools/sprite_pipeline/, ruteo en CONTEXT.md, CLAUDE.md y el silo superpowers. Siguiente: el otro agente escribe el spec con el prompt.",
-    "last_successful_action": "BLOQUE 75 scaffolding completo y verificado: design doc commiteado (173f755); prompt de 8 dimensiones (30384 bytes) en docs/superpowers/prompts/ CON una seccion 0 que dice donde trabajar y que leer primero; tools/sprite_pipeline/verify_contract.py (exit 0 sobre el arbol real, exit 1 ante un anchors.toml corrupto); tests/test_sprite_pipeline_contract.py y tests/test_handoff_routing.py (7 tests de ruteo, verificados en las dos direcciones); cache negativa del manifiesto (loaded_set no re-parsea un manifiesto roto en cada frame) + .gitattributes con *.toml eol=lf; sheet de GOLIATH reconstruido desde los frames canonicos (60/60 celdas); tools/regen_status.py versionado (el bloque STATUS ya no depende del scratch); filas de ruteo en CONTEXT.md, docs/superpowers/CONTEXT.md y CLAUDE.md; _srcrefs/ archivado por movimiento (264 archivos, nada borrado).",
+    "last_successful_action": "BLOQUE 75 scaffolding completo y verificado: design doc commiteado; prompt de 8 dimensiones en docs/superpowers/prompts/ CON seccion 0 (orden de lectura ADUANA, rama de la que ramificar, destino del spec y comandos de verificacion); tools/sprite_pipeline/verify_contract.py (exit 0 / exit 1); tests/test_handoff_routing.py (9 tests de ruteo, verificados en las dos direcciones) + tests/test_sprite_pipeline_contract.py; cache negativa del manifiesto + .gitattributes *.toml eol=lf; sheet de GOLIATH reconstruido desde los frames canonicos (60/60 celdas); tools/regen_status.py versionado; _srcrefs/ archivado por movimiento (264 archivos, nada borrado). Suite 2.899 pass + 1 fail pre-existente + 6 skipped; mypy src/anim/ 0; verify_contract CONTRACT OK; sf-sm-doctor 7/7.",
     "active_context_pointers": [
       "docs/superpowers/prompts/2026-10-29-bloque-75-migration-spec-prompt.md",
       "docs/superpowers/specs/2026-10-29-agent-context-handoff-design.md",
