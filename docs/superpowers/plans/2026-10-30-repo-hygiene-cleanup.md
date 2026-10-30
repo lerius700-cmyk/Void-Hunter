@@ -53,6 +53,33 @@ know. They are applied and verified; this section is the record.
    `.gitignore` since BLOQUE 74, so the generated WAV is a byproduct,
    not source.
 
+5. **81 of the moved files were TRACKED.** Task 3 Step 10 asserted
+   that the tracked tree would be untouched, and it was not: `git
+   status` showed 89 deletions. The reason is the rule the design
+   missed — a `.gitignore` entry only applies to files that are NOT
+   tracked, and `tools/playtest_out/` and `logs/` had been committed
+   before those rules existed. The rule itself was right; the index was
+   stale. Resolution: `master`'s working tree was restored untouched
+   (that line is not ours to change), the 81 files were untracked with
+   `git rm --cached` on the working branch, and their content went to
+   the archive.
+
+6. **The baseline follows the branch, not the release line.** Once the
+   obsolete files are untracked, the release line still tracks them:
+   a baseline cut from it would carry 81 files with no link to the
+   game, which is exactly what the copy must not have. The baseline is
+   therefore cut from `bloquec-75-sprite-migration` — which is also the
+   branch the migration actually builds on. The exact v1.8.0 release
+   tree stays reproducible with `git archive bloquec-67-goliath-port`,
+   and its cut is kept in the archive as `baseline_release_line_v1.8.0/`.
+
+7. **A baseline is a snapshot, and the tool tells you when it drifts.**
+   The first cut became stale the moment `tools/regen_status.py`
+   changed, and `verify_clean_copy.py` said so: `mismatched:
+   tools/regen_status.py`. That is the tool doing its job. The
+   baseline is cut last, after the last commit, and its identity is
+   the commit it was cut from.
+
 ---
 
 ## Global Constraints
