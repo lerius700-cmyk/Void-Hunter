@@ -150,6 +150,7 @@ void-hunter/
 │   ├── capture/                ← scripts de screenshot
 │   ├── sprite_pipeline/        ← pipeline de sprites: audit.py, run.py, repair.py, verify_contract.py (BLOQUE 74)
 │   ├── tiles/                  ← pipeline del fondo Asteroid Approach (generate_tiles.py + ai_gen/)
+│   ├── regen_status.py         ← regenera el bloque STATUS de CLAUDE.md desde los truth anchors
 │   ├── debug_*.py              ← debug tools
 │   ├── test_*.py               ← ad-hoc tests
 │   ├── process_galaxy_sprites_v2.py
