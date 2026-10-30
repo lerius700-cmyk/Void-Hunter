@@ -32,8 +32,8 @@ Two things made it worth doing rather than tolerating:
 | | Before | After |
 |---|---:|---:|
 | Repository root on disk | 15.70 GB | **2.35 GB** |
-| Archived and recoverable | 0 | **13.95 GB** |
-| Pristine baseline (outside the repo) | 0 | 264.8 MB, 2,197 files |
+| Archived and recoverable | 0 | **14.47 GB** |
+| Pristine baseline (outside the repo) | 0 | 264.8 MB, 2,200 files |
 | Tracked tree (`master`) | 331.7 MB | 331.7 MB (unchanged) |
 | Copies of the v1.8.0 binary | 2 | 1 |
 
@@ -63,6 +63,7 @@ F:\AI\MM\_vh_archive_2026-10-30\
 | `release_captures/` | 112 verification captures of the title screen and the background variants, loose in `release/` | 7.1 MB |
 | `generated_lp_wavs/` | the `_lp8000.wav` the suite used to generate on every run | 60.9 MB |
 | `tracked_obsolete_captures/` | the 81 captures and the log README that were still tracked in git | 7.2 MB |
+| `baseline_previous/` | two stale baseline cuts, kept as evidence of what the tool detects (one dirtied by running the suite inside it, one stale after a file changed). Both are reproducible with `git archive` | 529.6 MB |
 
 **Restoring a block** is one move:
 
