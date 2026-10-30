@@ -78,7 +78,13 @@ def verify(set_name: str, root: Path | None) -> tuple[list[str], dict]:
     except Exception as exc:  # noqa: BLE001 - the message is the point
         return [f"the set could not be loaded: {exc}"], report
 
-    findings, measurements = audit_set(anim_set)
+    try:
+        findings, measurements = audit_set(anim_set)
+    except Exception as exc:  # noqa: BLE001 - a missing frame is a finding
+        # The audit loads the frames with pygame, and a frame that is
+        # not there used to escape as a traceback: the guard died
+        # instead of saying what was wrong. A guard has to REPORT.
+        return [f"the set could not be audited: {exc}"], report
 
     by_frame: dict[tuple[str, int], list[str]] = {}
     for finding in findings:
@@ -107,11 +113,20 @@ def verify(set_name: str, root: Path | None) -> tuple[list[str], dict]:
         )
     report["fail_states"] = [f"{c}/frame_{n:02d}" for c, n in fails]
 
-    # 3. determinism: rendering twice is byte-identical
+    # 3. determinism: auditing twice gives the same anchors
+    # The check re-runs the AUDIT, not the renderer. Rendering the same
+    # measurements twice can only fail if the renderer itself is
+    # nondeterministic; what could actually drift is the measurement.
     first = render_anchors_toml(anim_set, measurements)
-    second = render_anchors_toml(anim_set, measurements)
+    try:
+        _, second_measurements = audit_set(anim_set)
+    except Exception as exc:  # noqa: BLE001 - the message is the point
+        failures.append(f"the set could not be audited a second time: {exc}")
+        second = ""
+    else:
+        second = render_anchors_toml(anim_set, second_measurements)
     if first != second:
-        failures.append("the anchors are not deterministic: two renders differ")
+        failures.append("the audit is not deterministic: two audits differ")
     report["deterministic"] = first == second
 
     # 4. freshness: the committed anchors.toml equals the rendered one

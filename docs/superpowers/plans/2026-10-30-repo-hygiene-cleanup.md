@@ -82,6 +82,37 @@ know. They are applied and verified; this section is the record.
 
 ---
 
+## Pre-landing review (2026-10-30, after the cleanup)
+
+The branch was reviewed against the base before landing, and the review
+came back **FAIL**: six blocking findings, all in the tooling layer,
+all small and well-localised. Every one was reproduced with real git
+behaviour before it was written down, and every one was fixed with a
+failing test first.
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | `regen_status.py` measured and wrote a HARDCODED worktree: the agent running it from its own tree rewrote a sibling agent's `CLAUDE.md` | `ROOT` comes from the script's own location; `VH_WT` is only an override; `PY` is `sys.executable` |
+| 2 | `verify_clean_copy.py` promised to catch the 61 MB generated WAV, but the repository's own `.gitignore` ignores it | the docstring says the truth; the truth is pinned by a test |
+| 3 | the pytest summary parser demanded one exact sentence, so the generator died on a GREEN suite | each count is read on its own; the failing test ids are extracted |
+| 4 | the tool promised "the same BYTES" but git's filters were applied | the promise became "the same content git sees" -- which is what `git archive` produces too, and what `git status` means |
+| 5 | the truth-anchor test asserted a file OUTSIDE the repository, so it would be red on CI | the repository-owned property is asserted (the row and the generator name the same file); the artifact's presence is a separate test that skips when it is not there |
+| 6 | the leak test failed when `VOID_HUNTER_LP_HZ` was set, blaming the leak instead of the environment | the override is popped for the assertion |
+| 7 | `--path` restricted the expected side only, so the rest of the copy was flagged | the subset restricts the byte comparison; contamination is judged against the whole tree |
+| 8 | `ls-tree -r` without `-z` mangles non-ASCII paths | `-z`, as `check-ignore` already used |
+| 9 | the block credited `sf-sm-doctor` with writing it, and labelled any failure "pre-existente" | the header names the real generator; the label compares the failing ids against the known ones |
+| 10 | the determinism check rendered the same measurements twice -- a tautology | it re-runs the AUDIT and compares |
+| 11 | a missing frame escaped as a traceback; the sheet builder wrote an incomplete sheet and exited 0 | both report and fail |
+| 12 | the negative cache was keyed on the `None` the caller passed, not the resolved root | the key is the resolved root |
+| 13 | the tool's default `--ref` was not the tree the baseline was cut from, so a pristine baseline reported CONTAMINATED | the default is the branch the baseline is cut from, and a test pins it |
+
+The code changes themselves -- the negative cache, the lowpass fixture,
+the manifest-driven spritesheet -- were sound and untouched by the
+review. The failure was in the layer the branch exists to protect, which
+is exactly where a review is worth having.
+
+---
+
 ## Global Constraints
 
 These apply to EVERY task. They are not restated per task.
