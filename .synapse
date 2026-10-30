@@ -5,7 +5,7 @@
   "active_bridges": {},
   "short_term_memory": {
     "current_objective": "BLOQUE 75: andamiaje de contexto multi-agente sobre la linea v1.8.0 (rama bloquec-75-sprite-migration). El repo es el unico canal: prompt versionado en docs/superpowers/prompts/, harness verify_contract.py en tools/sprite_pipeline/, ruteo en CONTEXT.md, CLAUDE.md y el silo superpowers. Siguiente: el otro agente escribe el spec con el prompt.",
-    "last_successful_action": "BLOQUE 75 scaffolding: design doc commiteado (173f755); prompt de 28.356 bytes copiado a docs/superpowers/prompts/; tools/sprite_pipeline/verify_contract.py creado (exit 0 sobre el arbol real, exit 1 con mensaje claro ante un anchors.toml corrupto); tests/test_sprite_pipeline_contract.py con 2 tests verdes; filas de ruteo aplicadas en CONTEXT.md, docs/superpowers/CONTEXT.md y CLAUDE.md.",
+    "last_successful_action": "BLOQUE 75 scaffolding completo: design doc commiteado (173f755); prompt de 8 dimensiones (30384 bytes) en docs/superpowers/prompts/ CON una seccion 0 que dice donde trabajar y que leer primero; tools/sprite_pipeline/verify_contract.py (exit 0 sobre el arbol real, exit 1 con mensaje claro ante un anchors.toml corrupto); tests/test_sprite_pipeline_contract.py; cache negativa del manifiesto (loaded_set no re-parsea un manifiesto roto en cada frame) + .gitattributes con *.toml eol=lf; sheet de GOLIATH reconstruido desde los frames canonicos (60/60 celdas verificadas); filas de ruteo en CONTEXT.md, docs/superpowers/CONTEXT.md y CLAUDE.md; STATUS regenerado (2.890 pass + 1 fail pre-existente + 6 skipped).",
     "active_context_pointers": [
       "docs/superpowers/prompts/2026-10-29-bloque-75-migration-spec-prompt.md",
       "docs/superpowers/specs/2026-10-29-agent-context-handoff-design.md",

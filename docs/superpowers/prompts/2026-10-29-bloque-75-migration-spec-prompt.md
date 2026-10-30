@@ -6,6 +6,36 @@
 
 ---
 
+## 📌 0. Antes de empezar: dónde estás y qué leés primero
+
+Este prompt es la **semilla** del spec, no el spec. El **contexto vive en el repo**, no en este documento: antes de escribir una línea, leé el repo. El orden es el del protocolo ADUANA del proyecto:
+
+| # | Archivo | Qué te da |
+|---|---|---|
+| 1 | `CLAUDE.md` | La identidad del proyecto, las reglas que no se rompen, y la sección **"Trabajo multi-agente"** (un worktree y una rama por agente). |
+| 2 | `CONTEXT.md` | El switch: qué silos existen y a cuál pertenece este trabajo (`docs/superpowers/`). |
+| 3 | `docs/superpowers/CONTEXT.md` | La misión del silo y dónde viven los prompts, specs y planes. |
+| 4 | `.synapse` | El puntero: `active_context_pointers` dice qué archivos leer primero. |
+| 5 | `docs/superpowers/specs/2026-10-29-agent-context-handoff-design.md` | Por qué el repo es el único canal entre agentes, y qué se decidió acá. |
+
+**Dónde trabajás.** La base de todo trabajo nuevo es la rama `bloquec-67-goliath-port` (v1.8.0). **`master` NO es la base**: está en v1.6.3, es otra línea y no recibe merges (ver R3). No trabajes sobre `master` ni sobre `bloquec-67-goliath-port` directamente — creá tu propia rama y tu propio worktree, porque puede haber otro agente sobre este mismo repo al mismo tiempo:
+
+```powershell
+cd F:\AI\MM\void-hunter
+git worktree add .worktrees\bloquec-75-<tu-rama> -b bloquec-75-<tu-rama> bloquec-67-goliath-port
+```
+
+**Antes de tocar nada, verificá que el pipeline sigue bien.** Este es el guard de contrato que se versionó junto a este prompt: mide sobre el código que se está por migrar, no sobre un plan.
+
+```powershell
+python tools\sprite_pipeline\verify_contract.py goliath    # -> CONTRACT OK, exit 0
+python -m pytest tests/ --tb=no                            # -> todo pass salvo test_paths_no_star_shapes (fallo pre-existente) + 6 skipped
+```
+
+> **No comitees nada hasta que el usuario lo pida.** Es una regla explícita del proyecto (BLOQUE 58.14).
+
+---
+
 ## 📌 1. Contexto y Rol
 
 Sos un **game architect senior specialize en pipelines de assets 2D para juegos pixel-art**, con experiencia concreta en: registro de sprites por medición de silueta, composición por capas declarativa, y migración incremental de un runtime procedural a uno data-driven sin regresiones visuales.
