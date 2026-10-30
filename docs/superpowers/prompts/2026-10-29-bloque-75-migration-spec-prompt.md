@@ -18,12 +18,27 @@ Este prompt es la **semilla** del spec, no el spec. El **contexto vive en el rep
 | 4 | `.synapse` | El puntero: `active_context_pointers` dice qué archivos leer primero. |
 | 5 | `docs/superpowers/specs/2026-10-29-agent-context-handoff-design.md` | Por qué el repo es el único canal entre agentes, y qué se decidió acá. |
 
-**Dónde trabajás.** La base de todo trabajo nuevo es la rama `bloquec-67-goliath-port` (v1.8.0). **`master` NO es la base**: está en v1.6.3, es otra línea y no recibe merges (ver R3). No trabajes sobre `master` ni sobre `bloquec-67-goliath-port` directamente — creá tu propia rama y tu propio worktree, porque puede haber otro agente sobre este mismo repo al mismo tiempo:
+**Dónde trabajás.** Hay dos ramas distintas y no se mezclan:
+
+| Rama | Qué es |
+|---|---|
+| `bloquec-67-goliath-port` | **La línea de release** (v1.8.0, BLOQUE 74). Ahí es donde aterriza el merge final. |
+| `bloquec-75-sprite-migration` | **La rama de este trabajo**: el pipeline de sprites + este prompt + el ruteo de la documentación. Es de donde tenés que ramificar. |
+
+**`master` NO es la base**: está en v1.6.3, es otra línea y no recibe merges (ver R3). No trabajes sobre `master` ni sobre `bloquec-67-goliath-port` directamente, y no toques los worktrees de los demás agentes — creá el tuyo:
 
 ```powershell
 cd F:\AI\MM\void-hunter
-git worktree add .worktrees\bloquec-75-<tu-rama> -b bloquec-75-<tu-rama> bloquec-67-goliath-port
+git worktree add .worktrees\bloquec-75-<tu-rama> -b bloquec-75-<tu-rama> bloquec-75-sprite-migration
 ```
+
+**Dónde va el spec.** El spec se **escribe en el repo**, no se devuelve en el chat: si el spec no está en el repo, no existe para nadie. Va en el silo del diseño, con el prefijo de fecha del día:
+
+```
+docs/superpowers/specs/<AAAA-MM-DD>-bloque-75-migration-spec.md
+```
+
+Escribilo en **tu** worktree. Después, indexalo en la tabla de contenidos de `docs/superpowers/CONTEXT.md` (silao `prompts/` y `specs/`) para que el switch lo encuentre.
 
 **Antes de tocar nada, verificá que el pipeline sigue bien.** Este es el guard de contrato que se versionó junto a este prompt: mide sobre el código que se está por migrar, no sobre un plan.
 

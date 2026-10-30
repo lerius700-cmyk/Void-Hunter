@@ -105,6 +105,40 @@ def test_the_prompt_carries_its_own_reading_order():
     )
 
 
+def test_the_prompt_names_the_branch_to_branch_from():
+    """The prompt names the branch the agent has to branch from.
+
+    There are two branches and they are not interchangeable: the release
+    line does NOT carry this prompt, and the work branch does. An agent
+    told to branch from the release line ends up in a tree where the
+    prompt it is answering does not exist.
+    """
+    prompt = _read(PROMPT_REL)
+    assert "bloquec-75-sprite-migration" in prompt, (
+        "the prompt does not name the work branch to branch from"
+    )
+    worktree_cmd = re.search(
+        r"git worktree add[^\n]*bloquec-75-sprite-migration", prompt
+    )
+    assert worktree_cmd, (
+        "the worktree command of the prompt does not branch from "
+        "bloquec-75-sprite-migration"
+    )
+
+
+def test_the_prompt_says_where_the_spec_goes():
+    """The spec is written in the repo, not returned in the chat.
+
+    A spec that only exists in a conversation window is gone the moment
+    the window closes -- which is the failure mode this whole branch
+    exists to remove.
+    """
+    prompt = _read(PROMPT_REL)
+    assert "docs/superpowers/specs/" in prompt, (
+        "the prompt does not say where the resulting spec has to be written"
+    )
+
+
 def test_the_design_doc_stays_next_to_the_prompt():
     """The design doc (why the repo is the channel) is one route away."""
     assert (ROOT / DESIGN_REL).is_file()
