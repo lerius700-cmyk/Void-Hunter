@@ -31,7 +31,7 @@ Two things made it worth doing rather than tolerating:
 
 | | Before | After |
 |---|---:|---:|
-| Repository root on disk | 15.70 GB | **2.36 GB** |
+| Repository root on disk | 15.70 GB | **2.35 GB** |
 | Archived and recoverable | 0 | **13.95 GB** |
 | Pristine baseline (outside the repo) | 0 | 264.8 MB, 2,197 files |
 | Tracked tree (`master`) | 331.7 MB | 331.7 MB (unchanged) |
@@ -60,6 +60,7 @@ F:\AI\MM\_vh_archive_2026-10-30\
 | `srcrefs_scratch/` | the scratch folder of the 2026-10-29 session: diagnostic builds, stray assets | 207.9 MB |
 | `assets_intermediates/` | `_strips/`, `_base/`, `_seed/`, `_test/`, `_mask/`, `gifs/` — the 1024px sources the 16-bit frames are baked from | 150.6 MB |
 | `playtest_out_logs/` | verification captures and `logs/` | 115.1 MB |
+| `release_captures/` | 112 verification captures of the title screen and the background variants, loose in `release/` | 7.1 MB |
 | `generated_lp_wavs/` | the `_lp8000.wav` the suite used to generate on every run | 60.9 MB |
 | `tracked_obsolete_captures/` | the 81 captures and the log README that were still tracked in git | 7.2 MB |
 
