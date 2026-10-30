@@ -58,7 +58,7 @@ L3  docs/references/     ← assets de referencia (sprites, paneles)
 | Video gen | `tools/video_gen/**` | Genera assets de video. No es productiva del juego | R (REFERENCE) |
 | Manifiesto de animación | `Assets/sprites/bosses/*/manifest.toml` | Se edita **a mano**: es la spec del set (canvas, clips, tolerancias, reglas de detección). Lo valida `src/anim/manifest.py` | R (REFERENCE) |
 | Anclas horneadas | `Assets/sprites/bosses/*/anchors.toml` | **Generado** por `python tools/sprite_pipeline/run.py <set> --fix`. NUNCA editar a mano | R (REFERENCE) |
-| Pipeline de sprites | `tools/sprite_pipeline/**` | Auditor + reparación + generación de `anchors.toml`. Dev-only, no es productiva del juego | R (REFERENCE) |
+| Pipeline de sprites | `tools/sprite_pipeline/**` | Auditor + reparación + generación de `anchors.toml` + `verify_contract.py` (guard de contrato). Dev-only, no es productiva del juego | R (REFERENCE) |
 | Builds | `dist/`, `build/` | Output PyInstaller, gitignored | S (SKIP) |
 | Release artifacts | `release/` | Output deliverables (videos standalone, etc.), gitignored | S (SKIP) |
 | Caché | `.mypy_cache/`, `.ruff_cache/`, `.pytest_cache/`, `__pycache__/` | Gitignored | S (SKIP) |
@@ -148,7 +148,7 @@ void-hunter/
 │
 ├── tools/                      ← L2 dev-only (no productiva)
 │   ├── capture/                ← scripts de screenshot
-│   ├── sprite_pipeline/        ← pipeline de sprites: audit.py, run.py, repair.py (BLOQUE 74)
+│   ├── sprite_pipeline/        ← pipeline de sprites: audit.py, run.py, repair.py, verify_contract.py (BLOQUE 74)
 │   ├── tiles/                  ← pipeline del fondo Asteroid Approach (generate_tiles.py + ai_gen/)
 │   ├── debug_*.py              ← debug tools
 │   ├── test_*.py               ← ad-hoc tests
@@ -188,6 +188,44 @@ void-hunter/
 | **systematic-debugging** (Debugging) | Ante bug, test failure, o comportamiento inesperado | Mavis skill |
 | **verification-before-completion** (Verify) | Antes de decir "listo" o crear PR | Mavis skill |
 | **brainstorming** | Antes de trabajo creativo (features, componentes, comportamiento nuevo) | Mavis skill |
+
+---
+
+## 🤝 Trabajo multi-agente
+
+En este repo puede haber **más de un agente trabajando a la vez, en la misma
+máquina**. Reglas:
+
+1. **Un worktree y una rama por agente.** Nunca dos agentes en el mismo
+   directorio: se pisan el índice, el `HEAD` y los archivos.
+   ```
+   F:\AI\MM\void-hunter\                                    → master        (v1.6.3, OTRA línea)
+   F:\AI\MM\void-hunter\.worktrees\bloquec-67-goliath-port   → bloquec-67-…  (la línea de release, v1.8.0)
+   F:\AI\MM\void-hunter\.worktrees\bloquec-75-…              → la rama del BLOQUE en curso
+   ```
+2. **La base de todo trabajo nuevo es `bloquec-67-goliath-port`**, nunca
+   `master`. `master` es la línea vieja (v1.6.3) y no recibe merges.
+3. **El repo es el único canal.** Si el próximo agente lo necesita, está
+   commiteado y enrutado en `CONTEXT.md`. La carpeta `.worktrees/_srcrefs/`
+   es scratch por agente: **no es un canal** y no se versiona.
+4. **El estado vive en tres lugares, en este orden de autoridad:** los
+   commits (la verdad) → el handoff de `docs/handoffs/` (el resumen legible)
+   → el `.synapse` (el puntero). El `.synapse` lleva **rutas**, no
+   afirmaciones: si la ruta no existe, el error se ve.
+5. **Antes de arrancar, verificá la línea base:** `git log --oneline -1` y
+   `Select-String -Path CLAUDE.md -Pattern 'Versión actual'`. Si la versión
+   no es la esperada, estás en la línea equivocada.
+
+### Estado actual (2026-10-29)
+
+| Línea | Versión | Qué es |
+|---|---|---|
+| `bloquec-67-goliath-port` | **v1.8.0** | La línea de release (BLOQUE 74: pipeline de sprites). **Base del trabajo nuevo.** |
+| `master` | v1.6.3 | Línea vieja. 8 commits sin pushear. **No tocar.** |
+
+**Próximo BLOQUE:** 75 — migración del pipeline de sprites (2 fases con
+gate). El prompt que produce su spec está en
+`docs/superpowers/prompts/2026-10-29-bloque-75-migration-spec-prompt.md`.
 
 ---
 
@@ -277,7 +315,7 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
   - STATUS:GENERATED regenerado: 27,694 LOC / 86 files en `src/`, 22,773 LOC en `tests/`, 2,787 tests, 9 silos.
 - **2026-10-27 (BLOQUE 74 — pipeline de sprites, sin bump de versión)** — Worktree `.worktrees/bloquec-74-sprite-pipeline`, sobre la línea v1.7.2. El runtime **deja de medir el arte**: la medición se hace en build time y se hornea.
   - **Nuevo subsistema `src/anim/`** (6 archivos): `manifest.py` (manifiesto declarativo + validación), `measure.py` (medición por píxel: silueta, centroide, elipse creíble), `parts.py` (reglas de detección declaradas), `anchors.py` (lector de la tabla horneada), `clip.py` (compositor: manifiesto + anclas + caché de frames), `__init__.py`.
-  - **Nuevo tool `tools/sprite_pipeline/`**: `audit.py` (7 estados: COLAPSADO / CORTADO / LADO_EQUIVOCADO / FIRMA_AMBIGUA / AUSENTE / FUERA_DE_RANGO / ESCALADO), `repair.py` (reparaciones deterministas e idempotentes), `run.py` (validate → audit → repair → re-audit → anchors → report).
+  - **Nuevo tool `tools/sprite_pipeline/`**: `audit.py` (7 estados: COLAPSADO / CORTADO / LADO_EQUIVOCADO / FIRMA_AMBIGUA / AUSENTE / FUERA_DE_RANGO / ESCALADO), `repair.py` (reparaciones deterministas e idempotentes), `run.py` (validate → audit → repair → re-audit → anchors → report), `verify_contract.py` (guard: todo frame resuelve, 0 FAIL, determinismo, freshness, y la tabla de hallazgos medida).
   - **`Assets/sprites/bosses/goliath/manifest.toml`** (spec, editada a mano) + **`anchors.toml`** (generado): el canvas, los 6 clips (id ↔ dir), los fps, las tolerancias y las reglas de detección viven en el manifiesto; la medición de los 60 frames vive en la tabla horneada.
   - **El runtime lee las anclas horneadas** (`src/ui/scenes.py`): el ojo, la placa del escudo y el centroide son lookups, no escaneos de píxeles (3.9 ms por frame → un lookup).
   - **Umbral único `CORTADO_MARGIN`** (`src/anim/measure.py`): el auditor marca por debajo y la reparación persigue exactamente el mismo valor. Con dos umbrales, un frame marcado podía no ser reparable nunca y `run.py --fix` exiting 1 para siempre.

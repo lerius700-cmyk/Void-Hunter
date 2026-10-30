@@ -1,11 +1,16 @@
 {
   "synapse_version": "2.2.0",
-  "last_verification_utc": "2026-10-28T00:55:00Z",
+  "last_verification_utc": "2026-10-30T03:19:01Z",
   "system_status": "healthy",
   "active_bridges": {},
   "short_term_memory": {
-    "current_objective": "BLOQUE 74 publicado como v1.8.0 sobre la linea v1.4.0 (rama bloquec-67-goliath-port). El runtime deja de medir el arte: la medicion se hace en build time y se hornea en anchors.toml. Nuevo subsistema src/anim/ (manifest.py, measure.py, parts.py, anchors.py, clip.py) + tool tools/sprite_pipeline/ (audit.py, repair.py, run.py). El manifiesto es la spec editada a mano; anchors.toml es el resultado generado. El .exe fue reconstruido y el path congelado (<_MEIPASS>/Assets/sprites/bosses) quedo verificado: manifest.toml y anchors.toml dentro del bundle, boss fight con exit 0.",
-    "last_successful_action": "BLOQUE 74 completo: 8 tareas, cada una con su propio review, + una ola final de fixes (3 Important + 8 Minor del review 'Ready to merge: With fixes') y un fix de portabilidad salido del merge (el hash del manifiesto se calcula sobre texto normalizado: con core.autocrlf=true el mismo blob salia LF o CRLF segun el checkout y el test de frescura se ponia rojo sin cambio de arte). Merge a bloquec-67-goliath-port (8473326) + fix CRLF (def5fe4). Verificado: suite 2.886 pass + 1 fail pre-existente (test_paths_no_star_shapes) + 6 skipped (2.893 total); mypy src/anim/ 0 errores; audit.py goliath 10/60 frames con findings, 0 FAIL, 10 WARN, exit 0; run.py goliath --fix no repara nada y deja el arbol limpio; main.py --check 15 scenes/18 waves/4 bosses; void-hunter.exe --check OK; void-hunter.exe --boss goliath --easy --duration 25 exit 0 con el manifest y los anchors dentro del bundle congelado; sf-sm-doctor 7/7.",
+    "current_objective": "BLOQUE 75: andamiaje de contexto multi-agente sobre la linea v1.8.0 (rama bloquec-75-sprite-migration). El repo es el unico canal: prompt versionado en docs/superpowers/prompts/, harness verify_contract.py en tools/sprite_pipeline/, ruteo en CONTEXT.md, CLAUDE.md y el silo superpowers. Siguiente: el otro agente escribe el spec con el prompt.",
+    "last_successful_action": "BLOQUE 75 scaffolding: design doc commiteado (173f755); prompt de 28.356 bytes copiado a docs/superpowers/prompts/; tools/sprite_pipeline/verify_contract.py creado (exit 0 sobre el arbol real, exit 1 con mensaje claro ante un anchors.toml corrupto); tests/test_sprite_pipeline_contract.py con 2 tests verdes; filas de ruteo aplicadas en CONTEXT.md, docs/superpowers/CONTEXT.md y CLAUDE.md.",
+    "active_context_pointers": [
+      "docs/superpowers/prompts/2026-10-29-bloque-75-migration-spec-prompt.md",
+      "docs/superpowers/specs/2026-10-29-agent-context-handoff-design.md",
+      "docs/handoffs/HANDOFF-SPRITE-PIPELINE-2026-10-27.md"
+    ],
     "critical_blockers": "ninguno"
   }
 }
