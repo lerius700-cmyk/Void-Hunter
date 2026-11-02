@@ -40,6 +40,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+# The weight of the repository, and the ceilings it has to stay under.
+# See tools/repo_budget.py and tests/test_repo_budget.py.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from repo_budget import measure as measure_budget
+
 # The tree this tool belongs to. NOT a hardcoded path: the repository is
 # worked on by more than one agent, each in its own worktree, and a
 # generator that measured a FIXED tree would rewrite a sibling agent's
@@ -176,6 +181,7 @@ def main() -> int:
     tests_loc = loc("tests")
     src_files = pyfiles("src")
     n_silos = len([p for p in (ROOT / "docs").iterdir() if p.is_dir()])
+    budget = measure_budget(ROOT)
 
     exe = REPO_ROOT / BINARY_REL
     exe_mb = round(exe.stat().st_size / 1024 / 1024, 1) if exe.is_file() else 0
@@ -230,6 +236,9 @@ def main() -> int:
         ).replace(",", "."),
         "LOC tests/": f"{tests_loc}",
         "Silos SF+SM": f"{n_silos} (Lite)",
+        "Peso del arbol trackeado": f"{budget.tracked_mb:.1f} MB",
+        "Salida de build (dist/)": f"{budget.dist_mb:.1f} MB",
+        "Historia (.git/)": f"{budget.git_mb:.1f} MB",
         "Rama": branch,
         "Build .exe": _build_row(exe, exe_mb),
     }
@@ -240,6 +249,9 @@ def main() -> int:
     # both columns for the rows whose subject moved.
     sources = {
         "Build .exe": f"`Get-Item {exe}`",
+        "Peso del arbol trackeado": "`python tools/repo_budget.py`",
+        "Salida de build (dist/)": "`python tools/repo_budget.py`",
+        "Historia (.git/)": "`python tools/repo_budget.py`",
     }
 
     out: list[str] = []
