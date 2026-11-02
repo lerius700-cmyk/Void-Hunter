@@ -5,7 +5,7 @@
 **Status:** READY FOR EXECUTION
 **Author:** Lerius (idea) + Mavis (draft)
 **Branch:** `bloquec-75-migration-spec` (worktree `F:\AI\MM\void-hunter\.worktrees\bloquec-75-migration-spec`)
-**Base:** `bloquec-75-sprite-migration` @ `e8be3a2` when this spec was written. **The base has since moved to `773cf08` — 18 commits ahead.** See §Base drift. Never `master`, never `bloquec-67-goliath-port`.
+**Base:** `bloquec-75-sprite-migration` @ `773cf08` — **merged into this branch as `ef86a95`**. The spec was first written against `e8be3a2`; see §Base drift. Never `master`, never `bloquec-67-goliath-port`.
 
 ---
 
@@ -121,26 +121,31 @@ git -C <worktree> diff --stat e8be3a2..773cf08 -- src/entities/enemies src/ui/ga
 | `tests/` | +847/−91 | the suite grew; the baseline numbers below are stale for the new base |
 | `src/anim/` (rest), `tools/sprite_pipeline/` (rest) | no | — |
 
-**Two consequences the implementer must handle:**
+**Two consequences — both already handled:**
 
-1. **Re-validate the baseline on the new base before starting.** The numbers in
-   §Baseline were measured on `e8be3a2`. The base's own `.synapse` reports
-   *"Suite 2.930 pass + 1 fail pre-existente (test_paths_no_star_shapes) + 6
-   skipped"* on `773cf08` — but **that count cannot be reconciled with the
-   code**: `audit.py` and `tests/test_sprite_pipeline_run.py` are byte-identical
-   between the two bases, and `Path.write_text(..., encoding="utf-8")` writes
-   **CRLF** on Windows (verified in isolation: `write_text('a\nb\n')` →
-   `b'a\r\nb\r\n'` on Python 3.12.10), while the shipped `anchors.toml` blob
-   has **0 CR**. So `test_the_fix_run_changes_no_file` fails on the base too,
-   and the base is very likely at **2 fails**, not 1. **Run this before
-   trusting either number:**
-   ```powershell
-   python -m pytest tests\test_sprite_pipeline_run.py -q
+1. **The baseline was re-measured on the merged tree.** The numbers in
+   §Baseline were measured on `e8be3a2`. The base's own `.synapse` reported
+   *"Suite 2.930 pass + 1 fail pre-existente (test_paths_no_star_shapes)"* on
+   `773cf08` — and **that count is wrong**. Measured on the merged tree
+   (`ef86a95`):
+
    ```
-   Whichever the answer is, the Phase 1 CRLF fix (F11) is still required.
-2. **This branch must be rebased or merged onto the new base before
-   implementation.** The spec is a document, so it merges cleanly, but the
-   *implementation* must start from `773cf08`, not from `e8be3a2`.
+   2 failed, 2935 passed, 7 skipped in 71.63s
+   FAILED tests/test_paths.py::test_paths_no_star_shapes
+   FAILED tests/test_sprite_pipeline_run.py::test_the_fix_run_changes_no_file
+   ```
+
+   The second failure is the **CRLF bug** (F11) and it is still there:
+   `audit.py` and `tests/test_sprite_pipeline_run.py` are byte-identical
+   between the two bases, `Path.write_text(..., encoding="utf-8")` writes
+   **CRLF** on Windows (verified in isolation: `write_text('a\nb\n')` →
+   `b'a\r\nb\r\n'` on Python 3.12.10), and the shipped `anchors.toml` blob
+   has **0 CR**. The base is at **2 fails, not 1** — and the Phase 1 CRLF fix
+   is required, exactly as this spec says.
+2. **This branch now contains the whole base.** The merge `ef86a95` brought
+   `773cf08` in with no conflicts (the base did not touch
+   `docs/superpowers/CONTEXT.md`). The implementation starts from the merged
+   tree, and the baseline to compare against is the one in §Baseline.
 
 ### The enemy art
 
@@ -368,10 +373,12 @@ python -m pytest tests\ --tb=no                            # 69.5 s
 
 | Result | Value |
 |---|---|
-| Suite (on `e8be3a2`, when this spec was written) | **2 failed, 2 898 passed, 6 skipped** (2 906 total) |
-| Suite (on the new base `773cf08`, per its `.synapse`) | **2 930 pass + 1 fail + 6 skipped** — see §Base drift: this count is **not reconciled** with the code and is very likely 2 fails |
+| Suite (on `e8be3a2`, when this spec was written) | 2 failed, 2 898 passed, 6 skipped (2 906 total) |
+| **Suite (on the merged tree `ef86a95` = base `773cf08` + this spec)** — **the baseline to use** | **2 failed, 2 935 passed, 7 skipped** (2 944 total, 71.6 s) |
 | Failure 1 | `tests/test_paths.py::test_paths_no_star_shapes` — pre-existing, documented in `CLAUDE.md`, **out of scope** |
 | Failure 2 | `tests/test_sprite_pipeline_run.py::test_the_fix_run_changes_no_file` — **new, and in scope** |
+| `verify_contract.py goliath` (merged tree) | `CONTRACT OK`, exit 0 |
+| `git status --short` after the suite | **clean** — the suite writes nothing into the tree (L7 holds on the base) |
 
 > **Failure 2 is a real Windows bug, found while writing this spec.**
 > `write_anchors` does `path.write_text(rendered, encoding="utf-8")`
@@ -1142,7 +1149,7 @@ One probe, two roots — the same rule the audio and the tiling image already us
 | B2 | The draw order is **identical**, proven by frame comparison | the golden-frame test: **0 differing pixels** over the 5 captured frames + the structural order guard |
 | B3 | The HUD and the background have a defined place | the HUD is `z = 23` (in the stack); the background is documented as the stack's backdrop, drawn before it |
 | B4 | `mypy src\anim\` stays at 0 errors and the error delta in `src/ui/` / `src/entities/` does not grow | `python -m mypy src\anim\ src\render\` → 0 errors. The delta: `python -m mypy src\ui\ src\entities\ 2>&1 \| Select-String 'error:' \| Measure-Object` — record N before the change, N' after, require **N' ≤ N**. (`src\render\` must not import `src\ui\`: L6.) |
-| B5 | The suite does not get worse | the failure count must **drop by one** (the Windows newline failure is fixed in Phase 1) and must not grow afterwards; `test_paths_no_star_shapes` remains, documented as pre-existing. The count is a **delta against the baseline re-measured on the base branch** (§Base drift), not an absolute number. |
+| B5 | The suite does not get worse | the baseline on the merged tree is **2 failed, 2 935 passed, 7 skipped**. The failure count must **drop by one** (the Windows newline failure is fixed in Phase 1) and must not grow afterwards; `test_paths_no_star_shapes` remains, documented as pre-existing. The count is a **delta against that baseline**, not an absolute number. |
 | B6 | The enemies keep their exact animation timing | the enemy layer reads `fps` and `on_end` from the manifest; a test asserts 12.5 FPS, `loop` for `idle`/`thrust`, `reset` for `damage`/`death` |
 | B7 | The enemies keep their exact pixels | the golden-frame test covers a frame with enemies; the enemy sprite path is `pivot = "fixed"` at the canvas centre, i.e. the same centred blit as today |
 
@@ -1174,7 +1181,7 @@ One probe, two roots — the same rule the audio and the tiling image already us
 | F18 | **The anchors of a featureless set claim a measured feature at (0,0)** (I9) | **Certain without the fix** | High | the sources default to `"missing"`; `"measured"` only when the detector found it | the freshness test's golden content + `load_anchors` accepting it as unresolved |
 | F19 | The golden capture is not deterministic (31 global RNG uses) | **High without the fix** | **Critical** (B2) | seed the global RNG, rebuild the scene per capture, fixed `dt`, plus a self-check | gate G13 (two captures byte-identical) before the golden set is trusted |
 | F20 | The new enemy manifests are not found in the frozen build | Medium | High | `sets.py::resolve_set` probes both roots, source and `_MEIPASS` | a test that resolves a set name under a fake `_MEIPASS`-like root |
-| F21 | **The branch falls behind the base** (it was already 18 commits behind when this revision was written) | **Certain** | High | the implementation must start from the current base; the spec's art measurements survive the move (the enemy art is byte-identical), but the **baseline numbers do not** | §Base drift: re-measure the baseline on the base branch before starting |
+| F21 | **The branch falls behind the base** (it was 18 commits behind when this revision was written) | **Handled** | High | the base was merged in (`ef86a95`, no conflicts) and the baseline was re-measured on the merged tree. The art measurements survived the move (the enemy art is byte-identical); the baseline numbers did not, and were replaced | §Base drift + §Baseline: the baseline is now the merged tree's |
 
 ---
 
@@ -1190,7 +1197,7 @@ python tools\sprite_pipeline\verify_contract.py goliath
 #   -> exit 0
 
 python -m pytest tests\ --tb=no
-#   -> 2 failed, 2898 passed, 6 skipped
+#   -> 2 failed, 2935 passed, 7 skipped
 #   -> the two failures are test_paths_no_star_shapes (pre-existing) and
 #      test_the_fix_run_changes_no_file (the Windows newline bug, fixed in Phase 1)
 
