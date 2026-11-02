@@ -10,6 +10,8 @@
 |---------|------|-------------|
 | `plans/2026-08-15-bezier-choreography.md` | Plan | Plan de implementación de bezier choreography (BLOQUE 58.13) |
 | `specs/2026-08-15-bezier-choreography-design.md` | Spec | Spec de diseño de la feature (qué hace, cómo se ve, contratos) |
+| `prompts/2026-10-29-bloque-75-migration-spec-prompt.md` | Prompt | Prompt de 8 dimensiones que produce el spec de BLOQUE 75 (migración del pipeline de sprites, 2 fases con gate) |
+| `specs/2026-10-29-agent-context-handoff-design.md` | Spec | Diseño del handoff de contexto entre agentes: el repo como único canal (un worktree y una rama por agente, commits → handoff → `.synapse`) |
 
 > **Convención:** los archivos tienen prefijo de fecha `YYYY-MM-DD-<feature>.md` para que sea fácil navegar cronológicamente.
 
@@ -20,6 +22,7 @@
 | Archivo/Pattern | Clasificación | Razón |
 |-----------------|---------------|-------|
 | `CONTEXT.md` | L (LOAD) | Misión del silo |
+| `prompts/**` | L (LOAD) | El prompt que produce el spec |
 | `plans/*.md` | L (LOAD) | Plan de implementación — leer ANTES de codear |
 | `specs/*.md` | L (LOAD) | Spec de diseño — leer ANTES de codear |
 

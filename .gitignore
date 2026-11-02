@@ -133,3 +133,8 @@ Assets/*_lp*.wav
 # BLOQUE 73.8: isolated worktrees for agent work (superpowers:using-git-worktrees).
 # MUST stay ignored: an unignored worktree dir gets committed wholesale.
 .worktrees/
+
+# BLOQUE 75: the pause lowpass cache. It is generated next to the
+# executable (or the project root when running from source) and is
+# rebuilt by the game when it is missing.
+_vh_cache/

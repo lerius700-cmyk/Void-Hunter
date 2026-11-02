@@ -304,6 +304,12 @@ def _ensure_filtered_bgm() -> Optional[str]:
     """Generate (or load cached) lowpass-filtered version of the gameplay BGM.
 
     Returns the path to the filtered WAV, or None on failure.
+
+    BLOQUE 75: the cache is looked up BEFORE anything is generated, and
+    it lives next to the executable (see `src/audio/lowpass_cache.py`).
+    The old behaviour -- writing next to the source -- is kept as the
+    fallback for when there is no writable cache directory, so the
+    filter still works in a read-only installation.
     """
     if not _pause_filter_cache["enabled"]:
         return None
@@ -313,37 +319,63 @@ def _ensure_filtered_bgm() -> Optional[str]:
     src_path = _find_track(GAMEPLAY_TRACK)
     if src_path is None:
         return None
-    src_dir = os.path.dirname(str(src_path))
     cutoff = get_lowpass_cutoff_hz()
-    suffix = f"_lp{int(cutoff)}.wav"
-    out_path = os.path.join(src_dir, "keep kept - Lerius - soundtrack gameplay" + suffix)
-    if os.path.exists(out_path):
-        _pause_filter_cache["filtered_path"] = out_path
-        return out_path
-    # Generate. Log progress.
-    try:
-        t0 = time.time()
-        log_path = os.path.join(os.getcwd(), "logs", "_audio_status.log")
-        os.makedirs(os.path.dirname(log_path), exist_ok=True)
-        with open(log_path, "a", encoding="utf-8") as _f:
-            _f.write(f"[lowpass] generating filtered BGM at {cutoff:.0f}Hz...\n")
-        from src.audio.synth import apply_lowpass_to_wav
-        ok = apply_lowpass_to_wav(str(src_path), out_path, cutoff_hz=cutoff)
-        dt = time.time() - t0
-        with open(log_path, "a", encoding="utf-8") as _f:
-            _f.write(f"[lowpass] done ({dt:.1f}s) -> {out_path} ok={ok}\n")
-        if not ok:
-            return None
-    except Exception as exc:
+
+    from src.audio.lowpass_cache import (
+        cache_dir,
+        cached_filtered,
+        filtered_name,
+        store_filtered,
+    )
+
+    # 1. the persistent cache, next to the executable
+    hit = cached_filtered(cutoff)
+    if hit is not None:
+        _pause_filter_cache["filtered_path"] = str(hit)
+        return str(hit)
+
+    # 2. where to write it: the cache when it is writable, otherwise
+    #    next to the source (the behaviour before BLOQUE 75)
+    targets: list[Path] = []
+    directory = cache_dir()
+    if directory is not None:
+        targets.append(directory / filtered_name(cutoff))
+    targets.append(
+        Path(os.path.dirname(str(src_path))) / filtered_name(cutoff)
+    )
+
+    for out_path in targets:
+        if out_path.is_file():
+            _pause_filter_cache["filtered_path"] = str(out_path)
+            return str(out_path)
         try:
-            with open(os.path.join(os.getcwd(), "logs", "_audio_status.log"),
-                      "a", encoding="utf-8") as _f:
-                _f.write(f"[lowpass] FAILED: {exc}\n")
-        except Exception:
-            pass
-        return None
-    _pause_filter_cache["filtered_path"] = out_path
-    return out_path
+            t0 = time.time()
+            log_path = os.path.join(os.getcwd(), "logs", "_audio_status.log")
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as _f:
+                _f.write(
+                    f"[lowpass] generating filtered BGM at {cutoff:.0f}Hz...\n"
+                )
+            ok = store_filtered(src_path, out_path, cutoff)
+            dt = time.time() - t0
+            with open(log_path, "a", encoding="utf-8") as _f:
+                _f.write(
+                    f"[lowpass] done ({dt:.1f}s) -> {out_path} ok={ok}\n"
+                )
+            if ok:
+                _pause_filter_cache["filtered_path"] = str(out_path)
+                return str(out_path)
+        except Exception as exc:
+            try:
+                with open(
+                    os.path.join(os.getcwd(), "logs", "_audio_status.log"),
+                    "a",
+                    encoding="utf-8",
+                ) as _f:
+                    _f.write(f"[lowpass] FAILED: {exc}\n")
+            except Exception:
+                pass
+    return None
 
 
 def _load_both_sounds() -> bool:

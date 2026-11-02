@@ -131,6 +131,60 @@ def test_a_missing_manifest_degrades_to_none(tmp_path: Path, monkeypatch):
     assert manifest.loaded_set("goliath") is None
 
 
+def test_a_broken_manifest_is_not_re_read_on_every_call(
+    broken_set: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A manifest that FAILED to load must be cached as a failure too.
+
+    `loaded_set` is on the hot path: `Boss.animation_path` calls it on
+    every frame to rebuild the sprite path. It caches the SUCCESSFUL
+    parses, so a manifest that degrades to None was re-read AND re-parsed
+    from disk on every single frame -- the exact cost the cache exists to
+    avoid, paid forever by the one state that cannot be fixed at runtime.
+
+    The sibling loader in `src/ui/scenes.py` already caches its failure
+    (`_manifest_failed`). The two loaders must behave the same way.
+    """
+    calls: list[str] = []
+    real_load = manifest.load_set
+
+    def counting_load(name, root=None):
+        calls.append(name)
+        return real_load(name, root)
+
+    monkeypatch.setattr(manifest, "load_set", counting_load)
+
+    assert manifest.loaded_set("goliath") is None
+    assert manifest.loaded_set("goliath") is None
+    assert manifest.loaded_set("goliath") is None
+
+    assert len(calls) == 1, (
+        f"the broken manifest was read {len(calls)} times: a failure must be "
+        "cached too (src.anim.manifest.loaded_set)"
+    )
+
+
+def test_the_failure_cache_is_dropped_by_the_invalidation_hook(
+    broken_set: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A failed manifest must be re-tried once the cache is dropped.
+
+    Otherwise a manifest that was broken at boot -- or while the art was
+    being swapped -- would stay broken for the rest of the session with no
+    way to recover short of restarting the game.
+    """
+    assert manifest.loaded_set("goliath") is None
+
+    # The manifest is fixed on disk (the art swap writes a valid one).
+    (broken_set / "manifest.toml").write_text(VALID_MANIFEST, encoding="utf-8")
+    manifest.clear_loaded_cache()
+
+    assert manifest.loaded_set("goliath") is not None, (
+        "the cached FAILURE survived the invalidation hook: a manifest that "
+        "gets fixed can never be picked up again"
+    )
+
+
 def test_the_manifest_cache_has_a_public_invalidation_hook(tmp_path: Path):
     """The cache needs a public way to be dropped.
 
@@ -174,4 +228,23 @@ def test_clear_anchor_cache_drops_the_manifest_cache(
     assert second is not None
     assert "swapped_id" in second.clips, (
         "the manifest cache was not dropped: the swap is invisible"
+    )
+
+
+def test_a_cached_failure_does_not_leak_to_another_root(
+    broken_set: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A failure cached for one root is not served for another.
+
+    The cache key is the RESOLVED root, not the `None` the caller
+    passed: `loaded_set` resolves `_sets_root()` at call time, so a
+    failure cached against a root that no longer applies must not be
+    served for the real one.
+    """
+    assert manifest.loaded_set("goliath") is None
+
+    # The real sets root again, WITHOUT dropping the cache.
+    monkeypatch.undo()
+    assert manifest.loaded_set("goliath") is not None, (
+        "the failure cached for the other root was served for this one"
     )

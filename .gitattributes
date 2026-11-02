@@ -1,0 +1,14 @@
+# BLOQUE 75: the animated sets are specified in TEXT (TOML), and their
+# line endings must not depend on WHERE the repository was checked out.
+#
+# With `core.autocrlf=true` (the Windows default) the same blob became
+# CRLF or LF depending on the checkout, and the anchors' freshness hash was
+# computed over the RAW bytes -- so the freshness check went red on half
+# the checkouts, with no change to the art. The hash is now computed over
+# normalised text (BLOQUE 74), and this file stops the divergence at the
+# source: a TOML file is checked out with LF everywhere.
+#
+# The scope is deliberately narrow. A repo-wide `* text=auto` would
+# renormalise every tracked file and touch the worktrees of the agents
+# working on this repo in parallel.
+*.toml text eol=lf
