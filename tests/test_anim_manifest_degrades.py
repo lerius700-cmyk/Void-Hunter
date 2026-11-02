@@ -229,3 +229,22 @@ def test_clear_anchor_cache_drops_the_manifest_cache(
     assert "swapped_id" in second.clips, (
         "the manifest cache was not dropped: the swap is invisible"
     )
+
+
+def test_a_cached_failure_does_not_leak_to_another_root(
+    broken_set: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A failure cached for one root is not served for another.
+
+    The cache key is the RESOLVED root, not the `None` the caller
+    passed: `loaded_set` resolves `_sets_root()` at call time, so a
+    failure cached against a root that no longer applies must not be
+    served for the real one.
+    """
+    assert manifest.loaded_set("goliath") is None
+
+    # The real sets root again, WITHOUT dropping the cache.
+    monkeypatch.undo()
+    assert manifest.loaded_set("goliath") is not None, (
+        "the failure cached for the other root was served for this one"
+    )

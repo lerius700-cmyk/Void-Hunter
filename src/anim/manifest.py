@@ -314,15 +314,22 @@ def loaded_set(name: str, root: Path | None = None) -> AnimSet | None:
     -- the exact cost the cache exists to avoid, paid forever by the one
     state that cannot be fixed at runtime. The UI's loader caches its
     failure the same way (`src/ui/scenes.py::_manifest_failed`).
+
+    The cache key is the RESOLVED root, not the `None` the caller
+    passed. `root=None` means "whatever `_sets_root()` says right now",
+    and that answer can change (the frozen bundle, a test that points
+    the sets root somewhere else). Keying on the `None` would serve a
+    failure cached for one root to a caller asking about another.
     """
-    key = (name, root)
+    effective_root = _sets_root() if root is None else root
+    key = (name, effective_root)
     cached = _LOADED.get(key)
     if cached is not None:
         return cached
     if key in _LOADED_FAILED:
         return None
     try:
-        anim_set = load_set(name, root)
+        anim_set = load_set(name, effective_root)
     except (OSError, ValueError):
         # ValueError covers ManifestError (a subclass) AND
         # tomllib.TOMLDecodeError: a broken manifest degrades to None.

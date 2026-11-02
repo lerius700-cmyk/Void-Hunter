@@ -66,3 +66,21 @@ def test_the_contract_detects_a_corrupted_anchors_file(tmp_path, display):
     assert result.returncode == 1, result.stdout + result.stderr
     assert "CONTRACT BROKEN" in result.stdout
     assert "stale" in result.stdout
+
+
+def test_a_missing_frame_is_a_contract_failure(tmp_path, display):
+    """A frame PNG that is not there is a broken contract, not a crash.
+
+    The audit loads the frames with pygame, and a missing file used to
+    escape as an unhandled traceback: the guard died instead of saying
+    what was wrong. A guard has to REPORT.
+    """
+    source = ROOT / "Assets" / "sprites" / "bosses" / "goliath"
+    copy = tmp_path / "goliath"
+    shutil.copytree(source, copy)
+    (copy / "javelin" / "frame_03.png").unlink()
+
+    result = _run("goliath", "--root", str(tmp_path))
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "CONTRACT BROKEN" in result.stdout
+    assert "could not be audited" in result.stdout

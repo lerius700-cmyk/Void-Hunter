@@ -55,16 +55,26 @@ def main() -> int:
     sheet_h = len(clips) * (cell_h + PADDING) + PADDING
     sheet = Image.new("RGBA", (sheet_w, sheet_h), (20, 20, 40, 255))
 
+    missing: list[str] = []
     for r, clip in enumerate(clips):
         for c in range(clip.frames):
             frame_path = anim_set.path / clip.dir / f"frame_{c:02d}.png"
             if not frame_path.exists():
-                print(f"  !! missing {frame_path}")
+                missing.append(str(frame_path))
                 continue
             frame = Image.open(frame_path).convert("RGBA")
             x = LABEL_W + PADDING + c * (cell_w + PADDING)
             y = PADDING + r * (cell_h + PADDING)
             sheet.paste(frame, (x, y), frame)
+
+    if missing:
+        # The sheet exists to be compared against the game. A sheet with
+        # a hole in it is worse than no sheet: it looks complete and is
+        # not. Say so and fail.
+        for path in missing:
+            print(f"  !! missing {path}")
+        print(f"{len(missing)} frame(s) missing -- the sheet was NOT written")
+        return 1
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(OUT_PATH)
