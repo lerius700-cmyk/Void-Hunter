@@ -2393,6 +2393,93 @@ los ya documentados (5 de `test_sub_boss_*` por contaminación de estado,
 
 ---
 
+## BLOQUE 75 — El cache del lowpass sobrevive, el binario baja a 220 MB, y el repo tiene presupuesto (2026-11-02)
+
+Rama `bloquec-75-sprite-migration` + `bloquec-75-migration-spec` (mergeadas
+en `bloquec-67-goliath-port`, la línea v1.4.0), publicada como **v1.8.1**.
+
+### Qué es
+
+Tres cosas que no tienen que ver entre sí, que se cruzaron en la misma
+ronda de limpieza del proyecto.
+
+**1. El cache del lowpass de pausa se tiraba en cada sesión.** La pista
+filtrada (el gameplay con un lowpass de 600 Hz) se escribía al lado de su
+fuente, que en el build onefile es `_MEIPASS`: un directorio temporal que
+se borra al cerrar el juego. Los 8 segundos de filtrado se pagaban en la
+primera pausa de **cada** sesión, y por eso el build empaquetaba una copia
+de 61 MB para que nadie los pagara.
+
+Ahora el cache vive en un directorio junto al ejecutable
+(`src/audio/lowpass_cache.py`), así que sobrevive al proceso: se calcula
+una vez y cada corrida posterior lo encuentra. Medido: 1ª llamada 6,3 s
+(genera) → 2ª llamada 0,0 s (reusa).
+
+El cache NO se llama `Assets` a propósito: `_find_assets_dir()` devuelve el
+primer candidato que existe, y `<exe_dir>/Assets` es el primero. Un cache
+en un directorio llamado `Assets` se volvería el directorio de assets y la
+música original desaparecería.
+
+**2. El WAV generado sale del binario.** `gameplay_lp600.wav` no es un
+asset: es una caché. El juego la reconstruye y la cachea. Llevar una copia
+dentro del `.exe` costaba 61 MB en cada descarga.
+
+| | antes | v1.8.1 |
+|---|---:|---:|
+| `.exe` (onefile) | 278,0 MB | **220,2 MB** |
+| WAV filtrados en el bundle | 1 | **0** |
+
+numpy ya estaba dentro del bundle (PyInstaller encuentra los imports
+locales), así que el filtro de pausa sigue funcionando sin cambios.
+
+**3. El repo tiene presupuesto de disco.** La primera limpieza (15,70 GB →
+2,35 GB) fue un evento: nada midió después, y entre v1.3.0 y v1.6.3 se
+acumularon 8,58 GB de builds en `dist/` sin que nadie lo notara.
+
+`tools/repo_budget.py` mide tres pesos y tiene tres techos;
+`tests/test_repo_budget.py` los hace cumplir, y las tres cifras salen
+como filas del bloque `STATUS:GENERATED` de `CLAUDE.md`:
+
+| Métrica | Medida | Techo |
+|---|---|---:|
+| Árbol trackeado | todo lo que `git ls-files` nombra | 300 MB |
+| Salida de build | `dist/` | 600 MB |
+| Historia | `.git/` | 550 MB |
+
+Los techos viven en el tool, no en el test: subirlos es una edición
+deliberada de un solo lugar.
+
+### El handoff entre agentes
+
+El repo es **el único canal** entre el agente que trabaja y el que
+sigue. Un prompt versionado (`docs/superpowers/prompts/`) con su sección
+de arranque —qué leer, desde qué rama ramificar, dónde escribir el spec—
+más un guard que prueba que el routing sigue vivo
+(`tests/test_handoff_routing.py`).
+
+La prueba de que funciona: el segundo agente leyó el prompt, creó su
+worktree desde la rama indicada, y entregó el spec de BLOQUE 75 en
+`docs/superpowers/specs/2026-10-30-bloque-75-migration-spec.md` — la
+migración del pipeline de sprites en 2 fases con gate.
+
+### Lo que no se tocó
+
+- **La historia de git no se reescribió.** 122 MB de la historia son blobs
+  generados que se podrían purgar, pero cambiar todos los hashes dejaría
+  huérfanos los tags publicados `v1.7.0`, `v1.7.2` y `v1.8.0`.
+- Las dos pistas reales (91 MB + 68 MB) siguen donde están: son la música.
+- `master` sigue siendo la línea vieja (v1.6.3), sin merges.
+- El arte de GOLIATH, las constantes del escudo y los sets de enemigos.
+
+### Verificación
+
+Suite completa sin fallos nuevos · `mypy src/anim/` 0 errores ·
+`verify_contract.py goliath` → `CONTRACT OK` · `sf-sm-doctor` 7/7 ·
+presupuesto bajo los tres techos · `.exe --check` y `--boss goliath
+--easy --duration 25` con exit 0 · el baseline de
+`F:\AI\MM\void-hunter-baseline\` verificado con
+`tools/verify_clean_copy.py` → `CLEAN COPY OK`.
+
 ## BLOQUE 74 — Pipeline de sprites: el runtime deja de medir el arte (2026-10-27)
 
 Rama `bloquec-74-sprite-pipeline` (mergeada en `bloquec-67-goliath-port`,
