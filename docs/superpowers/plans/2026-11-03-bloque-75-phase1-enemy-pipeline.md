@@ -527,6 +527,69 @@ def test_a_malformed_cut_margin_raises_manifest_error(tmp_path):
     )
     with pytest.raises(ManifestError):
         load_set("probe", root=tmp_path)
+
+
+def test_a_bool_is_not_an_integer(tmp_path):
+    """`True` would become 1, and for `distinct` that inverts the intent."""
+    _write(
+        tmp_path,
+        '[meta]\n'
+        'name = "PROBE"\n'
+        'canvas = [32, 32]\n'
+        'cut_margin = true\n'
+        '\n'
+        '[[clips]]\n'
+        'id = "idle"\n'
+        'frames = 2\n'
+        '\n'
+        '[[parts]]\n'
+        'id = "body"\n'
+        'draw = "frames"\n',
+    )
+    with pytest.raises(ManifestError):
+        load_set("probe", root=tmp_path)
+
+
+def test_a_negative_margin_is_rejected(tmp_path):
+    """A negative margin would make the cut-off test never fire."""
+    _write(
+        tmp_path,
+        '[meta]\n'
+        'name = "PROBE"\n'
+        'canvas = [32, 32]\n'
+        'cut_margin = -3\n'
+        '\n'
+        '[[clips]]\n'
+        'id = "idle"\n'
+        'frames = 2\n'
+        '\n'
+        '[[parts]]\n'
+        'id = "body"\n'
+        'draw = "frames"\n',
+    )
+    with pytest.raises(ManifestError):
+        load_set("probe", root=tmp_path)
+
+
+def test_a_malformed_distinct_raises_manifest_error(tmp_path):
+    """The loader fails LOUDLY, with the manifest's own error type."""
+    _write(
+        tmp_path,
+        '[meta]\n'
+        'name = "PROBE"\n'
+        'canvas = [32, 32]\n'
+        '\n'
+        '[[clips]]\n'
+        'id = "idle"\n'
+        'frames = 2\n'
+        'distinct = "nope"\n'
+        '\n'
+        '[[parts]]\n'
+        'id = "body"\n'
+        'draw = "frames"\n',
+    )
+    with pytest.raises(ManifestError):
+        load_set("probe", root=tmp_path)
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -588,7 +651,7 @@ In `src/anim/manifest.py`, replace the `clips[clip_id] = Clip(...)` block with:
             loop=loop,
             scale_tolerance=float(entry.get("scale_tolerance", 0.15)),
             side_tolerance=float(entry.get("side_tolerance", 14.0)),
-            distinct=None if distinct_raw is None else int(distinct_raw),
+            distinct=_as_optional_int(distinct_raw, f"{clip_id}.distinct"),
             canvas=(
                 None
                 if canvas_raw is None
@@ -621,11 +684,20 @@ and add this helper next to `_as_int_pair`:
 
 ```python
 def _as_optional_int(value: Any, name: str) -> int | None:
-    """Read an optional integer, rejecting anything that is not one."""
+    """Read an optional integer, rejecting anything that is not one.
+
+    A bool is NOT an integer here: `True` would become 1, and for
+    `distinct` that silently inverts the author's intent (the clip
+    declares how many source images it cycles).
+    A negative value is rejected too: a negative margin makes the
+    cut-off test never fire.
+    """
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int):
         raise ManifestError(f"{name} must be an integer, got {value!r}")
+    if value < 0:
+        raise ManifestError(f"{name} must not be negative, got {value!r}")
     return value
 ```
 
@@ -637,7 +709,7 @@ Expected: **4 passed**
 
 - [ ] **Step 6: Run the whole manifest + pipeline test set**
 
-Run: `python -m pytest tests/test_manifest_matches_assets.py tests/test_anim_manifest.py tests/test_anchors_are_fresh.py -v`
+Run: `python -m pytest tests/test_manifest_matches_assets.py tests/test_anim_manifest_degrades.py tests/test_anchors_are_fresh.py -v`
 
 Expected: **all passed** (the GOLIATH control group is untouched)
 
