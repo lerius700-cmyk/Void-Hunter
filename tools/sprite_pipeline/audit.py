@@ -284,8 +284,18 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
             if centre is None:
                 body_dx = body_dy = 0
             else:
-                body_dx = int(round(anim_set.anchor[0] - centre[0]))
-                body_dy = int(round(anim_set.anchor[1] - centre[1]))
+                # The correction is measured against the CLIP's own canvas.
+                # A clip that overrides the canvas (the mine's death art is
+                # 32x32 inside a 64x64 set) has its own centre: measuring
+                # it against the SET's anchor would record the canvas
+                # offset as a registration error.
+                anchor = (
+                    anim_set.anchor
+                    if clip.canvas is None
+                    else (clip.canvas[0] // 2, clip.canvas[1] // 2)
+                )
+                body_dx = int(round(anchor[0] - centre[0]))
+                body_dy = int(round(anchor[1] - centre[1]))
 
             # --- eye ------------------------------------------------------
             eye = None

@@ -21,8 +21,19 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from src.anim.manifest import load_set
 from sprite_pipeline.audit import audit_set, render_anchors_toml
+from sprite_pipeline.sets import discover_sets
 
-ENEMY_SETS = (
+ENEMY_ROOT = ROOT / "Assets" / "sprites" / "enemies"
+
+# The list of sets comes from DISCOVERY, not from a hard-coded list: a set
+# added later is then covered automatically instead of being silently
+# uncovered.
+#
+# `KNOWN_SETS` is the cross-check that keeps the discovery honest. Without
+# it, a discovery that returned nothing would make the tests below pass
+# VACUOUSLY (the loop body would never run). With it, a known set that
+# disappears is a failure -- and a NEW set still needs no edit here.
+KNOWN_SETS = (
     "scout",
     "cruiser",
     "drone",
@@ -32,6 +43,8 @@ ENEMY_SETS = (
     "turret",
     "mine_asteroid",
 )
+
+ENEMY_SETS = tuple(sorted(path.name for path in discover_sets(ENEMY_ROOT)))
 
 
 @pytest.fixture(scope="module")
@@ -45,7 +58,14 @@ def display():
 
 @pytest.fixture(scope="module")
 def enemies_root() -> Path:
-    return ROOT / "Assets" / "sprites" / "enemies"
+    return ENEMY_ROOT
+
+
+def test_the_enemy_sets_are_discovered():
+    """The discovery must find the known sets -- and must find SOME."""
+    assert ENEMY_SETS, "no enemy set was discovered under the enemies root"
+    missing = sorted(set(KNOWN_SETS) - set(ENEMY_SETS))
+    assert not missing, f"the discovery lost these sets: {missing}"
 
 
 def test_every_enemy_set_has_its_anchors(enemies_root):
