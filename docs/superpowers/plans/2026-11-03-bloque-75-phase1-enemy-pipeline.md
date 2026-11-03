@@ -1378,6 +1378,8 @@ distinct = 1
 mode     = "state"
 scale_tolerance = 0.10
 
+# open3 is the TERMINAL state and reuses the `open/` directory: the
+# shipped runtime loads the open3 art from THERE (enemy.py:469-473).
 [[clips]]
 id       = "open3"
 dir      = "open"
