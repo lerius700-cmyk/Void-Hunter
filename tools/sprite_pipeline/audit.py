@@ -539,7 +539,16 @@ def render_anchors_toml(anim_set: AnimSet, measurements: list[FrameMeasurement])
 def write_anchors(
     anim_set: AnimSet, measurements: list[FrameMeasurement], path: Path
 ) -> None:
-    path.write_text(render_anchors_toml(anim_set, measurements), encoding="utf-8")
+    # newline="\n": the repository declares the .toml as LF
+    # (.gitattributes: `*.toml text eol=lf`), and Path.write_text in
+    # text mode would translate every "\n" into "\r\n" on
+    # Windows -- so `--fix` changed the file on every run and left
+    # the working tree dirty on a clean checkout.
+    path.write_text(
+        render_anchors_toml(anim_set, measurements),
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -233,3 +233,37 @@ def test_the_cli_reports_an_unknown_set_without_a_traceback():
     stderr = proc.stderr.decode("utf-8")
     assert stderr.startswith("error:"), stderr
     assert "Traceback" not in stderr, stderr
+
+
+def test_the_generated_anchors_use_lf_line_endings(goliath_copy: Path):
+    """The generator writes LF, because the repository declares LF.
+
+    `.gitattributes` declares `*.toml text eol=lf`, so a fresh checkout
+    has the anchors in LF. `Path.write_text` in TEXT mode translates
+    every "\\n" into "\\r\\n" on Windows, so the generator used to write
+    CRLF: `--fix` changed the file on every run and left the working
+    tree dirty.
+
+    It passed on the worktree where the file happened to still be CRLF
+    from before the attribute existed, and failed on every clean
+    checkout -- the branch that had one measured 2 failures where the
+    base had 1.
+    """
+    proc = _run_cli_on(goliath_copy.parent, "goliath", "--fix")
+    assert proc.returncode == 0, proc.stdout.decode("utf-8")
+
+    raw = (goliath_copy / "anchors.toml").read_bytes()
+    assert b"\r\n" not in raw, (
+        "the generator wrote CRLF: on a clean checkout --fix changes the "
+        "file and dirties the tree"
+    )
+    assert raw.count(b"\n") > 0, "the generator wrote nothing"
+
+
+def test_the_repository_declares_lf_for_the_toml():
+    """The rule the generator has to honour is in the repository."""
+    attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+    assert "*.toml text eol=lf" in attributes, (
+        "the repository no longer declares the .toml as LF: the generator "
+        "and the attribute have to agree"
+    )
