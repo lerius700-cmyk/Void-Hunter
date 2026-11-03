@@ -26,7 +26,7 @@ These apply to **every** task. Copy them verbatim into the task brief when dispa
 | L5 | Narrow `except`: never a bare `except:` | catch `(OSError, ValueError)` |
 | L7 | **The tests never write into the repository.** A test that runs the pipeline does it on a `tmp_path` copy. | `git status --short` must be empty after the suite |
 | C1 | The auditor must survive a set with **no** `shield_plate` and **no** `eye` part | `tests/test_audit_runs_on_a_featureless_set.py` |
-| — | **Baseline:** `python -m pytest tests\ --tb=no` → **2 failed, 2 935 passed, 7 skipped**. The two failures are `test_paths_no_star_shapes` (pre-existing, out of scope) and `test_the_fix_run_changes_no_file` (the CRLF bug — **this phase fixes it**). After this phase: **1 failed**, the pre-existing one. | measured on the merged tree `ef86a95` |
+| — | **Baseline:** `python -m pytest tests\ --tb=no` → **1 failed, 2 941 passed, 6 skipped**. The one failure is `test_paths_no_star_shapes` (pre-existing, documented in `CLAUDE.md`, out of scope). The CRLF failure is **already fixed upstream**: `f0a97f1` (merged in by `a70673c`) passes `newline="\n"` to `write_anchors` and pins it with two tests. | measured on `ddb135c` |
 | — | Commit prefixes: `feat: BLOQUE 75`, `fix: BLOQUE 75`, `chore: BLOQUE 75`, `docs: BLOQUE 75`, `test: BLOQUE 75` | one commit per task |
 | — | **Work ONLY in `F:\AI\MM\void-hunter\.worktrees\bloquec-75-migration-spec`.** The root repo and the other worktrees belong to other agents. | `git worktree list` before starting |
 
@@ -230,7 +230,11 @@ In `tools/sprite_pipeline/audit.py`:
    ```python
        shield_part = anim_set.part_or_none("shield_plate")
        eye_part = anim_set.part_or_none("eye")
+       rule = shield_part.detect if shield_part is not None else None
    ```
+
+   (`rule` MUST be bound here: the silhouette measurement below reads it. The
+   old `rule = shield_part.detect` line is deleted in step 3.)
 
 3. Line 207 — delete the line `rule = shield_part.detect` (the rule is now
    resolved once, above, and it may be `None`).
@@ -317,37 +321,53 @@ git commit -m "fix: BLOQUE 75 - el auditor sobrevive a un set sin features detec
 
 ---
 
-## Task 2: `write_anchors` writes LF
+## Task 2: The LF fix (already shipped upstream — verify, do not rewrite)
 
-`audit.py:542` does `path.write_text(rendered, encoding="utf-8")`. Without an
-explicit `newline`, Python translates `\n` to `os.linesep` → **CRLF on
-Windows**, while the committed `anchors.toml` is LF (`.gitattributes`:
-`*.toml text eol=lf`). Every `--fix` therefore rewrites the file with
-different bytes; the freshness check (a text comparison) passes while the
-byte comparison fails. This is the pre-existing
-`tests/test_sprite_pipeline_run.py::test_the_fix_run_changes_no_file` failure.
+**This task was already implemented on the release line** and merged into this
+branch by `a70673c`:
+
+* `f0a97f1 fix: BLOQUE 75 - el generador de anchors escribe LF, como declara el repositorio`
+  — `write_anchors` now passes `newline="\n"` to `path.write_text`, and TWO
+  tests pin it (`test_the_generated_anchors_use_lf_line_endings` and
+  `test_the_repository_declares_lf_for_the_toml`).
+
+**Do NOT rewrite `write_anchors`.** The upstream version carries a longer
+comment that explains the same thing. This task is a VERIFICATION, and the
+only thing it may add is a missing test.
 
 **Files:**
-- Modify: `tools/sprite_pipeline/audit.py:539-542`
-- Modify: `tests/test_sprite_pipeline_run.py` (add one test)
+- Modify: `tests/test_sprite_pipeline_run.py` — only if a test is missing
+- Test: `tests/test_sprite_pipeline_run.py`
 
 **Interfaces:**
 - Consumes: `write_anchors(anim_set, measurements, path)`
-- Produces: the same signature; the file it writes is LF-terminated
+- Produces: nothing new; the guarantee already exists
 
-- [ ] **Step 1: Run the existing failing test**
+- [ ] **Step 1: Run the LF tests**
 
-Run: `python -m pytest tests/test_sprite_pipeline_run.py::test_the_fix_run_changes_no_file -v`
+Run: `python -m pytest tests/test_sprite_pipeline_run.py -v`
 
-Expected: **FAIL** — `assert '21162629092b...debf174c754ce' == 'ef9b36fd7195...e5743c1f12e27'`
-(the anchors' md5 changed after a `--fix` that should have been a no-op)
+Expected: **all passed**, including `test_the_fix_run_changes_no_file`,
+`test_the_generated_anchors_use_lf_line_endings` and
+`test_the_repository_declares_lf_for_the_toml`.
 
-- [ ] **Step 2: Write the byte-level test**
+- [ ] **Step 2: Confirm the writer really is LF-only**
 
-Append to `tests/test_sprite_pipeline_run.py`:
+Run:
+
+```powershell
+Select-String -Path tools\sprite_pipeline\audit.py -Pattern 'newline=' -Context 0,1
+```
+
+Expected: `write_anchors` passes `newline="\n"`.
+
+- [ ] **Step 3: Confirm the byte-level guarantee is tested**
+
+If `tests/test_sprite_pipeline_run.py` does NOT contain
+`test_the_generated_anchors_use_lf_line_endings`, add it:
 
 ```python
-def test_the_written_anchors_are_lf(tmp_path: Path):
+def test_the_generated_anchors_use_lf_line_endings(goliath_copy: Path):
     """The committed anchors.toml is LF; a CRLF write changes its bytes.
 
     The text comparison of the freshness test passes either way (universal
@@ -358,65 +378,24 @@ def test_the_written_anchors_are_lf(tmp_path: Path):
 
     anim_set = load_set("goliath")
     _, measurements = audit_set(anim_set)
-    out = tmp_path / "anchors.toml"
+    out = goliath_copy / "anchors_lf_probe.toml"
     write_anchors(anim_set, measurements, out)
     raw = out.read_bytes()
     assert b"\r\n" not in raw
     assert raw.endswith(b"\n")
 ```
 
-- [ ] **Step 3: Run it to verify it fails**
-
-Run: `python -m pytest tests/test_sprite_pipeline_run.py::test_the_written_anchors_are_lf -v`
-
-Expected: **FAIL** — `assert b'\r\n' not in raw`
-
-- [ ] **Step 4: Fix the writer**
-
-In `tools/sprite_pipeline/audit.py`, replace `write_anchors` with:
-
-```python
-def write_anchors(
-    anim_set: AnimSet, measurements: list[FrameMeasurement], path: Path
-) -> None:
-    """Bake the measurements into `path`.
-
-    The newline is EXPLICIT: without it, `write_text` translates "\\n" to
-    `os.linesep`, which on Windows writes CRLF. The committed anchors.toml
-    is LF (.gitattributes: `*.toml text eol=lf`), so a CRLF write changes
-    the file's bytes on every `--fix`: the freshness check still passes
-    (it compares text, and universal newlines hide the difference) while
-    the byte comparison fails.
-    """
-    path.write_text(
-        render_anchors_toml(anim_set, measurements),
-        encoding="utf-8",
-        newline="\n",
-    )
-```
-
-- [ ] **Step 5: Run the whole file to verify it passes**
-
-Run: `python -m pytest tests/test_sprite_pipeline_run.py -v`
-
-Expected: **all passed** — including `test_the_fix_run_changes_no_file`, which
-was the pre-existing failure.
-
-- [ ] **Step 6: Prove the shipped file did not move**
-
-Run: `git diff --stat Assets/sprites/bosses/`
-
-Expected: empty.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 4: Commit (only if a test was added)**
 
 ```powershell
-git add tools/sprite_pipeline/audit.py tests/test_sprite_pipeline_run.py
-git commit -m "fix: BLOQUE 75 - los anchors se escriben en LF: el --fix de Windows ya no cambia los bytes"
+git add tests/test_sprite_pipeline_run.py
+git commit -m "test: BLOQUE 75 - los anchors se escriben en LF (byte a byte)"
 ```
 
----
+If the test already existed, **do not commit anything** for this task: write
+`Task 2: already satisfied upstream (f0a97f1)` in the ledger and move on.
 
+---
 ## Task 3: The manifest grows the Phase 1 fields
 
 Three fields are **used** in Phase 1 (`meta.cut_margin`, `clip.distinct`,

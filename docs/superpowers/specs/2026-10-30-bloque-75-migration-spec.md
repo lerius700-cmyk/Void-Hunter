@@ -115,7 +115,7 @@ git -C <worktree> diff --stat e8be3a2..773cf08 -- src/entities/enemies src/ui/ga
 |---|---|---|
 | **The enemy art** (`Assets/sprites/enemies/**`) | **no — byte-identical** | every art measurement in this spec (canvas, md5 groups, margins, heights, registration) **still holds exactly** |
 | `src/entities/enemies/enemy.py`, `src/ui/gameplay_runtime.py` | **no** | the runtime facts (12.5 FPS, the loop/reset rule, the mine's state machine, the 16 draw calls) still hold |
-| `tools/sprite_pipeline/audit.py` | **no** | C1 (the `part()` crash), I9 (the false provenance) and F11 (the CRLF write) are **still present in the base** |
+| `tools/sprite_pipeline/audit.py` | **no** | C1 (the `part()` crash) and I9 (the false provenance) were still present in the base; **F11 (the CRLF write) has since been fixed by `f0a97f1`** |
 | `src/anim/manifest.py` | +11/−2 | the `loaded_set` cache is now keyed by the **resolved** root instead of `None`. This *helps* §I7: a second root (the enemies tree) gets its own cache entry, so no cache-key conflict. |
 | `tools/sprite_pipeline/verify_contract.py` | +23/−4 | the guard now catches an audit exception and **reports** it instead of dying. C1's crash therefore surfaces as a reported failure — but the crash itself is still in `audit_set`, so the Phase 1 fix is still needed. |
 | `tests/` | +847/−91 | the suite grew; the baseline numbers below are stale for the new base |
@@ -135,17 +135,23 @@ git -C <worktree> diff --stat e8be3a2..773cf08 -- src/entities/enemies src/ui/ga
    FAILED tests/test_sprite_pipeline_run.py::test_the_fix_run_changes_no_file
    ```
 
-   The second failure is the **CRLF bug** (F11) and it is still there:
-   `audit.py` and `tests/test_sprite_pipeline_run.py` are byte-identical
-   between the two bases, `Path.write_text(..., encoding="utf-8")` writes
-   **CRLF** on Windows (verified in isolation: `write_text('a\nb\n')` →
-   `b'a\r\nb\r\n'` on Python 3.12.10), and the shipped `anchors.toml` blob
-   has **0 CR**. The base is at **2 fails, not 1** — and the Phase 1 CRLF fix
-   is required, exactly as this spec says.
-2. **This branch now contains the whole base.** The merge `ef86a95` brought
-   `773cf08` in with no conflicts (the base did not touch
-   `docs/superpowers/CONTEXT.md`). The implementation starts from the merged
-   tree, and the baseline to compare against is the one in §Baseline.
+   The second failure was the **CRLF bug** (F11): `audit.py` and
+   `tests/test_sprite_pipeline_run.py` were byte-identical between the two
+   bases, `Path.write_text(..., encoding="utf-8")` writes **CRLF** on Windows
+   (verified in isolation: `write_text('a\nb\n')` → `b'a\r\nb\r\n'` on Python
+   3.12.10), and the shipped `anchors.toml` blob has **0 CR**.
+
+   **Since then the release line fixed it**: `f0a97f1` passes
+   `newline="\n"` to `write_anchors` and pins it with two tests, and
+   `a70673c` merged that into this branch. F11 is satisfied — **Phase 1 must
+   not rewrite `write_anchors`**. The current baseline is
+   **1 failed, 2 941 passed, 6 skipped**, and the one failure is the
+   pre-existing Lissajous geometry assertion.
+2. **This branch now contains the whole base, and the release line's fixes.**
+   The merge `ef86a95` brought `773cf08` in with no conflicts; `a70673c`
+   brought the release line's LF fix (`f0a97f1`) in the same way. The
+   implementation starts from the merged tree, and the baseline to compare
+   against is the one in §Baseline.
 
 ### The enemy art
 
@@ -374,9 +380,10 @@ python -m pytest tests\ --tb=no                            # 69.5 s
 | Result | Value |
 |---|---|
 | Suite (on `e8be3a2`, when this spec was written) | 2 failed, 2 898 passed, 6 skipped (2 906 total) |
-| **Suite (on the merged tree `ef86a95` = base `773cf08` + this spec)** — **the baseline to use** | **2 failed, 2 935 passed, 7 skipped** (2 944 total, 71.6 s) |
-| Failure 1 | `tests/test_paths.py::test_paths_no_star_shapes` — pre-existing, documented in `CLAUDE.md`, **out of scope** |
-| Failure 2 | `tests/test_sprite_pipeline_run.py::test_the_fix_run_changes_no_file` — **new, and in scope** |
+| Suite (on the merged tree `ef86a95`) | 2 failed, 2 935 passed, 7 skipped (2 944 total, 71.6 s) |
+| **Suite (on `ddb135c`, the current head)** — **the baseline to use** | **1 failed, 2 941 passed, 6 skipped** |
+| The one failure | `tests/test_paths.py::test_paths_no_star_shapes` — pre-existing, documented in `CLAUDE.md`, **out of scope** |
+| The CRLF failure | **ALREADY FIXED UPSTREAM.** `f0a97f1` (merged into this branch by `a70673c`) passes `newline="\n"` to `write_anchors` and pins it with two tests (`test_the_generated_anchors_use_lf_line_endings`, `test_the_repository_declares_lf_for_the_toml`). F11 is satisfied — **do not rewrite `write_anchors`**. |
 | `verify_contract.py goliath` (merged tree) | `CONTRACT OK`, exit 0 |
 | `git status --short` after the suite | **clean** — the suite writes nothing into the tree (L7 holds on the base) |
 
