@@ -150,6 +150,55 @@ def test_a_line_ending_difference_is_not_contamination(tmp_path: Path):
     assert report.mismatched == []
 
 
+def test_the_tool_agrees_with_git_about_line_endings(tmp_path: Path):
+    """The tool has to judge a file the way GIT judges it.
+
+    With `core.autocrlf=true` a CRLF file IS an LF blob; on a Linux
+    runner it is NOT. So the question "is this the same file?" has no
+    answer that holds on every machine -- it has the answer GIT gives.
+    The tool has to follow git in both cases, so the test asks git and
+    compares, instead of assuming one platform's rule.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "user.email", "t@t"], check=True
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "user.name", "t"], check=True
+    )
+    victim = repo / "mod.py"
+    victim.write_bytes(b"x = 1\ny = 2\n")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", "x"], check=True)
+
+    raw = victim.read_bytes()
+    flipped = (
+        raw.replace(b"\r\n", b"\n")
+        if b"\r\n" in raw
+        else raw.replace(b"\n", b"\r\n")
+    )
+    victim.write_bytes(flipped)
+
+    # git status is the WRONG oracle here: it reports the stat cache's
+    # opinion (the mtime changed), so it says "modified" for a file whose
+    # content did not change. git diff is the content comparison, and
+    # it is the one the tool mirrors.
+    git_says_modified = bool(
+        subprocess.run(
+            ["git", "-C", str(repo), "diff", "--name-only"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
+    report = verify(repo, "HEAD", repo)
+    assert (not report.ok) == git_says_modified, (
+        "the tool and git disagree about the same file: git says modified="
+        f"{git_says_modified}, the tool says ok={report.ok}"
+    )
+
+
 def test_a_content_change_is_contamination(tmp_path: Path):
     """What the tool has to catch: the CONTENT is different.
 
