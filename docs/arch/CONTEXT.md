@@ -10,6 +10,8 @@
 |---------|------|-------------|
 | `ARCHITECTURE.md` | Mapa | Los 13 sistemas del juego con LOC por módulo y diagrama de dependencias |
 | `ROADMAP.md` | Plan | Roadmap del producto (features en curso, próximas, futuras) |
+| `MAINTENANCE-CLEANUP-2026-10-30.md` | Registro | Primera ronda de limpieza del repo: 15,70 GB → 2,35 GB, el baseline limpio y los 13 hallazgos de un review pre-landing |
+| `MAINTENANCE-CLEANUP-2026-11-02.md` | Registro | Segunda ronda: el cache persistente del lowpass, el binario de 220 MB y el presupuesto de disco con su test |
 
 ---
 
