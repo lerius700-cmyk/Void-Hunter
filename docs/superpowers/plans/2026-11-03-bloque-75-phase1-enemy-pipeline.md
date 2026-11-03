@@ -6,7 +6,7 @@
 
 **Architecture:** The manifest is the *declaration* (hand-edited) and `anchors.toml` is the *measurement* (generated). Phase 1 adds three optional manifest fields — `meta.cut_margin`, `clip.distinct`, `clip.canvas` — plus two that are parsed but not enforced yet (`clip.mode`, `clip.on_end`), and makes the auditor survive a set with no detected features. The runtime is **not** touched in this phase.
 
-**Tech Stack:** Python 3.12, pygame 2.6 (headless), `tomllib` (stdlib), pytest. Stdlib + pygame only — no numpy, no new dependency.
+**Tech Stack:** Python 3.11, pygame 2.6 (headless), `tomllib` (stdlib), pytest. Stdlib + pygame only — no numpy, no new dependency.
 
 **Spec:** `docs/superpowers/specs/2026-10-30-bloque-75-migration-spec.md`
 
@@ -26,9 +26,9 @@ These apply to **every** task. Copy them verbatim into the task brief when dispa
 | L5 | Narrow `except`: never a bare `except:` | catch `(OSError, ValueError)` |
 | L7 | **The tests never write into the repository.** A test that runs the pipeline does it on a `tmp_path` copy. | `git status --short` must be empty after the suite |
 | C1 | The auditor must survive a set with **no** `shield_plate` and **no** `eye` part | `tests/test_audit_runs_on_a_featureless_set.py` |
-| — | **Baseline:** `python -m pytest tests\ --tb=no` → **2 failed, 2 935 passed, 7 skipped**. The two failures are `test_paths_no_star_shapes` (pre-existing, out of scope) and `test_the_fix_run_changes_no_file` (the CRLF bug — **this phase fixes it**). After this phase: **1 failed**, the pre-existing one. | measured on the merged tree `ef86a95` |
+| — | **Baseline:** `python -m pytest tests\ --tb=no` → **1 failed, 2 939 passed, 6 skipped**. The two failures are `test_paths_no_star_shapes` (pre-existing, out of scope) and `test_the_fix_run_changes_no_file` (the CRLF bug — **already fixed by `f0a97f1`**). After this phase: **1 failed**, the pre-existing one. | measured on the merged tree `ef86a95` |
 | — | Commit prefixes: `feat: BLOQUE 75`, `fix: BLOQUE 75`, `chore: BLOQUE 75`, `docs: BLOQUE 75`, `test: BLOQUE 75` | one commit per task |
-| — | **Work ONLY in `F:\AI\MM\void-hunter\.worktrees\bloquec-75-migration-spec`.** The root repo and the other worktrees belong to other agents. | `git worktree list` before starting |
+| — | **Base = `bloquec-67-goliath-port`** (the release line, per `CLAUDE.md`). Create a NEW worktree and branch off it (e.g. `bloquec-75-phase1`). Never work in `master` and never in another agent's worktree. | `git worktree list` before starting |
 
 ---
 
@@ -232,8 +232,13 @@ In `tools/sprite_pipeline/audit.py`:
        eye_part = anim_set.part_or_none("eye")
    ```
 
-3. Line 207 — delete the line `rule = shield_part.detect` (the rule is now
-   resolved once, above, and it may be `None`).
+3. Line 207 — **replace** the line `rule = shield_part.detect` with
+   `rule = shield_part.detect if shield_part is not None else None`.
+   It must NOT be deleted: this is the only binding of `rule` in
+   `audit_set`, and `rule` is read at lines 209, 273, 274, 279, 291
+   and 325 — including the `if rule is not None:` that the next step
+   keeps. Deleting it turns `audit_set` into a `NameError` on the
+   first clip, for the enemy sets AND for GOLIATH.
 
 4. The eye block (lines 256-267) — replace
 
@@ -317,7 +322,7 @@ git commit -m "fix: BLOQUE 75 - el auditor sobrevive a un set sin features detec
 
 ---
 
-## Task 2: `write_anchors` writes LF
+## Task 2: `write_anchors` writes LF (already fixed — this task VERIFIES it)
 
 `audit.py:542` does `path.write_text(rendered, encoding="utf-8")`. Without an
 explicit `newline`, Python translates `\n` to `os.linesep` → **CRLF on
@@ -658,7 +663,7 @@ Expected: **4 passed**
 
 - [ ] **Step 6: Run the whole manifest + pipeline test set**
 
-Run: `python -m pytest tests/test_manifest_matches_assets.py tests/test_anim_manifest.py tests/test_anchors_are_fresh.py -v`
+Run: `python -m pytest tests/test_manifest_matches_assets.py tests/test_anim_manifest_degrades.py tests/test_anchors_are_fresh.py -v`
 
 Expected: **all passed** (the GOLIATH control group is untouched)
 
@@ -1338,7 +1343,7 @@ z     = 0
 
 Run: `python -m pytest tests/test_enemy_manifest_matches_assets.py -v`
 
-Expected: **6 passed**
+Expected: **5 passed**
 
 - [ ] **Step 5: Commit**
 
@@ -1448,7 +1453,7 @@ foreach ($set in @('scout','cruiser','drone','heavy','kamikaze','sniper','turret
 }
 ```
 
-Expected: each run prints `wrote ...\anchors.toml`. **The exit code is 1** on
+Expected: each run prints `wrote ...\anchors.toml` and **exits 0** — with
 the first run (the art really has the findings the manifest declares) — that is
 expected and does not stop the loop.
 
@@ -1782,7 +1787,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src.anim.manifest import load_set
-from src.entities.enemies.enemy import ENEMY_CONFIGS
+from src.entities.enemies.enemy import ENEMY_CONFIGS, EnemyKind
 
 ENEMY_SETS = (
     "scout",
@@ -1804,7 +1809,7 @@ def enemies_root() -> Path:
 @pytest.mark.parametrize("name", ENEMY_SETS)
 def test_the_hitbox_fits_inside_the_canvas(enemies_root, name):
     anim_set = load_set(name, root=enemies_root)
-    config = ENEMY_CONFIGS[name]
+    config = ENEMY_CONFIGS[EnemyKind(name)]
     assert config.width <= anim_set.canvas[0], name
     assert config.height <= anim_set.canvas[1], name
 
@@ -1837,7 +1842,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src.anim.manifest import load_set
-from src.entities.enemies.enemy import ANIMATION_FRAME_DURATION
+from src.entities.enemies.enemy import Enemy
 
 ENEMY_SETS = (
     "scout",
@@ -1856,7 +1861,7 @@ def enemies_root() -> Path:
 
 
 def test_the_runtime_fps_is_the_declared_fps(enemies_root):
-    runtime_fps = 1.0 / ANIMATION_FRAME_DURATION
+    runtime_fps = 1.0 / Enemy.ANIMATION_FRAME_DURATION
     assert runtime_fps == 12.5
     for name in ENEMY_SETS:
         anim_set = load_set(name, root=enemies_root)
@@ -2111,7 +2116,7 @@ git commit -m "feat: BLOQUE 75 - el gate de Fase 1 es un comando"
 python -m pytest tests\ --tb=no
 ```
 
-Expected: **1 failed, 2 9xx passed, 7 skipped** — the one failure is
+Expected: **1 failed, 2 9xx passed, 6 skipped** — the one failure is
 `test_paths_no_star_shapes` (pre-existing, out of scope). The count must be
 **one failure lower** than the baseline (2), and no more.
 
@@ -2129,14 +2134,19 @@ Expected: `CONTRACT OK`, `PHASE 1 GATE OK`, `Success: no issues found`.
 
 ```powershell
 git status --short
-git diff --stat master..HEAD -- Assets/sprites/bosses/
-git diff --stat HEAD~9..HEAD -- '*.png'
+git diff --stat <pre-phase-1-sha>..HEAD -- Assets/sprites/bosses/
+git diff --stat <pre-phase-1-sha>..HEAD -- '*.png'
 ```
 
 Expected: the working tree is clean, GOLIATH's assets are untouched, and **no
-PNG** appears in the diff.
+PNG** appears in the diff. The anchor is the commit BEFORE Phase 1
+started, NOT `master` and NOT `HEAD~9`: `master` is the old v1.6.3 line,
+which never had BLOQUE 67's and BLOQUE 74's approved art, so diffing
+against it shows PNGs that were approved long ago. `HEAD~9` predates
+the merge that brought the base in, so it shows 78 PNGs that are not
+Phase 1's doing either.
 
-- [ ] **Update the documentation**
+- [ ] **Update the documentation** (the silo row for this plan was already added by `e53a646`; verify it, do not add it twice)
 
 ```powershell
 # the silo's index gains the plan row

@@ -4,8 +4,8 @@
 **Revised:** 2026-11-02 — after an independent review (see §Revision log)
 **Status:** READY FOR EXECUTION
 **Author:** Lerius (idea) + Mavis (draft)
-**Branch:** `bloquec-75-migration-spec` (worktree `F:\AI\MM\void-hunter\.worktrees\bloquec-75-migration-spec`)
-**Base:** `bloquec-75-sprite-migration` @ `773cf08` — **merged into this branch as `ef86a95`**. The spec was first written against `e8be3a2`; see §Base drift. Never `master`, never `bloquec-67-goliath-port`.
+**Branch:** the work lands on `bloquec-67-goliath-port` (the release line, per `CLAUDE.md`). Work in a NEW worktree and branch off it.
+**Base:** `bloquec-67-goliath-port` (the release line). The spec was first written against `e8be3a2`; see §Base drift. Never `master`.
 
 ---
 
@@ -130,7 +130,7 @@ git -C <worktree> diff --stat e8be3a2..773cf08 -- src/entities/enemies src/ui/ga
    (`ef86a95`):
 
    ```
-   2 failed, 2935 passed, 7 skipped in 71.63s
+   1 failed, 2939 passed, 6 skipped in 64.7s
    FAILED tests/test_paths.py::test_paths_no_star_shapes
    FAILED tests/test_sprite_pipeline_run.py::test_the_fix_run_changes_no_file
    ```
@@ -303,7 +303,7 @@ animation, not a defect, and it is why the death clips need a loose tolerance.
 | The red telegraph lives in `_draw_enemy` — the **procedural fallback**, used only when the sprite is missing | `gameplay_runtime.py:4910+` |
 | GOLIATH is the only set that already goes through the pipeline (`ClipPlayer`) | `src/ui/scenes.py:198-217`, `gameplay_runtime.py:6097` |
 | The scratch surfaces are 64×64 (player), 48×48 (enemy), 64×64 (sub-boss), and each procedural draw computes `offset = size//2 - entity_pos` | `gameplay_runtime.py:360,411,412,5351-5353` |
-| The runtime uses the **global** RNG in 31 screen-affecting places; only `_asteroid_rng = random.Random(0xA57E2012)` is seeded | `gameplay_runtime.py:352` + 31 `random.*` call sites |
+| The runtime uses the **global** RNG in 30 screen-affecting places; only `_asteroid_rng = random.Random(0xA57E2012)` is seeded | `gameplay_runtime.py:352` + 31 `random.*` call sites |
 | `_sets_root()` resolves **only** `Assets/sprites/bosses` (source and `_MEIPASS`) | `src/anim/manifest.py:34-44` |
 | `build.spec` bundles `Assets/sprites` wholesale → the new TOMLs **do** ship inside the `.exe` | `build.spec:44` |
 
@@ -335,18 +335,18 @@ directory holds two sub-directories with 3 frames each.
 | `src/anim/anchors.py` | 123 | `load_anchors` |
 | `src/anim/clip.py` | 108 | `ClipPlayer` |
 | **total `src/anim/`** | **1 217** | |
-| `tools/sprite_pipeline/audit.py` | 619 | measure + classify + `write_anchors` |
+| `tools/sprite_pipeline/audit.py` | 628 | measure + classify + `write_anchors` |
 | `tools/sprite_pipeline/verify_contract.py` | 223 | the contract guard |
 | `tools/sprite_pipeline/repair.py` | 159 | deterministic repairs (mirror / re-pad) |
 | `tools/sprite_pipeline/run.py` | 141 | validate → audit → repair → re-audit → anchors |
 | `tools/sprite_pipeline/__init__.py` | 31 | `ensure_display` |
-| **total `tools/sprite_pipeline/`** | **1 173** | |
+| **total `tools/sprite_pipeline/`** | **1 182** | |
 
 The LOC counts are **total lines** (blanks included), measured on the base
 `773cf08`:
 
 ```powershell
-git show 773cf08:src/anim/manifest.py | Measure-Object -Line
+(git show 773cf08:src/anim/manifest.py).Count
 ```
 
 > The first draft of this spec quoted **non-blank** line counts (1 016 /
@@ -373,8 +373,8 @@ python -m pytest tests\ --tb=no                            # 69.5 s
 
 | Result | Value |
 |---|---|
-| Suite (on `e8be3a2`, when this spec was written) | 2 failed, 2 898 passed, 6 skipped (2 906 total) |
-| **Suite (on the merged tree `ef86a95` = base `773cf08` + this spec)** — **the baseline to use** | **2 failed, 2 935 passed, 7 skipped** (2 944 total, 71.6 s) |
+| Suite (on `e8be3a2`, when this spec was written) | 1 failed, 2 898 passed, 6 skipped (2 906 total) |
+| **Suite (on the merged tree `ef86a95` = base `773cf08` + this spec)** — **the baseline to use** | **1 failed, 2 939 passed, 6 skipped** (2 944 total, 71.6 s) |
 | Failure 1 | `tests/test_paths.py::test_paths_no_star_shapes` — pre-existing, documented in `CLAUDE.md`, **out of scope** |
 | Failure 2 | `tests/test_sprite_pipeline_run.py::test_the_fix_run_changes_no_file` — **new, and in scope** |
 | `verify_contract.py goliath` (merged tree) | `CONTRACT OK`, exit 0 |
@@ -393,7 +393,7 @@ python -m pytest tests\ --tb=no                            # 69.5 s
 
 | Other guard | Result |
 |---|---|
-| `python -m mypy src\anim\` | **could not run**: `No module named mypy` — mypy is in `requirements-dev.txt` but is not installed in this environment. The gate must install it (`python -m pip install -r requirements-dev.txt`); this spec does not install anything. |
+| `python -m mypy src\anim\` | **passes**: `Success: no issues found in 6 source files` (mypy IS installed in `F:\AI\MM\void-hunter\.venv`) | The gate must install it (`python -m pip install -r requirements-dev.txt`); this spec does not install anything. |
 | `GameState` count | 15 (`src/core/scene_manager.py`) |
 | `def _draw_*` methods in `gameplay_runtime.py` | **34** (42 `self._draw_*` **call sites** in the whole file) |
 | `self._draw_*` calls **inside the frame loop** (3969-4165) | **16** |
@@ -489,7 +489,7 @@ behaviour, so GOLIATH's manifest keeps working **unmodified** (N13).
   to know that `closed` holds 5 alternatives rather than a sequence: the
   `distinct` declaration already covers the state that would fire.
 * Enforcing them in the Phase 1 loader would **reject GOLIATH's own manifest**,
-  which declares 7 clips with `fps`/`loop` and no `mode`/`on_end` — the loader
+  which declares 6 clips with `fps`/`loop` and no `mode`/`on_end` — the loader
   would raise, `scenes.py::_load_manifest()` would return `None`, and the boss
   would silently lose its compositor (C4).
 * They are still **verified in Phase 1**, by a test rather than by the loader:
@@ -725,7 +725,7 @@ What is added is a **single, explicit discovery rule** in a new
 | Rule | Statement |
 |---|---|
 | D1 | A directory is a **set** iff it contains a `manifest.toml`. Nothing else is a set. |
-| D2 | A directory whose name starts with `_` is **never** a set (this is what excludes `_backup_pre_bloque_65`). |
+| D2 | A directory whose name starts with `_` is **never** a set. `_backup_pre_bloque_65` is excluded because it is NESTED inside `mine_asteroid/` and has no `manifest.toml`; the `_` prefix is a redundant second guard. |
 | D3 | A PNG that is not named `frame_*.png` is **not a frame** (this is what excludes `_new_reference_closed.png` / `_new_reference_open.png`). |
 | D4 | The two roots are `Assets/sprites/bosses` (GOLIATH) and `Assets/sprites/enemies` (the 8 sets). `sets.py` resolves a set name against **both**, in that order, and returns the first hit. `--root` overrides it. The signature is `resolve_set(name: str, root: Path \| None = None) -> Path`; `run.py` / `audit.py` / `verify_contract.py` call it instead of building `root / name` themselves. |
 | D5 | The 2 reference PNGs are **generator inputs** and stay where they are. They are not read by the game and not by the pipeline. |
@@ -1102,7 +1102,7 @@ the `SceneManager` and all 15 scenes — which is why this spec only recommends.
 
 1. **Capture harness** — `tools/capture/layerstack_frames.py` renders the
    gameplay scene **deterministically**. The runtime uses the **global** RNG in
-   31 screen-affecting places (`random.uniform`, `random.random`,
+   30 screen-affecting places (`random.uniform`, `random.random`,
    `random.shuffle`) and seeds only `_asteroid_rng`, so the harness must:
    * call `random.seed(N)` with a fixed N **before** the scene is built,
    * **rebuild the scene** for every capture (a reused scene keeps its own
@@ -1149,7 +1149,7 @@ One probe, two roots — the same rule the audio and the tiling image already us
 | B2 | The draw order is **identical**, proven by frame comparison | the golden-frame test: **0 differing pixels** over the 5 captured frames + the structural order guard |
 | B3 | The HUD and the background have a defined place | the HUD is `z = 23` (in the stack); the background is documented as the stack's backdrop, drawn before it |
 | B4 | `mypy src\anim\` stays at 0 errors and the error delta in `src/ui/` / `src/entities/` does not grow | `python -m mypy src\anim\ src\render\` → 0 errors. The delta: `python -m mypy src\ui\ src\entities\ 2>&1 \| Select-String 'error:' \| Measure-Object` — record N before the change, N' after, require **N' ≤ N**. (`src\render\` must not import `src\ui\`: L6.) |
-| B5 | The suite does not get worse | the baseline on the merged tree is **2 failed, 2 935 passed, 7 skipped**. The failure count must **drop by one** (the Windows newline failure is fixed in Phase 1) and must not grow afterwards; `test_paths_no_star_shapes` remains, documented as pre-existing. The count is a **delta against that baseline**, not an absolute number. |
+| B5 | The suite does not get worse | the baseline on the merged tree is **1 failed, 2 939 passed, 6 skipped**. The Windows newline failure was already fixed by `f0a97f1`, so the baseline is already at one failure: the rule is that the count must NOT grow, and `test_paths_no_star_shapes` must remain the only failure. The count is a **delta against that baseline**, not an absolute number. |
 | B6 | The enemies keep their exact animation timing | the enemy layer reads `fps` and `on_end` from the manifest; a test asserts 12.5 FPS, `loop` for `idle`/`thrust`, `reset` for `damage`/`death` |
 | B7 | The enemies keep their exact pixels | the golden-frame test covers a frame with enemies; the enemy sprite path is `pivot = "fixed"` at the canvas centre, i.e. the same centred blit as today |
 
@@ -1197,7 +1197,7 @@ python tools\sprite_pipeline\verify_contract.py goliath
 #   -> exit 0
 
 python -m pytest tests\ --tb=no
-#   -> 2 failed, 2935 passed, 7 skipped
+#   -> 1 failed, 2939 passed, 6 skipped
 #   -> the two failures are test_paths_no_star_shapes (pre-existing) and
 #      test_the_fix_run_changes_no_file (the Windows newline bug, fixed in Phase 1)
 
@@ -1246,7 +1246,7 @@ python -m pytest tests\test_layer_stack_renders_identical_frames.py tests\test_l
 | The suite baseline | `python -m pytest tests\ --tb=no` |
 | The pipeline's health | `python tools\sprite_pipeline\verify_contract.py goliath` |
 | The art is untouched | `git diff --stat Assets\sprites\enemies\` → empty |
-| The manifest hash is over normalized text | `src/anim/manifest.py` (`_normalized_text`); R6 |
+| The manifest hash is over normalized text | `tools/sprite_pipeline/audit.py:504` (`read_text()`, universal newlines); R6 |
 | The frozen lookup path | `src/anim/manifest.py::_sets_root`; `build.spec:44` |
 
 ---

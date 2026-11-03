@@ -248,3 +248,49 @@ def test_a_cached_failure_does_not_leak_to_another_root(
     assert manifest.loaded_set("goliath") is not None, (
         "the failure cached for the other root was served for this one"
     )
+
+
+def test_a_manifest_with_the_wrong_shape_degrades_to_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A manifest whose `clips` is a STRING must degrade, not crash.
+
+    `raw.get("clips", [])` returns the string, the loop iterates over
+    its CHARACTERS, and `entry.get("id")` raises AttributeError -- an
+    error that is neither OSError nor ValueError, so it escaped the
+    loader entirely and reached the game loop, on the hot path, every
+    single frame.
+
+    A hand-edited manifest with a typo in the type of a section is
+    exactly the state the loader promises to survive.
+    """
+    set_dir = tmp_path / "goliath"
+    set_dir.mkdir()
+    (set_dir / "manifest.toml").write_text(
+        "[meta]\nname = \"GOLIATH\"\n\nclips = \"oops\"\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(manifest, "_sets_root", lambda: tmp_path)
+
+    assert manifest.loaded_set("goliath") is None, (
+        "a manifest with a string in place of an array of tables has to "
+        "degrade to None, not raise"
+    )
+
+
+def test_the_shape_error_is_a_manifest_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The loader reports the wrong shape as a ManifestError.
+
+    A ManifestError is a ValueError, which is what the loader catches,
+    so the message reaches the log instead of the game loop.
+    """
+    set_dir = tmp_path / "goliath"
+    set_dir.mkdir()
+    (set_dir / "manifest.toml").write_text(
+        "[meta]\nname = \"GOLIATH\"\n\nclips = \"oops\"\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(manifest, "_sets_root", lambda: tmp_path)
+
+    with pytest.raises(manifest.ManifestError):
+        manifest.load_set("goliath")

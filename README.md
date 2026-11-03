@@ -7,15 +7,15 @@
 
 <div align="center">
 
-### 👉 [⬇️ Descargar VoidHunter v1.2.6 para Windows (266 MB)](https://github.com/lerius700-cmyk/Void-Hunter/releases/download/v1.2.6/void-hunter.exe) 👈
+### 👉 [⬇️ Descargar VoidHunter v1.8.1 para Windows (219 MB)](https://github.com/lerius700-cmyk/Void-Hunter/releases/tag/v1.8.1) 👈
 
 </div>
 
-**Pasos:** descarga el `.exe` (onefile, ~266 MB porque trae Python + pygame + todos los assets dentro) → doble click (no necesita instalación, no necesita ZIP, no necesita carpeta `_internal/`)  
+**Pasos:** descarga el `.zip` (onefile, ~219 MB porque trae Python + pygame + todos los assets dentro) → descomprime → doble click (no necesita instalación, no necesita ZIP, no necesita carpeta `_internal/`)  
 **Si Windows SmartScreen pregunta:** *More info* → *Run anyway* (no tenemos cert de firma todavía)  
 **Controles:** `WASD` / flechas = mover · `Click` / `Espacio` = disparar · `P` = pausa · `ESC` = salir
 
-📜 [Todos los releases + notas de versión](https://github.com/lerius700-cmyk/Void-Hunter/releases) · [Notas de v1.2.6](https://github.com/lerius700-cmyk/Void-Hunter/releases/tag/v1.2.6)
+📜 [Todos los releases + notas de versión](https://github.com/lerius700-cmyk/Void-Hunter/releases) · [Notas de v1.8.1](https://github.com/lerius700-cmyk/Void-Hunter/releases/tag/v1.8.1)
 
 ---
 
@@ -27,13 +27,31 @@ scaling tied to boss proximity), a roguelike mode with seed/RNG/level-gen,
 sprite-sheet & video gallery, and 25+ visual juice systems. Built in
 Pygame 2.6, stdlib only (no numpy, no scipy — math only).
 
-**Status:** 🚧 **In-progress product.** **v1.2.6** es el último release
+**Status:** 🚧 **In-progress product.** **v1.8.1** es el último release
 público (→ [Releases](https://github.com/lerius700-cmyk/Void-Hunter/releases)).
-Polishing en curso. Ver [ROADMAP.md](./ROADMAP.md).
+Polishing en curso. Ver [ROADMAP.md](./docs/arch/ROADMAP.md).
 
 ---
 
-## 🆕 Qué hay de nuevo en v1.2.6 (BLOQUE 58.next)
+## 🆕 Qué hay de nuevo en v1.8.1 (BLOQUE 75)
+
+- **El `.exe` bajó de 278 MB a 220 MB.** El WAV filtrado de la pausa era una
+  copia de 61 MB dentro de cada descarga; ahora es una caché que el juego
+  construye y guarda junto al ejecutable (una sola vez, no en cada partida).
+- **El cache del filtro de pausa sobrevive a la sesión.** Antes se escribía
+  en el directorio temporal del ejecutable, así que los 8 s de filtrado se
+  pagaban en la primera pausa de cada partida.
+- **El repo tiene presupuesto de disco.** Tres techos (árbol trackeado,
+  salida de build, historia) y un test que los hace cumplir: el repo
+  pasó de 15,70 GB a 2,35 GB y no puede volver a crecer solo.
+- **El repo es el canal entre agentes.** Un prompt versionado con su sección
+  de arranque, el ruteo en el `CONTEXT.md` y un guard que prueba que el
+  routing sigue vivo.
+
+Históricamente, v1.8.1 también incluye todo el trabajo de:
+- **BLOQUE 74** — el pipeline de sprites: el runtime deja de medir el arte
+  (manifiesto + auditor + anclas horneadas)
+- **BLOQUE 67** — GOLIATH con sus 6 animaciones y el menú post-cinematica
 
 - **Roguelike density ↑×2:** `spawn_interval` 4.0s → 2.0s. Mismo ship count por pattern, **2× más waves por minuto**. `MAX_ENEMIES_ON_SCREEN` subió 12 → 24 para evitar throttle.
 - **Leader HP scaling 3–5 hits:** Los leaders (naves que guían un grupo) ahora resisten 3 hits en wave 1, 4 hits en wave 5, 5 hits en wave 10 (lineal, clampeado). Antes caían en 1 hit junto con los followers. Los followers quedan igual (1 HP).
@@ -63,7 +81,7 @@ pyinstaller build.spec --noconfirm
 # → dist/void-hunter/void-hunter.exe
 ```
 
-**Download releases:** [releases/](https://github.com/lerius700-cmyk/Void-Hunter/releases) (v1.0 → v1.2.6)
+**Download releases:** [releases/](https://github.com/lerius700-cmyk/Void-Hunter/releases) (v1.0 → v1.8.1)
 
 ---
 
@@ -185,8 +203,9 @@ pyinstaller build.spec --clean --noconfirm
 ```
 
 **Quality gates:**
-- 1,630 / 1,630 tests passing on the current code paths
-  (6 pre-existing failures in `test_paths.py::test_paths_no_star_shapes` and 5 headless flakes in `test_sub_boss_*`; both predate v1.2.6 and are unrelated to the BLOQUE 58.next work)
+- 2,939 / 2,940 tests passing on the current code paths
+  (the one failure, `test_paths.py::test_paths_no_star_shapes`, predates the
+  v1.4.0 line and is unrelated to this work)
 - 0 numpy/scipy imports in the game runtime (numpy allowed only in `apply_lowpass_to_wav` for the pause lowpass, per BLOQUE 58.14)
 - Internal coordinates 320×480; display scaling done in `Game._present()`
 - Windowed mode (never fullscreen, never terminal)
@@ -208,8 +227,8 @@ See [docs/arch/ROADMAP.md](./docs/arch/ROADMAP.md). TL;DR:
 - **Engine:** Python 3.11 + Pygame 2.6.1 (SDL 2.28.4)
 - **Inspiration:** Star Fox 64, Metal Slug, Galaga
 - **Audio:** synthesized (no external SFX), 2 streaming BGM tracks
-- **Total LOC:** ~43k (25,904 in `src/` + 17,205 in `tests/`, 156 Python files)
-- **Latest release:** [v1.2.6](https://github.com/lerius700-cmyk/Void-Hunter/releases/tag/v1.2.6) — 2026-09-07
+- **Total LOC:** ~55k (28,968 in `src/` + 26,000 in `tests/`, 190 Python files)
+- **Latest release:** [v1.8.1](https://github.com/lerius700-cmyk/Void-Hunter/releases/tag/v1.8.1) — 2026-11-02
 
 ---
 

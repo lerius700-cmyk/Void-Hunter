@@ -34,7 +34,22 @@ def _base_dir() -> Path:
 
 
 def cache_dir() -> Path | None:
-    """The writable directory the filtered track is kept in.
+    """The cache directory, if it EXISTS and is writable.
+
+    This is a query: it does NOT create the directory. A question that
+    creates a directory next to the executable as a side effect is a
+    question that litters a folder the user never asked for.
+    """
+    candidate = _base_dir() / CACHE_DIR_NAME
+    if not candidate.is_dir():
+        return None
+    if not os.access(candidate, os.W_OK):
+        return None
+    return candidate
+
+
+def ensure_cache_dir() -> Path | None:
+    """The cache directory, creating it when it can be created.
 
     `None` when there is no writable place: the executable may sit in a
     read-only directory (Program Files). The caller falls back to
@@ -75,6 +90,7 @@ def store_filtered(src: Path, dst: Path, cutoff_hz: float) -> bool:
 
     tmp = dst.with_name(dst.stem + ".tmp.wav")
     try:
+        dst.parent.mkdir(parents=True, exist_ok=True)
         if not apply_lowpass_to_wav(str(src), str(tmp), cutoff_hz=cutoff_hz):
             _unlink(tmp)
             return False

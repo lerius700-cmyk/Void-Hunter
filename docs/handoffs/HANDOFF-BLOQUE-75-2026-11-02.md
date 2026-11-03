@@ -137,6 +137,40 @@ Beside it there is now a **Phase 1 implementation plan**:
 Phase 2 turns the gameplay frame into a `LayerStack`. Both phases have a
 gate.
 
+## 7b. What two independent reviews changed
+
+The branch went through two pre-landing reviews before it was called
+done: one over the CODE and one over the DOCUMENTS. Both came back with
+blocking findings, and every one of them was fixed with a failing test
+first.
+
+The code review found that the guard layer -- the part BLOQUE 75 exists
+to make impossible -- had holes of its own:
+
+- the `dist` budget measured only the repository root, so the 281 MB of
+  build output inside the worktrees was invisible to the very budget
+  created to catch it;
+- the history was shared state with 46 MB of headroom, enforced as a
+  hard test, so another agent's commits could redden this branch;
+- the build row asserted that the frozen path had been verified, and
+  nothing had ever looked;
+- a manifest with a type error (`clips = "oops"`) escaped the loader as
+  an `AttributeError` -- into the game loop, on the hot path, every
+  frame.
+
+The document review found that the spec and the Phase 1 plan were not
+safe to execute: the plan deleted the only binding of `rule` (a
+`NameError` in `audit_set`), imported a class attribute at module level,
+indexed an enum-keyed dict with a string, named a test file that does not
+exist, re-fixed a bug that had already landed, and carried a baseline
+four passes and one failure out of date -- which silently voided the
+plan's own gate rule.
+
+**The lesson worth keeping:** the code was right because it was
+measured, and it was wrong because nobody ran it in a clean checkout.
+A test that passes on one checkout and fails on another is not a flaky
+test; it is a defect only one environment can see.
+
 ## 8. What was deliberately not done
 
 - **The history was not rewritten.** 122 MB of it are generated blobs that

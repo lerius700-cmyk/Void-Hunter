@@ -5,9 +5,28 @@ pruned and archived. Nothing measured it afterwards, so 8.58 GB of
 builds accumulated in `dist/` between v1.3.0 and v1.6.3 without anyone
 noticing.
 
-This is the RULE. Three weights are measured and three ceilings are
-enforced by `tests/test_repo_budget.py`. The ceilings live here, so
-raising one is a deliberate edit of one place.
+This is the RULE. The ceilings live here, so raising one is a deliberate
+edit of one place.
+
+What is measured, and where it lives
+------------------------------------
+* **tracked** — the tree the repository carries, measured from the BLOBS
+  (not from the checkout, which on Windows is a few percent larger
+  because of CRLF). It is the size of what the repository holds, and it
+  is branch-local: another agent's commits do not change it.
+* **dist** — the build output, summed over the repository root AND
+  every linked worktree. PyInstaller writes to `<cwd>/dist`, and this
+  project's builds happen inside worktrees: measuring only the root
+  would have missed 281 MB of build output the day this was written.
+* **git** — the history. It is SHARED state: every branch and every
+  worktree grows it. It is reported, but it is NOT enforced, because a
+  commit made by another agent would redden a branch that has nothing to
+  do with it.
+
+The `.venv` and `.worktrees` directories are not part of any measurement:
+they are environment, not content. The tracked measurement excludes them
+by construction (git only lists tracked files), and the build-output
+measurement only looks at `dist/`.
 
 Usage:
     python tools/repo_budget.py
@@ -24,18 +43,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# The ceilings, in megabytes.
+# The ceilings, in megabytes. Only these two are ENFORCED; the history
+# is reported but not enforced (it is shared state).
 BUDGETS: dict[str, int] = {
     "tracked": 300,   # the tree the repository carries
-    "dist": 600,      # the build output
-    "git": 550,       # the history
+    "dist": 1200,     # the build output, root + every worktree
 }
 
-# Directories that are ENVIRONMENT, not content: they change size for
-# reasons that have nothing to do with the project. They are excluded
-# from the CONTENT measurement (the tracked tree), which is the one
-# that says how much the project itself weighs.
-CONTENT_EXCLUDED = {".venv", ".worktrees"}
+# The history has no ceiling: it is shared, so a hard limit on it would
+# fail a branch for commits it did not make.
+ADVISORY = ("git",)
+
+# The lowpass cache is a cache, not build output: the game rebuilds it
+# in a few seconds and it can be deleted at any moment.
+_CACHE_DIRS = {"_vh_cache"}
 
 
 @dataclass
@@ -47,16 +68,21 @@ class BudgetReport:
     git_mb: float
 
     def over(self) -> list[str]:
-        """The ceilings that were crossed, as readable lines."""
-        values = {
-            "tracked": self.tracked_mb,
-            "dist": self.dist_mb,
-            "git": self.git_mb,
-        }
+        """The ENFORCED ceilings that were crossed, as readable lines."""
+        values = {"tracked": self.tracked_mb, "dist": self.dist_mb}
         return [
             f"{name} is over: {value:.1f} MB > {BUDGETS[name]} MB"
             for name, value in values.items()
             if value > BUDGETS[name]
+        ]
+
+    def advisory(self) -> list[str]:
+        """The reported-but-not-enforced measurements that are high."""
+        values = {"git": self.git_mb}
+        return [
+            f"{name} is high (not enforced): {value:.1f} MB"
+            for name, value in values.items()
+            if value > BUDGETS.get(name, value) * 0.9
         ]
 
     def describe(self) -> str:
@@ -67,45 +93,16 @@ class BudgetReport:
             ("dist", self.dist_mb),
             ("git", self.git_mb),
         ):
-            ceiling = BUDGETS[name]
-            mark = "OVER" if value > ceiling else "ok"
-            lines.append(f"{name:<8} {value:>9.1f} MB / {ceiling} MB  {mark}")
+            mark = "advisory" if name in ADVISORY else "OVER" if (
+                name in BUDGETS and value > BUDGETS[name]
+            ) else "ok"
+            if name in BUDGETS:
+                lines.append(
+                    f"{name:<8} {value:>9.1f} MB / {BUDGETS[name]} MB  {mark}"
+                )
+            else:
+                lines.append(f"{name:<8} {value:>9.1f} MB / (sin techo)  {mark}")
         return "\n".join(lines)
-
-
-def _dir_mb(path: Path) -> float:
-    """The size of a directory in megabytes."""
-    if not path.is_dir():
-        return 0.0
-    total = 0
-    for entry in path.rglob("*"):
-        try:
-            if entry.is_file():
-                total += entry.stat().st_size
-        except OSError:
-            continue
-    return total / (1024 * 1024)
-
-
-def _tracked_mb(root: Path) -> float:
-    """The size of every file the repository tracks."""
-    proc = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "-z"],
-        capture_output=True,
-    )
-    if proc.returncode != 0:
-        return 0.0
-    total = 0
-    for chunk in proc.stdout.split(b"\0"):
-        if not chunk:
-            continue
-        path = root / chunk.decode("utf-8", "replace")
-        try:
-            if path.is_file():
-                total += path.stat().st_size
-        except OSError:
-            continue
-    return total / (1024 * 1024)
 
 
 def repo_root(root: Path) -> Path:
@@ -131,6 +128,68 @@ def repo_root(root: Path) -> Path:
     return common.parent if common.name == ".git" else common
 
 
+def _dir_mb(path: Path, skip: set[str] | None = None) -> float:
+    """The size of a directory in megabytes."""
+    if not path.is_dir():
+        return 0.0
+    skip = skip or set()
+    total = 0
+    for entry in path.rglob("*"):
+        try:
+            if not entry.is_file():
+                continue
+            if skip and entry.name in skip:
+                continue
+            total += entry.stat().st_size
+        except OSError:
+            continue
+    return total / (1024 * 1024)
+
+
+def _tracked_mb(root: Path) -> float:
+    """The size of the tracked tree, measured from the BLOBS.
+
+    The checkout on Windows is a few percent larger than the blobs
+    because of CRLF, and its size changes with the checkout. What the
+    repository CARRIES is the sum of the blob sizes.
+    """
+    proc = subprocess.run(
+        ["git", "-C", str(root), "ls-tree", "-r", "-l", "HEAD"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if proc.returncode != 0:
+        return 0.0
+    total = 0
+    for line in proc.stdout.splitlines():
+        fields = line.split(None, 4)
+        if len(fields) < 4:
+            continue
+        try:
+            total += int(fields[3])
+        except ValueError:
+            continue
+    return total / (1024 * 1024)
+
+
+def _dist_mb(base: Path) -> float:
+    """The build output, summed over the root and every worktree.
+
+    PyInstaller writes to `<cwd>/dist`, and the builds of this project
+    happen inside worktrees. Measuring only the root would miss exactly
+    the accumulation this budget exists to catch.
+    """
+    total = _dir_mb(base / "dist", skip=_CACHE_DIRS)
+    worktrees = base / ".worktrees"
+    if worktrees.is_dir():
+        for entry in worktrees.iterdir():
+            if entry.is_dir():
+                total += _dir_mb(entry / "dist", skip=_CACHE_DIRS)
+    return total
+
+
 def measure(root: Path | None = None) -> BudgetReport:
     """Measure the three weights of the repository at `root`.
 
@@ -143,7 +202,7 @@ def measure(root: Path | None = None) -> BudgetReport:
     base = repo_root(root)
     return BudgetReport(
         tracked_mb=_tracked_mb(root),
-        dist_mb=_dir_mb(base / "dist"),
+        dist_mb=_dist_mb(base),
         git_mb=_dir_mb(base / ".git"),
     )
 
@@ -163,6 +222,7 @@ def main(argv: list[str] | None = None) -> int:
                     "dist_mb": round(report.dist_mb, 1),
                     "git_mb": round(report.git_mb, 1),
                     "budgets": BUDGETS,
+                    "advisory": list(ADVISORY),
                     "over": report.over(),
                 },
                 indent=2,
@@ -170,6 +230,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     else:
         print(report.describe())
+        for line in report.advisory():
+            print(f"  ! {line}")
     return 1 if report.over() else 0
 
 

@@ -2,7 +2,7 @@
 
 **Perfil SF/SM:** Lite
 **Schema target:** `.synapse` 2.2.0 (acepta 2.1.0 legacy)
-**Versión actual:** v1.8.0 (BLOQUE 74 — pipeline de sprites; línea v1.4.0 + GOLIATH + menú post-cinematica)
+**Versión actual:** v1.8.1 (BLOQUE 75 — cache persistente del lowpass, presupuesto de disco y handoff entre agentes; línea v1.4.0 + GOLIATH + menú post-cinematica)
 **Tipo:** CODE (Python + pygame 2.6, stdlib only + numpy para lowpass audio)
 **Test count:** 2,886 pass + 1 fail pre-existente + 6 skipped (2,893 total)
 
@@ -127,7 +127,7 @@ void-hunter/
 │
 ├── src/                        ← L2 código (92 archivos, 28.9K LOC)
 │   ├── core/                   ← game loop, settings, scene_manager
-│   ├── audio/                  ← synth + music (BLOQUE 58.14)
+│   ├── audio/                  ← synth + music + lowpass_cache (BLOQUE 58.14 / 75)
 │   ├── systems/                ← parallax, wave_manager, bezier, tile_manager, etc.
 │   ├── entities/               ← player, enemy, boss, projectile
 │   ├── ui/                     ← scenes, gameplay_runtime, HUD, video_player
@@ -151,6 +151,8 @@ void-hunter/
 │   ├── sprite_pipeline/        ← pipeline de sprites: audit.py, run.py, repair.py, verify_contract.py (BLOQUE 74)
 │   ├── tiles/                  ← pipeline del fondo Asteroid Approach (generate_tiles.py + ai_gen/)
 │   ├── regen_status.py         ← regenera el bloque STATUS de CLAUDE.md desde los truth anchors
+│   ├── repo_budget.py          ← mide el peso del repo y lo contrasta con 3 techos (BLOQUE 75)
+│   ├── verify_clean_copy.py    ← prueba que una copia del árbol no está contaminada (BLOQUE 75)
 │   ├── debug_*.py              ← debug tools
 │   ├── test_*.py               ← ad-hoc tests
 │   ├── process_galaxy_sprites_v2.py
@@ -252,10 +254,10 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 
 | Métrica | Valor | Fuente (Truth Anchor) |
 |---------|-------|------------------------|
-| Líneas de código (src/) | 29100 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
+| Líneas de código (src/) | 29131 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
 | Archivos Python (src/) | 93 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
-| Tests (tests/) | 2.937 pass + 1 fail pre-existente + 6 skipped (2.944 total) | `python -m pytest tests/ --tb=no` |
-| LOC tests/ | 26574 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
+| Tests (tests/) | 2.944 pass + 1 fail pre-existente + 6 skipped (2.951 total) | `python -m pytest tests/ --tb=no` |
+| LOC tests/ | 26744 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
 | Silos SF+SM | 9 (Lite) | `Get-ChildItem docs -Directory \| Measure-Object` |
 | Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
 | Versión | v1.8.0 (BLOQUE 74 — pipeline de sprites) | `git log --oneline -1` |
@@ -263,8 +265,8 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 | Remote | github.com/lerius700-cmyk/Void-Hunter | `git remote -v` |
 | Build .exe | **reconstruido** para v1.8.1 (220.2 MB) en `dist/void-hunter-v1.8.1.exe` — el path congelado (`<_MEIPASS>/Assets/sprites/bosses`) verificado con el manifest y los anchors dentro del bundle; SHA256 `FA4A8684521EB74E9F67CE8AFDAE9B17A76B0FCE725CC44FB84D58370E46A256` | `Get-Item F:\AI\MM\void-hunter\dist\void-hunter-v1.8.1.exe` |
 | Peso del arbol trackeado | 204.0 MB | `python tools/repo_budget.py` |
-| Salida de build (dist/) | 220.2 MB | `python tools/repo_budget.py` |
-| Historia (.git/) | 504.0 MB | `python tools/repo_budget.py` |
+| Salida de build (dist/) | 501.3 MB | `python tools/repo_budget.py` |
+| Historia (.git/) | 504.1 MB | `python tools/repo_budget.py` |
 | Tiles Asteroid Approach | 6 PNG (320×480) en `Assets/background/tiles/act1/` | `Get-ChildItem Assets/background/tiles/act1/*.png` |
 | Frames GOLIATH | 60 PNG (6 anim × 10) en `Assets/sprites/bosses/goliath/` | `Get-ChildItem Assets/sprites/bosses/goliath/*/frame_*.png` |
 | Manifiesto + anclas de GOLIATH | 1 `manifest.toml` (spec) + 1 `anchors.toml` (horneado) | `Get-ChildItem Assets/sprites/bosses/goliath/*.toml` |

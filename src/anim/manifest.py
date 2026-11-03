@@ -289,8 +289,8 @@ class AnimSet:
         raise ManifestError(f"unknown part {part_id!r} in {self.name}")
 
 
-_LOADED: dict[tuple[str, Path | None], AnimSet] = {}
-_LOADED_FAILED: set[tuple[str, Path | None]] = set()
+_LOADED: dict[tuple[str, Path], AnimSet] = {}
+_LOADED_FAILED: set[tuple[str, Path]] = set()
 
 
 def loaded_set(name: str, root: Path | None = None) -> AnimSet | None:
@@ -373,9 +373,20 @@ def load_set(name: str, root: Path | None = None) -> AnimSet:
         raw = tomllib.load(fh)
 
     meta = raw.get("meta") or {}
+    if not isinstance(meta, dict):
+        raise ManifestError(f"{name}: [meta] must be a table")
+
+    clips_raw = raw.get("clips", [])
+    if not isinstance(clips_raw, list):
+        raise ManifestError(f"{name}: [[clips]] must be an array of tables")
+    parts_raw = raw.get("parts", [])
+    if not isinstance(parts_raw, list):
+        raise ManifestError(f"{name}: [[parts]] must be an array of tables")
 
     clips: dict[str, Clip] = {}
-    for entry in raw.get("clips", []):
+    for entry in clips_raw:
+        if not isinstance(entry, dict):
+            raise ManifestError(f"{name}: a [[clips]] entry is not a table")
         clip_id = entry.get("id")
         if not isinstance(clip_id, str) or not clip_id:
             raise ManifestError(f"{name}: a clip has no id")
@@ -394,7 +405,9 @@ def load_set(name: str, root: Path | None = None) -> AnimSet:
         raise ManifestError(f"{name}: the manifest declares no clips")
 
     parts: list[Part] = []
-    for entry in raw.get("parts", []):
+    for entry in parts_raw:
+        if not isinstance(entry, dict):
+            raise ManifestError(f"{name}: a [[parts]] entry is not a table")
         part_id = entry.get("id")
         if not isinstance(part_id, str) or not part_id:
             raise ManifestError(f"{name}: a part has no id")

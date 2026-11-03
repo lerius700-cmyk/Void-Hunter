@@ -38,15 +38,31 @@ def fake_exe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 def test_the_cache_lives_next_to_the_executable(fake_exe: Path):
     """The cache directory is a sibling of the executable."""
-    directory = lowpass_cache.cache_dir()
+    directory = lowpass_cache.ensure_cache_dir()
     assert directory is not None
     assert directory.parent == fake_exe
     assert directory.name == lowpass_cache.CACHE_DIR_NAME
 
 
+def test_asking_for_the_cache_does_not_create_it(fake_exe: Path):
+    """A query does not litter the folder next to the executable.
+
+    `cache_dir()` answers "is there a cache directory, and can I write
+    to it". `ensure_cache_dir()` is the one that creates it, and it is
+    called only when a track is about to be written.
+    """
+    assert lowpass_cache.cache_dir() is None, (
+        "the cache directory already existed"
+    )
+    assert not (fake_exe / lowpass_cache.CACHE_DIR_NAME).exists(), (
+        "asking for the cache created the directory: a query must not "
+        "leave a folder next to the executable"
+    )
+
+
 def test_the_cache_is_not_called_assets(fake_exe: Path):
     """The cache must not be able to shadow the assets directory."""
-    directory = lowpass_cache.cache_dir()
+    directory = lowpass_cache.ensure_cache_dir()
     assert directory is not None
     assert directory.name.lower() != "assets"
 
@@ -82,7 +98,7 @@ def test_the_cached_track_is_found_and_reused(fake_exe: Path, monkeypatch):
         "store_filtered",
         lambda src, dst, cutoff: calls.append(str(dst)) or True,
     )
-    directory = lowpass_cache.cache_dir()
+    directory = lowpass_cache.ensure_cache_dir()
     assert directory is not None
     target = directory / lowpass_cache.filtered_name(600.0)
     target.write_bytes(b"RIFFfake")
@@ -97,7 +113,7 @@ def test_store_filtered_writes_atomically(fake_exe: Path, tmp_path: Path):
     """The file is generated to a temporary name and moved into place."""
     src = tmp_path / "src.wav"
     src.write_bytes(b"RIFF")
-    directory = lowpass_cache.cache_dir()
+    directory = lowpass_cache.ensure_cache_dir()
     assert directory is not None
     dst = directory / "out.wav"
 
@@ -132,7 +148,7 @@ def test_store_filtered_leaves_nothing_behind_on_failure(
     """A failed filter does not leave a half-written file."""
     src = tmp_path / "src.wav"
     src.write_bytes(b"RIFF")
-    directory = lowpass_cache.cache_dir()
+    directory = lowpass_cache.ensure_cache_dir()
     assert directory is not None
     dst = directory / "out.wav"
 

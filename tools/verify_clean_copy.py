@@ -175,7 +175,10 @@ def _actual_paths(tree: Path) -> list[str]:
         if not path.is_file():
             continue
         rel = str(path.relative_to(tree)).replace("\\", "/")
-        if rel == ".git" or rel.startswith(".git/"):
+        if ".git" in rel.split("/"):
+            # Any .git SEGMENT is the tool's own machinery, not a stray
+            # file -- a nested repository is as much machinery as a
+            # top-level one.
             continue
         out.append(rel)
     return sorted(out)

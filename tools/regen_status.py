@@ -9,8 +9,9 @@ any time instead of being edited by hand.
 
 The scope
 ---------
-This generator owns SEVEN of the block's rows: the two LOC counts, the
-file count, the test count, the silo count, the branch and the build.
+This generator owns TEN of the block's rows: the two LOC counts, the
+file count, the test count, the silo count, the branch, the build, and
+the three disk weights.
 The other rows (version, compliance, remote, tiles, frame counts,
 videos, sprite sheets) are measured by other commands and are left
 alone -- the block names the command for each one.
@@ -44,6 +45,7 @@ from pathlib import Path
 # See tools/repo_budget.py and tests/test_repo_budget.py.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from repo_budget import measure as measure_budget
+from repo_budget import repo_root
 
 # The tree this tool belongs to. NOT a hardcoded path: the repository is
 # worked on by more than one agent, each in its own worktree, and a
@@ -57,10 +59,16 @@ ROOT = Path(
 # The repository root, which for a linked worktree is two levels up
 # (`.worktrees/<name>` -> `.worktrees` -> the root). The canonical .exe
 # lives in the root's `dist/`, not in a worktree's.
-REPO_ROOT = ROOT.parent.parent if ROOT.parent.name == ".worktrees" else ROOT
+# One source of truth for "where is the repository root": the budget
+# tool already asks git, and a heuristic here would disagree with it on
+# any worktree that is not under `.worktrees/`.
+REPO_ROOT = repo_root(ROOT)
 
 RELEASE_BRANCH = "bloquec-67-goliath-port"
-PY = sys.executable or r"F:\AI\MM\void-hunter\.venv\Scripts\python.exe"
+# The interpreter that runs THIS tool: the one that is running it now.
+# A hardcoded path to another tree's venv would break on every machine
+# that is not that machine.
+PY = sys.executable
 CLAUDE = ROOT / "CLAUDE.md"
 
 # BLOQUE 75: there is ONE canonical .exe now. The release worktree used
@@ -155,23 +163,68 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest().upper()
 
 
+def _bundle_entries(exe: Path) -> list[str]:
+    """The entries of the frozen bundle, or an empty list.
+
+    Reading the PyInstaller archive is the only way to know what is
+    really inside the binary.
+    """
+    try:
+        from PyInstaller.archive.readers import CArchiveReader
+    except Exception:
+        return []
+    try:
+        return list(CArchiveReader(str(exe)).toc)
+    except Exception:
+        return []
+
+
+def _frozen_assets_verified(exe: Path) -> bool:
+    """Whether the manifest AND the anchors are really inside the binary.
+
+    The row used to claim this without checking. A claim the generator
+    does not verify is exactly the kind of lie this tool exists to
+    prevent: the block says "verificado con el manifest y los anchors
+    dentro del bundle" and nothing had ever looked.
+    """
+    entries = _bundle_entries(exe)
+    if not entries:
+        return False
+    normalised = {entry.replace("\\", "/") for entry in entries}
+    wanted = (
+        "Assets/sprites/bosses/goliath/manifest.toml",
+        "Assets/sprites/bosses/goliath/anchors.toml",
+    )
+    return all(any(entry.endswith(name) for entry in normalised) for name in wanted)
+
+
 def _build_row(exe: Path, exe_mb: float) -> str:
-    """The build row, honest about whether the artifact is there.
+    """The build row, honest about what is actually true.
 
     The artifact is a build output: it is gitignored, and a machine
     that has not built it does not have it. Claiming "reconstruido" for
     a file that is not there would be a lie the block tells on every
-    fresh checkout.
+    fresh checkout -- and so would claiming that the frozen path was
+    verified when nothing checked.
     """
     if not exe.is_file():
         return (
-            "**no está en esta máquina** — el build de v1.8.0 se reconstruye "
+            f"**no está en esta máquina** — el build de {VERSION} se reconstruye "
             f"con PyInstaller y queda en `{BINARY_REL}`"
+        )
+    if _frozen_assets_verified(exe):
+        frozen = (
+            "— el path congelado (`<_MEIPASS>/Assets/sprites/bosses`) verificado "
+            "con el manifest y los anchors dentro del bundle"
+        )
+    else:
+        frozen = (
+            "— el path congelado NO se pudo verificar: el bundle no se pudo leer "
+            "o no contiene el manifest y los anchors"
         )
     return (
         f"**reconstruido** para {VERSION} ({exe_mb} MB) en `{BINARY_REL}` "
-        "— el path congelado (`<_MEIPASS>/Assets/sprites/bosses`) verificado con "
-        f"el manifest y los anchors dentro del bundle; SHA256 `{_sha256(exe)}`"
+        f"{frozen}; SHA256 `{_sha256(exe)}`"
     )
 
 

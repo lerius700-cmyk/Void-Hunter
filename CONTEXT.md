@@ -66,7 +66,7 @@ Regla: entrar por L1 → L1.5 → identificar silo → leer CONTEXT.md del silo 
 | `Assets/sprites/bosses/*/manifest.toml` | L (LOAD) | La spec del set (editada a mano) |
 | `README.md` | R (REFERENCE) | Doc pública |
 | `requirements.txt` / `pyproject.toml` | R (REFERENCE) | Configuración |
-| `docs/ROADMAP.md` / `docs/MEGA_BLOQUE_58.8_CHECKLIST.md` | R (REFERENCE) | Roadmap + tracking |
+| `docs/arch/ROADMAP.md` / `docs/bloques/MEGA_BLOQUE_58.8_CHECKLIST.md` | R (REFERENCE) | Roadmap + tracking |
 | `Assets/**/*.png` | R (REFERENCE) | Binarios (no editar a mano) |
 | `Assets/**/*.wav` | R (REFERENCE) | Audio assets |
 | `Assets/video/**/*.png` | R (REFERENCE) | Video frames cinemáticos (no editar) |

@@ -322,8 +322,8 @@ def _ensure_filtered_bgm() -> Optional[str]:
     cutoff = get_lowpass_cutoff_hz()
 
     from src.audio.lowpass_cache import (
-        cache_dir,
         cached_filtered,
+        ensure_cache_dir,
         filtered_name,
         store_filtered,
     )
@@ -337,7 +337,9 @@ def _ensure_filtered_bgm() -> Optional[str]:
     # 2. where to write it: the cache when it is writable, otherwise
     #    next to the source (the behaviour before BLOQUE 75)
     targets: list[Path] = []
-    directory = cache_dir()
+    # The cache directory is created HERE, when a generation is about to
+    # happen -- not when the cache is merely looked up.
+    directory = ensure_cache_dir()
     if directory is not None:
         targets.append(directory / filtered_name(cutoff))
     targets.append(

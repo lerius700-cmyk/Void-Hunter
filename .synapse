@@ -1,15 +1,15 @@
 {
   "synapse_version": "2.2.0",
-  "last_verification_utc": "2026-11-03T16:32:37Z",
+  "last_verification_utc": "2026-11-03T17:40:57Z",
   "system_status": "healthy",
   "active_bridges": {},
   "short_term_memory": {
-    "current_objective": "BLOQUE 75: el scaffolding, la limpieza y el release v1.8.1 estan cerrados y publicados. El spec de la migracion fue revisado por el otro agente (4 defectos criticos corregidos, alcance de Fase 1 reducido) y hay un plan de implementacion de Fase 1 de 9 tareas TDD. Siguiente: ejecutar la Fase 1 del spec (los 8 sets de enemigos al pipeline).",
-    "last_successful_action": "Cierre de BLOQUE 75 y publicacion de v1.8.1 (278 -> 220,2 MB), con un fix de fondo que encontro el segundo agente: el generador de anchors escribia CRLF mientras el .gitattributes declaraba los .toml como LF, asi que en un checkout limpio --fix cambiaba el archivo en cada corrida y test_the_fix_run_changes_no_file se ponia rojo (2 fails donde la base tenia 1). El worktree de release lo tapaba por casualidad porque su anchors.toml venia de un checkout anterior al atributo. Fix: newline=\\n en el write, con dos tests que lo fijan. Verificado en LOS DOS arboles: 2.939 pass + 1 fail pre-existente (test_paths_no_star_shapes) + 6 skipped. El spec revisado y el plan de Fase 1 quedaron mergeados en la linea de release; ambas ramas pusheadas.",
+    "current_objective": "BLOQUE 75 cerrado y publicado como v1.8.1: presupuesto de disco, cache persistente del lowpass y handoff entre agentes funcionando. El spec revisado y el plan de Fase 1 (9 tareas TDD) estan mergeados en la linea de release; el siguiente paso es ejecutarlos.",
+    "last_successful_action": "BLOQUE 75 publicado como v1.8.1 (el .exe bajo de 278 a 220,2 MB porque el WAV generado salio del bundle y ahora es una cache junto al ejecutable) y el repo bajo de 15,70 a 2,35 GB con un presupuesto de disco de tres techos que un test hace cumplir. Dos reviews independientes (codigo y documentos)(findings: el budget de dist/ no veía los builds de los worktrees, la fila del build afirmaba una verificacion que no se hacia, y el spec y el plan de Fase 1 traian un baseline viejo y codigo que no corria) y los 13+16 hallazgos corregidos con test rojo primero. Verificado: 2.944 pass + 1 fail pre-existente (test_paths_no_star_shapes) + 6 skipped; mypy src/anim/ 0 errores; verify_contract.py CONTRACT OK; repo_budget.py los tres pesos bajo techo; main.py --check 15 scenes / 18 waves / 4 bosses; sf-sm-doctor 7/7; el baseline verificado con verify_clean_copy.py CLEAN COPY OK.",
     "active_context_pointers": [
-      "docs/superpowers/prompts/2026-10-29-bloque-75-migration-spec-prompt.md",
-      "docs/superpowers/specs/2026-10-29-agent-context-handoff-design.md",
-      "docs/handoffs/HANDOFF-SPRITE-PIPELINE-2026-10-27.md"
+      "docs/superpowers/specs/2026-10-30-bloque-75-migration-spec.md",
+      "docs/superpowers/plans/2026-11-03-bloque-75-phase1-enemy-pipeline.md",
+      "docs/handoffs/HANDOFF-BLOQUE-75-2026-11-02.md"
     ],
     "critical_blockers": "ninguno"
   }

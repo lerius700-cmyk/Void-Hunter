@@ -127,14 +127,22 @@ def test_a_line_ending_difference_is_not_contamination(tmp_path: Path):
     does, and it is what `git archive` does when it writes a copy (the
     archived text files come out CRLF while their blobs are LF).
 
-    So a copy whose text files were rewritten with CRLF is the SAME
-    content, and calling it contamination would be a lie. What has to be
-    detected is a change of CONTENT.
+    So a copy whose text files were rewritten is the SAME content, and
+    calling it contamination would be a lie. What has to be detected is
+    a change of CONTENT.
+
+    The test makes the divergence EXPLICIT: it asserts that the archive
+    really did write CRLF, and then flips the file to LF. Rewriting the
+    file to CRLF would have reproduced the bytes it started with, and
+    the test would have passed against a byte-exact comparer.
     """
     copy = _cut(tmp_path, ["src"])
     victim = next(p for p in copy.rglob("*.py"))
-    text = victim.read_text(encoding="utf-8")
-    victim.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+    raw = victim.read_bytes()
+    assert b"\r\n" in raw, (
+        "the archive did not write CRLF: this test would be a no-op"
+    )
+    victim.write_bytes(raw.replace(b"\r\n", b"\n"))
     report = verify(copy, REF, ROOT, ["src"])
     assert report.ok, report.describe()
     assert report.mismatched == []
