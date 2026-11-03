@@ -84,6 +84,15 @@ def _as_int_pair(value: Any, name: str) -> tuple[int, int]:
         raise ManifestError(f"{name} must be a pair of integers, got {value!r}") from exc
 
 
+def _as_optional_int(value: Any, name: str) -> int | None:
+    """Read an optional integer, rejecting anything that is not one."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ManifestError(f"{name} must be an integer, got {value!r}")
+    return value
+
+
 def _as_float_pair(value: Any, name: str) -> tuple[float, float]:
     """Read a two-element float pair, rejecting anything else."""
     if not isinstance(value, (list, tuple)) or len(value) != 2:
@@ -262,6 +271,22 @@ class Clip:
     scale_tolerance: float
     side_tolerance: float
 
+    # BLOQUE 75: the fields the enemy sets need. All of them are optional
+    # and default to the behaviour that shipped with BLOQUE 74.
+    #
+    # `distinct` is how many DISTINCT source images the clip is built from:
+    # the enemy art cycles 3-4 poses to fill ten slots, and without this
+    # the auditor reads every one of them as a collapsed animation.
+    # `canvas` overrides the set's canvas for ONE clip (the mine's death
+    # art is 32x32 inside a 64x64 set).
+    # `mode` and `on_end` are PARSED but NOT ENFORCED in Phase 1: GOLIATH's
+    # manifest declares neither, and enforcing the rules now would reject
+    # it. Phase 2 consumes them.
+    distinct: int | None = None
+    canvas: tuple[int, int] | None = None
+    mode: str = "sequence"
+    on_end: str = "loop"
+
 
 @dataclass(frozen=True)
 class AnimSet:
@@ -275,6 +300,12 @@ class AnimSet:
     path: Path
     clips: dict[str, Clip]
     parts: list[Part]
+
+    # BLOQUE 75: the margin this set's silhouettes must keep from the
+    # canvas edge. None means "the pipeline default" (CORTADO_MARGIN in
+    # src/anim/measure.py), which is where the number lives: the manifest
+    # must not import measure.py (measure.py imports this module).
+    cut_margin: int | None = None
 
     def clip(self, clip_id: str) -> Clip:
         try:
@@ -394,14 +425,30 @@ def load_set(name: str, root: Path | None = None) -> AnimSet:
             raise ManifestError(f"{name}: a clip has no id")
         if clip_id in clips:
             raise ManifestError(f"{name}: duplicate clip id {clip_id!r}")
+        loop = bool(entry.get("loop", True))
+        on_end = entry.get("on_end")
+        if on_end is None:
+            # Derived from `loop` so GOLIATH keeps its shipped behaviour:
+            # a looping clip loops, a one-shot holds on its last frame.
+            on_end = "loop" if loop else "hold"
+        distinct_raw = entry.get("distinct")
+        canvas_raw = entry.get("canvas")
         clips[clip_id] = Clip(
             id=clip_id,
             dir=str(entry.get("dir", clip_id)),
             frames=int(entry.get("frames", 0)),
             fps=float(entry.get("fps", 10)),
-            loop=bool(entry.get("loop", True)),
+            loop=loop,
             scale_tolerance=float(entry.get("scale_tolerance", 0.15)),
             side_tolerance=float(entry.get("side_tolerance", 14.0)),
+            distinct=None if distinct_raw is None else int(distinct_raw),
+            canvas=(
+                None
+                if canvas_raw is None
+                else _as_int_pair(canvas_raw, f"{clip_id}.canvas")
+            ),
+            mode=str(entry.get("mode", "sequence")),
+            on_end=str(on_end),
         )
     if not clips:
         raise ManifestError(f"{name}: the manifest declares no clips")
@@ -442,4 +489,5 @@ def load_set(name: str, root: Path | None = None) -> AnimSet:
         path=path,
         clips=clips,
         parts=parts,
+        cut_margin=_as_optional_int(meta.get("cut_margin"), "meta.cut_margin"),
     )
