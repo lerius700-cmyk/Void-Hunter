@@ -99,12 +99,43 @@ this release, verified with:
 F:\AI\MM\void-hunter\.venv\Scripts\python.exe tools\verify_clean_copy.py --tree F:\AI\MM\void-hunter-baseline --ref HEAD
 ```
 
+## 6b. The line endings of the generated anchors (found on 2026-11-03)
+
+The other agent measured the suite on a CLEAN checkout and got **2
+failures where the base had 1**. The second one was
+`test_the_fix_run_changes_no_file`.
+
+The cause was a rule of ours that the generator did not honour:
+`.gitattributes` declares `*.toml text eol=lf`, so a fresh checkout has
+the anchors in LF — but `Path.write_text` in TEXT mode translates every
+`\n` into `\r\n` on Windows. The generator wrote CRLF, so `--fix`
+changed the file on every run and left the working tree dirty.
+
+The release worktree hid it: its `anchors.toml` came from a checkout
+made BEFORE the attribute existed, so it was still CRLF — which is what
+the generator produced, so nothing changed and the test passed. The
+defect was real and only a clean checkout could show it.
+
+The fix is one keyword: `newline="\n"` in the write. Two tests pin it.
+
+**The lesson worth keeping:** a test that passes on one checkout and
+fails on another is not a flaky test, it is a defect that only one
+environment can see. The `.gitattributes` said LF, the generator said
+CRLF, and the repository believed both until somebody checked out the
+tree fresh.
+
 ## 7. What comes next
 
 The spec of BLOQUE 75 (`docs/superpowers/specs/2026-10-30-bloque-75-migration-spec.md`)
-is written and READY FOR EXECUTION: Phase 1 brings the eight enemy sets
-into the pipeline, Phase 2 turns the gameplay frame into a `LayerStack`.
-Both phases have a gate.
+was written by the second agent, then went through an independent review
+that **corrected four critical defects and reduced the scope of Phase 1**
+(it is now measured against the merged tree, not against an assumption).
+
+Beside it there is now a **Phase 1 implementation plan**:
+`docs/superpowers/plans/2026-11-03-bloque-75-phase1-enemy-pipeline.md`
+— 9 TDD tasks. Phase 1 brings the eight enemy sets into the pipeline;
+Phase 2 turns the gameplay frame into a `LayerStack`. Both phases have a
+gate.
 
 ## 8. What was deliberately not done
 
