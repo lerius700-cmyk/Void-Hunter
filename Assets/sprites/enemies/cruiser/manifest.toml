@@ -1,0 +1,76 @@
+# BLOQUE 75: SPEC of the CRUISER animation set. Hand-edited.
+#
+# Verified by: tools/sprite_pipeline/audit.py
+# Design: docs/superpowers/specs/2026-10-30-bloque-75-migration-spec.md
+#
+# The canvas is the SPRITE canvas, measured (32x32), NOT the hitbox
+# (ENEMY_CONFIGS says 12x8). The hitbox never enters the manifest.
+#
+# `distinct`: the clip is built from 3 source poses, cycled to fill 10
+#   slots at 12.5 FPS. The order is IRREGULAR on purpose -- do not
+#   "clean it up": de-duplicating the playback would change the animation.
+# `cut_margin = 0`: the enemy art is authored tight to its canvas (the
+#   wings span the full 32 px). GOLIATH's 2 px margin exists because the
+#   AI generator drew the boss's limbs past the canvas.
+# `pivot = "fixed"`: the sprite is blitted centred on the entity, exactly
+#   as the runtime does today. The measured registration is recorded, not
+#   applied -- applying it would move the ship up to 3.7 px off its hitbox.
+# `loop` + `on_end`: the one-shot clips carry BOTH. `loop = false` is what
+#   the shipped ClipPlayer actually branches on (src/anim/clip.py:54), so
+#   without it a damage/death clip would WRAP FOREVER. `on_end = "reset"`
+#   declares the ENTITY's behaviour: the enemy goes back to idle.
+
+[meta]
+name        = "CRUISER"
+version     = 1
+canvas      = [32, 32]
+anchor      = [16, 16]
+cut_margin  = 0
+
+[[clips]]
+id       = "idle"
+dir      = "idle"
+frames   = 10
+fps      = 12.5
+distinct = 3
+mode     = "sequence"
+on_end   = "loop"
+scale_tolerance = 0.10
+
+[[clips]]
+id       = "thrust"
+dir      = "thrust"
+frames   = 10
+fps      = 12.5
+distinct = 1
+mode     = "sequence"
+on_end   = "loop"
+scale_tolerance = 0.10
+
+[[clips]]
+id       = "damage"
+dir      = "damage"
+frames   = 10
+fps      = 12.5
+distinct = 3
+mode     = "sequence"
+loop     = false
+on_end   = "reset"
+scale_tolerance = 0.10
+
+[[clips]]
+id       = "death"
+dir      = "death"
+frames   = 10
+fps      = 12.5
+distinct = 4
+mode     = "sequence"
+loop     = false
+on_end   = "reset"
+scale_tolerance = 0.70
+
+[[parts]]
+id    = "body"
+draw  = "frames"
+pivot = "fixed"
+z     = 0

@@ -42,6 +42,7 @@ from src.anim.measure import (  # noqa: E402
     alpha_centroid,
     color_centroid,
     credible_ellipse,
+    effective_cut_margin,
     interpolate,
     is_cut_off,
     plate_ellipse,
@@ -151,7 +152,8 @@ def _clip_probe_columns(
     matches two of the beam's colours, so without the warm filter the
     probe latches onto the beam.
     """
-    rule = anim_set.part("shield_plate").detect
+    shield_part = anim_set.part_or_none("shield_plate")
+    rule = shield_part.detect if shield_part is not None else None
     if rule is None or rule.probe is None:
         return [None] * len(surfaces)
     out: list[float | None] = []
@@ -172,8 +174,11 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
     findings: list[Finding] = []
     measurements: list[FrameMeasurement] = []
 
-    shield_part = anim_set.part("shield_plate")
-    eye_part = anim_set.part("eye")
+    shield_part = anim_set.part_or_none("shield_plate")
+    eye_part = anim_set.part_or_none("eye")
+    rule = shield_part.detect if shield_part is not None else None
+
+    min_margin = effective_cut_margin(anim_set)
 
     for clip in anim_set.clips.values():
         surfaces = [
@@ -185,14 +190,44 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
         for i in range(clip.frames):
             path = _frame_path(anim_set, clip, i)
             digests.setdefault(_md5(path), []).append(i)
-        for digest, indices in digests.items():
-            if len(indices) > 1:
+        if clip.distinct is None:
+            # No declaration: ANY duplicate is a collapsed animation. This
+            # is the shipped GOLIATH rule, unchanged.
+            for digest, indices in digests.items():
+                if len(indices) > 1:
+                    findings.append(
+                        Finding(
+                            clip.id,
+                            indices[0],
+                            "COLAPSADO",
+                            f"frames {indices} share md5 {digest[:8]} -- the animation is a still",
+                        )
+                    )
+        else:
+            # The manifest DECLARES how many source images the clip is
+            # built from: the enemy art repeats poses on purpose. The
+            # finding is raised only when the art disagrees with the
+            # declaration -- in either direction.
+            measured = len(digests)
+            if measured != clip.distinct:
+                groups = sorted(digests.values(), key=len, reverse=True)
+                # The two failure modes are NOT interchangeable: more images
+                # than declared means the MANIFEST is stale; fewer means the
+                # ART collapsed further than declared. Say which one.
+                detail = (
+                    f"the manifest declares {clip.distinct} distinct images, "
+                    f"the clip measures {measured} (groups {groups})"
+                )
+                if measured > clip.distinct:
+                    detail += " -- the manifest is stale"
+                else:
+                    detail += " -- the art collapsed further than declared"
                 findings.append(
                     Finding(
                         clip.id,
-                        indices[0],
+                        groups[0][0] if groups else 0,
                         "COLAPSADO",
-                        f"frames {indices} share md5 {digest[:8]} -- the animation is a still",
+                        detail,
                     )
                 )
 
@@ -204,7 +239,6 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
         # the baseline table was measured with.
         probe_median = statistics.median(good_cols) if good_cols else 0.0
 
-        rule = shield_part.detect
         heights = [
             silhouette_height(surf, rule, drop_warm=True) for surf in surfaces
         ]
@@ -215,11 +249,11 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
             frame_no = i
 
             # --- CORTADO: silhouette touching the canvas edge -----------
-            # The threshold is CORTADO_MARGIN, the SAME constant the repair
+            # The threshold is the SET's margin, the SAME value the repair
             # targets, so a frame the auditor flags is a frame the repair
             # can reach (when a translation can give it the margin).
             margins = silhouette_margins(surf)
-            if margins is not None and is_cut_off(margins):
+            if margins is not None and is_cut_off(margins, min_margin):
                 left, top, right, bottom = margins
                 findings.append(
                     Finding(
@@ -250,26 +284,34 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
             if centre is None:
                 body_dx = body_dy = 0
             else:
-                body_dx = int(round(anim_set.anchor[0] - centre[0]))
-                body_dy = int(round(anim_set.anchor[1] - centre[1]))
+                # The correction is measured against the CLIP's own canvas.
+                # A clip that overrides the canvas (the mine's death art is
+                # 32x32 inside a 64x64 set) has its own centre: measuring
+                # it against the SET's anchor would record the canvas
+                # offset as a registration error.
+                anchor = (
+                    anim_set.anchor
+                    if clip.canvas is None
+                    else (clip.canvas[0] // 2, clip.canvas[1] // 2)
+                )
+                body_dx = int(round(anchor[0] - centre[0]))
+                body_dy = int(round(anchor[1] - centre[1]))
 
             # --- eye ------------------------------------------------------
             eye = None
-            eye_source = "measured"
-            if eye_part.detect is not None:
+            eye_source = "missing"
+            if eye_part is not None and eye_part.detect is not None:
                 found = color_centroid(surf, eye_part.detect)
                 if found is not None:
                     eye = (int(round(found[0])), int(round(found[1])))
-                else:
-                    # The boss is a wreck by the end of the death clip: the
-                    # last frame has no eye left to find. The part's
-                    # on_missing policy (interpolate) resolves it.
-                    eye_source = "missing"
+                    eye_source = "measured"
+                # else: the feature is absent from the art. The source
+                # stays "missing" -- UNRESOLVED, never "measured" at (0, 0).
 
             # --- shield plate ---------------------------------------------
             probe_col = probe_cols[i]
             shield = None
-            shield_source = "measured"
+            shield_source = "missing"
             if rule is not None:
                 ellipse = credible_ellipse(surf, rule)
                 if ellipse is None:
@@ -327,6 +369,7 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                         )
                 else:
                     shield = ellipse
+                    shield_source = "measured"
 
                 if probe_col is not None:
                     # --- LADO_EQUIVOCADO: turned-around character ----------

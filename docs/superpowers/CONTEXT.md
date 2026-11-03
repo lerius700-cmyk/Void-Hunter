@@ -14,6 +14,7 @@
 | `specs/2026-10-29-agent-context-handoff-design.md` | Spec | Diseño del handoff de contexto entre agentes: el repo como único canal (un worktree y una rama por agente, commits → handoff → `.synapse`) |
 | `specs/2026-10-30-bloque-75-migration-spec.md` | Spec | Spec de BLOQUE 75: migración del pipeline de sprites en 2 fases con gate — Fase 1 los 8 sets de enemigos al pipeline (manifest + anchors, 0 FAIL, PNG intocables), Fase 2 el frame de gameplay como `LayerStack` + `DrawContext` con verificación pixel a pixel |
 | `plans/2026-11-03-bloque-75-phase1-enemy-pipeline.md` | Plan | Plan de implementación de la **Fase 1** de BLOQUE 75 (9 tareas TDD: el auditor sobrevive a sets sin features, anchors en LF, los 3 campos nuevos del manifest, margen por set + `distinct`, los 8 manifests, los anchors medidos, descubrimiento de sets, las guardas del arte y el gate) |
+| `specs/2026-11-03-bloque-75-phase2-layers-design.md` | Spec | Diseño de la **Fase 2**: el motor de capas del frame (`src/render/`: `Layer`, `LayerStack`, `DrawContext`), los tres niveles de "capa", las 30 capas del gameplay, los dos checkpoints (2A stack / 2B pipeline), el arnés de golden frames y la escala 1.05 del enemigo |
 
 > **Convención:** los archivos tienen prefijo de fecha `YYYY-MM-DD-<feature>.md` para que sea fácil navegar cronológicamente.
 

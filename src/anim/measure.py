@@ -1,7 +1,13 @@
 """BLOQUE 74: pixel-level measurement primitives.
 
-Pure functions over a pygame Surface. No manifest, no filesystem, no
-caching. Used by the auditor (offline) and by the tests.
+Pure functions over a pygame Surface. No filesystem, no caching. Used by
+the auditor (offline) and by the tests.
+
+ONE exception to "no manifest": `effective_cut_margin` reads the margin a
+set declares (`meta.cut_margin`) from an `AnimSet`. It is still a pure
+lookup over an ALREADY-PARSED object: the manifest is read and parsed by
+`src.anim.manifest`, never here, and no import cycle exists because
+`manifest.py` imports the standard library only.
 
 Everything works on the ALPHA channel unless the rule says otherwise, so a
 transparent canvas never contributes to a measurement.
@@ -18,16 +24,20 @@ from __future__ import annotations
 
 import pygame
 
-from src.anim.manifest import DetectRule, WarmRule
+from src.anim.manifest import AnimSet, DetectRule, WarmRule
 
 ALPHA_MIN = 32
 
-# The margin (in pixels) the silhouette must keep from EVERY canvas edge.
-# Below it the frame is CORTADO (cut).
+# The DEFAULT margin (in pixels) the silhouette must keep from EVERY canvas
+# edge. Below it the frame is CORTADO (cut).
 #
-# ONE threshold, shared by the auditor and the repair: the auditor flags a
-# frame whose margin is below it and the repair targets exactly it. Two
-# thresholds would wedge the pipeline -- a frame the auditor flags but the
+# This is the DEFAULT, not the effective threshold: a set may declare its own
+# margin in `meta.cut_margin`, because the margin is a property of the ART
+# (the enemy sets are authored tight to their canvas). The EFFECTIVE margin
+# is `effective_cut_margin(anim_set)`, and BOTH the auditor and the repair
+# read it from there -- ONE threshold per set, shared by the two.
+#
+# Two thresholds would wedge the pipeline -- a frame the auditor flags but the
 # repair cannot reach stays flagged forever, and `run.py --fix` would keep
 # exiting 1 on a set that can never be repaired.
 CORTADO_MARGIN = 2
@@ -105,13 +115,31 @@ def silhouette_margins(
     return (left, top, w - right, h - bottom)
 
 
-def is_cut_off(margins: tuple[int, int, int, int]) -> bool:
-    """True when a silhouette comes closer than CORTADO_MARGIN to an edge.
+def is_cut_off(
+    margins: tuple[int, int, int, int], min_margin: int = CORTADO_MARGIN
+) -> bool:
+    """True when a silhouette comes closer than `min_margin` to an edge.
 
-    This is the CORTADO test of the auditor as a function, so the repair
-    and the finding can never disagree about what "cut off" means.
+    The threshold is a PARAMETER, not a constant: the enemy art is
+    authored tight to its canvas, and each set declares the margin it is
+    held to. The default is the one GOLIATH uses. The auditor and the
+    repair MUST pass the same value -- they both read it from
+    `effective_cut_margin` -- or a frame the auditor flags could be one
+    the repair cannot reach.
     """
-    return min(margins) < CORTADO_MARGIN
+    return min(margins) < min_margin
+
+
+def effective_cut_margin(anim_set: AnimSet) -> int:
+    """The margin this set's silhouettes must keep from the canvas edge.
+
+    A set that declares `meta.cut_margin` uses it; every other set uses
+    the pipeline default (CORTADO_MARGIN). ONE source for the auditor and
+    the repair: they can never disagree about what "cut off" means.
+    """
+    if anim_set.cut_margin is None:
+        return CORTADO_MARGIN
+    return anim_set.cut_margin
 
 
 def silhouette_height(

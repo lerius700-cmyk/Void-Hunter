@@ -21,7 +21,11 @@ from typing import TYPE_CHECKING
 import pygame
 
 from src.anim.manifest import AnimSet
-from src.anim.measure import CORTADO_MARGIN, silhouette_margins
+from src.anim.measure import (
+    CORTADO_MARGIN,
+    effective_cut_margin,
+    silhouette_margins,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard for type checkers
     from sprite_pipeline.audit import Finding
@@ -136,6 +140,7 @@ def repair_set(
     directory taken from the manifest (`clip.dir`).
     """
     actions: list[str] = []
+    min_margin = effective_cut_margin(anim_set)
     for finding in findings:
         if finding.state not in ("LADO_EQUIVOCADO", "CORTADO"):
             continue
@@ -154,6 +159,6 @@ def repair_set(
             if not apply:
                 actions.append(f"would re-pad {name}")
                 continue
-            if repad_frame(path):
+            if repad_frame(path, min_margin=min_margin):
                 actions.append(f"re-padded {name}")
     return actions

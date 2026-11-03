@@ -4,8 +4,8 @@
 **Revised:** 2026-11-02 — after an independent review (see §Revision log)
 **Status:** READY FOR EXECUTION
 **Author:** Lerius (idea) + Mavis (draft)
-**Branch:** the work lands on `bloquec-67-goliath-port` (the release line, per `CLAUDE.md`). Work in a NEW worktree and branch off it.
-**Base:** `bloquec-67-goliath-port` (the release line). The spec was first written against `e8be3a2`; see §Base drift. Never `master`.
+**Branch:** `bloquec-75-migration-spec` (worktree `F:\AI\MM\void-hunter\.worktrees\bloquec-75-migration-spec`)
+**Base:** `bloquec-75-sprite-migration` @ `773cf08` — **merged into this branch as `ef86a95`**. The spec was first written against `e8be3a2`; see §Base drift. Never `master`, never `bloquec-67-goliath-port`.
 
 ---
 
@@ -115,7 +115,7 @@ git -C <worktree> diff --stat e8be3a2..773cf08 -- src/entities/enemies src/ui/ga
 |---|---|---|
 | **The enemy art** (`Assets/sprites/enemies/**`) | **no — byte-identical** | every art measurement in this spec (canvas, md5 groups, margins, heights, registration) **still holds exactly** |
 | `src/entities/enemies/enemy.py`, `src/ui/gameplay_runtime.py` | **no** | the runtime facts (12.5 FPS, the loop/reset rule, the mine's state machine, the 16 draw calls) still hold |
-| `tools/sprite_pipeline/audit.py` | **no** | C1 (the `part()` crash), I9 (the false provenance) and F11 (the CRLF write) are **still present in the base** |
+| `tools/sprite_pipeline/audit.py` | **no** | C1 (the `part()` crash) and I9 (the false provenance) were still present in the base; **F11 (the CRLF write) has since been fixed by `f0a97f1`** |
 | `src/anim/manifest.py` | +11/−2 | the `loaded_set` cache is now keyed by the **resolved** root instead of `None`. This *helps* §I7: a second root (the enemies tree) gets its own cache entry, so no cache-key conflict. |
 | `tools/sprite_pipeline/verify_contract.py` | +23/−4 | the guard now catches an audit exception and **reports** it instead of dying. C1's crash therefore surfaces as a reported failure — but the crash itself is still in `audit_set`, so the Phase 1 fix is still needed. |
 | `tests/` | +847/−91 | the suite grew; the baseline numbers below are stale for the new base |
@@ -130,22 +130,28 @@ git -C <worktree> diff --stat e8be3a2..773cf08 -- src/entities/enemies src/ui/ga
    (`ef86a95`):
 
    ```
-   1 failed, 2939 passed, 6 skipped in 64.7s
+   2 failed, 2935 passed, 7 skipped in 71.63s
    FAILED tests/test_paths.py::test_paths_no_star_shapes
    FAILED tests/test_sprite_pipeline_run.py::test_the_fix_run_changes_no_file
    ```
 
-   The second failure is the **CRLF bug** (F11) and it is still there:
-   `audit.py` and `tests/test_sprite_pipeline_run.py` are byte-identical
-   between the two bases, `Path.write_text(..., encoding="utf-8")` writes
-   **CRLF** on Windows (verified in isolation: `write_text('a\nb\n')` →
-   `b'a\r\nb\r\n'` on Python 3.12.10), and the shipped `anchors.toml` blob
-   has **0 CR**. The base is at **2 fails, not 1** — and the Phase 1 CRLF fix
-   is required, exactly as this spec says.
-2. **This branch now contains the whole base.** The merge `ef86a95` brought
-   `773cf08` in with no conflicts (the base did not touch
-   `docs/superpowers/CONTEXT.md`). The implementation starts from the merged
-   tree, and the baseline to compare against is the one in §Baseline.
+   The second failure was the **CRLF bug** (F11): `audit.py` and
+   `tests/test_sprite_pipeline_run.py` were byte-identical between the two
+   bases, `Path.write_text(..., encoding="utf-8")` writes **CRLF** on Windows
+   (verified in isolation: `write_text('a\nb\n')` → `b'a\r\nb\r\n'` on Python
+   3.12.10), and the shipped `anchors.toml` blob has **0 CR**.
+
+   **Since then the release line fixed it**: `f0a97f1` passes
+   `newline="\n"` to `write_anchors` and pins it with two tests, and
+   `a70673c` merged that into this branch. F11 is satisfied — **Phase 1 must
+   not rewrite `write_anchors`**. The current baseline is
+   **1 failed, 2 941 passed, 6 skipped**, and the one failure is the
+   pre-existing Lissajous geometry assertion.
+2. **This branch now contains the whole base, and the release line's fixes.**
+   The merge `ef86a95` brought `773cf08` in with no conflicts; `a70673c`
+   brought the release line's LF fix (`f0a97f1`) in the same way. The
+   implementation starts from the merged tree, and the baseline to compare
+   against is the one in §Baseline.
 
 ### The enemy art
 
@@ -303,7 +309,7 @@ animation, not a defect, and it is why the death clips need a loose tolerance.
 | The red telegraph lives in `_draw_enemy` — the **procedural fallback**, used only when the sprite is missing | `gameplay_runtime.py:4910+` |
 | GOLIATH is the only set that already goes through the pipeline (`ClipPlayer`) | `src/ui/scenes.py:198-217`, `gameplay_runtime.py:6097` |
 | The scratch surfaces are 64×64 (player), 48×48 (enemy), 64×64 (sub-boss), and each procedural draw computes `offset = size//2 - entity_pos` | `gameplay_runtime.py:360,411,412,5351-5353` |
-| The runtime uses the **global** RNG in 30 screen-affecting places; only `_asteroid_rng = random.Random(0xA57E2012)` is seeded | `gameplay_runtime.py:352` + 31 `random.*` call sites |
+| The runtime uses the **global** RNG in 31 screen-affecting places; only `_asteroid_rng = random.Random(0xA57E2012)` is seeded | `gameplay_runtime.py:352` + 31 `random.*` call sites |
 | `_sets_root()` resolves **only** `Assets/sprites/bosses` (source and `_MEIPASS`) | `src/anim/manifest.py:34-44` |
 | `build.spec` bundles `Assets/sprites` wholesale → the new TOMLs **do** ship inside the `.exe` | `build.spec:44` |
 
@@ -335,18 +341,18 @@ directory holds two sub-directories with 3 frames each.
 | `src/anim/anchors.py` | 123 | `load_anchors` |
 | `src/anim/clip.py` | 108 | `ClipPlayer` |
 | **total `src/anim/`** | **1 217** | |
-| `tools/sprite_pipeline/audit.py` | 628 | measure + classify + `write_anchors` |
+| `tools/sprite_pipeline/audit.py` | 619 | measure + classify + `write_anchors` |
 | `tools/sprite_pipeline/verify_contract.py` | 223 | the contract guard |
 | `tools/sprite_pipeline/repair.py` | 159 | deterministic repairs (mirror / re-pad) |
 | `tools/sprite_pipeline/run.py` | 141 | validate → audit → repair → re-audit → anchors |
 | `tools/sprite_pipeline/__init__.py` | 31 | `ensure_display` |
-| **total `tools/sprite_pipeline/`** | **1 182** | |
+| **total `tools/sprite_pipeline/`** | **1 173** | |
 
 The LOC counts are **total lines** (blanks included), measured on the base
 `773cf08`:
 
 ```powershell
-(git show 773cf08:src/anim/manifest.py).Count
+git show 773cf08:src/anim/manifest.py | Measure-Object -Line
 ```
 
 > The first draft of this spec quoted **non-blank** line counts (1 016 /
@@ -373,10 +379,11 @@ python -m pytest tests\ --tb=no                            # 69.5 s
 
 | Result | Value |
 |---|---|
-| Suite (on `e8be3a2`, when this spec was written) | 1 failed, 2 898 passed, 6 skipped (2 906 total) |
-| **Suite (on the merged tree `ef86a95` = base `773cf08` + this spec)** — **the baseline to use** | **1 failed, 2 939 passed, 6 skipped** (2 944 total, 71.6 s) |
-| Failure 1 | `tests/test_paths.py::test_paths_no_star_shapes` — pre-existing, documented in `CLAUDE.md`, **out of scope** |
-| Failure 2 | `tests/test_sprite_pipeline_run.py::test_the_fix_run_changes_no_file` — **new, and in scope** |
+| Suite (on `e8be3a2`, when this spec was written) | 2 failed, 2 898 passed, 6 skipped (2 906 total) |
+| Suite (on the merged tree `ef86a95`) | 2 failed, 2 935 passed, 7 skipped (2 944 total, 71.6 s) |
+| **Suite (on `ddb135c`, the current head)** — **the baseline to use** | **1 failed, 2 941 passed, 6 skipped** |
+| The one failure | `tests/test_paths.py::test_paths_no_star_shapes` — pre-existing, documented in `CLAUDE.md`, **out of scope** |
+| The CRLF failure | **ALREADY FIXED UPSTREAM.** `f0a97f1` (merged into this branch by `a70673c`) passes `newline="\n"` to `write_anchors` and pins it with two tests (`test_the_generated_anchors_use_lf_line_endings`, `test_the_repository_declares_lf_for_the_toml`). F11 is satisfied — **do not rewrite `write_anchors`**. |
 | `verify_contract.py goliath` (merged tree) | `CONTRACT OK`, exit 0 |
 | `git status --short` after the suite | **clean** — the suite writes nothing into the tree (L7 holds on the base) |
 
@@ -393,7 +400,7 @@ python -m pytest tests\ --tb=no                            # 69.5 s
 
 | Other guard | Result |
 |---|---|
-| `python -m mypy src\anim\` | **passes**: `Success: no issues found in 6 source files` (mypy IS installed in `F:\AI\MM\void-hunter\.venv`) | The gate must install it (`python -m pip install -r requirements-dev.txt`); this spec does not install anything. |
+| `python -m mypy src\anim\` | **could not run**: `No module named mypy` — mypy is in `requirements-dev.txt` but is not installed in this environment. The gate must install it (`python -m pip install -r requirements-dev.txt`); this spec does not install anything. |
 | `GameState` count | 15 (`src/core/scene_manager.py`) |
 | `def _draw_*` methods in `gameplay_runtime.py` | **34** (42 `self._draw_*` **call sites** in the whole file) |
 | `self._draw_*` calls **inside the frame loop** (3969-4165) | **16** |
@@ -489,7 +496,7 @@ behaviour, so GOLIATH's manifest keeps working **unmodified** (N13).
   to know that `closed` holds 5 alternatives rather than a sequence: the
   `distinct` declaration already covers the state that would fire.
 * Enforcing them in the Phase 1 loader would **reject GOLIATH's own manifest**,
-  which declares 6 clips with `fps`/`loop` and no `mode`/`on_end` — the loader
+  which declares 7 clips with `fps`/`loop` and no `mode`/`on_end` — the loader
   would raise, `scenes.py::_load_manifest()` would return `None`, and the boss
   would silently lose its compositor (C4).
 * They are still **verified in Phase 1**, by a test rather than by the loader:
@@ -725,7 +732,7 @@ What is added is a **single, explicit discovery rule** in a new
 | Rule | Statement |
 |---|---|
 | D1 | A directory is a **set** iff it contains a `manifest.toml`. Nothing else is a set. |
-| D2 | A directory whose name starts with `_` is **never** a set. `_backup_pre_bloque_65` is excluded because it is NESTED inside `mine_asteroid/` and has no `manifest.toml`; the `_` prefix is a redundant second guard. |
+| D2 | A directory whose name starts with `_` is **never** a set (this is what excludes `_backup_pre_bloque_65`). |
 | D3 | A PNG that is not named `frame_*.png` is **not a frame** (this is what excludes `_new_reference_closed.png` / `_new_reference_open.png`). |
 | D4 | The two roots are `Assets/sprites/bosses` (GOLIATH) and `Assets/sprites/enemies` (the 8 sets). `sets.py` resolves a set name against **both**, in that order, and returns the first hit. `--root` overrides it. The signature is `resolve_set(name: str, root: Path \| None = None) -> Path`; `run.py` / `audit.py` / `verify_contract.py` call it instead of building `root / name` themselves. |
 | D5 | The 2 reference PNGs are **generator inputs** and stay where they are. They are not read by the game and not by the pipeline. |
@@ -1102,7 +1109,7 @@ the `SceneManager` and all 15 scenes — which is why this spec only recommends.
 
 1. **Capture harness** — `tools/capture/layerstack_frames.py` renders the
    gameplay scene **deterministically**. The runtime uses the **global** RNG in
-   30 screen-affecting places (`random.uniform`, `random.random`,
+   31 screen-affecting places (`random.uniform`, `random.random`,
    `random.shuffle`) and seeds only `_asteroid_rng`, so the harness must:
    * call `random.seed(N)` with a fixed N **before** the scene is built,
    * **rebuild the scene** for every capture (a reused scene keeps its own
@@ -1149,11 +1156,82 @@ One probe, two roots — the same rule the audio and the tiling image already us
 | B2 | The draw order is **identical**, proven by frame comparison | the golden-frame test: **0 differing pixels** over the 5 captured frames + the structural order guard |
 | B3 | The HUD and the background have a defined place | the HUD is `z = 23` (in the stack); the background is documented as the stack's backdrop, drawn before it |
 | B4 | `mypy src\anim\` stays at 0 errors and the error delta in `src/ui/` / `src/entities/` does not grow | `python -m mypy src\anim\ src\render\` → 0 errors. The delta: `python -m mypy src\ui\ src\entities\ 2>&1 \| Select-String 'error:' \| Measure-Object` — record N before the change, N' after, require **N' ≤ N**. (`src\render\` must not import `src\ui\`: L6.) |
-| B5 | The suite does not get worse | the baseline on the merged tree is **1 failed, 2 939 passed, 6 skipped**. The Windows newline failure was already fixed by `f0a97f1`, so the baseline is already at one failure: the rule is that the count must NOT grow, and `test_paths_no_star_shapes` must remain the only failure. The count is a **delta against that baseline**, not an absolute number. |
+| B5 | The suite does not get worse | the baseline on the merged tree is **2 failed, 2 935 passed, 7 skipped**. The failure count must **drop by one** (the Windows newline failure is fixed in Phase 1) and must not grow afterwards; `test_paths_no_star_shapes` remains, documented as pre-existing. The count is a **delta against that baseline**, not an absolute number. |
 | B6 | The enemies keep their exact animation timing | the enemy layer reads `fps` and `on_end` from the manifest; a test asserts 12.5 FPS, `loop` for `idle`/`thrust`, `reset` for `damage`/`death` |
 | B7 | The enemies keep their exact pixels | the golden-frame test covers a frame with enemies; the enemy sprite path is `pivot = "fixed"` at the canvas centre, i.e. the same centred blit as today |
 
 ---
+
+## Fase 2: la arquitectura del motor por capas (decidida)
+
+**Decidido el 2026-11-02 por brainstorming** (el usuario, con el análisis y la
+recomendación de Mavis). Esta sección **resuelve** las preguntas abiertas del
+final del spec y es la fuente de verdad de la Fase 2.
+
+### El reencuadre: ya hay dos "capas" en el proyecto
+
+| Concepto | Dónde | Qué ordena | Cardinalidad |
+|---|---|---|---|
+| **`Part.z`** | BLOQUE 74, `src/anim/parts.py` | las partes **dentro** de un set animado (`body` 0, `shield_plate` 1, `eye` 2, `fx_eye_beam` 3) | muchas por set |
+| **El stack de escenas** | `src/core/scene_manager.py` | qué pantalla está activa (15 `GameState` **mutuamente excluyentes**) + overlays apilados (`PAUSE`) | una activa + overlays |
+| **Capa de frame** (nuevo) | `src/render/layer.py` | las **operaciones de dibujo del frame** (las 30 del gameplay) | 30 por escena |
+
+El `ClipPlayer` **ya es un compositor** — pero de las *partes de un set* (nivel
+entidad). La capa de frame es un compositor de **frame** (nivel escena). Son
+dos niveles distintos y ambos hacen falta; lo que hay que evitar es que "layer"
+signifique tres cosas. Por eso el tercer nivel se llama **capa de frame** y
+vive en su propio paquete, y las dos acepciones anteriores no se tocan.
+
+### Las tres decisiones
+
+| # | Decisión | Por qué |
+|---|---|---|
+| **A1** | El motor vive en **`src/render/layer.py`**: `Layer`, `LayerStack`, `DrawContext`. Genérico, **sin imports de `src/ui/`** ni de `src/entities/` | L6: `src/anim/` ya tiene prohibido importar `src/ui/` porque el gate de mypy corre sobre `src/anim/`; el motor nuevo hereda esa frontera por construcción. Y saca el concepto fuera del monolito de 6 501 líneas. |
+| **A2** | El **`SceneManager` no se toca** | Sus 15 estados son excluyentes y responden a "qué pantalla hay"; la capa de frame responde a "en qué orden se pinta". Unificar las dos ideas convierte 15 pantallas en 15 × N capas simultáneas: un modelo combinatorio sin capacidad nueva, y sin proof pixel-a-pixel para 14 escenas. El `SceneManager` sigue siendo el dueño de *qué estado*; la capa de frame es la dueña de *el orden*. |
+| **A3** | La Fase 2 va en **dos checkpoints**, cada uno con su propio golden | 2A = el stack con los **mismos** cuerpos de dibujo (cero cambio de comportamiento). 2B = los enemigos y el boss por el pipeline. Si el golden falla, se sabe cuál de los dos cambios rompió el frame. |
+
+### Lo que la Fase 2 cambia, en una frase
+
+El frame loop del gameplay (≈200 líneas de llamadas con `(target, shx, shy)`
+pasados a mano) pasa a ser **30 capas ordenadas por `z` + un `DrawContext`**,
+donde **el cuerpo de cada capa es el código de dibujo que existe hoy**. La
+Fase 2 es un refactor de **orquestación**, no de dibujo.
+
+### Decisiones de diseño que salen de este análisis
+
+| # | Decisión | Razón |
+|---|---|---|
+| **B1** | `Layer` **no** lleva el flag `visible` | El `Layer` es un dataclass **frozen**: un flag que no puede cambiar es inútil, y los draws condicionales (el boss sólo existe en el modo boss, el banner sólo cuando hay banner) los decide el **cuerpo** de la capa. `visible` fuera: menos superficie, menos trampa. |
+| **B2** | `ctx.origin` es **el centro del playfield**; para el scratch se usa `ctx.with_origin(x, y)` | Un solo campo congelado no puede ser a la vez "el centro del playfield" y "la posición de la entidad" — y hay **tres** superficies scratch (64×64 del jugador, 48×48 del enemigo, 64×64 del sub-boss). `with_origin` reemplaza el `offset_x/offset_y` que hoy se calcula a mano por entidad. |
+| **B3** | Los **golden frames se commitean** al repo | Sin ellos, B2 no es reproducible en otra máquina ni por otro agente. Es la misma disciplina que los `anchors.toml`: la medición, versionada. |
+| **B4** | `scale` del `DrawContext` queda en **1.0** y el tamaño en **320×480** | El escalado a ventana sigue siendo de `Game._present()`. La capa de frame nunca toca la resolución (F6). |
+| **B5** | El fondo (parallax + galaxy) queda **fuera** del stack | Es lo único que debe quedar detrás de todo y tiene su propio ciclo de update. Su lugar queda documentado: "el fondo del stack". |
+| **B6** | El HUD **entra** al stack, en `z = 23` | Se dibuja *dentro* de la secuencia del playfield, y después de él vienen los flashes de pantalla completa. Sacarlo del stack cambiaría el frame. Su cuerpo no cambia: la capa llama a `self._hud.draw(...)`. |
+| **B7** | Los **14 estados restantes** no se tocan | No tienen playfield. `src/render/` queda genérico para que, si alguno lo necesita, lo adopte después sin reescribir el motor. |
+| **B8** | El pipeline (`ClipPlayer`) se conecta a los **enemigos y al boss** en el checkpoint 2B | El jugador tiene rotación y escala 0.55 propias, y su arte no es un set del pipeline: sigue fuera (N9). |
+
+### Lo que la Fase 2 NO es
+
+- **No** es una generalización del `SceneManager` (A2).
+- **No** reescribe el arte ni el runtime de los 14 estados (B7).
+- **No** mueve los cuerpos de dibujo a archivos nuevos: las capas los **llaman**.
+  El monolithic split de `gameplay_runtime.py` (6 501 líneas) es otro BLOQUE.
+- **No** es un juego deorpheus: el `SceneManager` sigue siendo el que decide
+  qué pantalla hay.
+
+## Open questions (resolved)
+
+Estas preguntas las decidió el owner el 2026-11-02 (ver §Fase 2). Se dejan
+acá con la respuesta y el motivo, para que un agente futuro no las vuelva a
+abrir.
+
+| # | Pregunta | Respuesta | Motivo |
+|---|---|---|---|
+| Q1 | ¿La `LayerStack` es un concepto dentro de una escena, o una generalización del `SceneManager`? | **Dentro de una escena.** El `SceneManager` es dueño de *qué pantalla*; la capa de frame es dueña de *en qué orden*. | A2 |
+| Q2 | ¿Los 8 sets de enemigos entran todos en la Fase 1, o uno primero? | **Los 8.** Son estructuralmente idénticos (la mina es el único caso especial) y el gate ya los audita a todos. Si se quiere una porción más chica, `scout` sola es una Fase 1a válida. | — |
+| Q3 | ¿El arte `death` de la mina va a jugarse alguna vez? | **No en este BLOQUE.** Se declara `archive`: el pipeline lo mide y el manifest lo documenta, pero el runtime sigue sin dibujarlo. | N13 + la tabla de "What is NOT done" |
+| Q4 | ¿Los golden frames se commitean o se generan on demand? | **Commiteados.** Sin ellos, B2 no es reproducible en otra máquina. | B3 |
+| Q5 | ¿El motor es general (como anticipaba el spec de BLOQUE 74) o una feature del gameplay? | **Motor general en `src/render/`, capas del juego en `src/ui/`.** Un solo consumidor hoy, pero la frontera vale el costo: 150 líneas y ninguna dependencia de `src/ui/`. | A1 |
 
 ## Risks and mitigations
 
@@ -1197,7 +1275,7 @@ python tools\sprite_pipeline\verify_contract.py goliath
 #   -> exit 0
 
 python -m pytest tests\ --tb=no
-#   -> 1 failed, 2939 passed, 6 skipped
+#   -> 2 failed, 2935 passed, 7 skipped
 #   -> the two failures are test_paths_no_star_shapes (pre-existing) and
 #      test_the_fix_run_changes_no_file (the Windows newline bug, fixed in Phase 1)
 
@@ -1246,7 +1324,7 @@ python -m pytest tests\test_layer_stack_renders_identical_frames.py tests\test_l
 | The suite baseline | `python -m pytest tests\ --tb=no` |
 | The pipeline's health | `python tools\sprite_pipeline\verify_contract.py goliath` |
 | The art is untouched | `git diff --stat Assets\sprites\enemies\` → empty |
-| The manifest hash is over normalized text | `tools/sprite_pipeline/audit.py:504` (`read_text()`, universal newlines); R6 |
+| The manifest hash is over normalized text | `src/anim/manifest.py` (`_normalized_text`); R6 |
 | The frozen lookup path | `src/anim/manifest.py::_sets_root`; `build.spec:44` |
 
 ---
@@ -1316,16 +1394,8 @@ python -m pytest tests\test_layer_stack_renders_identical_frames.py tests\test_l
 
 ## Open questions (for the user, not for the implementer)
 
-These are the decisions the spec deliberately leaves to the owner. Everything
-else in this document is decided.
-
-| # | Question | The spec's recommendation |
-|---|---|---|
-| Q1 | Is the `LayerStack` a concept inside a scene, or a generalization of the `SceneManager`? | **Inside a scene.** The `SceneManager` owns *which screen*; the stack owns *in what order*. |
-| Q2 | Do all 8 enemy sets ship in Phase 1, or one set first (then the gate, then the other 7)? | **All 8**, because they are structurally identical (the mine is the only special case) and the gate already audits all of them. If the implementer wants a smaller first slice, `scout` alone is a valid Phase 1a. |
-| Q3 | Is the mine's `death` art ever going to be played? | **Not in this BLOQUE.** It is declared `archive`; making it visible is an art decision, not a pipeline one. |
-| Q4 | Should the golden frames be committed to the repo, or generated on demand? | **Committed.** Without them, B2 is not reproducible on another machine. |
-| Q5 | Should the `LayerStack` be a general engine (as the BLOQUE 74 spec anticipated) or a gameplay-scene feature? | **Gameplay-scene feature first.** `src/render/` stays generic; the game-specific layers live in `src/ui/`. |
+*Resolved on 2026-11-02 — see §Fase 2: la arquitectura del motor por capas
+(decidida) and §Open questions (resolved) below.*
 
 ---
 

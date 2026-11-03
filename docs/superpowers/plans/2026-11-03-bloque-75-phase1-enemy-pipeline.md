@@ -6,7 +6,7 @@
 
 **Architecture:** The manifest is the *declaration* (hand-edited) and `anchors.toml` is the *measurement* (generated). Phase 1 adds three optional manifest fields — `meta.cut_margin`, `clip.distinct`, `clip.canvas` — plus two that are parsed but not enforced yet (`clip.mode`, `clip.on_end`), and makes the auditor survive a set with no detected features. The runtime is **not** touched in this phase.
 
-**Tech Stack:** Python 3.11, pygame 2.6 (headless), `tomllib` (stdlib), pytest. Stdlib + pygame only — no numpy, no new dependency.
+**Tech Stack:** Python 3.12, pygame 2.6 (headless), `tomllib` (stdlib), pytest. Stdlib + pygame only — no numpy, no new dependency.
 
 **Spec:** `docs/superpowers/specs/2026-10-30-bloque-75-migration-spec.md`
 
@@ -26,9 +26,9 @@ These apply to **every** task. Copy them verbatim into the task brief when dispa
 | L5 | Narrow `except`: never a bare `except:` | catch `(OSError, ValueError)` |
 | L7 | **The tests never write into the repository.** A test that runs the pipeline does it on a `tmp_path` copy. | `git status --short` must be empty after the suite |
 | C1 | The auditor must survive a set with **no** `shield_plate` and **no** `eye` part | `tests/test_audit_runs_on_a_featureless_set.py` |
-| — | **Baseline:** `python -m pytest tests\ --tb=no` → **1 failed, 2 939 passed, 6 skipped**. The two failures are `test_paths_no_star_shapes` (pre-existing, out of scope) and `test_the_fix_run_changes_no_file` (the CRLF bug — **already fixed by `f0a97f1`**). After this phase: **1 failed**, the pre-existing one. | measured on the merged tree `ef86a95` |
+| — | **Baseline:** `python -m pytest tests\ --tb=no` → **1 failed, 2 941 passed, 6 skipped**. The one failure is `test_paths_no_star_shapes` (pre-existing, documented in `CLAUDE.md`, out of scope). The CRLF failure is **already fixed upstream**: `f0a97f1` (merged in by `a70673c`) passes `newline="\n"` to `write_anchors` and pins it with two tests. | measured on `ddb135c` |
 | — | Commit prefixes: `feat: BLOQUE 75`, `fix: BLOQUE 75`, `chore: BLOQUE 75`, `docs: BLOQUE 75`, `test: BLOQUE 75` | one commit per task |
-| — | **Base = `bloquec-67-goliath-port`** (the release line, per `CLAUDE.md`). Create a NEW worktree and branch off it (e.g. `bloquec-75-phase1`). Never work in `master` and never in another agent's worktree. | `git worktree list` before starting |
+| — | **Work ONLY in `F:\AI\MM\void-hunter\.worktrees\bloquec-75-migration-spec`.** The root repo and the other worktrees belong to other agents. | `git worktree list` before starting |
 
 ---
 
@@ -230,15 +230,14 @@ In `tools/sprite_pipeline/audit.py`:
    ```python
        shield_part = anim_set.part_or_none("shield_plate")
        eye_part = anim_set.part_or_none("eye")
+       rule = shield_part.detect if shield_part is not None else None
    ```
 
-3. Line 207 — **replace** the line `rule = shield_part.detect` with
-   `rule = shield_part.detect if shield_part is not None else None`.
-   It must NOT be deleted: this is the only binding of `rule` in
-   `audit_set`, and `rule` is read at lines 209, 273, 274, 279, 291
-   and 325 — including the `if rule is not None:` that the next step
-   keeps. Deleting it turns `audit_set` into a `NameError` on the
-   first clip, for the enemy sets AND for GOLIATH.
+   (`rule` MUST be bound here: the silhouette measurement below reads it. The
+   old `rule = shield_part.detect` line is deleted in step 3.)
+
+3. Line 207 — delete the line `rule = shield_part.detect` (the rule is now
+   resolved once, above, and it may be `None`).
 
 4. The eye block (lines 256-267) — replace
 
@@ -322,37 +321,53 @@ git commit -m "fix: BLOQUE 75 - el auditor sobrevive a un set sin features detec
 
 ---
 
-## Task 2: `write_anchors` writes LF (already fixed — this task VERIFIES it)
+## Task 2: The LF fix (already shipped upstream — verify, do not rewrite)
 
-`audit.py:542` does `path.write_text(rendered, encoding="utf-8")`. Without an
-explicit `newline`, Python translates `\n` to `os.linesep` → **CRLF on
-Windows**, while the committed `anchors.toml` is LF (`.gitattributes`:
-`*.toml text eol=lf`). Every `--fix` therefore rewrites the file with
-different bytes; the freshness check (a text comparison) passes while the
-byte comparison fails. This is the pre-existing
-`tests/test_sprite_pipeline_run.py::test_the_fix_run_changes_no_file` failure.
+**This task was already implemented on the release line** and merged into this
+branch by `a70673c`:
+
+* `f0a97f1 fix: BLOQUE 75 - el generador de anchors escribe LF, como declara el repositorio`
+  — `write_anchors` now passes `newline="\n"` to `path.write_text`, and TWO
+  tests pin it (`test_the_generated_anchors_use_lf_line_endings` and
+  `test_the_repository_declares_lf_for_the_toml`).
+
+**Do NOT rewrite `write_anchors`.** The upstream version carries a longer
+comment that explains the same thing. This task is a VERIFICATION, and the
+only thing it may add is a missing test.
 
 **Files:**
-- Modify: `tools/sprite_pipeline/audit.py:539-542`
-- Modify: `tests/test_sprite_pipeline_run.py` (add one test)
+- Modify: `tests/test_sprite_pipeline_run.py` — only if a test is missing
+- Test: `tests/test_sprite_pipeline_run.py`
 
 **Interfaces:**
 - Consumes: `write_anchors(anim_set, measurements, path)`
-- Produces: the same signature; the file it writes is LF-terminated
+- Produces: nothing new; the guarantee already exists
 
-- [ ] **Step 1: Run the existing failing test**
+- [ ] **Step 1: Run the LF tests**
 
-Run: `python -m pytest tests/test_sprite_pipeline_run.py::test_the_fix_run_changes_no_file -v`
+Run: `python -m pytest tests/test_sprite_pipeline_run.py -v`
 
-Expected: **FAIL** — `assert '21162629092b...debf174c754ce' == 'ef9b36fd7195...e5743c1f12e27'`
-(the anchors' md5 changed after a `--fix` that should have been a no-op)
+Expected: **all passed**, including `test_the_fix_run_changes_no_file`,
+`test_the_generated_anchors_use_lf_line_endings` and
+`test_the_repository_declares_lf_for_the_toml`.
 
-- [ ] **Step 2: Write the byte-level test**
+- [ ] **Step 2: Confirm the writer really is LF-only**
 
-Append to `tests/test_sprite_pipeline_run.py`:
+Run:
+
+```powershell
+Select-String -Path tools\sprite_pipeline\audit.py -Pattern 'newline=' -Context 0,1
+```
+
+Expected: `write_anchors` passes `newline="\n"`.
+
+- [ ] **Step 3: Confirm the byte-level guarantee is tested**
+
+If `tests/test_sprite_pipeline_run.py` does NOT contain
+`test_the_generated_anchors_use_lf_line_endings`, add it:
 
 ```python
-def test_the_written_anchors_are_lf(tmp_path: Path):
+def test_the_generated_anchors_use_lf_line_endings(goliath_copy: Path):
     """The committed anchors.toml is LF; a CRLF write changes its bytes.
 
     The text comparison of the freshness test passes either way (universal
@@ -363,65 +378,24 @@ def test_the_written_anchors_are_lf(tmp_path: Path):
 
     anim_set = load_set("goliath")
     _, measurements = audit_set(anim_set)
-    out = tmp_path / "anchors.toml"
+    out = goliath_copy / "anchors_lf_probe.toml"
     write_anchors(anim_set, measurements, out)
     raw = out.read_bytes()
     assert b"\r\n" not in raw
     assert raw.endswith(b"\n")
 ```
 
-- [ ] **Step 3: Run it to verify it fails**
-
-Run: `python -m pytest tests/test_sprite_pipeline_run.py::test_the_written_anchors_are_lf -v`
-
-Expected: **FAIL** — `assert b'\r\n' not in raw`
-
-- [ ] **Step 4: Fix the writer**
-
-In `tools/sprite_pipeline/audit.py`, replace `write_anchors` with:
-
-```python
-def write_anchors(
-    anim_set: AnimSet, measurements: list[FrameMeasurement], path: Path
-) -> None:
-    """Bake the measurements into `path`.
-
-    The newline is EXPLICIT: without it, `write_text` translates "\\n" to
-    `os.linesep`, which on Windows writes CRLF. The committed anchors.toml
-    is LF (.gitattributes: `*.toml text eol=lf`), so a CRLF write changes
-    the file's bytes on every `--fix`: the freshness check still passes
-    (it compares text, and universal newlines hide the difference) while
-    the byte comparison fails.
-    """
-    path.write_text(
-        render_anchors_toml(anim_set, measurements),
-        encoding="utf-8",
-        newline="\n",
-    )
-```
-
-- [ ] **Step 5: Run the whole file to verify it passes**
-
-Run: `python -m pytest tests/test_sprite_pipeline_run.py -v`
-
-Expected: **all passed** — including `test_the_fix_run_changes_no_file`, which
-was the pre-existing failure.
-
-- [ ] **Step 6: Prove the shipped file did not move**
-
-Run: `git diff --stat Assets/sprites/bosses/`
-
-Expected: empty.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 4: Commit (only if a test was added)**
 
 ```powershell
-git add tools/sprite_pipeline/audit.py tests/test_sprite_pipeline_run.py
-git commit -m "fix: BLOQUE 75 - los anchors se escriben en LF: el --fix de Windows ya no cambia los bytes"
+git add tests/test_sprite_pipeline_run.py
+git commit -m "test: BLOQUE 75 - los anchors se escriben en LF (byte a byte)"
 ```
 
----
+If the test already existed, **do not commit anything** for this task: write
+`Task 2: already satisfied upstream (f0a97f1)` in the ledger and move on.
 
+---
 ## Task 3: The manifest grows the Phase 1 fields
 
 Three fields are **used** in Phase 1 (`meta.cut_margin`, `clip.distinct`,
@@ -553,6 +527,69 @@ def test_a_malformed_cut_margin_raises_manifest_error(tmp_path):
     )
     with pytest.raises(ManifestError):
         load_set("probe", root=tmp_path)
+
+
+def test_a_bool_is_not_an_integer(tmp_path):
+    """`True` would become 1, and for `distinct` that inverts the intent."""
+    _write(
+        tmp_path,
+        '[meta]\n'
+        'name = "PROBE"\n'
+        'canvas = [32, 32]\n'
+        'cut_margin = true\n'
+        '\n'
+        '[[clips]]\n'
+        'id = "idle"\n'
+        'frames = 2\n'
+        '\n'
+        '[[parts]]\n'
+        'id = "body"\n'
+        'draw = "frames"\n',
+    )
+    with pytest.raises(ManifestError):
+        load_set("probe", root=tmp_path)
+
+
+def test_a_negative_margin_is_rejected(tmp_path):
+    """A negative margin would make the cut-off test never fire."""
+    _write(
+        tmp_path,
+        '[meta]\n'
+        'name = "PROBE"\n'
+        'canvas = [32, 32]\n'
+        'cut_margin = -3\n'
+        '\n'
+        '[[clips]]\n'
+        'id = "idle"\n'
+        'frames = 2\n'
+        '\n'
+        '[[parts]]\n'
+        'id = "body"\n'
+        'draw = "frames"\n',
+    )
+    with pytest.raises(ManifestError):
+        load_set("probe", root=tmp_path)
+
+
+def test_a_malformed_distinct_raises_manifest_error(tmp_path):
+    """The loader fails LOUDLY, with the manifest's own error type."""
+    _write(
+        tmp_path,
+        '[meta]\n'
+        'name = "PROBE"\n'
+        'canvas = [32, 32]\n'
+        '\n'
+        '[[clips]]\n'
+        'id = "idle"\n'
+        'frames = 2\n'
+        'distinct = "nope"\n'
+        '\n'
+        '[[parts]]\n'
+        'id = "body"\n'
+        'draw = "frames"\n',
+    )
+    with pytest.raises(ManifestError):
+        load_set("probe", root=tmp_path)
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -580,6 +617,7 @@ In `src/anim/manifest.py`, append to `class Clip` (after `side_tolerance`):
     distinct: int | None = None
     canvas: tuple[int, int] | None = None
     mode: str = "sequence"
+    # The LOADER derives this from `loop`; the default is for direct builds.
     on_end: str = "loop"
 ```
 
@@ -614,7 +652,7 @@ In `src/anim/manifest.py`, replace the `clips[clip_id] = Clip(...)` block with:
             loop=loop,
             scale_tolerance=float(entry.get("scale_tolerance", 0.15)),
             side_tolerance=float(entry.get("side_tolerance", 14.0)),
-            distinct=None if distinct_raw is None else int(distinct_raw),
+            distinct=_as_optional_int(distinct_raw, f"{clip_id}.distinct"),
             canvas=(
                 None
                 if canvas_raw is None
@@ -647,11 +685,20 @@ and add this helper next to `_as_int_pair`:
 
 ```python
 def _as_optional_int(value: Any, name: str) -> int | None:
-    """Read an optional integer, rejecting anything that is not one."""
+    """Read an optional integer, rejecting anything that is not one.
+
+    A bool is NOT an integer here: `True` would become 1, and for
+    `distinct` that silently inverts the author's intent (the clip
+    declares how many source images it cycles).
+    A negative value is rejected too: a negative margin makes the
+    cut-off test never fire.
+    """
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int):
         raise ManifestError(f"{name} must be an integer, got {value!r}")
+    if value < 0:
+        raise ManifestError(f"{name} must not be negative, got {value!r}")
     return value
 ```
 
@@ -659,7 +706,7 @@ def _as_optional_int(value: Any, name: str) -> int | None:
 
 Run: `python -m pytest tests/test_anim_manifest_new_fields.py -v`
 
-Expected: **4 passed**
+Expected: **7 passed** (4 parsing + 3 rejection cases)
 
 - [ ] **Step 6: Run the whole manifest + pipeline test set**
 
@@ -959,9 +1006,10 @@ def _write_set(tmp_path: Path, distinct: int | None, frames: int) -> None:
 
     set_dir = tmp_path / "probe"
     (set_dir / "idle").mkdir(parents=True, exist_ok=True)
+    colors = ((255, 255, 255, 255), (255, 0, 0, 255), (0, 0, 255, 255))
     for i in range(frames):
         surf = pygame.Surface((8, 8), pygame.SRCALPHA, 32)
-        surf.fill((255, 255, 255, 255) if i % 3 == 0 else (255, 0, 0, 255))
+        surf.fill(colors[i % 3])
         pygame.image.save(surf, str(set_dir / "idle" / f"frame_{i:02d}.png"))
     declared = "" if distinct is None else f"distinct = {distinct}\n"
     (set_dir / "manifest.toml").write_text(
@@ -1044,13 +1092,23 @@ with:
             measured = len(digests)
             if measured != clip.distinct:
                 groups = sorted(digests.values(), key=len, reverse=True)
+                # The two failure modes are NOT interchangeable: more images
+                # than declared means the MANIFEST is stale; fewer means the
+                # ART collapsed further than declared. Say which one.
+                detail = (
+                    f"the manifest declares {clip.distinct} distinct images, "
+                    f"the clip measures {measured} (groups {groups})"
+                )
+                if measured > clip.distinct:
+                    detail += " -- the manifest is stale"
+                else:
+                    detail += " -- the art collapsed further than declared"
                 findings.append(
                     Finding(
                         clip.id,
-                        groups[0][0],
+                        groups[0][0] if groups else 0,
                         "COLAPSADO",
-                        f"the manifest declares {clip.distinct} distinct images, "
-                        f"the clip measures {measured} (groups {groups})",
+                        detail,
                     )
                 )
 ```
@@ -1210,6 +1268,10 @@ The seven ships share one shape. `Assets/sprites/enemies/scout/manifest.toml`
 # `pivot = "fixed"`: the sprite is blitted centred on the entity, exactly
 #   as the runtime does today. The measured registration is recorded, not
 #   applied -- applying it would move the ship up to 3.7 px off its hitbox.
+# `loop` + `on_end`: the one-shot clips carry BOTH. `loop = false` is what
+#   the shipped ClipPlayer actually branches on (src/anim/clip.py:54), so
+#   without it a damage/death clip would WRAP FOREVER. `on_end = "reset"`
+#   declares the ENTITY's behaviour: the enemy goes back to idle.
 
 [meta]
 name        = "SCOUT"
@@ -1245,6 +1307,7 @@ frames   = 10
 fps      = 12.5
 distinct = 3
 mode     = "sequence"
+loop     = false
 on_end   = "reset"
 scale_tolerance = 0.10
 
@@ -1255,6 +1318,7 @@ frames   = 10
 fps      = 12.5
 distinct = 4
 mode     = "sequence"
+loop     = false
 on_end   = "reset"
 scale_tolerance = 0.45
 
@@ -1314,6 +1378,8 @@ distinct = 1
 mode     = "state"
 scale_tolerance = 0.10
 
+# open3 is the TERMINAL state and reuses the `open/` directory: the
+# shipped runtime loads the open3 art from THERE (enemy.py:469-473).
 [[clips]]
 id       = "open3"
 dir      = "open"
@@ -1343,7 +1409,7 @@ z     = 0
 
 Run: `python -m pytest tests/test_enemy_manifest_matches_assets.py -v`
 
-Expected: **5 passed**
+Expected: **6 passed**
 
 - [ ] **Step 5: Commit**
 
@@ -1453,7 +1519,7 @@ foreach ($set in @('scout','cruiser','drone','heavy','kamikaze','sniper','turret
 }
 ```
 
-Expected: each run prints `wrote ...\anchors.toml` and **exits 0** — with
+Expected: each run prints `wrote ...\anchors.toml`. **The exit code is 1** on
 the first run (the art really has the findings the manifest declares) — that is
 expected and does not stop the loop.
 
@@ -1558,8 +1624,14 @@ def test_resolve_set_finds_goliath():
     assert resolve_set("goliath").parent.name == "bosses"
 
 
-def test_an_unknown_set_raises_file_not_found():
-    with pytest.raises(FileNotFoundError):
+def test_an_unknown_set_raises_a_value_error_the_clis_catch():
+    """The CLIs catch `ValueError`; `FileNotFoundError` would escape them.
+
+    `run.py` and `audit.py` only catch `ValueError`, and `FileNotFoundError`
+    is an `OSError`, so the resolver must raise a `ValueError` subclass or
+    the CLI dies with a traceback instead of printing `error: ...`.
+    """
+    with pytest.raises(ValueError):
         resolve_set("no_existe")
 
 
@@ -1573,6 +1645,79 @@ def test_discovery_does_not_crash_on_a_malformed_manifest(tmp_path):
     found = {p.name for p in discover_sets(tmp_path)}
     assert "no_manifest" not in found
     assert "broken" in found  # discovery does not parse; the loader degrades
+
+
+def test_a_underscore_directory_with_a_manifest_is_not_a_set(tmp_path):
+    """The `_` rule needs a test that FAILS if the rule is removed.
+
+    The shipped `_backup_pre_bloque_65` lives INSIDE `mine_asteroid/`, so the
+    root scan never visits it: without this fixture the rule is untested, and
+    deleting it leaves every other test green.
+    """
+    hidden = tmp_path / "_hidden_set"
+    hidden.mkdir()
+    (hidden / "manifest.toml").write_text(
+        "[meta]\nname = 'HIDDEN'\n", encoding="utf-8"
+    )
+    assert {p.name for p in discover_sets(tmp_path)} == set()
+
+
+def test_resolve_set_prefers_an_explicit_root(tmp_path):
+    """An explicit root wins over the default roots.
+
+    The default roots DO have a `scout` set, so this also proves the
+    precedence rule itself.
+    """
+    here = tmp_path / "scout"
+    here.mkdir()
+    (here / "manifest.toml").write_text(
+        "[meta]\nname = 'SCOUT'\n", encoding="utf-8"
+    )
+    assert resolve_set("scout", root=tmp_path) == here
+
+
+def test_resolve_set_agrees_with_discovery_about_what_a_set_is(tmp_path):
+    """One definition of "is a set": a directory without a manifest is not."""
+    (tmp_path / "not_a_set").mkdir()
+    with pytest.raises(ValueError):
+        resolve_set("not_a_set", root=tmp_path)
+
+
+def test_resolve_set_rejects_a_name_that_could_escape_the_root(tmp_path):
+    """The name is a single path component: the resolver cannot escape.
+
+    The ROOT itself is a set here, so a name that escapes into it WOULD
+    resolve without the guard: this test has to go red if the guard is
+    removed.
+    """
+    real = tmp_path / "real_set"
+    real.mkdir()
+    (real / "manifest.toml").write_text(
+        "[meta]\nname = 'REAL'\n", encoding="utf-8"
+    )
+    (tmp_path / "manifest.toml").write_text(
+        "[meta]\nname = 'ROOT'\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError):
+        resolve_set("real_set/..", root=tmp_path)
+    with pytest.raises(ValueError):
+        resolve_set("..", root=tmp_path)
+    with pytest.raises(ValueError):
+        resolve_set("mine_asteroid/_backup_pre_bloque_65", root=tmp_path)
+
+
+def test_discovery_degrades_when_the_root_cannot_be_read(monkeypatch, tmp_path):
+    """L5: an unreadable root degrades to an empty list, it never raises.
+
+    `iterdir()` can raise `PermissionError` (an `OSError`): the scan must
+    swallow it instead of taking the caller down.
+    """
+
+    def boom(self: Path) -> list[Path]:
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(Path, "iterdir", boom)
+    assert discover_sets(tmp_path) == []
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -1587,13 +1732,20 @@ Expected: **FAIL** — `ModuleNotFoundError: No module named 'sprite_pipeline.se
 """BLOQUE 75: where the animated sets live.
 
 A directory is a SET iff it contains a `manifest.toml`. Nothing else is.
-That single rule is what keeps `_backup_pre_bloque_65` (no manifest) and
-the two loose reference PNGs (not named `frame_*.png`) out of the
-pipeline, without a heuristic that could get it wrong.
+
+How the exclusion actually works: `discover_sets` scans the CHILDREN of a
+root, ONE level deep. `_backup_pre_bloque_65` lives INSIDE `mine_asteroid/`,
+so the scan never visits it -- it is excluded by NESTING, not by the manifest
+rule. The two `_new_reference_*.png` files are excluded because they are
+files, not directories. This module never enumerates frames, so the
+`frame_*.png` naming rule does not live here.
 
 The two roots are probed in order: the bosses first (GOLIATH), then the
-enemies. The frozen build resolves the same way: the bundle is extracted
-to `_MEIPASS` and the Assets are read from THERE.
+enemies. The frozen build resolves the same way: the bundle is extracted to
+`_MEIPASS` and the Assets are read from THERE. (Today `tools/` is not
+bundled and nothing in `src/` imports this package, so that branch cannot
+execute in a shipped .exe yet -- the probe matches
+`src/anim/manifest.py::_sets_root()` so the two stay identical.)
 """
 from __future__ import annotations
 
@@ -1601,6 +1753,15 @@ import sys
 from pathlib import Path
 
 SET_DIR_NAMES = ("bosses", "enemies")
+
+
+class SetNotFoundError(ValueError):
+    """The named set does not exist under any sets root.
+
+    A `ValueError` subclass on purpose: the CLIs catch `ValueError`
+    (`run.py`, `audit.py`) and print `error: ...` instead of a traceback.
+    `FileNotFoundError` is an `OSError` and would NOT be caught.
+    """
 
 
 def _project_root() -> Path:
@@ -1619,44 +1780,59 @@ def sets_roots() -> list[Path]:
     return [base / "Assets" / "sprites" / name for name in SET_DIR_NAMES]
 
 
+def _is_set(path: Path) -> bool:
+    """ONE definition of "is a set", shared by the two entry points.
+
+    A directory is a set iff its name does not start with "_" and it holds
+    a `manifest.toml`. The manifest is NOT parsed here: discovery must not
+    raise on a broken one -- the loader degrades to None for that.
+    """
+    if path.name.startswith("_"):
+        return False
+    return (path / "manifest.toml").is_file()
+
+
 def resolve_set(name: str, root: Path | None = None) -> Path:
     """The directory of the set called `name`.
 
     An explicit `root` wins. Otherwise the name is resolved against every
-    sets root, in order. Raises `FileNotFoundError` (an `OSError`) when no
-    root has it -- the CLI catches it and prints an error instead of a
-    traceback.
+    sets root, in order. Raises `SetNotFoundError` (a `ValueError`) when no
+    root has it -- the CLIs catch `ValueError` and print an error instead of
+    a traceback.
+
+    The name must be a single path component: a name that could escape the
+    root ("..", "a/b") is rejected, so the resolver can never hand back the
+    excluded backup directory.
     """
+    if name in ("", ".", "..") or "/" in name or "\\" in name:
+        raise SetNotFoundError(f"invalid set name {name!r}")
     if root is not None:
         candidate = root / name
-        if candidate.is_dir():
+        if _is_set(candidate):
             return candidate
-        raise FileNotFoundError(f"no set {name!r} under {root}")
-    for base in sets_roots():
+        raise SetNotFoundError(f"no set {name!r} under {root}")
+    roots = sets_roots()
+    for base in roots:
         candidate = base / name
-        if candidate.is_dir():
+        if _is_set(candidate):
             return candidate
-    raise FileNotFoundError(f"no set {name!r} under {sets_roots()}")
+    raise SetNotFoundError(f"no set {name!r} under {roots}")
 
 
 def discover_sets(root: Path) -> list[Path]:
     """Every set under `root`, sorted by name.
 
-    A directory whose name starts with "_" is NEVER a set. A directory
-    without a `manifest.toml` is not a set either. The manifests are NOT
-    parsed here: discovery must not raise on a broken one -- the loader
+    The scan is ONE level deep: the children of `root`. The manifests are
+    NOT parsed here: discovery must not raise on a broken one -- the loader
     degrades to None for that.
     """
     if not root.is_dir():
         return []
-    found: list[Path] = []
-    for candidate in sorted(root.iterdir()):
-        if not candidate.is_dir() or candidate.name.startswith("_"):
-            continue
-        if not (candidate / "manifest.toml").is_file():
-            continue
-        found.append(candidate)
-    return found
+    try:
+        children = sorted(root.iterdir())
+    except OSError:
+        return []
+    return [child for child in children if child.is_dir() and _is_set(child)]
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
@@ -1787,7 +1963,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src.anim.manifest import load_set
-from src.entities.enemies.enemy import ENEMY_CONFIGS, EnemyKind
+from src.entities.enemies.enemy import ENEMY_CONFIGS
 
 ENEMY_SETS = (
     "scout",
@@ -1809,7 +1985,7 @@ def enemies_root() -> Path:
 @pytest.mark.parametrize("name", ENEMY_SETS)
 def test_the_hitbox_fits_inside_the_canvas(enemies_root, name):
     anim_set = load_set(name, root=enemies_root)
-    config = ENEMY_CONFIGS[EnemyKind(name)]
+    config = ENEMY_CONFIGS[name]
     assert config.width <= anim_set.canvas[0], name
     assert config.height <= anim_set.canvas[1], name
 
@@ -1842,7 +2018,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src.anim.manifest import load_set
-from src.entities.enemies.enemy import Enemy
+from src.entities.enemies.enemy import ANIMATION_FRAME_DURATION
 
 ENEMY_SETS = (
     "scout",
@@ -1861,7 +2037,7 @@ def enemies_root() -> Path:
 
 
 def test_the_runtime_fps_is_the_declared_fps(enemies_root):
-    runtime_fps = 1.0 / Enemy.ANIMATION_FRAME_DURATION
+    runtime_fps = 1.0 / ANIMATION_FRAME_DURATION
     assert runtime_fps == 12.5
     for name in ENEMY_SETS:
         anim_set = load_set(name, root=enemies_root)
@@ -1912,10 +2088,96 @@ Run: `git status --short`
 
 Expected: empty (the tests only ever wrote to `tmp_path`).
 
+- [ ] **Step 5b: Write the fourth guard — the audit must stay clean**
+
+The two findings the Task 5 review left open: the load-bearing declarations
+(`distinct`, `scale_tolerance`) were not pinned by any test, and nothing
+asserted that every clip directory on disk is referenced by a clip.
+
+Create `tests/test_enemy_sets_audit_clean.py`:
+
+```python
+"""BLOQUE 75: the enemy sets must audit CLEAN, and no art may be orphaned.
+
+The declarations (`distinct`, `cut_margin = 0`) are what make the enemy art
+auditable: the art repeats poses and touches the canvas edges ON PURPOSE.
+Nothing pinned that, though -- the anchors test discards the findings, so
+replacing one death pose would change the md5-group count, the auditor would
+flag it, and CI would stay green.
+
+This file is the guard: the auditor must return ZERO findings for every enemy
+set, and every clip directory on disk must be referenced by a clip.
+"""
+from __future__ import annotations
+
+import os
+
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tools"))
+
+from src.anim.manifest import load_set
+from sprite_pipeline.audit import audit_set
+
+ENEMY_SETS = (
+    "scout",
+    "cruiser",
+    "drone",
+    "heavy",
+    "kamikaze",
+    "sniper",
+    "turret",
+    "mine_asteroid",
+)
+
+
+@pytest.fixture(scope="module")
+def display():
+    import pygame
+
+    pygame.init()
+    pygame.display.set_mode((320, 480))
+    yield
+
+
+@pytest.fixture(scope="module")
+def enemies_root() -> Path:
+    return ROOT / "Assets" / "sprites" / "enemies"
+
+
+@pytest.mark.parametrize("name", ENEMY_SETS)
+def test_the_enemy_set_audits_clean(enemies_root, display, name):
+    """Zero findings: every finding the art really has is DECLARED."""
+    anim_set = load_set(name, root=enemies_root)
+    findings, _ = audit_set(anim_set)
+    assert findings == [], [(f.clip, f.frame, f.state, f.detail) for f in findings]
+
+
+@pytest.mark.parametrize("name", ENEMY_SETS)
+def test_every_clip_directory_is_declared(enemies_root, name):
+    """Art on disk that no clip references would be ignored in silence."""
+    anim_set = load_set(name, root=enemies_root)
+    declared = {clip.dir for clip in anim_set.clips.values()}
+    on_disk = {
+        path.name
+        for path in anim_set.path.iterdir()
+        if path.is_dir() and not path.name.startswith("_")
+    }
+    assert on_disk == declared, f"{name}: {sorted(on_disk)} vs {sorted(declared)}"
+```
+
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add tests/test_enemy_art_is_untouched.py tests/test_enemy_hitbox_is_not_the_canvas.py tests/test_enemy_clip_semantics.py
+git add tests/test_enemy_art_is_untouched.py tests/test_enemy_hitbox_is_not_the_canvas.py tests/test_enemy_clip_semantics.py tests/test_enemy_sets_audit_clean.py
 git commit -m "test: BLOQUE 75 - el arte no se toca, el hitbox no es el canvas y la semantica declarada es la real"
 ```
 
@@ -1947,7 +2209,10 @@ Exit 0 -> PHASE 1 GATE OK. Exit 1 -> PHASE 1 GATE FAILED: <the list>.
 """
 from __future__ import annotations
 
+import importlib.util
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -1979,6 +2244,19 @@ ENEMY_SETS = (
     "sniper",
     "turret",
     "mine_asteroid",
+)
+
+# The guards the enemy sets must pass. G13 runs them: a green gate means the
+# art was not touched, the hitbox is not the canvas, the declared semantics
+# are the real ones, the auditor is clean and the anchors are fresh.
+GUARD_TESTS = (
+    "tests/test_enemy_art_is_untouched.py",
+    "tests/test_enemy_hitbox_is_not_the_canvas.py",
+    "tests/test_enemy_clip_semantics.py",
+    "tests/test_enemy_sets_audit_clean.py",
+    "tests/test_enemy_anchors_are_fresh.py",
+    "tests/test_enemy_manifest_matches_assets.py",
+    "tests/test_enemy_set_discovery.py",
 )
 
 
@@ -2038,12 +2316,52 @@ def main() -> int:
     if found != set(ENEMY_SETS):
         failures.append(f"G6: discovery found {sorted(found)}")
 
-    # G9: mypy is not optional.
-    if not _mypy_available():
+    # G9: the type gate. mypy must RUN and report ZERO errors.
+    mypy_cmd = _mypy_command()
+    if mypy_cmd is None:
         failures.append(
-            "G9: mypy is not installed -- run "
-            "`python -m pip install -r requirements-dev.txt`"
+            "G9: mypy cannot be run -- install the dev requirements "
+            "(`python -m pip install -r requirements-dev.txt`) or make `uvx` available"
         )
+    else:
+        proc = subprocess.run(
+            [*mypy_cmd, "src/anim/"],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if proc.returncode != 0:
+            failures.append(f"G9: mypy reported errors:\n{proc.stdout.strip()}")
+
+    # G11: not one PNG changed since the last commit.
+    proc = subprocess.run(
+        ["git", "diff", "--stat", "HEAD", "--", "*.png"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if proc.stdout.strip():
+        failures.append(f"G11: PNG files changed:\n{proc.stdout.strip()}")
+
+    # G13: the enemy guards are green.
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            *GUARD_TESTS,
+            "-q",
+            "--no-header",
+        ],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=900,
+    )
+    if proc.returncode != 0:
+        failures.append(f"G13: the enemy guards are red:\n{proc.stdout[-4000:]}")
 
     if failures:
         print("PHASE 1 GATE FAILED:")
@@ -2054,10 +2372,19 @@ def main() -> int:
     return 0
 
 
-def _mypy_available() -> bool:
-    import importlib.util
+def _mypy_command() -> list[str] | None:
+    """The command that runs mypy, or None when it cannot be run.
 
-    return importlib.util.find_spec("mypy") is not None
+    `python -m mypy` when mypy is installed in the interpreter; otherwise
+    `uvx mypy`, which fetches mypy into uv's cache WITHOUT touching the
+    user's Python installation.
+    """
+    if importlib.util.find_spec("mypy") is not None:
+        return [sys.executable, "-m", "mypy"]
+    uvx = shutil.which("uvx")
+    if uvx:
+        return [uvx, "mypy"]
+    return None
 
 
 if __name__ == "__main__":
@@ -2116,7 +2443,7 @@ git commit -m "feat: BLOQUE 75 - el gate de Fase 1 es un comando"
 python -m pytest tests\ --tb=no
 ```
 
-Expected: **1 failed, 2 9xx passed, 6 skipped** — the one failure is
+Expected: **1 failed, 2 9xx passed, 7 skipped** — the one failure is
 `test_paths_no_star_shapes` (pre-existing, out of scope). The count must be
 **one failure lower** than the baseline (2), and no more.
 
@@ -2134,19 +2461,14 @@ Expected: `CONTRACT OK`, `PHASE 1 GATE OK`, `Success: no issues found`.
 
 ```powershell
 git status --short
-git diff --stat <pre-phase-1-sha>..HEAD -- Assets/sprites/bosses/
-git diff --stat <pre-phase-1-sha>..HEAD -- '*.png'
+git diff --stat master..HEAD -- Assets/sprites/bosses/
+git diff --stat HEAD~9..HEAD -- '*.png'
 ```
 
 Expected: the working tree is clean, GOLIATH's assets are untouched, and **no
-PNG** appears in the diff. The anchor is the commit BEFORE Phase 1
-started, NOT `master` and NOT `HEAD~9`: `master` is the old v1.6.3 line,
-which never had BLOQUE 67's and BLOQUE 74's approved art, so diffing
-against it shows PNGs that were approved long ago. `HEAD~9` predates
-the merge that brought the base in, so it shows 78 PNGs that are not
-Phase 1's doing either.
+PNG** appears in the diff.
 
-- [ ] **Update the documentation** (the silo row for this plan was already added by `e53a646`; verify it, do not add it twice)
+- [ ] **Update the documentation**
 
 ```powershell
 # the silo's index gains the plan row
