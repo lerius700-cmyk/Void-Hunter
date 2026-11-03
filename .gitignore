@@ -140,3 +140,9 @@ _archive_*/
 # superpowers subagent-driven-development scratch workspace (ledger, briefs,
 # review packages). Git history is the record once the plan is done.
 .superpowers/
+
+# The pause lowpass cache: the filtered gameplay track is generated
+# next to the source and reused. It is not an asset -- the build never
+# bundled it (build.spec lists the Assets BY NAME), and nothing
+# references it. The release line has had this rule since BLOQUE 74.
+Assets/*_lp*.wav
