@@ -1006,9 +1006,10 @@ def _write_set(tmp_path: Path, distinct: int | None, frames: int) -> None:
 
     set_dir = tmp_path / "probe"
     (set_dir / "idle").mkdir(parents=True, exist_ok=True)
+    colors = ((255, 255, 255, 255), (255, 0, 0, 255), (0, 0, 255, 255))
     for i in range(frames):
         surf = pygame.Surface((8, 8), pygame.SRCALPHA, 32)
-        surf.fill((255, 255, 255, 255) if i % 3 == 0 else (255, 0, 0, 255))
+        surf.fill(colors[i % 3])
         pygame.image.save(surf, str(set_dir / "idle" / f"frame_{i:02d}.png"))
     declared = "" if distinct is None else f"distinct = {distinct}\n"
     (set_dir / "manifest.toml").write_text(
@@ -1094,7 +1095,7 @@ with:
                 findings.append(
                     Finding(
                         clip.id,
-                        groups[0][0],
+                        groups[0][0] if groups else 0,
                         "COLAPSADO",
                         f"the manifest declares {clip.distinct} distinct images, "
                         f"the clip measures {measured} (groups {groups})",
