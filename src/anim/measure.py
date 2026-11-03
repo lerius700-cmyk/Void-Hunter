@@ -1,7 +1,13 @@
 """BLOQUE 74: pixel-level measurement primitives.
 
-Pure functions over a pygame Surface. No manifest, no filesystem, no
-caching. Used by the auditor (offline) and by the tests.
+Pure functions over a pygame Surface. No filesystem, no caching. Used by
+the auditor (offline) and by the tests.
+
+ONE exception to "no manifest": `effective_cut_margin` reads the margin a
+set declares (`meta.cut_margin`) from an `AnimSet`. It is still a pure
+lookup over an ALREADY-PARSED object: the manifest is read and parsed by
+`src.anim.manifest`, never here, and no import cycle exists because
+`manifest.py` imports the standard library only.
 
 Everything works on the ALPHA channel unless the rule says otherwise, so a
 transparent canvas never contributes to a measurement.
@@ -22,12 +28,16 @@ from src.anim.manifest import AnimSet, DetectRule, WarmRule
 
 ALPHA_MIN = 32
 
-# The margin (in pixels) the silhouette must keep from EVERY canvas edge.
-# Below it the frame is CORTADO (cut).
+# The DEFAULT margin (in pixels) the silhouette must keep from EVERY canvas
+# edge. Below it the frame is CORTADO (cut).
 #
-# ONE threshold, shared by the auditor and the repair: the auditor flags a
-# frame whose margin is below it and the repair targets exactly it. Two
-# thresholds would wedge the pipeline -- a frame the auditor flags but the
+# This is the DEFAULT, not the effective threshold: a set may declare its own
+# margin in `meta.cut_margin`, because the margin is a property of the ART
+# (the enemy sets are authored tight to their canvas). The EFFECTIVE margin
+# is `effective_cut_margin(anim_set)`, and BOTH the auditor and the repair
+# read it from there -- ONE threshold per set, shared by the two.
+#
+# Two thresholds would wedge the pipeline -- a frame the auditor flags but the
 # repair cannot reach stays flagged forever, and `run.py --fix` would keep
 # exiting 1 on a set that can never be repaired.
 CORTADO_MARGIN = 2

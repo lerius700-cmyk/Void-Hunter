@@ -70,6 +70,11 @@ def _collapsed(tmp_path: Path) -> bool:
     return any(f.state == "COLAPSADO" for f in findings)
 
 
+def _details(tmp_path: Path) -> list[str]:
+    findings, _ = audit_set(load_set("probe", root=tmp_path))
+    return [f.detail for f in findings if f.state == "COLAPSADO"]
+
+
 def test_a_matching_declaration_is_clean(tmp_path, display):
     _write_set(tmp_path, distinct=3, frames=9)
     assert _collapsed(tmp_path) is False
@@ -85,3 +90,19 @@ def test_without_a_declaration_any_duplicate_is_a_finding(tmp_path, display):
     """The shipped rule, unchanged: GOLIATH declares no `distinct`."""
     _write_set(tmp_path, distinct=None, frames=9)
     assert _collapsed(tmp_path) is True
+
+
+def test_the_finding_says_which_side_is_wrong(tmp_path, display):
+    """The two failure modes are not interchangeable, and the message says so.
+
+    More images than declared means the MANIFEST is stale; fewer means the
+    ART collapsed further than declared. The finding has to name which one,
+    or the reader has to guess which side to fix.
+    """
+    _write_set(tmp_path, distinct=2, frames=9)
+    assert any("the manifest is stale" in d for d in _details(tmp_path))
+
+    _write_set(tmp_path, distinct=4, frames=9)
+    assert any(
+        "the art collapsed further than declared" in d for d in _details(tmp_path)
+    )
