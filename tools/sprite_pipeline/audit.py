@@ -151,7 +151,8 @@ def _clip_probe_columns(
     matches two of the beam's colours, so without the warm filter the
     probe latches onto the beam.
     """
-    rule = anim_set.part("shield_plate").detect
+    shield_part = anim_set.part_or_none("shield_plate")
+    rule = shield_part.detect if shield_part is not None else None
     if rule is None or rule.probe is None:
         return [None] * len(surfaces)
     out: list[float | None] = []
@@ -172,8 +173,9 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
     findings: list[Finding] = []
     measurements: list[FrameMeasurement] = []
 
-    shield_part = anim_set.part("shield_plate")
-    eye_part = anim_set.part("eye")
+    shield_part = anim_set.part_or_none("shield_plate")
+    eye_part = anim_set.part_or_none("eye")
+    rule = shield_part.detect if shield_part is not None else None
 
     for clip in anim_set.clips.values():
         surfaces = [
@@ -204,7 +206,6 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
         # the baseline table was measured with.
         probe_median = statistics.median(good_cols) if good_cols else 0.0
 
-        rule = shield_part.detect
         heights = [
             silhouette_height(surf, rule, drop_warm=True) for surf in surfaces
         ]
@@ -255,21 +256,19 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
 
             # --- eye ------------------------------------------------------
             eye = None
-            eye_source = "measured"
-            if eye_part.detect is not None:
+            eye_source = "missing"
+            if eye_part is not None and eye_part.detect is not None:
                 found = color_centroid(surf, eye_part.detect)
                 if found is not None:
                     eye = (int(round(found[0])), int(round(found[1])))
-                else:
-                    # The boss is a wreck by the end of the death clip: the
-                    # last frame has no eye left to find. The part's
-                    # on_missing policy (interpolate) resolves it.
-                    eye_source = "missing"
+                    eye_source = "measured"
+                # else: the feature is absent from the art. The source
+                # stays "missing" -- UNRESOLVED, never "measured" at (0, 0).
 
             # --- shield plate ---------------------------------------------
             probe_col = probe_cols[i]
             shield = None
-            shield_source = "measured"
+            shield_source = "missing"
             if rule is not None:
                 ellipse = credible_ellipse(surf, rule)
                 if ellipse is None:
@@ -327,6 +326,7 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                         )
                 else:
                     shield = ellipse
+                    shield_source = "measured"
 
                 if probe_col is not None:
                     # --- LADO_EQUIVOCADO: turned-around character ----------

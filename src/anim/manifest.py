@@ -288,6 +288,19 @@ class AnimSet:
                 return part
         raise ManifestError(f"unknown part {part_id!r} in {self.name}")
 
+    def part_or_none(self, part_id: str) -> Part | None:
+        """The part with this id, or None when the set declares no such part.
+
+        The enemy sets declare a single `body` part: no shield plate, no
+        eye. `part()` raises for them, which is right for a caller that
+        REQUIRES a part and wrong for one that only wants to know whether
+        the feature exists.
+        """
+        for part in self.parts:
+            if part.id == part_id:
+                return part
+        return None
+
 
 _LOADED: dict[tuple[str, Path | None], AnimSet] = {}
 _LOADED_FAILED: set[tuple[str, Path | None]] = set()
