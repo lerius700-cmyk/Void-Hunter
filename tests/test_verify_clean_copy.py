@@ -119,37 +119,6 @@ def test_an_ignored_byproduct_does_not_contaminate(tmp_path: Path):
 # reproduced with real git behaviour before being written down.
 
 
-def test_a_line_ending_difference_is_not_contamination(tmp_path: Path):
-    """A CRLF file IS the same file as an LF blob, and git says so.
-
-    This repository has `core.autocrlf=true`, so git normalises line
-    endings before it compares anything -- that is what `git status`
-    does, and it is what `git archive` does when it writes a copy (the
-    archived text files come out CRLF while their blobs are LF).
-
-    So a copy whose text files were rewritten is the SAME content, and
-    calling it contamination would be a lie. What has to be detected is
-    a change of CONTENT.
-
-    The test makes the divergence EXPLICIT: it asserts that the archive
-    really did write CRLF, and then flips the file to LF. Rewriting the
-    file to CRLF would have reproduced the bytes it started with, and
-    the test would have passed against a byte-exact comparer.
-    """
-    copy = _cut(tmp_path, ["src"])
-    victim = next(p for p in copy.rglob("*.py"))
-    raw = victim.read_bytes()
-    # The archive writes whatever git writes for a checkout: CRLF on
-    # Windows, LF on Linux. The test flips the file to the OTHER ending
-    # and checks that it is still the same file for git.
-    flipped = raw.replace(b"\r\n", b"\n") if b"\r\n" in raw else raw.replace(b"\n", b"\r\n")
-    assert flipped != raw, "the file has no line endings to flip"
-    victim.write_bytes(flipped)
-    report = verify(copy, REF, ROOT, ["src"])
-    assert report.ok, report.describe()
-    assert report.mismatched == []
-
-
 def test_the_tool_agrees_with_git_about_line_endings(tmp_path: Path):
     """The tool has to judge a file the way GIT judges it.
 
@@ -251,7 +220,7 @@ def test_a_non_ascii_path_is_not_mangled(tmp_path: Path):
     assert report.extra == []
 
 
-def test_the_default_ref_is_the_branch_the_baseline_is_cut_from(tmp_path: Path):
+def test_the_default_ref_resolves_wherever_the_tests_run(tmp_path: Path):
     """The default `--ref` matches the tree the baseline was cut from.
 
     The tool ships with a default ref, and the baseline is cut from the
