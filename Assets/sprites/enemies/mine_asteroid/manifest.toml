@@ -1,0 +1,59 @@
+# BLOQUE 75: SPEC of the MINE_ASTEROID animation set. Hand-edited.
+#
+# The special set: four visual states, one of them with five VARIANTS,
+# a death clip the runtime never plays, and TWO canvas sizes.
+
+[meta]
+name        = "MINE_ASTEROID"
+version     = 1
+canvas      = [64, 64]
+anchor      = [32, 32]
+cut_margin  = 0
+
+[[clips]]
+id       = "closed"
+dir      = "closed"
+frames   = 5
+distinct = 5
+mode     = "variants"
+scale_tolerance = 0.25
+
+[[clips]]
+id       = "open1"
+dir      = "open1"
+frames   = 1
+distinct = 1
+mode     = "state"
+scale_tolerance = 0.10
+
+[[clips]]
+id       = "open2"
+dir      = "open2"
+frames   = 1
+distinct = 1
+mode     = "state"
+scale_tolerance = 0.10
+
+[[clips]]
+id       = "open3"
+dir      = "open"
+frames   = 1
+distinct = 1
+mode     = "state"
+scale_tolerance = 0.10
+
+[[clips]]
+id       = "death"
+dir      = "death"
+frames   = 10
+fps      = 12.5
+distinct = 1
+mode     = "archive"
+canvas   = [32, 32]
+scale_tolerance = 0.10
+
+[[parts]]
+id    = "body"
+draw  = "frames"
+pivot = "fixed"
+z     = 0
