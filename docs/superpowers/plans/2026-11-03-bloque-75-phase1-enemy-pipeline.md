@@ -1624,8 +1624,14 @@ def test_resolve_set_finds_goliath():
     assert resolve_set("goliath").parent.name == "bosses"
 
 
-def test_an_unknown_set_raises_file_not_found():
-    with pytest.raises(FileNotFoundError):
+def test_an_unknown_set_raises_a_value_error_the_clis_catch():
+    """The CLIs catch `ValueError`; `FileNotFoundError` would escape them.
+
+    `run.py` and `audit.py` only catch `ValueError`, and `FileNotFoundError`
+    is an `OSError`, so the resolver must raise a `ValueError` subclass or
+    the CLI dies with a traceback instead of printing `error: ...`.
+    """
+    with pytest.raises(ValueError):
         resolve_set("no_existe")
 
 
@@ -1678,11 +1684,40 @@ def test_resolve_set_agrees_with_discovery_about_what_a_set_is(tmp_path):
 
 
 def test_resolve_set_rejects_a_name_that_could_escape_the_root(tmp_path):
-    """The name is a single path component: the resolver cannot escape."""
+    """The name is a single path component: the resolver cannot escape.
+
+    The ROOT itself is a set here, so a name that escapes into it WOULD
+    resolve without the guard: this test has to go red if the guard is
+    removed.
+    """
+    real = tmp_path / "real_set"
+    real.mkdir()
+    (real / "manifest.toml").write_text(
+        "[meta]\nname = 'REAL'\n", encoding="utf-8"
+    )
+    (tmp_path / "manifest.toml").write_text(
+        "[meta]\nname = 'ROOT'\n", encoding="utf-8"
+    )
     with pytest.raises(ValueError):
-        resolve_set("mine_asteroid/_backup_pre_bloque_65", root=tmp_path)
+        resolve_set("real_set/..", root=tmp_path)
     with pytest.raises(ValueError):
         resolve_set("..", root=tmp_path)
+    with pytest.raises(ValueError):
+        resolve_set("mine_asteroid/_backup_pre_bloque_65", root=tmp_path)
+
+
+def test_discovery_degrades_when_the_root_cannot_be_read(monkeypatch, tmp_path):
+    """L5: an unreadable root degrades to an empty list, it never raises.
+
+    `iterdir()` can raise `PermissionError` (an `OSError`): the scan must
+    swallow it instead of taking the caller down.
+    """
+
+    def boom(self: Path) -> list[Path]:
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(Path, "iterdir", boom)
+    assert discover_sets(tmp_path) == []
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
