@@ -1,13 +1,15 @@
 """BLOQUE 75: where the animated sets live.
 
-A directory is a SET iff it contains a `manifest.toml`. Nothing else is.
+A directory is a SET iff it holds a `manifest.toml` AND its name does not
+start with "_". Nothing else is.
 
 How the exclusion actually works: `discover_sets` scans the CHILDREN of a
 root, ONE level deep. `_backup_pre_bloque_65` lives INSIDE `mine_asteroid/`,
-so the scan never visits it -- it is excluded by NESTING, not by the manifest
-rule. The two `_new_reference_*.png` files are excluded because they are
-files, not directories. This module never enumerates frames, so the
-`frame_*.png` naming rule does not live here.
+so the scan never visits it -- it is excluded by NESTING, and the "_" rule
+would exclude it as well if it ever moved up to the root. The two
+`_new_reference_*.png` files are excluded because they are files, not
+directories. This module never enumerates frames, so the `frame_*.png`
+naming rule does not live here.
 
 The two roots are probed in order: the bosses first (GOLIATH), then the
 enemies. The frozen build resolves the same way: the bundle is extracted to

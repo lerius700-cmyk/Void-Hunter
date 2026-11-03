@@ -34,8 +34,10 @@ ENEMY_SETS = (
 
 # The pipeline is an offline tool: it has to finish. A hung run would eat
 # CI's whole timeout budget with no diagnostic. The house pattern is
-# tools/smoke.py's `_run(..., timeout=120)`.
-PIPELINE_TIMEOUT_S = 120
+# tools/smoke.py's `_run(..., timeout=120)`, lowered here to 60: the
+# observed cost is ~0.4s per case, and the worst case (8 cases x 60s =
+# 8 min) still fits inside CI's 15-minute budget.
+PIPELINE_TIMEOUT_S = 60
 
 
 def _md5(path: Path) -> str:
