@@ -180,3 +180,54 @@ test; it is a defect only one environment can see.
 - `master` stays the old line (v1.6.3) and receives no merges.
 - The GOLIATH art, the shield constants and the enemy sets were not
   touched: this was a build-and-cache change.
+
+## 9. Phase 1 of BLOQUE 75 was implemented and merged (2026-11-03)
+
+Section 8 above says "the enemy sets were not touched: this was a
+build-and-cache change". That is still true of the ART -- not one PNG
+byte changed -- but the enemy sets now carry a declaration and a
+measurement.
+
+**Merge:** `070ad76` on `bloquec-67-goliath-port`, bringing 31 commits
+from `bloquec-75-migration-spec`. Two conflicts (the spec and the Phase 1
+plan, both of which the release line already carried in an older
+snapshot) were resolved in favour of the reviewed version; the other six
+overlapping files auto-merged.
+
+**What landed:**
+
+- 8 x `Assets/sprites/enemies/<kind>/manifest.toml` -- the declaration:
+  measured canvas, anchor, `cut_margin = 0`, and per clip `distinct`
+  (how many source images the clip cycles), `fps`, `mode`, `loop`,
+  `on_end`, `scale_tolerance`.
+- 8 x `anchors.toml` -- the measurement, LF-only, byte-identical across
+  two runs.
+- `src/anim/`: three new optional manifest fields plus `mode`/`on_end`
+  parsed-but-not-enforced, `part_or_none()`, and `effective_cut_margin()`
+  -- ONE margin source read by the auditor AND the repair.
+- `tools/sprite_pipeline/`: the auditor judges `distinct` against the
+  declaration (in both directions), measures the registration against the
+  CLIP's canvas, survives a set with no detected features, and writes LF;
+  `sets.py` with one definition of "is a set"; `gate.py`, the Phase 1 gate.
+- 11 guard test files and 1 gate test.
+
+**Verified on the merged tree:** suite **3 036 pass + 0 fail + 7 skipped**
+(the pre-existing Lissajous failure is gone -- the cleanup round marked
+it), `PHASE 1 GATE OK` (exit 0), the `773cf08..HEAD` diff empty for both
+`*.png` and `Assets/sprites/bosses/`, and 1 768 PNGs with an identical
+combined digest.
+
+**What Phase 1 could NOT do, and Phase 2 owns:**
+
+1. Nothing in `src/` reads the enemy manifests yet -- the runtime still
+   hardcodes its paths. The manifests are declarations with no consumer.
+2. The CLIs still resolve a set by building `root / name` themselves; they
+   do not use `sprite_pipeline.sets`, and `src/anim/manifest.py::_sets_root()`
+   still knows only the `bosses` root while `sets_roots()` knows both.
+3. `mode` and `on_end` are parsed but not enforced; the mine's clips still
+   derive `loop=True, on_end="loop"` while declaring `mode="variants"`.
+4. The generated anchors name `tests/test_anchors_are_fresh.py` (GOLIATH
+   only) instead of `tests/test_enemy_anchors_are_fresh.py`.
+5. A pose reorder that keeps the md5-group count is flagged by no guard.
+6. `PHASE_1_BASE = "773cf08"` is a hard-coded short sha in the gate: move
+   it when Phase 2 starts (escapes: `--base`, `$PHASE1_BASE`).

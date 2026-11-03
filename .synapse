@@ -1,16 +1,19 @@
 {
-  "synapse_version": "2.2.0",
-  "last_verification_utc": "2026-11-03T17:40:57Z",
-  "system_status": "healthy",
-  "active_bridges": {},
-  "short_term_memory": {
-    "current_objective": "BLOQUE 75 cerrado y publicado como v1.8.1: presupuesto de disco, cache persistente del lowpass y handoff entre agentes funcionando. El spec revisado y el plan de Fase 1 (9 tareas TDD) estan mergeados en la linea de release; el siguiente paso es ejecutarlos.",
-    "last_successful_action": "BLOQUE 75 publicado como v1.8.1 (el .exe bajo de 278 a 220,2 MB porque el WAV generado salio del bundle y ahora es una cache junto al ejecutable) y el repo bajo de 15,70 a 2,35 GB con un presupuesto de disco de tres techos que un test hace cumplir. Dos reviews independientes (codigo y documentos)(findings: el budget de dist/ no veía los builds de los worktrees, la fila del build afirmaba una verificacion que no se hacia, y el spec y el plan de Fase 1 traian un baseline viejo y codigo que no corria) y los 13+16 hallazgos corregidos con test rojo primero. Verificado: 2.944 pass + 1 fail pre-existente (test_paths_no_star_shapes) + 6 skipped; mypy src/anim/ 0 errores; verify_contract.py CONTRACT OK; repo_budget.py los tres pesos bajo techo; main.py --check 15 scenes / 18 waves / 4 bosses; sf-sm-doctor 7/7; el baseline verificado con verify_clean_copy.py CLEAN COPY OK.",
-    "active_context_pointers": [
-      "docs/superpowers/specs/2026-10-30-bloque-75-migration-spec.md",
-      "docs/superpowers/plans/2026-11-03-bloque-75-phase1-enemy-pipeline.md",
-      "docs/handoffs/HANDOFF-BLOQUE-75-2026-11-02.md"
-    ],
-    "critical_blockers": "ninguno"
-  }
+    "synapse_version":  "2.2.0",
+    "last_verification_utc":  "2026-11-03T20:44:44Z",
+    "system_status":  "healthy",
+    "active_bridges":  {
+
+                       },
+    "short_term_memory":  {
+                              "current_objective":  "BLOQUE 75 Fase 1 IMPLEMENTADA y mergeada en la linea de release: los 8 sets de enemigos declarados y medidos (manifest.toml + anchors.toml), el auditor juzgandolos con 0 findings, el gate de Fase 1 en verde, y CERO PNG tocados. Siguiente: Fase 2 -- el motor de capas del frame (src/render/, Layer/LayerStack/DrawContext, 30 capas, dos checkpoints con golden frames). El diseno de Fase 2 ya esta commiteado; su plan todavia no.",
+                              "last_successful_action":  "Fase 1 de BLOQUE 75 mergeada (070ad76): 9 tareas TDD ejecutadas con review por tarea y un subagente revisor por tarea. Lo que quedo: 8 manifest.toml + 8 anchors.toml medidos, el auditor honra `distinct` y el margen por set y mide la correccion contra el canvas del CLIP, sets.py con una sola definicion de set, 11 archivos de guardas (el arte no se toca, el hitbox no es el canvas, la semantica declarada es la real, el auditor da 0 findings, ningun clip huerfano) y tools/sprite_pipeline/gate.py. Verificado en el arbol mergeado: suite 3.036 pass + 0 fail + 7 skipped (el fallo pre-existente de Lissajous ya no esta: lo marco la ronda de limpieza), PHASE 1 GATE OK (exit 0), R1 y R2 con diff vacio en el rango 773cf08..HEAD, 1.768 PNGs con digest identico. El gate es la parte que mas crecio: la review final encontro que G11 comparaba worktree vs HEAD (una PNG commiteada en la fase era invisible) y que G5 nunca auditaba a GOLIATH -- se arreglaron en dos olas de fix, cada una probada no-vacua en un clon de %TEMP%.",
+                              "active_context_pointers":  [
+                                                              "docs/superpowers/specs/2026-10-30-bloque-75-migration-spec.md",
+                                                              "docs/superpowers/specs/2026-11-03-bloque-75-phase2-layers-design.md",
+                                                              "docs/superpowers/plans/2026-11-03-bloque-75-phase1-enemy-pipeline.md",
+                                                              "docs/handoffs/HANDOFF-BLOQUE-75-2026-11-02.md"
+                                                          ],
+                              "critical_blockers":  "ninguno. Aviso para la Fase 2: el gate usa PHASE_1_BASE = \"773cf08\" (constante dura, con escapes --base y $PHASE1_BASE); hay que moverla al empezar la Fase 2."
+                          }
 }
