@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pygame
 
-from src.anim.manifest import DetectRule, WarmRule
+from src.anim.manifest import AnimSet, DetectRule, WarmRule
 
 ALPHA_MIN = 32
 
@@ -105,13 +105,31 @@ def silhouette_margins(
     return (left, top, w - right, h - bottom)
 
 
-def is_cut_off(margins: tuple[int, int, int, int]) -> bool:
-    """True when a silhouette comes closer than CORTADO_MARGIN to an edge.
+def is_cut_off(
+    margins: tuple[int, int, int, int], min_margin: int = CORTADO_MARGIN
+) -> bool:
+    """True when a silhouette comes closer than `min_margin` to an edge.
 
-    This is the CORTADO test of the auditor as a function, so the repair
-    and the finding can never disagree about what "cut off" means.
+    The threshold is a PARAMETER, not a constant: the enemy art is
+    authored tight to its canvas, and each set declares the margin it is
+    held to. The default is the one GOLIATH uses. The auditor and the
+    repair MUST pass the same value -- they both read it from
+    `effective_cut_margin` -- or a frame the auditor flags could be one
+    the repair cannot reach.
     """
-    return min(margins) < CORTADO_MARGIN
+    return min(margins) < min_margin
+
+
+def effective_cut_margin(anim_set: AnimSet) -> int:
+    """The margin this set's silhouettes must keep from the canvas edge.
+
+    A set that declares `meta.cut_margin` uses it; every other set uses
+    the pipeline default (CORTADO_MARGIN). ONE source for the auditor and
+    the repair: they can never disagree about what "cut off" means.
+    """
+    if anim_set.cut_margin is None:
+        return CORTADO_MARGIN
+    return anim_set.cut_margin
 
 
 def silhouette_height(

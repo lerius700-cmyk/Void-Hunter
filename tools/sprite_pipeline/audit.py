@@ -42,6 +42,7 @@ from src.anim.measure import (  # noqa: E402
     alpha_centroid,
     color_centroid,
     credible_ellipse,
+    effective_cut_margin,
     interpolate,
     is_cut_off,
     plate_ellipse,
@@ -177,6 +178,8 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
     eye_part = anim_set.part_or_none("eye")
     rule = shield_part.detect if shield_part is not None else None
 
+    min_margin = effective_cut_margin(anim_set)
+
     for clip in anim_set.clips.values():
         surfaces = [
             _load_surface(_frame_path(anim_set, clip, i)) for i in range(clip.frames)
@@ -187,14 +190,34 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
         for i in range(clip.frames):
             path = _frame_path(anim_set, clip, i)
             digests.setdefault(_md5(path), []).append(i)
-        for digest, indices in digests.items():
-            if len(indices) > 1:
+        if clip.distinct is None:
+            # No declaration: ANY duplicate is a collapsed animation. This
+            # is the shipped GOLIATH rule, unchanged.
+            for digest, indices in digests.items():
+                if len(indices) > 1:
+                    findings.append(
+                        Finding(
+                            clip.id,
+                            indices[0],
+                            "COLAPSADO",
+                            f"frames {indices} share md5 {digest[:8]} -- the animation is a still",
+                        )
+                    )
+        else:
+            # The manifest DECLARES how many source images the clip is
+            # built from: the enemy art repeats poses on purpose. The
+            # finding is raised only when the art disagrees with the
+            # declaration -- in either direction.
+            measured = len(digests)
+            if measured != clip.distinct:
+                groups = sorted(digests.values(), key=len, reverse=True)
                 findings.append(
                     Finding(
                         clip.id,
-                        indices[0],
+                        groups[0][0] if groups else 0,
                         "COLAPSADO",
-                        f"frames {indices} share md5 {digest[:8]} -- the animation is a still",
+                        f"the manifest declares {clip.distinct} distinct images, "
+                        f"the clip measures {measured} (groups {groups})",
                     )
                 )
 
@@ -216,11 +239,11 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
             frame_no = i
 
             # --- CORTADO: silhouette touching the canvas edge -----------
-            # The threshold is CORTADO_MARGIN, the SAME constant the repair
+            # The threshold is the SET's margin, the SAME value the repair
             # targets, so a frame the auditor flags is a frame the repair
             # can reach (when a translation can give it the margin).
             margins = silhouette_margins(surf)
-            if margins is not None and is_cut_off(margins):
+            if margins is not None and is_cut_off(margins, min_margin):
                 left, top, right, bottom = margins
                 findings.append(
                     Finding(
