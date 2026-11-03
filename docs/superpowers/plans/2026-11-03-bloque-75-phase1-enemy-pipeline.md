@@ -617,6 +617,7 @@ In `src/anim/manifest.py`, append to `class Clip` (after `side_tolerance`):
     distinct: int | None = None
     canvas: tuple[int, int] | None = None
     mode: str = "sequence"
+    # The LOADER derives this from `loop`; the default is for direct builds.
     on_end: str = "loop"
 ```
 
@@ -705,7 +706,7 @@ def _as_optional_int(value: Any, name: str) -> int | None:
 
 Run: `python -m pytest tests/test_anim_manifest_new_fields.py -v`
 
-Expected: **4 passed**
+Expected: **7 passed** (4 parsing + 3 rejection cases)
 
 - [ ] **Step 6: Run the whole manifest + pipeline test set**
 
