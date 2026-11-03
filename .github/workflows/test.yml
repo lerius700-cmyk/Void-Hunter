@@ -1,14 +1,30 @@
 name: tests
 
-# Run the full pytest suite on every push and pull_request to master.
-# Catches regressions before they reach master. The .build-venv pattern
-# (uv-managed) installs pygame + numpy from requirements.txt.
+# Run the full pytest suite on every push and pull_request to the lines
+# that matter: `master` (the old v1.6.3 line) and
+# `bloquec-67-goliath-port` (the release line, where v1.7.x and v1.8.x
+# live and where the binary is built).
+#
+# The release line had NO CI until now, and that is how the CRLF defect
+# survived: the release line has the `.gitattributes` that makes a
+# checkout LF while the generator wrote CRLF, so the test WOULD have
+# failed on this Linux runner -- but the gate never ran there. On
+# `master`, which has no `.gitattributes`, the bug does not reproduce.
+# Two errors cancelling each other out.
+#
+# `workflow_dispatch` validates any branch on demand: a branch in
+# flight can be checked without auto-firing a gate in the middle of
+# someone's work.
+#
+# The .build-venv pattern (uv-managed) installs pygame + numpy from
+# requirements.txt.
 
 on:
   push:
-    branches: [master]
+    branches: [master, bloquec-67-goliath-port]
   pull_request:
-    branches: [master]
+    branches: [master, bloquec-67-goliath-port]
+  workflow_dispatch:
 
 jobs:
   pytest:
@@ -42,4 +58,4 @@ jobs:
 
       - name: Run pytest
         run: |
-          python -m pytest -q --tb=short
+          python -m pytest --tb=short
