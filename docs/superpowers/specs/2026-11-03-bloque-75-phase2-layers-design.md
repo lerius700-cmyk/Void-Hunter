@@ -272,6 +272,20 @@ un cálculo nuevo. Motivo: cambiar quién calcula el frame es un cambio de
 comportamiento que no hace falta para el objetivo, y el proof pixel-a-pixel
 debe ser el único que decida.
 
+**(d) El canvas del clip.** `src/anim/clip.py:108` le pasa a `draw_part` el
+canvas **del set** (`self.set.canvas`), no el del clip. Para GOLIATH da igual
+(ningún clip suyo sobrescribe el canvas), pero para el clip `death` de la mina
+—32×32 dentro de un set de 64×64— es el canvas equivocado: el blit se
+posicionaría con la mitad del set.
+
+**Decisión:** `clip.py` pasa el canvas **efectivo del clip**
+(`clip.canvas or self.set.canvas`). Sin esto, la convención "la corrección se
+mide contra el canvas del clip" queda rota en el último eslabón: el dato se
+mide bien pero se aplica con la geometría equivocada. (Detectado durante la
+Fase 1, en el fix round de la Task 6: `src/anim/parts.py:93` resta la mitad
+del canvas que recibe, así que el desajuste se cancelaría por accidente en
+GOLIATH y en las naves — justo los dos casos donde nadie lo notaría.)
+
 **El flash de daño** sigue siendo un overlay del runtime (N4: los overlays no
 son features del manifest). El pipeline expone la superficie **escalada** para
 que el overlay se construya con exactamente los mismos píxeles que hoy.
