@@ -4,7 +4,7 @@
 
 [meta]
 generated_by = "tools/sprite_pipeline/audit.py"
-manifest_sha256 = "16b1cf1110d76dba1413ed9e521d23376314b415eb3db5514ba4e9b587aa0cc8"
+manifest_sha256 = "c5b1e0162713df7969ef869dfa8764fdc57b9adb93cafd9e7d6522b07caff2be"
 
 [[anchors]]
 clip = "closed"
