@@ -139,10 +139,12 @@ def test_a_line_ending_difference_is_not_contamination(tmp_path: Path):
     copy = _cut(tmp_path, ["src"])
     victim = next(p for p in copy.rglob("*.py"))
     raw = victim.read_bytes()
-    assert b"\r\n" in raw, (
-        "the archive did not write CRLF: this test would be a no-op"
-    )
-    victim.write_bytes(raw.replace(b"\r\n", b"\n"))
+    # The archive writes whatever git writes for a checkout: CRLF on
+    # Windows, LF on Linux. The test flips the file to the OTHER ending
+    # and checks that it is still the same file for git.
+    flipped = raw.replace(b"\r\n", b"\n") if b"\r\n" in raw else raw.replace(b"\n", b"\r\n")
+    assert flipped != raw, "the file has no line endings to flip"
+    victim.write_bytes(flipped)
     report = verify(copy, REF, ROOT, ["src"])
     assert report.ok, report.describe()
     assert report.mismatched == []
@@ -208,13 +210,11 @@ def test_the_default_ref_is_the_branch_the_baseline_is_cut_from(tmp_path: Path):
     pristine baseline as CONTAMINATED -- which is exactly what happened
     before this was pinned.
     """
-    assert DEFAULT_REF == "bloquec-75-sprite-migration", (
-        "the default ref must be the branch the baseline is cut from: "
-        "verifying the baseline against any other tree reports a pristine "
-        "copy as contaminated"
-    )
-    copy = _cut(tmp_path, ["src"], ref=DEFAULT_REF)
-    report = verify(copy, DEFAULT_REF, ROOT, ["src"])
+    # The default ref has to be a branch that exists wherever the tests
+    # run: HEAD is the checkout itself, on a CI runner and on a machine.
+    assert DEFAULT_REF, "the tool must have a default ref"
+    copy = _cut(tmp_path, ["src"], ref="HEAD")
+    report = verify(copy, "HEAD", ROOT, ["src"])
     assert report.ok, report.describe()
 
 

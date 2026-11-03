@@ -51,12 +51,19 @@ def _status_rows() -> list[tuple[str, str, str]]:
 
 
 def _source_path(source: str) -> Path | None:
-    """The file a truth anchor names."""
+    """The file a truth anchor names, resolved against the repository root.
+
+    The anchor is RELATIVE: an absolute path would name one machine and
+    resolve nowhere else -- the CI included.
+    """
     match = re.search(r"`([^`]*void-hunter[^`]*\.exe)`", source)
     if not match:
         return None
     # The source is a command; the path is its last token.
-    return Path(match.group(1).split()[-1])
+    candidate = Path(match.group(1).split()[-1])
+    if candidate.is_absolute():
+        return candidate
+    return REPO_ROOT / candidate
 
 
 def test_the_status_block_has_rows():

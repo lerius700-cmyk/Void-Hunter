@@ -108,6 +108,12 @@ def parse_pytest_summary(tail: str) -> tuple[int, int, int]:
     )
 
 
+def parse_pytest_xfailed(tail: str) -> int:
+    """How many tests are marked xfail (a KNOWN failure, recorded)."""
+    match = re.search(r"(\d+) xfailed", tail)
+    return int(match.group(1)) if match else 0
+
+
 def parse_pytest_failures(output: str) -> list[str]:
     """The test ids pytest reported as FAILED, in the order it listed them."""
     return re.findall(r"^FAILED (\S+)", output, flags=re.MULTILINE)
@@ -258,6 +264,7 @@ def main() -> int:
     output = pytest.stdout.strip()
     tail = output.splitlines()[-1] if output else ""
     failed, passed, skipped = parse_pytest_summary(tail)
+    xfailed = parse_pytest_xfailed(tail)
     total = failed + passed + skipped
     if total == 0:
         print(f"could not read the pytest summary: {tail}")
@@ -276,6 +283,8 @@ def main() -> int:
     # what the label is built from.
     if failed == 0:
         fail_label = "0 fail"
+        if xfailed:
+            fail_label += f" + {xfailed} xfail (fallo conocido)"
     elif unknown:
         fail_label = f"{failed} fail (NO pre-existente: {', '.join(unknown)})"
     else:
@@ -302,7 +311,9 @@ def main() -> int:
     # measured MOVES, the source moves with it -- so the generator owns
     # both columns for the rows whose subject moved.
     sources = {
-        "Build .exe": f"`Get-Item {exe}`",
+        # RELATIVE to the repository root: an absolute path names one
+        # machine and resolves nowhere else (the CI included).
+        "Build .exe": f"`Get-Item {BINARY_REL}` (raiz del repo)",
         "Peso del arbol trackeado": "`python tools/repo_budget.py`",
         "Salida de build (dist/)": "`python tools/repo_budget.py`",
         "Historia (.git/)": "`python tools/repo_budget.py`",
