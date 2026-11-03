@@ -110,3 +110,66 @@ def test_a_malformed_cut_margin_raises_manifest_error(tmp_path):
     )
     with pytest.raises(ManifestError):
         load_set("probe", root=tmp_path)
+
+
+def test_a_bool_is_not_an_integer(tmp_path):
+    """`True` would become 1, and for `distinct` that inverts the intent."""
+    _write(
+        tmp_path,
+        '[meta]\n'
+        'name = "PROBE"\n'
+        'canvas = [32, 32]\n'
+        'cut_margin = true\n'
+        '\n'
+        '[[clips]]\n'
+        'id = "idle"\n'
+        'frames = 2\n'
+        '\n'
+        '[[parts]]\n'
+        'id = "body"\n'
+        'draw = "frames"\n',
+    )
+    with pytest.raises(ManifestError):
+        load_set("probe", root=tmp_path)
+
+
+def test_a_negative_margin_is_rejected(tmp_path):
+    """A negative margin would make the cut-off test never fire."""
+    _write(
+        tmp_path,
+        '[meta]\n'
+        'name = "PROBE"\n'
+        'canvas = [32, 32]\n'
+        'cut_margin = -3\n'
+        '\n'
+        '[[clips]]\n'
+        'id = "idle"\n'
+        'frames = 2\n'
+        '\n'
+        '[[parts]]\n'
+        'id = "body"\n'
+        'draw = "frames"\n',
+    )
+    with pytest.raises(ManifestError):
+        load_set("probe", root=tmp_path)
+
+
+def test_a_malformed_distinct_raises_manifest_error(tmp_path):
+    """The loader fails LOUDLY, with the manifest's own error type."""
+    _write(
+        tmp_path,
+        '[meta]\n'
+        'name = "PROBE"\n'
+        'canvas = [32, 32]\n'
+        '\n'
+        '[[clips]]\n'
+        'id = "idle"\n'
+        'frames = 2\n'
+        'distinct = "nope"\n'
+        '\n'
+        '[[parts]]\n'
+        'id = "body"\n'
+        'draw = "frames"\n',
+    )
+    with pytest.raises(ManifestError):
+        load_set("probe", root=tmp_path)

@@ -85,11 +85,20 @@ def _as_int_pair(value: Any, name: str) -> tuple[int, int]:
 
 
 def _as_optional_int(value: Any, name: str) -> int | None:
-    """Read an optional integer, rejecting anything that is not one."""
+    """Read an optional integer, rejecting anything that is not one.
+
+    A bool is NOT an integer here: `True` would become 1, and for
+    `distinct` that silently inverts the author's intent (the clip
+    declares how many source images it cycles).
+    A negative value is rejected too: a negative margin makes the
+    cut-off test never fire.
+    """
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int):
         raise ManifestError(f"{name} must be an integer, got {value!r}")
+    if value < 0:
+        raise ManifestError(f"{name} must not be negative, got {value!r}")
     return value
 
 
@@ -285,6 +294,7 @@ class Clip:
     distinct: int | None = None
     canvas: tuple[int, int] | None = None
     mode: str = "sequence"
+    # The LOADER derives this from `loop`; the default is for direct builds.
     on_end: str = "loop"
 
 
@@ -441,7 +451,7 @@ def load_set(name: str, root: Path | None = None) -> AnimSet:
             loop=loop,
             scale_tolerance=float(entry.get("scale_tolerance", 0.15)),
             side_tolerance=float(entry.get("side_tolerance", 14.0)),
-            distinct=None if distinct_raw is None else int(distinct_raw),
+            distinct=_as_optional_int(distinct_raw, f"{clip_id}.distinct"),
             canvas=(
                 None
                 if canvas_raw is None
