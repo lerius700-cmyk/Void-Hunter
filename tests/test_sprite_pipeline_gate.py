@@ -14,7 +14,13 @@ ROOT = Path(__file__).resolve().parent.parent
 # ~10s when it is healthy, so this is a wide margin that still fits inside
 # the job's budget -- and a hang is reported as a failure instead of
 # vanishing.
-GATE_TIMEOUT_S = 300
+#
+# The margin is 600s and NOT less on purpose: the gate's OWN budgets are
+# git 60s, mypy 300s and the guards 300s, so a hung subprocess is reported
+# by the gate as its documented failure ("G13: the enemy guards are red:
+# timed out after 300s") well before this timeout fires. What a CI reader
+# sees is the gate's own diagnosis, not "the gate did not finish".
+GATE_TIMEOUT_S = 600
 
 
 def test_the_gate_passes():

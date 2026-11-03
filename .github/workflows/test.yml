@@ -16,6 +16,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The FULL history: the BLOQUE 75 Phase 1 gate measures the phase
+          # RANGE (base..HEAD), so it needs the base commit. The default
+          # checkout is shallow (depth 1) and does not have it.
+          fetch-depth: 0
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5

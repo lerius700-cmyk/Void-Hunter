@@ -8,6 +8,9 @@ It runs EVERY check and reports all the failures, not just the first.
 
 Exit 0 -> PHASE 1 GATE OK. Exit 1 -> PHASE 1 GATE FAILED: <the list>.
 
+The base commit of the phase comes from --base, else from the PHASE1_BASE
+environment variable, else from the PHASE_1_BASE constant in this file.
+
 The gate measures the PHASE RANGE (base..HEAD) and NOT ONLY the working
 tree: a PNG committed INSIDE the phase is invisible to `git diff HEAD`,
 and the phase's own promise is that not one PNG byte changed.
@@ -40,7 +43,6 @@ from sprite_pipeline.audit import (  # noqa: E402
     render_anchors_toml,
 )
 from sprite_pipeline.sets import discover_sets  # noqa: E402
-from sprite_pipeline.verify_contract import verify as verify_set_contract  # noqa: E402
 
 ENEMY_SETS = (
     "scout",
@@ -58,6 +60,9 @@ ENEMY_SETS = (
 # base..HEAD, because the phase's promise is about the PHASE and not only
 # about the working tree: a PNG committed inside the phase is exactly the
 # failure the gate exists to catch.
+#
+# It can be pointed elsewhere WITHOUT editing this file: the PHASE1_BASE
+# environment variable, or the --base argument. See _resolve_base.
 PHASE_1_BASE = "773cf08"
 
 # The guards the enemy sets must pass. G13 runs them: a green gate means the
@@ -86,9 +91,20 @@ GUARD_TESTS = (
 
 # The budget of every subprocess the gate spawns. A subprocess that does not
 # finish inside its budget is a GATE FAILURE, not a crash.
-GIT_TIMEOUT_S = 120
+#
+# The budgets are sized so that the WHOLE gate fits inside the CI job's
+# budget (`timeout-minutes: 15` in .github/workflows/test.yml) even when
+# EVERY subprocess hangs: 4 git calls (4 x 60 s) + mypy (300 s) + the guards
+# (300 s) = 840 s < 900 s. That way the symptom a CI reader sees is the
+# gate's OWN documented failure -- "G13: the enemy guards are red: timed out
+# after 300s" -- and not the job's timeout with no diagnostic at all.
+#
+# A git call that takes a minute is hung (the healthy ones take
+# milliseconds), and the guards run in ~3 s (the art guard alone is 8 cases
+# with a 60 s budget each), so 300 s is a generous hang guard.
+GIT_TIMEOUT_S = 60
 MYPY_TIMEOUT_S = 300
-GUARDS_TIMEOUT_S = 900
+GUARDS_TIMEOUT_S = 300
 
 # The exit code the gate synthesises for a subprocess that did not finish
 # inside its budget. It is the conventional "timeout" code and it lets the
@@ -133,17 +149,42 @@ def _describe(proc: subprocess.CompletedProcess[str]) -> str:
     return proc.stdout.strip() or proc.stderr.strip() or "(no output)"
 
 
+def _resolve_base(argument: str | None) -> str:
+    """The commit the phase range is measured from.
+
+    The precedence is, from the strongest to the weakest:
+
+      1. the `--base` argument -- an explicit request from the caller;
+      2. the PHASE1_BASE environment variable -- lets a checkout that
+         legitimately lacks the constant's commit run the gate without
+         editing the code (a CI job can point the gate at its own base);
+      3. the PHASE_1_BASE constant in this file.
+
+    The argument wins over the environment variable so the gate can be
+    pointed at another base -- or at a deliberately wrong one -- from the
+    command line.
+    """
+    if argument:
+        return argument
+    return os.environ.get("PHASE1_BASE") or PHASE_1_BASE
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="The BLOQUE 75 Phase 1 gate: every check, every failure."
     )
     parser.add_argument(
         "--base",
-        default=PHASE_1_BASE,
-        help="the base commit of Phase 1 (the range the gate measures)",
+        default=None,
+        metavar="BASE",
+        help=(
+            "the base commit of Phase 1 (the range the gate measures). "
+            "Precedence: --base, then the PHASE1_BASE environment variable, "
+            "then the PHASE_1_BASE constant in this file"
+        ),
     )
     args = parser.parse_args(argv)
-    base = args.base
+    base = _resolve_base(args.base)
 
     pygame.init()
     ensure_display()
@@ -202,6 +243,27 @@ def main(argv: list[str] | None = None) -> int:
         if render_anchors_toml(anim_set, second_measurements) != rendered:
             failures.append(f"G3 {name}: the anchors are not deterministic")
 
+    # The base commit must EXIST for the phase range to be measurable. This
+    # check comes FIRST, before every range check, because a missing base is
+    # not a phase failure but an ENVIRONMENT failure -- a wrong constant or
+    # a shallow clone -- and the range checks below would otherwise fail
+    # with a cryptic git error ("bad revision") instead of saying what is
+    # wrong and how to fix it.
+    #
+    # A missing base FAILS the gate. The range checks are not silently
+    # skipped: the failure says they did not run, and the gate goes red.
+    base_check = _git(["rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"])
+    base_missing = base_check.returncode != 0
+    if base_missing:
+        failures.append(
+            f"G11: the base commit {base!r} is not in this repository, so the "
+            f"phase range ({base}..HEAD) could not be measured: the range "
+            f"checks (G5, G11) did NOT run and the gate FAILS rather than "
+            f"skipping them. Either PHASE_1_BASE is wrong, or this clone is "
+            f"shallow -- `git fetch --unshallow` (or `git fetch --depth=0`) "
+            f"brings the history the phase-range checks need."
+        )
+
     # G5: GOLIATH is unharmed. TWO halves:
     #
     #   1. its assets did not change inside the phase -- a diff over the
@@ -218,19 +280,30 @@ def main(argv: list[str] | None = None) -> int:
         if not (goliath_dir / required).is_file():
             failures.append(f"G5 goliath: no {required}")
 
-    bosses = _git(
-        ["diff", "--stat", f"{base}..HEAD", "--", "Assets/sprites/bosses/"]
-    )
-    if bosses.returncode != 0:
-        failures.append(
-            f"G5 goliath: the git command failed (exit {bosses.returncode}): "
-            f"{_describe(bosses)}"
+    # The range half of G5 needs the base commit. When the base is missing,
+    # G11 has already said why and the gate is already failing, so the
+    # check is reported as "did not run" instead of as a cryptic git error.
+    if not base_missing:
+        bosses = _git(
+            ["diff", "--stat", f"{base}..HEAD", "--", "Assets/sprites/bosses/"]
         )
-    elif bosses.stdout.strip():
-        failures.append(
-            f"G5 goliath: the boss assets changed inside the phase "
-            f"({base}..HEAD):\n{bosses.stdout.strip()}"
-        )
+        if bosses.returncode != 0:
+            failures.append(
+                f"G5 goliath: the git command failed (exit {bosses.returncode}): "
+                f"{_describe(bosses)}"
+            )
+        elif bosses.stdout.strip():
+            failures.append(
+                f"G5 goliath: the boss assets changed inside the phase "
+                f"({base}..HEAD):\n{bosses.stdout.strip()}"
+            )
+
+    # verify_contract is imported HERE, on purpose: the module sets
+    # SDL_VIDEODRIVER=dummy AT IMPORT TIME, so importing it at module level
+    # would make the gate permanently headless -- ensure_display() (which
+    # only falls back to the dummy driver when the machine has no real
+    # display) would never get the chance to keep the real one.
+    from sprite_pipeline.verify_contract import verify as verify_set_contract
 
     goliath_failures, _report = verify_set_contract("goliath", None)
     for line in goliath_failures:
@@ -260,24 +333,22 @@ def main(argv: list[str] | None = None) -> int:
     #     (a PNG committed inside the phase is invisible to `git diff HEAD`);
     #   * the WORKING TREE check catches the PNG that was edited and not
     #     committed yet.
-    base_check = _git(["rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"])
-    if base_check.returncode != 0:
-        failures.append(
-            f"G11: the base commit {base!r} does not exist in this repository "
-            f"-- the phase range cannot be measured"
-        )
-
-    png_range = _git(["diff", "--stat", f"{base}..HEAD", "--", "*.png"])
-    if png_range.returncode != 0:
-        failures.append(
-            f"G11: the git command failed (exit {png_range.returncode}): "
-            f"{_describe(png_range)}"
-        )
-    elif png_range.stdout.strip():
-        failures.append(
-            f"G11: PNG files changed inside the phase ({base}..HEAD):\n"
-            f"{png_range.stdout.strip()}"
-        )
+    #
+    # The base commit was already verified above: when it is missing, the
+    # gate has already failed with the reason, and the range check is
+    # reported as "did not run" instead of as a cryptic git error.
+    if not base_missing:
+        png_range = _git(["diff", "--stat", f"{base}..HEAD", "--", "*.png"])
+        if png_range.returncode != 0:
+            failures.append(
+                f"G11: the git command failed (exit {png_range.returncode}): "
+                f"{_describe(png_range)}"
+            )
+        elif png_range.stdout.strip():
+            failures.append(
+                f"G11: PNG files changed inside the phase ({base}..HEAD):\n"
+                f"{png_range.stdout.strip()}"
+            )
 
     png_tree = _git(["diff", "--stat", "HEAD", "--", "*.png"])
     if png_tree.returncode != 0:
