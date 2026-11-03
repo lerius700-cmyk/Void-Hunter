@@ -2,6 +2,14 @@
 #
 # The special set: four visual states, one of them with five VARIANTS,
 # a death clip the runtime never plays, and TWO canvas sizes.
+#
+# The mine's clips are STATIC, not animations: `closed` holds five
+# VARIANTS and `open1`/`open2`/`open3` hold a single frame each. The
+# frame is chosen by the mine's STATE (mine_state), never advanced by
+# time -- `_update_mine_asteroid()` returns before the animation tick.
+# So NO fps applies to any of them: they carry the loader's default, and
+# declaring one would be a false declaration. The `death` clip is
+# `mode = "archive"` and is never played either, so it declares none.
 
 [meta]
 name        = "MINE_ASTEROID"
@@ -48,7 +56,6 @@ scale_tolerance = 0.10
 id       = "death"
 dir      = "death"
 frames   = 10
-fps      = 12.5
 distinct = 1
 mode     = "archive"
 canvas   = [32, 32]

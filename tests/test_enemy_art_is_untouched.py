@@ -32,6 +32,11 @@ ENEMY_SETS = (
     "mine_asteroid",
 )
 
+# The pipeline is an offline tool: it has to finish. A hung run would eat
+# CI's whole timeout budget with no diagnostic. The house pattern is
+# tools/smoke.py's `_run(..., timeout=120)`.
+PIPELINE_TIMEOUT_S = 120
+
 
 def _md5(path: Path) -> str:
     return hashlib.md5(path.read_bytes()).hexdigest()
@@ -65,13 +70,25 @@ def test_the_fix_run_changes_no_png(tmp_path: Path, name: str) -> None:
         ],
         capture_output=True,
         cwd=str(ROOT),
+        timeout=PIPELINE_TIMEOUT_S,
+    )
+    # The guard has TWO halves: the --fix run HAPPENED, and it changed no
+    # PNG. Only the second was checked, and without this a pipeline that
+    # crashed (or never ran) would leave the PNGs untouched and the test
+    # would pass GREEN on nothing. `run.py` exits 1 when the audit still
+    # has a FAIL and 2 when the manifest does not parse, so the exit code
+    # is the verdict; the stderr tells a crash apart from a finding.
+    assert proc.returncode == 0, (
+        f"{name}: the --fix run failed (exit {proc.returncode})\n"
+        f"--- stderr ---\n{proc.stderr.decode('utf-8', 'replace')}"
+        f"--- stdout ---\n{proc.stdout.decode('utf-8', 'replace')}"
     )
     after = _png_digests(copy_root)
     assert after == before, f"{name}: the --fix run rewrote a PNG"
 
 
-def test_the_repository_itself_is_untouched() -> None:
-    """The shipped tree is not a scratch pad."""
+def test_the_repository_ships_exactly_the_eight_enemy_sets() -> None:
+    """The shipped tree is not a scratch pad: it holds exactly 8 sets."""
     enemies_root = ROOT / "Assets" / "sprites" / "enemies"
     found = {p.name for p in discover_sets(enemies_root)}
     assert found == set(ENEMY_SETS)
