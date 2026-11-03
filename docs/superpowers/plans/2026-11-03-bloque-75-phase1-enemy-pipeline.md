@@ -2174,7 +2174,10 @@ Exit 0 -> PHASE 1 GATE OK. Exit 1 -> PHASE 1 GATE FAILED: <the list>.
 """
 from __future__ import annotations
 
+import importlib.util
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -2206,6 +2209,19 @@ ENEMY_SETS = (
     "sniper",
     "turret",
     "mine_asteroid",
+)
+
+# The guards the enemy sets must pass. G13 runs them: a green gate means the
+# art was not touched, the hitbox is not the canvas, the declared semantics
+# are the real ones, the auditor is clean and the anchors are fresh.
+GUARD_TESTS = (
+    "tests/test_enemy_art_is_untouched.py",
+    "tests/test_enemy_hitbox_is_not_the_canvas.py",
+    "tests/test_enemy_clip_semantics.py",
+    "tests/test_enemy_sets_audit_clean.py",
+    "tests/test_enemy_anchors_are_fresh.py",
+    "tests/test_enemy_manifest_matches_assets.py",
+    "tests/test_enemy_set_discovery.py",
 )
 
 
@@ -2265,12 +2281,52 @@ def main() -> int:
     if found != set(ENEMY_SETS):
         failures.append(f"G6: discovery found {sorted(found)}")
 
-    # G9: mypy is not optional.
-    if not _mypy_available():
+    # G9: the type gate. mypy must RUN and report ZERO errors.
+    mypy_cmd = _mypy_command()
+    if mypy_cmd is None:
         failures.append(
-            "G9: mypy is not installed -- run "
-            "`python -m pip install -r requirements-dev.txt`"
+            "G9: mypy cannot be run -- install the dev requirements "
+            "(`python -m pip install -r requirements-dev.txt`) or make `uvx` available"
         )
+    else:
+        proc = subprocess.run(
+            [*mypy_cmd, "src/anim/"],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if proc.returncode != 0:
+            failures.append(f"G9: mypy reported errors:\n{proc.stdout.strip()}")
+
+    # G11: not one PNG changed since the last commit.
+    proc = subprocess.run(
+        ["git", "diff", "--stat", "HEAD", "--", "*.png"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if proc.stdout.strip():
+        failures.append(f"G11: PNG files changed:\n{proc.stdout.strip()}")
+
+    # G13: the enemy guards are green.
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            *GUARD_TESTS,
+            "-q",
+            "--no-header",
+        ],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=900,
+    )
+    if proc.returncode != 0:
+        failures.append(f"G13: the enemy guards are red:\n{proc.stdout[-4000:]}")
 
     if failures:
         print("PHASE 1 GATE FAILED:")
@@ -2281,10 +2337,19 @@ def main() -> int:
     return 0
 
 
-def _mypy_available() -> bool:
-    import importlib.util
+def _mypy_command() -> list[str] | None:
+    """The command that runs mypy, or None when it cannot be run.
 
-    return importlib.util.find_spec("mypy") is not None
+    `python -m mypy` when mypy is installed in the interpreter; otherwise
+    `uvx mypy`, which fetches mypy into uv's cache WITHOUT touching the
+    user's Python installation.
+    """
+    if importlib.util.find_spec("mypy") is not None:
+        return [sys.executable, "-m", "mypy"]
+    uvx = shutil.which("uvx")
+    if uvx:
+        return [uvx, "mypy"]
+    return None
 
 
 if __name__ == "__main__":
