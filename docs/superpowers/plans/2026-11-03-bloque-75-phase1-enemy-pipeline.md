@@ -1268,6 +1268,10 @@ The seven ships share one shape. `Assets/sprites/enemies/scout/manifest.toml`
 # `pivot = "fixed"`: the sprite is blitted centred on the entity, exactly
 #   as the runtime does today. The measured registration is recorded, not
 #   applied -- applying it would move the ship up to 3.7 px off its hitbox.
+# `loop` + `on_end`: the one-shot clips carry BOTH. `loop = false` is what
+#   the shipped ClipPlayer actually branches on (src/anim/clip.py:54), so
+#   without it a damage/death clip would WRAP FOREVER. `on_end = "reset"`
+#   declares the ENTITY's behaviour: the enemy goes back to idle.
 
 [meta]
 name        = "SCOUT"
@@ -1303,6 +1307,7 @@ frames   = 10
 fps      = 12.5
 distinct = 3
 mode     = "sequence"
+loop     = false
 on_end   = "reset"
 scale_tolerance = 0.10
 
@@ -1313,6 +1318,7 @@ frames   = 10
 fps      = 12.5
 distinct = 4
 mode     = "sequence"
+loop     = false
 on_end   = "reset"
 scale_tolerance = 0.45
 
