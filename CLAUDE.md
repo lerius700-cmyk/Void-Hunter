@@ -259,11 +259,11 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 | Silos SF+SM | 9 (Lite) | `Get-ChildItem docs -Directory \| Measure-Object` |
 | Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
 | Versión | v1.8.0 (BLOQUE 74 — pipeline de sprites) | `git log --oneline -1` |
-| Rama | bloquec-75-sprite-migration (en curso; la línea de release es bloquec-67-goliath-port) | `git branch --show-current` |
+| Rama | bloquec-67-goliath-port | `git branch --show-current` |
 | Remote | github.com/lerius700-cmyk/Void-Hunter | `git remote -v` |
-| Build .exe | **reconstruido** para v1.8.0 (278.0 MB) en `dist/void-hunter-v1.8.0.exe` — el path congelado (`<_MEIPASS>/Assets/sprites/bosses`) verificado con el manifest y los anchors dentro del bundle; SHA256 `DF97122791327485799186EDCC66DB050F0AA2CB9EE3B99CF2FB4E6222F081BB` | `Get-Item F:\AI\MM\void-hunter\dist\void-hunter-v1.8.0.exe` |
-| Peso del arbol trackeado | 203.9 MB | `python tools/repo_budget.py` |
-| Salida de build (dist/) | 278.0 MB | `python tools/repo_budget.py` |
+| Build .exe | **reconstruido** para v1.8.1 (220.2 MB) en `dist/void-hunter-v1.8.1.exe` — el path congelado (`<_MEIPASS>/Assets/sprites/bosses`) verificado con el manifest y los anchors dentro del bundle; SHA256 `FA4A8684521EB74E9F67CE8AFDAE9B17A76B0FCE725CC44FB84D58370E46A256` | `Get-Item F:\AI\MM\void-hunter\dist\void-hunter-v1.8.1.exe` |
+| Peso del arbol trackeado | 204.0 MB | `python tools/repo_budget.py` |
+| Salida de build (dist/) | 220.2 MB | `python tools/repo_budget.py` |
 | Historia (.git/) | 504.0 MB | `python tools/repo_budget.py` |
 | Tiles Asteroid Approach | 6 PNG (320×480) en `Assets/background/tiles/act1/` | `Get-ChildItem Assets/background/tiles/act1/*.png` |
 | Frames GOLIATH | 60 PNG (6 anim × 10) en `Assets/sprites/bosses/goliath/` | `Get-ChildItem Assets/sprites/bosses/goliath/*/frame_*.png` |

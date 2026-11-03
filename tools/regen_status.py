@@ -70,7 +70,8 @@ CLAUDE = ROOT / "CLAUDE.md"
 # too. A block that lies and a generator that agrees with the lie is
 # worse than either alone: the next regeneration puts the broken anchor
 # back.
-BINARY_REL = "dist/void-hunter-v1.8.0.exe"
+BINARY_REL = "dist/void-hunter-v1.8.1.exe"
+VERSION = "v1.8.1"
 
 # The failures this project KNOWS about, by test id. The block says
 # whether the failures are the known pre-existing ones, and that claim
@@ -168,7 +169,7 @@ def _build_row(exe: Path, exe_mb: float) -> str:
             f"con PyInstaller y queda en `{BINARY_REL}`"
         )
     return (
-        f"**reconstruido** para v1.8.0 ({exe_mb} MB) en `{BINARY_REL}` "
+        f"**reconstruido** para {VERSION} ({exe_mb} MB) en `{BINARY_REL}` "
         "— el path congelado (`<_MEIPASS>/Assets/sprites/bosses`) verificado con "
         f"el manifest y los anchors dentro del bundle; SHA256 `{_sha256(exe)}`"
     )
