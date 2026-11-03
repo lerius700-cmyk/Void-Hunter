@@ -4,9 +4,11 @@ from __future__ import annotations
 import subprocess
 from unittest import mock
 
+import pytest
+
 from PIL import Image
 
-from tools.redesign_ships._ai_client import generate_ship_base
+from tools.redesign_ships._ai_client import _mcode_cmd, generate_ship_base
 from tools.redesign_ships._animation_frames import (
     generate_death_frames,
     generate_damage_frames,
@@ -55,6 +57,29 @@ def test_map_image_to_palette_uses_only_palette_colors():
             assert found, f"pixel {rgb} not within ±2 of any palette color"
 
 
+def _mcode_tools_available() -> bool:
+    """Whether the `mcode-tools` CLI is installed on this machine.
+
+    The wrapper resolves the executable BEFORE it calls it, so on a
+    machine without the CLI (a Linux CI runner) it raises
+    FileNotFoundError instead of running. The tests below are about the
+    wrapper's ARGUMENTS, not about the CLI: they skip when the tool is
+    not there.
+    """
+    try:
+        _mcode_cmd()
+    except Exception:
+        return False
+    return True
+
+
+requires_mcode_tools = pytest.mark.skipif(
+    not _mcode_tools_available(),
+    reason="mcode-tools is not installed on this machine",
+)
+
+
+@requires_mcode_tools
 def test_generate_ship_base_invokes_mcode_tools(monkeypatch, tmp_path):
     """The wrapper calls mcode-tools with the right args and returns the node_id."""
     fake_response = '{"success_items": [{"node_id": "abc123", "file_name": "test.png"}]}'
@@ -80,6 +105,7 @@ def test_generate_ship_base_invokes_mcode_tools(monkeypatch, tmp_path):
     assert "--args" in cmd
 
 
+@requires_mcode_tools
 def test_generate_ship_base_raises_on_no_success(monkeypatch):
     """If the response has no success_items, raise RuntimeError."""
     fake_response = '{"success_items": []}'
