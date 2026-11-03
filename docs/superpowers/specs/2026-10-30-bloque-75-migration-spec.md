@@ -1162,6 +1162,77 @@ One probe, two roots — the same rule the audio and the tiling image already us
 
 ---
 
+## Fase 2: la arquitectura del motor por capas (decidida)
+
+**Decidido el 2026-11-02 por brainstorming** (el usuario, con el análisis y la
+recomendación de Mavis). Esta sección **resuelve** las preguntas abiertas del
+final del spec y es la fuente de verdad de la Fase 2.
+
+### El reencuadre: ya hay dos "capas" en el proyecto
+
+| Concepto | Dónde | Qué ordena | Cardinalidad |
+|---|---|---|---|
+| **`Part.z`** | BLOQUE 74, `src/anim/parts.py` | las partes **dentro** de un set animado (`body` 0, `shield_plate` 1, `eye` 2, `fx_eye_beam` 3) | muchas por set |
+| **El stack de escenas** | `src/core/scene_manager.py` | qué pantalla está activa (15 `GameState` **mutuamente excluyentes**) + overlays apilados (`PAUSE`) | una activa + overlays |
+| **Capa de frame** (nuevo) | `src/render/layer.py` | las **operaciones de dibujo del frame** (las 30 del gameplay) | 30 por escena |
+
+El `ClipPlayer` **ya es un compositor** — pero de las *partes de un set* (nivel
+entidad). La capa de frame es un compositor de **frame** (nivel escena). Son
+dos niveles distintos y ambos hacen falta; lo que hay que evitar es que "layer"
+signifique tres cosas. Por eso el tercer nivel se llama **capa de frame** y
+vive en su propio paquete, y las dos acepciones anteriores no se tocan.
+
+### Las tres decisiones
+
+| # | Decisión | Por qué |
+|---|---|---|
+| **A1** | El motor vive en **`src/render/layer.py`**: `Layer`, `LayerStack`, `DrawContext`. Genérico, **sin imports de `src/ui/`** ni de `src/entities/` | L6: `src/anim/` ya tiene prohibido importar `src/ui/` porque el gate de mypy corre sobre `src/anim/`; el motor nuevo hereda esa frontera por construcción. Y saca el concepto fuera del monolito de 6 501 líneas. |
+| **A2** | El **`SceneManager` no se toca** | Sus 15 estados son excluyentes y responden a "qué pantalla hay"; la capa de frame responde a "en qué orden se pinta". Unificar las dos ideas convierte 15 pantallas en 15 × N capas simultáneas: un modelo combinatorio sin capacidad nueva, y sin proof pixel-a-pixel para 14 escenas. El `SceneManager` sigue siendo el dueño de *qué estado*; la capa de frame es la dueña de *el orden*. |
+| **A3** | La Fase 2 va en **dos checkpoints**, cada uno con su propio golden | 2A = el stack con los **mismos** cuerpos de dibujo (cero cambio de comportamiento). 2B = los enemigos y el boss por el pipeline. Si el golden falla, se sabe cuál de los dos cambios rompió el frame. |
+
+### Lo que la Fase 2 cambia, en una frase
+
+El frame loop del gameplay (≈200 líneas de llamadas con `(target, shx, shy)`
+pasados a mano) pasa a ser **30 capas ordenadas por `z` + un `DrawContext`**,
+donde **el cuerpo de cada capa es el código de dibujo que existe hoy**. La
+Fase 2 es un refactor de **orquestación**, no de dibujo.
+
+### Decisiones de diseño que salen de este análisis
+
+| # | Decisión | Razón |
+|---|---|---|
+| **B1** | `Layer` **no** lleva el flag `visible` | El `Layer` es un dataclass **frozen**: un flag que no puede cambiar es inútil, y los draws condicionales (el boss sólo existe en el modo boss, el banner sólo cuando hay banner) los decide el **cuerpo** de la capa. `visible` fuera: menos superficie, menos trampa. |
+| **B2** | `ctx.origin` es **el centro del playfield**; para el scratch se usa `ctx.with_origin(x, y)` | Un solo campo congelado no puede ser a la vez "el centro del playfield" y "la posición de la entidad" — y hay **tres** superficies scratch (64×64 del jugador, 48×48 del enemigo, 64×64 del sub-boss). `with_origin` reemplaza el `offset_x/offset_y` que hoy se calcula a mano por entidad. |
+| **B3** | Los **golden frames se commitean** al repo | Sin ellos, B2 no es reproducible en otra máquina ni por otro agente. Es la misma disciplina que los `anchors.toml`: la medición, versionada. |
+| **B4** | `scale` del `DrawContext` queda en **1.0** y el tamaño en **320×480** | El escalado a ventana sigue siendo de `Game._present()`. La capa de frame nunca toca la resolución (F6). |
+| **B5** | El fondo (parallax + galaxy) queda **fuera** del stack | Es lo único que debe quedar detrás de todo y tiene su propio ciclo de update. Su lugar queda documentado: "el fondo del stack". |
+| **B6** | El HUD **entra** al stack, en `z = 23` | Se dibuja *dentro* de la secuencia del playfield, y después de él vienen los flashes de pantalla completa. Sacarlo del stack cambiaría el frame. Su cuerpo no cambia: la capa llama a `self._hud.draw(...)`. |
+| **B7** | Los **14 estados restantes** no se tocan | No tienen playfield. `src/render/` queda genérico para que, si alguno lo necesita, lo adopte después sin reescribir el motor. |
+| **B8** | El pipeline (`ClipPlayer`) se conecta a los **enemigos y al boss** en el checkpoint 2B | El jugador tiene rotación y escala 0.55 propias, y su arte no es un set del pipeline: sigue fuera (N9). |
+
+### Lo que la Fase 2 NO es
+
+- **No** es una generalización del `SceneManager` (A2).
+- **No** reescribe el arte ni el runtime de los 14 estados (B7).
+- **No** mueve los cuerpos de dibujo a archivos nuevos: las capas los **llaman**.
+  El monolithic split de `gameplay_runtime.py` (6 501 líneas) es otro BLOQUE.
+- **No** es un juego deorpheus: el `SceneManager` sigue siendo el que decide
+  qué pantalla hay.
+
+## Open questions (resolved)
+
+Estas preguntas las decidió el owner el 2026-11-02 (ver §Fase 2). Se dejan
+acá con la respuesta y el motivo, para que un agente futuro no las vuelva a
+abrir.
+
+| # | Pregunta | Respuesta | Motivo |
+|---|---|---|---|
+| Q1 | ¿La `LayerStack` es un concepto dentro de una escena, o una generalización del `SceneManager`? | **Dentro de una escena.** El `SceneManager` es dueño de *qué pantalla*; la capa de frame es dueña de *en qué orden*. | A2 |
+| Q2 | ¿Los 8 sets de enemigos entran todos en la Fase 1, o uno primero? | **Los 8.** Son estructuralmente idénticos (la mina es el único caso especial) y el gate ya los audita a todos. Si se quiere una porción más chica, `scout` sola es una Fase 1a válida. | — |
+| Q3 | ¿El arte `death` de la mina va a jugarse alguna vez? | **No en este BLOQUE.** Se declara `archive`: el pipeline lo mide y el manifest lo documenta, pero el runtime sigue sin dibujarlo. | N13 + la tabla de "What is NOT done" |
+| Q4 | ¿Los golden frames se commitean o se generan on demand? | **Commiteados.** Sin ellos, B2 no es reproducible en otra máquina. | B3 |
+| Q5 | ¿El motor es general (como anticipaba el spec de BLOQUE 74) o una feature del gameplay? | **Motor general en `src/render/`, capas del juego en `src/ui/`.** Un solo consumidor hoy, pero la frontera vale el costo: 150 líneas y ninguna dependencia de `src/ui/`. | A1 |
+
 ## Risks and mitigations
 
 ### FMEA
@@ -1323,16 +1394,8 @@ python -m pytest tests\test_layer_stack_renders_identical_frames.py tests\test_l
 
 ## Open questions (for the user, not for the implementer)
 
-These are the decisions the spec deliberately leaves to the owner. Everything
-else in this document is decided.
-
-| # | Question | The spec's recommendation |
-|---|---|---|
-| Q1 | Is the `LayerStack` a concept inside a scene, or a generalization of the `SceneManager`? | **Inside a scene.** The `SceneManager` owns *which screen*; the stack owns *in what order*. |
-| Q2 | Do all 8 enemy sets ship in Phase 1, or one set first (then the gate, then the other 7)? | **All 8**, because they are structurally identical (the mine is the only special case) and the gate already audits all of them. If the implementer wants a smaller first slice, `scout` alone is a valid Phase 1a. |
-| Q3 | Is the mine's `death` art ever going to be played? | **Not in this BLOQUE.** It is declared `archive`; making it visible is an art decision, not a pipeline one. |
-| Q4 | Should the golden frames be committed to the repo, or generated on demand? | **Committed.** Without them, B2 is not reproducible on another machine. |
-| Q5 | Should the `LayerStack` be a general engine (as the BLOQUE 74 spec anticipated) or a gameplay-scene feature? | **Gameplay-scene feature first.** `src/render/` stays generic; the game-specific layers live in `src/ui/`. |
+*Resolved on 2026-11-02 — see §Fase 2: la arquitectura del motor por capas
+(decidida) and §Open questions (resolved) below.*
 
 ---
 
