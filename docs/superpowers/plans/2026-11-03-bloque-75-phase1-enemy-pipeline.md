@@ -1092,13 +1092,23 @@ with:
             measured = len(digests)
             if measured != clip.distinct:
                 groups = sorted(digests.values(), key=len, reverse=True)
+                # The two failure modes are NOT interchangeable: more images
+                # than declared means the MANIFEST is stale; fewer means the
+                # ART collapsed further than declared. Say which one.
+                detail = (
+                    f"the manifest declares {clip.distinct} distinct images, "
+                    f"the clip measures {measured} (groups {groups})"
+                )
+                if measured > clip.distinct:
+                    detail += " -- the manifest is stale"
+                else:
+                    detail += " -- the art collapsed further than declared"
                 findings.append(
                     Finding(
                         clip.id,
                         groups[0][0] if groups else 0,
                         "COLAPSADO",
-                        f"the manifest declares {clip.distinct} distinct images, "
-                        f"the clip measures {measured} (groups {groups})",
+                        detail,
                     )
                 )
 ```
