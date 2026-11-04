@@ -8,6 +8,7 @@ depends on a constant hardcoded in the boss class.
 """
 from __future__ import annotations
 
+import functools
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -175,6 +176,7 @@ class ClipPlayer:
 # place that knows BOTH roots, and it knows them separately.
 
 
+@functools.lru_cache(maxsize=1)
 def _enemies_root() -> Path:
     """Where the enemy sets live.
 
@@ -186,6 +188,14 @@ def _enemies_root() -> Path:
 
     The probe is resolved on CALL, never at import time: a frozen build
     never needs the source tree.
+
+    BLOQUE 75 (fix round 1): the resolution is MEMOIZED. The root was
+    re-resolved from the filesystem once per ENEMY, per FRAME -- the
+    player was cached but the root was not -- and the resolution costs
+    ~72-90 us on Windows. The cache keeps the "resolved on call"
+    property (the first call still happens at RUNTIME, so a frozen
+    build still reads `_MEIPASS`), and it collapses the cost to one
+    resolution per process.
     """
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass:
