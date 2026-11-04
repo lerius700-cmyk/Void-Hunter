@@ -1003,6 +1003,27 @@ In `src/ui/gameplay_runtime.py`:
    exactly where it is today — it is drawn before the stack renders. The
    design calls it "the stack's backdrop".
 
+**The factory's type contract.** `src/ui/gameplay_layers.py:112` currently
+declares `build_layers(rt: Any)`, because importing `GameplayRuntime` there
+would create a cycle (the runtime imports the layers module). `Any` means the
+module no longer type-checks the runtime's shape. Replace it with a
+`Protocol` in `src/ui/gameplay_layers.py` — the layer factory only needs the
+draw helpers, so the protocol can declare just those:
+
+```python
+class _RuntimeLike(Protocol):
+    """What the layer factory needs from the runtime.
+
+    A Protocol instead of `GameplayRuntime`: importing the runtime here
+    would be a cycle (the runtime imports this module), and `Any` would
+    stop type-checking the shape entirely.
+    """
+```
+
+Give it the members the factory actually calls, and type
+`build_layers(rt: _RuntimeLike) -> LayerStack`. The runtime satisfies the
+protocol structurally — no import, no cycle, and the contract is checked.
+
 **The shake.** The old code passed `(shx, shy)` to each draw helper. The new
 code has the shake in the context. In this task the helpers keep their
 current signatures (`target` only) and the runtime keeps computing `shx, shy`
