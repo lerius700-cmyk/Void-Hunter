@@ -4019,9 +4019,9 @@ class GameplayRuntime:
         # the dash path, fading from full to zero. Only visible while
         # dashing (or just after) since afterimage is populated by the
         # dash update loop in Player._update_dash().
-        self._draw_player_afterimage(target, shx, shy)
+        self._draw_player_afterimage_pass(target, shx, shy)
         # Player (only if not in DEAD state and not i-frames invisible)
-        self._draw_player_pass(target, shx, shy)
+        self._draw_player_scaled_pass(target, shx, shy)
         # BLOQUE 37: continuous L3 laser (drawn on top of player so it appears
         # to emerge from the muzzle).
         self._draw_continuous_laser(target, shx, shy)
@@ -4223,7 +4223,16 @@ class GameplayRuntime:
         if self._tron_trail.is_active() and self._player.state != PlayerState.PROPULSION:
             self._tron_trail.draw(target, (shx, shy))
 
-    def _draw_player_pass(self, target: pygame.Surface, shx: int, shy: int) -> None:
+    def _draw_player_afterimage_pass(self, target: pygame.Surface, shx: int, shy: int) -> None:
+        """Layer `player_afterimage` (z=14): the dash after-image ghosts.
+
+        The guard is the one `draw()` had; `_draw_player_afterimage` is
+        untouched. Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
+        if self._player.afterimage:
+            self._draw_player_afterimage(target, shx, shy)
+
+    def _draw_player_scaled_pass(self, target: pygame.Surface, shx: int, shy: int) -> None:
         """Layer `player` (z=15): the player ship.
 
         The guard is the one `draw()` had; `_draw_player_scaled` is

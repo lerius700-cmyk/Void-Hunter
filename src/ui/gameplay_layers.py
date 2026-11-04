@@ -20,20 +20,19 @@ raising TypeError in the middle of a frame.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from typing import Any, Callable
 
 import pygame
 
 from src.render.layer import DrawContext, Layer, LayerStack
 
-if TYPE_CHECKING:  # pragma: no cover - the import cycle is broken on purpose
-    # gameplay_runtime imports THIS module (BLOQUE 75 Fase 2, Task 4), so
-    # the runtime type must NOT be imported at runtime.
-    from src.ui.gameplay_runtime import GameplayRuntime
-
 # A runtime draw helper: `(target)`, `(target, ox, oy)` -- the layer body
 # decides which one of the two it is.
 _DrawFn = Callable[..., None]
+
+# The two concrete shapes the runtime's helpers have.
+_ShakeDrawFn = Callable[[pygame.Surface, int, int], None]
+_PlainDrawFn = Callable[[pygame.Surface], None]
 
 # The arity of the helper a layer calls: how many arguments the layer
 # body has to pass.
@@ -61,8 +60,8 @@ _LAYERS: tuple[tuple[str, str, int, int], ...] = (
     ("bullets", "_draw_bullets_with_glow", 11, _SHAKE),
     ("missiles", "_draw_missiles", 12, _SHAKE),
     ("tron_trail", "_draw_tron_trail", 13, _SHAKE),
-    ("player_afterimage", "_draw_player_afterimage", 14, _SHAKE),
-    ("player", "_draw_player_pass", 15, _SHAKE),
+    ("player_afterimage", "_draw_player_afterimage_pass", 14, _SHAKE),
+    ("player", "_draw_player_scaled_pass", 15, _SHAKE),
     ("continuous_laser", "_draw_continuous_laser", 16, _SHAKE),
     ("reticle", "_draw_reticle_pass", 17, _SHAKE),
     ("bomb_flash", "_draw_bomb_flash", 18, _PLAIN),
@@ -88,23 +87,48 @@ LAYER_BODIES: tuple[str, ...] = tuple(method for _, method, _, _ in _LAYERS)
 LAYER_ARITY: tuple[int, ...] = tuple(arity for _, _, _, arity in _LAYERS)
 
 
-def build_layers(rt: "GameplayRuntime") -> LayerStack:
+def _shake_call(method: _ShakeDrawFn) -> Callable[[pygame.Surface, DrawContext], None]:
+    """The call form for a helper that takes `(target, ox, oy)`.
+
+    The shake comes from the context -- the very same `shx, shy` the
+    frame computed.
+    """
+
+    def draw(target: pygame.Surface, ctx: DrawContext) -> None:
+        method(target, ctx.shake[0], ctx.shake[1])
+
+    return draw
+
+
+def _plain_call(method: _PlainDrawFn) -> Callable[[pygame.Surface, DrawContext], None]:
+    """The call form for a helper that takes `(target)` only."""
+
+    def draw(target: pygame.Surface, ctx: DrawContext) -> None:
+        method(target)
+
+    return draw
+
+
+def build_layers(rt: Any) -> LayerStack:
     """The thirty layers of the gameplay frame, in the measured order.
 
     `rt` is the `GameplayRuntime`. Each layer calls one of its draw
     helpers; the helpers are the code that exists today. The helpers
     that take the shake get it from the context -- the very same
     `shx, shy` the frame computed.
+
+    The runtime is duck-typed on purpose: in Task 4 the runtime imports
+    THIS module, so importing the runtime back would close a cycle. It
+    would also drag the runtime's own (pre-existing) type debt into
+    this module's check. The helpers this module calls are pinned by
+    `tests/test_layer_stack_order.py` instead.
     """
     layers: list[Layer] = []
-    draw: Callable[[pygame.Surface, DrawContext], None]
     for layer_id, method_name, z, arity in _LAYERS:
         method: _DrawFn = getattr(rt, method_name)
         if arity == _SHAKE:
-            draw = lambda target, ctx, _method=method: _method(
-                target, ctx.shake[0], ctx.shake[1],
-            )
+            draw = _shake_call(method)
         else:
-            draw = lambda target, ctx, _method=method: _method(target)
+            draw = _plain_call(method)
         layers.append(Layer(id=layer_id, z=z, draw=draw))
     return LayerStack(layers)
