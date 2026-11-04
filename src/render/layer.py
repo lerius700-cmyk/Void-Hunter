@@ -48,10 +48,14 @@ class DrawContext:
         return replace(self, origin=(x, y))
 
     def at(self, x: float, y: float) -> tuple[int, int]:
-        """A world position mapped to screen pixels, shake included.
+        """A screen-space position plus the shake.
 
-        The shake is added HERE and nowhere else: the old code passed
-        `(target, shx, shy)` to every draw call.
+        The origin and the scale are NOT applied here: the caller owns
+        that mapping. The shake IS applied here, and only here -- the old
+        code passed `(target, shx, shy)` to every draw call.
+
+        The position is truncated toward zero (`int()`), NOT floored:
+        `at(-0.5, 0.5)` with a shake of `(3, -4)` gives `(3, -4)`.
         """
         return (int(x) + self.shake[0], int(y) + self.shake[1])
 
