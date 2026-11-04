@@ -145,6 +145,13 @@ GUARD_TESTS = (
 # A git call that takes a minute is hung (the healthy ones take
 # milliseconds), and the guards run in ~3 s (the art guard alone is 8 cases
 # with a 60 s budget each), so 300 s is a generous hang guard.
+#
+# The PHASE 2 budget does NOT fit inside that CI job: three git calls
+# (3 x 60 s) + four 300 s budgets (the golden pytest, the harness `--check`,
+# mypy and the layer-order pytest) = 1380 s > 900 s. The job's
+# `timeout-minutes` has to be raised to at least 25 minutes when the Phase 2
+# gate is wired into the CI -- see
+# docs/handoffs/HANDOFF-BLOQUE-75-PHASE2-2026-11-04.md, section 5.
 GIT_TIMEOUT_S = 60
 MYPY_TIMEOUT_S = 300
 GUARDS_TIMEOUT_S = 300

@@ -171,35 +171,43 @@ así que una capa nunca ve una superficie que no sea la que se está pintando.
 | z | Layer | Body (el método que ya existe) |
 |---|---|---|
 | 0 | `ambient_dust` | `rt._draw_ambient_dust(target)` |
-| 1 | `player_damage_flash` | el flash rojo a pantalla completa (inline hoy) |
-| 2 | `powerups` | el loop de powerups (inline) |
-| 3 | `enemies` | el loop de enemigos → `rt._draw_enemy_scaled` |
+| 1 | `player_damage_flash` | `rt._draw_player_damage_flash(target)` |
+| 2 | `powerups` | `rt._draw_powerup_pass(target, shx, shy)` |
+| 3 | `enemies` | `rt._draw_enemy_pass(target, shx, shy)` |
 | 4 | `asteroids_and_powerups` | `rt._draw_asteroids_and_powerups(target)` |
-| 5 | `leader_glows` | `draw_leader_glows(...)` |
+| 5 | `leader_glows` | `rt._draw_leader_glows(target)` |
 | 6 | `boss` | `rt._draw_boss_pass(target, shx, shy)` |
-| 7 | `boss_spears` | el loop de lanzas (inline) |
+| 7 | `boss_spears` | `rt._draw_boss_spear_pass(target, shx, shy)` |
 | 8 | `shield_laser` | `rt._draw_shield_laser_pass(target, shx, shy)` |
-| 9 | `shockwaves` | el loop (inline) |
-| 10 | `bomb_bursts` | el loop (inline) |
+| 9 | `shockwaves` | `rt._draw_shockwave_pass(target, shx, shy)` |
+| 10 | `bomb_bursts` | `rt._draw_bomb_burst_pass(target, shx, shy)` |
 | 11 | `bullets` | `rt._draw_bullets_with_glow(target, shx, shy)` |
 | 12 | `missiles` | `rt._draw_missiles(target, shx, shy)` |
-| 13 | `tron_trail` | `rt._tron_trail.draw(target, (shx, shy))` |
+| 13 | `tron_trail` | `rt._draw_tron_trail(target, shx, shy)` |
 | 14 | `player_afterimage` | `rt._draw_player_afterimage_pass(target, shx, shy)` |
 | 15 | `player` | `rt._draw_player_scaled_pass(target, shx, shy)` |
 | 16 | `continuous_laser` | `rt._draw_continuous_laser(target, shx, shy)` |
 | 17 | `reticle` | `rt._draw_reticle_pass(target, shx, shy)` |
-| 18 | `bomb_flash` | el flash blanco (inline) |
-| 19 | `particles` | `rt._particles.draw(target, (shx, shy))` |
+| 18 | `bomb_flash` | `rt._draw_bomb_flash(target)` |
+| 19 | `particles` | `rt._draw_particles(target, shx, shy)` |
 | 20 | `score_popups` | `rt._draw_score_popups(target, shx, shy)` |
 | 21 | `wave_indicator` | `rt._draw_wave_indicator(target)` |
 | 22 | `play_area_frame` | `rt._draw_play_area_frame(target)` |
-| 23 | `hud` | `rt._hud.draw(target, ...)` |
-| 24 | `pattern_banner` | inline |
-| 25 | `screen_flash` | inline |
-| 26 | `charge_release_flash` | inline |
-| 27 | `pickup_flash` | inline |
-| 28 | `level_up_flash` | inline |
+| 23 | `hud` | `rt._draw_hud(target)` |
+| 24 | `pattern_banner` | `rt._draw_pattern_banner(target)` |
+| 25 | `screen_flash` | `rt._draw_screen_flash(target)` |
+| 26 | `charge_release_flash` | `rt._draw_charge_release_flash(target)` |
+| 27 | `pickup_flash` | `rt._draw_pickup_flash(target)` |
+| 28 | `level_up_flash` | `rt._draw_level_up_flash(target)` |
 | 29 | `speed_lines` | `rt._draw_speed_lines_pass(target)` |
+
+> **The table above is the ONE the implementation uses.** It was corrected
+> after the final review found that it still named the BARE helpers for six
+> rows (`enemies` named `_draw_enemy_scaled`, which is exactly the helper the
+> note below warns against wiring the stack to). The authoritative copy is
+> `src/ui/gameplay_layers.py::_LAYERS`, and `tests/test_layer_stack_order.py`
+> pins the ids, the `z`, the method existence and the arity of all 30.
+
 
 > **The five `*_pass` wrappers exist because the frame's guards are STRONGER
 > than the helpers' own.** `_draw_boss` only checks `self._boss is None`
