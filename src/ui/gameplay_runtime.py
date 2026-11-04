@@ -5439,10 +5439,23 @@ class GameplayRuntime:
         dict (set by collisions/handling for any enemy) and the BLOQUE 71
         ``e.hit_timer`` field (set by ``Enemy.hit()`` for any kind; for
         MINE_ASTEROID it's set in all 4 states per the BLOQUE 71 spec).
+
+        BLOQUE 75 (Task 8): the BODY is drawn by the COMPOSITOR
+        (``_draw_enemy_body_via_pipeline``), so the runtime does NOT blit
+        it any more. The white flash stays a runtime OVERLAY, drawn on
+        top of what the compositor already put on the target: blitting
+        the body a second time would make every flashed enemy brighter
+        and would move the golden frames.
         """
         from src.core.settings import HIT_FLASH_OPACITY
         scale = self._ship_scale_enemy
-        sprite = self._get_enemy_sprite(e)
+        # BLOQUE 75 (Task 8): the BODY is drawn by the COMPOSITOR, and
+        # it hands back the RAW surface it drew. The flash overlay is
+        # built from THAT one, so it lands pixel-for-pixel on the body
+        # -- and the enemy frames are not kept twice in memory (the UI
+        # sprite cache and the compositor's own cache).
+        drawn = self._draw_enemy_body_via_pipeline(target, e, shx, shy)
+        sprite = drawn if drawn is not None else self._get_enemy_sprite(e)
         if sprite is not None:
             # BLOQUE 71.1: shape-aware 70% white flash overlay if either
             # flash source is active. Both timers can be set independently.
@@ -5451,23 +5464,25 @@ class GameplayRuntime:
             generic_flash = e.hit_timer > 0.0  # any enemy with hit_timer
             w, h = sprite.get_size()
             if flash_t > 0.0 or mine_flash or generic_flash:
-                # 1. Draw the original sprite so the shape is visible underneath.
-                scaled_base = pygame.transform.scale(
-                    sprite, (int(w * scale), int(h * scale))
-                )
-                base_rect = scaled_base.get_rect(
-                    center=(int(e.x + shx), int(e.y + shy))
-                )
-                target.blit(scaled_base, base_rect)
-                # 2. Build a shape-aware white silhouette at 70% opacity
-                #    (using the original sprite, pre-scale) and overlay it.
+                # ONLY the overlay: the body is already on the target.
+                # It is built from the RAW sprite and scaled with the
+                # SAME truncation, so it lands pixel-for-pixel on the
+                # compositor's scaled body.
                 from src.entities.asteroid import _build_white_flash_overlay
                 overlay = _build_white_flash_overlay(sprite, HIT_FLASH_OPACITY)
                 scaled_overlay = pygame.transform.scale(
                     overlay, (int(w * scale), int(h * scale))
                 )
-                target.blit(scaled_overlay, base_rect)
-            else:
+                target.blit(
+                    scaled_overlay,
+                    scaled_overlay.get_rect(
+                        center=(int(e.x + shx), int(e.y + shy))
+                    ),
+                )
+            elif drawn is None:
+                # The pipeline could not draw this enemy: the plain
+                # sprite blit, the way the runtime behaved before the
+                # pipeline existed.
                 scaled = pygame.transform.scale(
                     sprite, (int(w * scale), int(h * scale)),
                 )
@@ -5488,6 +5503,84 @@ class GameplayRuntime:
             blit_x = int(e.x + shx) - new_w // 2
             blit_y = int(e.y + shy) - new_h // 2
             target.blit(scaled, (blit_x, blit_y))
+
+    # ------------------------------------------------------------------
+    # BLOQUE 75 (Task 8): the enemy body, drawn by the compositor
+    # ------------------------------------------------------------------
+    def _enemy_pipeline_clip(self, e: "Enemy") -> tuple[str, int] | None:
+        """The (clip id, frame) the pipeline must draw for this enemy.
+
+        The runtime KEEPS COUNTING the frames: the pipeline never
+        re-derives them. The mapping is the one ``Enemy.animation_path``
+        already uses, so the compositor draws exactly the PNG the runtime
+        used to blit:
+
+          * a plain enemy: its ``animation_state`` (idle / thrust /
+            damage / death) and its ``animation_frame``;
+          * the mine: its ``mine_state`` (closed / open1 / open2 /
+            open3). The mine's `closed` state holds FIVE VARIANTS and
+            the frame is the variant, clamped to 0..4; the `open*`
+            states are single frames.
+
+        None when the enemy is not one the pipeline can draw: the
+        sub-boss keeps its own four-direction sprites.
+        """
+        kind_value = e.kind.value if hasattr(e.kind, "value") else str(e.kind)
+        if kind_value == "sub_boss":
+            return None
+        if kind_value == "mine_asteroid":
+            state = e.mine_state
+            if state not in ("closed", "open1", "open2", "open3"):
+                # The same fallback `Enemy.animation_path` uses: the
+                # closed art, VARIANT 0.
+                return "closed", 0
+            if state == "closed":
+                return state, max(0, min(4, int(e.mine_variant)))
+            return state, 0
+        return e.animation_state, int(e.animation_frame)
+
+    def _draw_enemy_body_via_pipeline(
+        self, target: pygame.Surface, e: "Enemy", shx: int, shy: int,
+    ) -> pygame.Surface | None:
+        """Draw the enemy BODY through the compositor.
+
+        Returns the RAW surface the body was drawn from, or None when
+        the runtime has to draw it the old way (the set could not be
+        loaded, the enemy is not one of the pipeline's sets, or the frame
+        is not there).
+
+        The raw surface is returned so the flash overlay is built from
+        EXACTLY the frame the compositor drew -- not from a second copy
+        of the same PNG.
+        """
+        from src.anim.clip import load_player_for_kind
+
+        kind_value = e.kind.value if hasattr(e.kind, "value") else str(e.kind)
+        player = load_player_for_kind(kind_value)
+        if player is None:
+            return None
+        clip = self._enemy_pipeline_clip(e)
+        if clip is None:
+            return None
+        clip_id, frame = clip
+        if clip_id not in player.set.clips:
+            return None
+        raw = player.surface(clip_id, frame)
+        if raw is None:
+            # The frame is not on disk: the pipeline has nothing to
+            # draw, and a missing body is worse than the old blit.
+            return None
+        # The ORIGIN is the enemy's position with the shake applied:
+        # the layer stack adds the shake ONCE, and the compositor
+        # centres the frame on the origin (`pivot = "fixed"`).
+        player.draw(
+            target,
+            clip_id,
+            frame,
+            (int(e.x + shx), int(e.y + shy)),
+            part_ids=("body",),
+        )
+        return raw
 
     def _draw_arwing(
         self, target: pygame.Surface, cx: int, cy: int, w: int, h: int,

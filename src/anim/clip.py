@@ -8,13 +8,14 @@ depends on a constant hardcoded in the boss class.
 """
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import pygame
 
-from src.anim.anchors import AnchorSet
-from src.anim.manifest import AnimSet, Clip, Part
+from src.anim.anchors import AnchorSet, load_anchors
+from src.anim.manifest import AnimSet, Clip, Part, loaded_set
 from src.anim.parts import draw_part
 
 
@@ -162,3 +163,86 @@ class ClipPlayer:
                 else None
             )
             draw_part(target, part, surf, anchor, origin, canvas)
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 75: the loader that reads a set BY KIND
+# ---------------------------------------------------------------------------
+#
+# The enemies live in `Assets/sprites/enemies/<kind>/` and the bosses in
+# `Assets/sprites/bosses/<name>/`. `src/anim/manifest.py::_sets_root`
+# resolves only the bosses' root, and it is NOT changed: this is the one
+# place that knows BOTH roots, and it knows them separately.
+
+
+def _enemies_root() -> Path:
+    """Where the enemy sets live.
+
+    The SAME probe the bosses use (`src/anim/manifest.py::_sets_root`),
+    for the other root:
+
+        running from source: <project root>/Assets/sprites/enemies
+        frozen (PyInstaller):  <_MEIPASS>/Assets/sprites/enemies
+
+    The probe is resolved on CALL, never at import time: a frozen build
+    never needs the source tree.
+    """
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        return Path(meipass) / "Assets" / "sprites" / "enemies"
+    return (
+        Path(__file__).resolve().parent.parent.parent
+        / "Assets"
+        / "sprites"
+        / "enemies"
+    )
+
+
+# The player cache: one ClipPlayer per (kind, root). The manifest is
+# cached too, by `src.anim.manifest.loaded_set`, and THAT cache is what
+# invalidates this one: the entry is only reused while the manifest it
+# was built from is still the one the manifest cache holds (the same
+# object). `clear_loaded_cache()` therefore drops the players as well,
+# without this module having to know about the hook.
+_PLAYER_CACHE: dict[tuple[str, Path], tuple[AnimSet, ClipPlayer]] = {}
+
+
+def load_player_for_kind(kind: str, root: Path | None = None) -> ClipPlayer | None:
+    """The ClipPlayer for an enemy kind, or None when it cannot load.
+
+    The enemies live in `Assets/sprites/enemies/<kind>/`; the bosses in
+    `Assets/sprites/bosses/<name>/`. This is the ONE place that knows
+    both roots -- `src/anim/manifest.py::_sets_root` currently knows
+    only the bosses.
+
+    `root` is the directory that HOLDS the sets (the one that contains
+    `<kind>/`); None means the default enemies root, resolved at call
+    time.
+
+    None -- never an exception -- when the set cannot be loaded: the
+    manifest is missing or malformed, or the anchor table cannot be
+    read. The caller then falls back to its own drawing path instead of
+    breaking the game loop.
+    """
+    effective_root = _enemies_root() if root is None else root
+    # `loaded_set` parses the manifest ONCE, caches the failure too, and
+    # degrades a malformed manifest to None instead of raising.
+    anim_set = loaded_set(kind, effective_root)
+    if anim_set is None:
+        return None
+    key = (kind, effective_root)
+    cached = _PLAYER_CACHE.get(key)
+    if cached is not None and cached[0] is anim_set:
+        # The SAME manifest object: the player is still current.
+        return cached[1]
+    try:
+        anchors = load_anchors(anim_set.path / "anchors.toml")
+    except (OSError, ValueError):
+        # A missing or corrupt anchor table degrades to None. The
+        # enemies' bodies are drawn with the `fixed` pivot, which does
+        # not read the anchor table at all -- but a player without one
+        # is not a player, and the caller has a fallback.
+        return None
+    player = ClipPlayer(anim_set, anchors)
+    _PLAYER_CACHE[key] = (anim_set, player)
+    return player
