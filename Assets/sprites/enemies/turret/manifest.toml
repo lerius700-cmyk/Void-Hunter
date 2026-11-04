@@ -15,6 +15,11 @@
 # `pivot = "fixed"`: the sprite is blitted centred on the entity, exactly
 #   as the runtime does today. The measured registration is recorded, not
 #   applied -- applying it would move the ship up to 3.7 px off its hitbox.
+# `scale = [1.05, 1.05]`: the runtime draws EVERY enemy scaled by 1.05
+#   and truncates the size: int(32 * 1.05) == 33. The compositor
+#   reproduces that EXACTLY, so the pipeline and the runtime agree --
+#   without it the pipeline would draw the sprite 5% smaller than the
+#   runtime does.
 # `loop` + `on_end`: the one-shot clips carry BOTH. `loop = false` is what
 #   the shipped ClipPlayer actually branches on (src/anim/clip.py:54), so
 #   without it a damage/death clip would WRAP FOREVER. `on_end = "reset"`
@@ -73,4 +78,7 @@ scale_tolerance = 0.60
 id    = "body"
 draw  = "frames"
 pivot = "fixed"
+# The runtime draws every enemy scaled by 1.05, truncated: int(32 * 1.05) == 33.
+# The compositor reproduces that EXACTLY, so the pipeline and the runtime agree.
+scale = [1.05, 1.05]
 z     = 0

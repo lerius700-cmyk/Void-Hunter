@@ -10,6 +10,11 @@
 # So NO fps applies to any of them: they carry the loader's default, and
 # declaring one would be a false declaration. The `death` clip is
 # `mode = "archive"` and is never played either, so it declares none.
+# `scale = [1.05, 1.05]`: the runtime draws EVERY enemy scaled by 1.05
+#   and truncates the size: int(64 * 1.05) == 67. The compositor
+#   reproduces that EXACTLY, so the pipeline and the runtime agree --
+#   without it the pipeline would draw the sprite 5% smaller than the
+#   runtime does.
 
 [meta]
 name        = "MINE_ASTEROID"
@@ -65,4 +70,7 @@ scale_tolerance = 0.10
 id    = "body"
 draw  = "frames"
 pivot = "fixed"
+# The runtime draws every enemy scaled by 1.05, truncated: int(64 * 1.05) == 67.
+# The compositor reproduces that EXACTLY, so the pipeline and the runtime agree.
+scale = [1.05, 1.05]
 z     = 0
