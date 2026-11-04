@@ -30,6 +30,27 @@ Two adaptations to the original brief were needed, both forced by pygame
     player and the HUD -- a vacuous proof. The harness calls it exactly
     like `GameplayScene.on_enter` does (src/ui/scenes.py:1291-1292).
 
+THE THREE GUARANTEES ARE ENFORCED, NOT ASSUMED. A guarantee the check
+cannot see is a hypothesis, so each one fails loudly:
+
+  1. An unknown `--only` name captures NOTHING and the check says so and
+     exits 1 (`_select_frames`). A proof that cannot fail is not a proof.
+  2. The scene is rebuilt for every frame, and the harness ENFORDS it:
+     the scene object of each frame is kept and a scene that shows up
+     twice aborts the run (`_assert_fresh_scene`). Reusing a scene would
+     make the frames repeatable but wrong -- the check has to see it.
+  3. `--check` compares the fresh capture against the COMMITTED golden
+     frames, not only against a second fresh capture. Two captures inside
+     one process are identical even when the nondeterminism is
+     per-process; the committed frame is the property that matters.
+     The comparison is PIXEL-LEVEL (RGB + alpha), because that is what
+     Task 4 asserts, and a PNG re-encode must not be able to fake a
+     regression. The byte digest is reported too.
+
+The scene is DRAWN EXACTLY ONCE per capture: a draw mutates the scene
+(`_draw_engine_flame` emits a spark with `random.random()` DURING the
+draw), so rendering the same scene twice yields two different frames.
+
 Usage:
     python tools/capture/layerstack_frames.py --out tools/golden/layerstack
     python tools/capture/layerstack_frames.py --check
@@ -46,6 +67,7 @@ import hashlib
 import random
 import sys
 from pathlib import Path
+from typing import TypeAlias
 
 import pygame
 
@@ -57,6 +79,12 @@ from src.ui.gameplay_runtime import GameplayRuntime  # noqa: E402
 
 SEED = 20261103
 DT = 1.0 / 60.0
+
+# The committed golden frames: the proof itself.
+GOLDEN_DIR = ROOT / "tools" / "golden" / "layerstack"
+
+# (name, ticks, keys, mouse_buttons, is_boss)
+Frame: TypeAlias = tuple[str, int, tuple[int, ...], tuple[int, ...], bool]
 
 # The five frames the proof needs: enemies on screen, the boss, the mine in
 # its open3 state, the player firing, and the HUD populated.
@@ -73,7 +101,7 @@ DT = 1.0 / 60.0
 # terminal `open3` state, which it does at tick 403. At 300 ticks the mine
 # was still `closed`, so the frame would not have shown what its name
 # promises.
-FRAMES: tuple[tuple[str, int, tuple[int, ...], tuple[int, ...], bool], ...] = (
+FRAMES: tuple[Frame, ...] = (
     ("enemies", 180, (pygame.K_LEFT, pygame.K_a), (), False),
     ("boss", 240, (pygame.K_RIGHT,), (), True),
     ("mine_open", 403, (pygame.K_UP, pygame.K_a), (), False),
@@ -86,6 +114,14 @@ FRAMES: tuple[tuple[str, int, tuple[int, ...], tuple[int, ...], bool], ...] = (
 # place between updates.
 _KEY_STATE: dict[int, bool] = {}
 _MOUSE_STATE: list[bool] = [False, False, False]
+
+
+class HarnessError(RuntimeError):
+    """A guarantee of the harness was violated.
+
+    Every one of these aborts the run with exit code 1: a check that cannot
+    fail is not a check.
+    """
 
 
 class _ScriptedKeys:
@@ -134,6 +170,40 @@ def _install_scripted_input() -> None:
     setattr(pygame.mouse, "get_pos", lambda: (INTERNAL_W // 2, INTERNAL_H // 2))
 
 
+def _select_frames(only: str | None) -> list[Frame]:
+    """The frames to capture, or an error if `only` names no frame.
+
+    An unknown name is an ERROR, not an empty set: a check over zero
+    frames has nothing to say and would pass by default.
+    """
+    known = sorted(name for name, _ticks, _k, _m, _b in FRAMES)
+    if only is None:
+        return list(FRAMES)
+    if only not in known:
+        raise HarnessError(
+            f"unknown frame name {only!r}; the known frames are: {', '.join(known)}"
+        )
+    return [frame for frame in FRAMES if frame[0] == only]
+
+
+def _assert_fresh_scene(
+    scene: GameplayRuntime, name: str, used: list[tuple[str, GameplayRuntime]]
+) -> None:
+    """Fail loudly if a scene object is used for two frames.
+
+    The scene is REBUILT for every capture: a reused scene keeps its RNG
+    state and its entity positions, so the frames would be rendered from a
+    CONTINUED world. That guarantee is enforced here, not left to a
+    comment -- a check that cannot see a violation is a hypothesis.
+    """
+    for previous_name, previous_scene in used:
+        if previous_scene is scene:
+            raise HarnessError(
+                f"the scene of the frame {previous_name!r} was REUSED for the frame "
+                f"{name!r}: the scene must be rebuilt for every capture"
+            )
+
+
 def _build_scene(is_boss: bool) -> GameplayRuntime:
     """A fresh gameplay runtime, with the global RNG seeded.
 
@@ -165,45 +235,65 @@ def _release() -> None:
 
 def capture(out_dir: Path, only: str | None = None) -> dict[str, str]:
     """Capture the frames and return {name: md5}."""
+    frames = _select_frames(only)
     pygame.init()
     pygame.display.set_mode((INTERNAL_W, INTERNAL_H))
     _install_scripted_input()
     out_dir.mkdir(parents=True, exist_ok=True)
     digests: dict[str, str] = {}
-    for name, ticks, keys, mouse_buttons, is_boss in FRAMES:
-        if only is not None and only != name:
-            continue
+    used_scenes: list[tuple[str, GameplayRuntime]] = []
+    for name, ticks, keys, mouse_buttons, is_boss in frames:
         scene = _build_scene(is_boss)
+        _assert_fresh_scene(scene, name, used_scenes)
+        used_scenes.append((name, scene))
         target = pygame.Surface((INTERNAL_W, INTERNAL_H))
-        for tick in range(ticks):
+        for _tick in range(ticks):
             _press(keys, mouse_buttons)
             scene.update(DT)
             _release()
-            if tick == ticks - 1:
-                scene.draw(target)
+        # The scene is DRAWN EXACTLY ONCE. A draw mutates the scene
+        # (`_draw_engine_flame` emits a spark with `random.random()` DURING
+        # the draw), so rendering the same scene twice yields two
+        # DIFFERENT frames -- the frame would not be reproducible.
+        scene.draw(target)
         path = out_dir / f"{name}.png"
         pygame.image.save(target, str(path))
         digests[name] = hashlib.md5(path.read_bytes()).hexdigest()
     return digests
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=ROOT / "tools" / "golden" / "layerstack")
-    parser.add_argument("--only", default=None, help="capture a single frame by name")
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="capture twice and fail if the bytes differ",
+def _rgba(path: Path) -> bytes:
+    """The pixels of a PNG as raw RGBA bytes.
+
+    A golden that cannot be read is a divergence too, so the failure is
+    reported instead of raised.
+    """
+    try:
+        surface = pygame.image.load(str(path))
+    except (pygame.error, OSError) as exc:
+        raise HarnessError(f"the committed golden {path} could not be read: {exc}") from exc
+    return pygame.image.tostring(surface, "RGBA")
+
+
+def _pixel_diff(left: bytes, right: bytes) -> int:
+    """The number of differing pixels between two RGBA byte strings."""
+    return sum(
+        1 for i in range(0, min(len(left), len(right)), 4) if left[i:i + 4] != right[i:i + 4]
     )
-    args = parser.parse_args()
 
-    if args.check:
-        import tempfile
 
-        with tempfile.TemporaryDirectory() as tmp:
-            first = capture(Path(tmp) / "first", args.only)
-            second = capture(Path(tmp) / "second", args.only)
+def _check(only: str | None, golden_dir: Path) -> int:
+    """Capture twice, compare the captures and the committed goldens."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        first = capture(Path(tmp) / "first", only)
+        second = capture(Path(tmp) / "second", only)
+        captured = Path(tmp) / "first"
+        if not first:
+            print("ERROR: nothing was captured: a check over zero frames cannot fail")
+            return 1
+
         drifted = {k: (first[k], second[k]) for k in first if first[k] != second[k]}
         if drifted:
             print("NOT REPRODUCIBLE:")
@@ -211,9 +301,73 @@ def main() -> int:
                 print(f"  {name}: {a} != {b}")
             return 1
         print("REPRODUCIBLE:", ", ".join(sorted(first)))
+
+        # The committed golden frames. Two captures inside ONE process are
+        # identical even when the nondeterminism is per-process (a
+        # module-level `random.random()`, a PYTHONHASHSEED-dependent
+        # order). The committed frame is the property that matters: it is
+        # what Task 4 asserts pixel-by-pixel.
+        if not golden_dir.is_dir():
+            print(
+                f"NO GOLDENS: {golden_dir} does not exist: "
+                "the golden comparison is skipped"
+            )
+            return 0
+        diverged: list[str] = []
+        for name, digest in sorted(first.items()):
+            golden_path = golden_dir / f"{name}.png"
+            if not golden_path.is_file():
+                diverged.append(
+                    f"  {name}: there is no committed golden frame to compare against"
+                )
+                continue
+            golden_digest = hashlib.md5(golden_path.read_bytes()).hexdigest()
+            golden_pixels = _rgba(golden_path)
+            captured_pixels = _rgba(captured / f"{name}.png")
+            if golden_pixels != captured_pixels:
+                differ = _pixel_diff(golden_pixels, captured_pixels)
+                diverged.append(
+                    f"  {name}: the captured frame differs from the committed one "
+                    f"({differ} pixels differ)"
+                )
+            elif golden_digest != digest:
+                print(f"NOTE: {name}: the pixels match but the bytes differ (the PNG encoder)")
+        if diverged:
+            print("GOLDEN DIVERGED:")
+            for line in diverged:
+                print(line)
+            return 1
+        print("GOLDENS MATCH:", ", ".join(sorted(first)))
         return 0
 
-    digests = capture(args.out, args.only)
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out", type=Path, default=GOLDEN_DIR)
+    parser.add_argument("--only", default=None, help="capture a single frame by name")
+    parser.add_argument(
+        "--golden",
+        type=Path,
+        default=GOLDEN_DIR,
+        help="the committed golden frames the capture is compared against",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="capture twice and fail if the bytes differ",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        if args.check:
+            return _check(args.only, args.golden)
+        digests = capture(args.out, args.only)
+    except HarnessError as exc:
+        print(f"ERROR: {exc}")
+        return 1
+    if not digests:
+        print("ERROR: nothing was captured")
+        return 1
     for name, digest in sorted(digests.items()):
         print(f"{name}: {digest}")
     return 0
