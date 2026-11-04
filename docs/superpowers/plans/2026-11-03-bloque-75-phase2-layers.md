@@ -27,7 +27,7 @@ These apply to **every** task. Copy them verbatim into any dispatch brief.
 | L5 | Narrow `except` | never a bare `except:`; catch `(OSError, ValueError)` |
 | L7 | The tests never write into the repository | anything that runs the pipeline does it on a `tmp_path` copy |
 | — | **The internal resolution stays 320×480** | `src/core/settings.py::INTERNAL_W/INTERNAL_H`; the window scaling stays in `Game._present()` |
-| — | **The baseline** | `python -m pytest tests\ --tb=no` → **0 failed, 3 036 passed, 7 skipped** (measured on `e619527`). Any new failure blocks the phase. |
+| — | **The baseline** | `python -m pytest tests\ --tb=no` → **0 failed**. On this branch the suite collects **3 038** tests (3 031 passed + 6 skipped + 1 xfailed). **Treat the count as a DELTA, not an absolute number:** each task adds its own tests, and an absolute count breaks the moment another agent adds one. (The Phase 1 plan shipped with "3 036 passed" — that number was the suite's TOTAL, not its passed count; the implementer of Task 2 caught it.) |
 | — | pytest output | pytest 9.1.1 omits the final counts line on a full-suite run: use `--junitxml=<path in %TEMP%>` and read the totals from the XML, or run with `-v`. Report real numbers. |
 | — | mypy | **not installed** in the interpreter. Do NOT install it. The Phase 1 gate runs it through `uvx mypy` with mypy's `--python-executable`, so it finds pygame 2.6.1's shipped `py.typed`. Write strict-clean annotations by hand (`mypy strict = true`). |
 | — | Windows / PowerShell 5.1 | no `&&`, no `ls -la`, no `head`/`tail`/`grep`. **There is NO Git Bash** (the `bash.exe` on PATH is the WSL launcher). |
