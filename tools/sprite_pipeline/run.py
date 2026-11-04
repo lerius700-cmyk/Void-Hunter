@@ -44,6 +44,7 @@ from sprite_pipeline.audit import (  # noqa: E402
     write_anchors,
 )
 from sprite_pipeline.repair import repair_set  # noqa: E402
+from sprite_pipeline.sets import resolve_set  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -67,9 +68,14 @@ def main(argv: list[str] | None = None) -> int:
     pygame.init()
     ensure_display()
 
+    # The set is resolved through `sprite_pipeline.sets`, so the command
+    # finds a set in ANY sets root (the bosses AND the enemies) and the
+    # loader is pointed at the directory that HOLDS the resolved one.
+    root = Path(args.root) if args.root else None
     try:
-        anim_set = load_set(args.set, root=Path(args.root) if args.root else None)
-    except ValueError as exc:
+        set_dir = resolve_set(args.set, root=root)
+        anim_set = load_set(args.set, root=set_dir.parent)
+    except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 

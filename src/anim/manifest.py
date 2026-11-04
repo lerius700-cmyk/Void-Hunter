@@ -63,6 +63,17 @@ def __getattr__(name: str) -> Any:
 VALID_METHODS = ("shape", "color")
 VALID_SIDES = ("left", "right")
 
+# BLOQUE 75 Fase 2: the vocabulary of `clip.mode` and `clip.on_end`.
+#
+# Phase 1 PARSED both fields without enforcing them, because enforcing
+# them on GOLIATH's manifest would have rejected it: GOLIATH declares
+# NEITHER of them, so the loader DERIVES `mode = "sequence"` and derives
+# `on_end` from `loop`. The derivation stays -- a clip that declares
+# nothing keeps loading -- and a clip that DECLARES something is now
+# held to it.
+_VALID_MODES = ("sequence", "variants", "state", "archive")
+_VALID_ON_END = ("loop", "hold", "reset")
+
 
 class ManifestError(ValueError):
     """The manifest is malformed: a bad value, a missing field, a duplicate
@@ -288,9 +299,9 @@ class Clip:
     # the auditor reads every one of them as a collapsed animation.
     # `canvas` overrides the set's canvas for ONE clip (the mine's death
     # art is 32x32 inside a 64x64 set).
-    # `mode` and `on_end` are PARSED but NOT ENFORCED in Phase 1: GOLIATH's
-    # manifest declares neither, and enforcing the rules now would reject
-    # it. Phase 2 consumes them.
+    # `mode` and `on_end` are ENFORCED since Phase 2: a clip that declares
+    # them is held to the vocabulary (see `_validate_clip_vocabulary`), and
+    # a clip that declares neither keeps the derived values.
     distinct: int | None = None
     canvas: tuple[int, int] | None = None
     mode: str = "sequence"
@@ -409,6 +420,71 @@ def clear_loaded_cache() -> None:
     _LOADED_FAILED.clear()
 
 
+def _validate_clip_vocabulary(
+    name: str,
+    clip_id: str,
+    entry: dict[str, Any],
+    *,
+    mode: str,
+    on_end: str,
+    loop: bool,
+    frames: int,
+    distinct: int | None,
+) -> None:
+    """Enforce the `mode`/`on_end` vocabulary of ONE clip.
+
+    Called with the RAW entry, from inside the clip loop, because one of
+    the rules cannot be checked on the parsed clip: "an archive clip must
+    not DECLARE an fps". `Clip.fps` defaults to 10.0, so a clip that
+    declares `fps = 10` and a clip that declares nothing are
+    INDISTINGUISHABLE after parsing -- the raw entry is the only place
+    where "declared" still exists.
+
+    The other rules are checked against the DERIVED values (`mode`
+    defaults to "sequence", `on_end` is derived from `loop`), so GOLIATH
+    -- which declares neither -- keeps loading exactly as it did.
+
+    Raises `ManifestError` naming the clip and the offending field.
+    """
+    if mode not in _VALID_MODES:
+        raise ManifestError(
+            f"{name}: clip {clip_id!r} declares an unknown mode {mode!r} "
+            f"(expected one of {_VALID_MODES})"
+        )
+    if mode == "variants" and distinct != frames:
+        raise ManifestError(
+            f"{name}: clip {clip_id!r} is mode 'variants' but declares "
+            f"distinct={distinct!r} and frames={frames}: a variant clip "
+            f"holds one DIFFERENT image per frame"
+        )
+    if mode == "state" and frames != 1:
+        raise ManifestError(
+            f"{name}: clip {clip_id!r} is mode 'state' but declares "
+            f"frames={frames}: a state clip holds ONE frame"
+        )
+    if mode == "archive" and "fps" in entry:
+        raise ManifestError(
+            f"{name}: clip {clip_id!r} is mode 'archive' and must not "
+            f"declare an fps: an archive clip is never played, so no fps "
+            f"applies to it"
+        )
+    if on_end not in _VALID_ON_END:
+        raise ManifestError(
+            f"{name}: clip {clip_id!r} declares an unknown on_end "
+            f"{on_end!r} (expected one of {_VALID_ON_END})"
+        )
+    if on_end == "loop" and not loop:
+        raise ManifestError(
+            f"{name}: clip {clip_id!r} declares on_end='loop' but its loop "
+            f"is false"
+        )
+    if on_end in ("hold", "reset") and loop:
+        raise ManifestError(
+            f"{name}: clip {clip_id!r} declares on_end={on_end!r} but its "
+            f"loop is true"
+        )
+
+
 def load_set(name: str, root: Path | None = None) -> AnimSet:
     """Load and validate the manifest of the set called `name`.
 
@@ -452,23 +528,39 @@ def load_set(name: str, root: Path | None = None) -> AnimSet:
             # Derived from `loop` so GOLIATH keeps its shipped behaviour:
             # a looping clip loops, a one-shot holds on its last frame.
             on_end = "loop" if loop else "hold"
+        mode = str(entry.get("mode", "sequence"))
+        frames = int(entry.get("frames", 0))
         distinct_raw = entry.get("distinct")
         canvas_raw = entry.get("canvas")
+        distinct = _as_optional_int(distinct_raw, f"{clip_id}.distinct")
+        # The vocabulary is enforced HERE, with the raw entry still in
+        # hand: "declared" and "defaulted" are the same value once the
+        # clip is parsed.
+        _validate_clip_vocabulary(
+            name,
+            clip_id,
+            entry,
+            mode=mode,
+            on_end=str(on_end),
+            loop=loop,
+            frames=frames,
+            distinct=distinct,
+        )
         clips[clip_id] = Clip(
             id=clip_id,
             dir=str(entry.get("dir", clip_id)),
-            frames=int(entry.get("frames", 0)),
+            frames=frames,
             fps=float(entry.get("fps", 10)),
             loop=loop,
             scale_tolerance=float(entry.get("scale_tolerance", 0.15)),
             side_tolerance=float(entry.get("side_tolerance", 14.0)),
-            distinct=_as_optional_int(distinct_raw, f"{clip_id}.distinct"),
+            distinct=distinct,
             canvas=(
                 None
                 if canvas_raw is None
                 else _as_int_pair(canvas_raw, f"{clip_id}.canvas")
             ),
-            mode=str(entry.get("mode", "sequence")),
+            mode=mode,
             on_end=str(on_end),
         )
     if not clips:

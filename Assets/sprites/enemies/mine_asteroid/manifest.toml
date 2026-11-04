@@ -10,6 +10,8 @@
 # So NO fps applies to any of them: they carry the loader's default, and
 # declaring one would be a false declaration. The `death` clip is
 # `mode = "archive"` and is never played either, so it declares none.
+# Because NONE of them advances, every clip declares `loop = false` and
+# `on_end = "hold"`: the manifest now says what the runtime does.
 # `scale = [1.05, 1.05]`: the runtime draws EVERY enemy scaled by 1.05
 #   and truncates the size: int(64 * 1.05) == 67. The compositor
 #   reproduces that EXACTLY, so the pipeline and the runtime agree --
@@ -29,6 +31,8 @@ dir      = "closed"
 frames   = 5
 distinct = 5
 mode     = "variants"
+loop     = false
+on_end   = "hold"
 scale_tolerance = 0.25
 
 [[clips]]
@@ -37,6 +41,8 @@ dir      = "open1"
 frames   = 1
 distinct = 1
 mode     = "state"
+loop     = false
+on_end   = "hold"
 scale_tolerance = 0.10
 
 [[clips]]
@@ -45,6 +51,8 @@ dir      = "open2"
 frames   = 1
 distinct = 1
 mode     = "state"
+loop     = false
+on_end   = "hold"
 scale_tolerance = 0.10
 
 # open3 is the TERMINAL state and reuses the `open/` directory: the
@@ -55,6 +63,8 @@ dir      = "open"
 frames   = 1
 distinct = 1
 mode     = "state"
+loop     = false
+on_end   = "hold"
 scale_tolerance = 0.10
 
 [[clips]]
@@ -63,6 +73,8 @@ dir      = "death"
 frames   = 10
 distinct = 1
 mode     = "archive"
+loop     = false
+on_end   = "hold"
 canvas   = [32, 32]
 scale_tolerance = 0.10
 
