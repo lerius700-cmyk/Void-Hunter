@@ -10,7 +10,7 @@
 
 ## ¿Qué ES / Qué NO ES
 
-**ES:** un shmup vertical 8-bit pixelart portrait 320×480 a 120 FPS, con 4 bosses (GOLIATH / HYDRA / PHANTOM / NEMESIS), modo roguelike con seed/RNG, formación Star Fox 64 + bezier paths, 24 SFX procedurales, 2 BGMs streaming, pausa con lowpass, selector de 5 naves × 5 animaciones × 8 frames, 4 videos cinemáticos (2 standalone 9:16 + 2 in-game), galería in-game de spritesheets + videos, **menú post-cinematica** (NEW GAME / BOSS TIME / BACKGROUND), **GOLIATH con el escudo medido sobre su placa** (brazo derecho, óvalo invisible, capa de calor + parpadeo, láser naranja grueso), **el fondo morado del "Asteroid Approach" de v1.4.0** (6 tiles en `Assets/background/tiles/act1/`) y un **pipeline de sprites** (BLOQUE 74) que hornea las anclas de GOLIATH en build time: `src/anim/` (manifiesto + medición + compositor) y `tools/sprite_pipeline/` (auditor + reparación). ~28.9K LOC en 92 archivos Python + ~25.3K LOC de tests en 104 archivos de test.
+**ES:** un shmup vertical 8-bit pixelart portrait 320×480 a 120 FPS, con 4 bosses (GOLIATH / HYDRA / PHANTOM / NEMESIS), modo roguelike con seed/RNG, formación Star Fox 64 + bezier paths, 24 SFX procedurales, 2 BGMs streaming, pausa con lowpass, selector de 5 naves × 5 animaciones × 8 frames, 4 videos cinemáticos (2 standalone 9:16 + 2 in-game), galería in-game de spritesheets + videos, **menú post-cinematica** (NEW GAME / BOSS TIME / BACKGROUND), **GOLIATH con el escudo medido sobre su placa** (brazo derecho, óvalo invisible, capa de calor + parpadeo, láser naranja grueso), **el fondo morado del "Asteroid Approach" de v1.4.0** (6 tiles en `Assets/background/tiles/act1/`), un **pipeline de sprites** (BLOQUE 74) que hornea las anclas de GOLIATH en build time: `src/anim/` (manifiesto + medición + compositor) y `tools/sprite_pipeline/` (auditor + reparación), y un **motor de capas del frame** (BLOQUE 75 Fase 2): `src/render/` (`Layer`, `LayerStack`, `DrawContext`, genérico sin imports del juego) compone el frame en 30 capas con `z` explícito, y los enemigos los dibuja el compositor del pipeline (pivote `fixed` y escala 1.05 declaradas por los manifests) — con **0 píxeles movidos** frente a la prueba de 6 goldens. ~30K LOC en 96 archivos Python + ~30.4K LOC de tests en 138 archivos de test.
 
 **NO ES:** un MMO, un roguelike 2D con vista top-down, un juego online, un servicio con backend, un proyecto que requiere Truth Anchors de runtime (puertos localhost, ss, pgrep). Es una app standalone pygame que se compila con PyInstaller.
 
@@ -254,10 +254,10 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 
 | Métrica | Valor | Fuente (Truth Anchor) |
 |---------|-------|------------------------|
-| Líneas de código (src/) | 29131 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
-| Archivos Python (src/) | 93 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
-| Tests (tests/) | 2.945 pass + 0 fail + 1 xfail (fallo conocido) + 6 skipped (2.951 total) | `python -m pytest tests/ --tb=no` |
-| LOC tests/ | 26830 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
+| Líneas de código (src/) | 30036 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
+| Archivos Python (src/) | 96 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
+| Tests (tests/) | 3.101 pass + 0 fail + 1 xfail + 6 skipped (3.108 total) | `python -m pytest tests/ --tb=no` |
+| LOC tests/ | 30382 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
 | Silos SF+SM | 9 (Lite) | `Get-ChildItem docs -Directory \| Measure-Object` |
 | Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
 | Versión | v1.8.0 (BLOQUE 74 — pipeline de sprites) | `git log --oneline -1` |
@@ -333,3 +333,14 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
   - **Release v1.8.0**: el `.exe` se reconstruyó sobre el tag `v1.8.0` (278 MB) y el path congelado (`<_MEIPASS>/Assets/sprites/bosses`) quedó verificado con el `manifest.toml` y el `anchors.toml` dentro del bundle. La versión SÍ se bumpea a v1.8.0 en esta release.
   - **Handoff**: `docs/handoffs/HANDOFF-SPRITE-PIPELINE-2026-10-27.md`. **Session report**: `docs/session-reports/SESSION_REPORT_BLOQUE_74.md`.
   - STATUS:GENERATED regenerado: 28,953 LOC / 92 files en `src/`, 25,552 LOC en `tests/`, 2,893 tests, 9 silos.
+- **2026-11-04 (BLOQUE 75 Fase 2 — el motor de capas del frame, sin bump de versión)** — Worktree `.worktrees/bloquec-75-phase2-layers`, sobre `bloquec-67-goliath-port` @ `e619527`. Merge `ca813a5`, **0 conflictos**, árbol mergeado byte-idéntico a la punta de la rama.
+  - **Nuevo subsistema `src/render/`** (2 archivos, genérico, **sin imports del juego**): `layer.py` con `Layer`, `LayerStack` y `DrawContext`; `__init__.py`. `SceneManager` **no se tocó** (`src/core/` sin cambios).
+  - **30 capas con `z` explícito** (`src/ui/gameplay_layers.py`): los helpers de dibujo del runtime se extrajeron **verbatim** a wrappers `*_pass` y el orden del frame pasó a ser una lista de datos. Los wrappers existen porque los guards del frame son MÁS fuertes que los de los helpers (el jefe se dibujaba inactivo, el láser sin temporizador, el jugador y la retícula muerto, las speed lines en la banda `60 < |vx| <= 80`).
+  - **Los enemigos los dibuja el compositor del pipeline** (`src/ui/gameplay_runtime.py`): el runtime ya no blitea el cuerpo; el pivote `fixed` (centrado) y la escala `1.05` los **declaran los 8 manifests** (`scale = [1.05, 1.05]`), y el flash queda como overlay (solo el overlay cuando el pipeline no pudo dibujar el cuerpo).
+  - **La prueba: 6 goldens pixel-exactos** (`tools/golden/layerstack/`), con un arnés reproducible (`tools/capture/layerstack_frames.py`) y **spies** que prueban que el enemigo pasó por el compositor — porque los goldens son ciegos al camino.
+  - **`mode`/`on_end` tienen vocabulario exigido** y las CLI resuelven un set por `sprite_pipeline/sets.py`.
+  - **Gate de Fase 2**: `python tools/sprite_pipeline\gate.py --phase 2` → `PHASE 2 GATE OK`, con 6 checks (P2-G1..G6) y 7 corridas en rojo probadas.
+  - **9 reviews por tarea + 1 review final de la fase = 15 defectos**, 14 míos (briefs, specs y plan) y 1 del implementador (el pathspec del gate G5). **Reglas que la fase produjo**: un brief se escribe UNA vez y se congela; el código gana contra el brief, pero el implementador REPORTA la desviación; todo check nuevo tiene que poder fallar (mutación + rojo); nunca dos implementadores commiteando en el mismo worktree.
+  - **PENDIENTE DE CI**: el gate de Fase 2 **no está cableado** en `.github/workflows/test.yml` (que corre solo pytest, en `master` y `bloquec-67-goliath-port`), y el `timeout-minutes: 15` (900 s) del job es **menor** que el presupuesto peor caso del gate (1380 s): hay que subirlo a 25 minutos y cablear los DOS gates.
+  - **Handoff**: `docs/handoffs/HANDOFF-BLOQUE-75-PHASE2-2026-11-04.md`. **Log de correcciones** (cada defecto de cada brief, de la implementación y de las reviews): `docs/superpowers/plans/2026-11-03-bloque-75-phase2-layers.md`.
+  - STATUS:GENERATED regenerado: 30,036 LOC / 96 files en `src/`, 30,382 LOC en `tests/`, 3,108 tests, 9 silos. **R1**: 0 PNGs modificados en `773cf08..HEAD` y digest idéntico de los 1,768 PNGs de `Assets/` (los 6 PNGs agregados son los goldens, que son fixtures de prueba).
