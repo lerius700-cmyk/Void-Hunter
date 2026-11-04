@@ -58,9 +58,19 @@ The scene is DRAWN EXACTLY ONCE per capture: a draw mutates the scene
 (`_draw_engine_flame` emits a spark with `random.random()` DURING the
 draw), so rendering the same scene twice yields two different frames.
 
+THE SHAKE. Five of the six frames have a screen shake that truncates to
+(0, 0): the layers that consume the shake are never moved, so a
+regression in the shake plumbing would leave all five identical. The
+sixth frame (`shake`) forces the runtime's trauma so the INTEGER shake
+is (8, 8), and it is the frame that proves the shake travels through
+the stack exactly once.
+
 Usage:
     python tools/capture/layerstack_frames.py --out tools/golden/layerstack
     python tools/capture/layerstack_frames.py --check
+    python tools/capture/layerstack_frames.py --check --shake  (diagnostic:
+        forces the shake on EVERY frame, so the five non-shake goldens
+        report as diverged -- that is the point of the flag)
 """
 from __future__ import annotations
 
@@ -90,17 +100,19 @@ DT = 1.0 / 60.0
 # The committed golden frames: the proof itself.
 GOLDEN_DIR = ROOT / "tools" / "golden" / "layerstack"
 
-# (name, ticks, keys, mouse_buttons, is_boss)
-Frame: TypeAlias = tuple[str, int, tuple[int, ...], tuple[int, ...], bool]
+# (name, ticks, keys, mouse_buttons, is_boss, shake)
+Frame: TypeAlias = tuple[str, int, tuple[int, ...], tuple[int, ...], bool, bool]
 
-# The five frames the proof needs: enemies on screen, the boss, the mine in
-# its open3 state, the player firing, and the HUD populated.
+# The six frames the proof needs: enemies on screen, the boss, the mine in
+# its open3 state, the player firing, the HUD populated, and one frame
+# with the screen shake forced.
 #
-# Each entry is (name, ticks, keys, mouse_buttons, is_boss):
+# Each entry is (name, ticks, keys, mouse_buttons, is_boss, shake):
 #   ticks         -- fixed 60 Hz steps advanced before the capture
 #   keys          -- keys held for the WHOLE frame (pygame key constants)
 #   mouse_buttons -- mouse buttons held for the WHOLE frame (0=LMB, 2=RMB)
 #   is_boss       -- build the runtime in boss mode (GOLIATH) or in gameplay
+#   shake         -- force the screen shake to a non-zero integer offset
 #
 # `mine_open` runs 403 ticks, not the 300 of the original brief: the
 # MINE-ASTEROID only crosses OPENING_Y_THRESHOLD (y >= 120) at tick 378 and
@@ -108,12 +120,19 @@ Frame: TypeAlias = tuple[str, int, tuple[int, ...], tuple[int, ...], bool]
 # terminal `open3` state, which it does at tick 403. At 300 ticks the mine
 # was still `closed`, so the frame would not have shown what its name
 # promises.
+#
+# `shake` is the `firing` scene WITH the shake forced: the same tick
+# discipline, so the difference between the two frames is exactly the
+# shake. It is captured from the runtime that still draws INLINE -- a
+# golden captured after the LayerStack existed would compare the stack
+# against itself, and the proof would be vacuous.
 FRAMES: tuple[Frame, ...] = (
-    ("enemies", 180, (pygame.K_LEFT, pygame.K_a), (), False),
-    ("boss", 240, (pygame.K_RIGHT,), (), True),
-    ("mine_open", 403, (pygame.K_UP, pygame.K_a), (), False),
-    ("firing", 360, (pygame.K_a,), (2,), False),
-    ("hud", 420, (pygame.K_d,), (), False),
+    ("enemies", 180, (pygame.K_LEFT, pygame.K_a), (), False, False),
+    ("boss", 240, (pygame.K_RIGHT,), (), True, False),
+    ("mine_open", 403, (pygame.K_UP, pygame.K_a), (), False, False),
+    ("firing", 360, (pygame.K_a,), (2,), False, False),
+    ("hud", 420, (pygame.K_d,), (), False, False),
+    ("shake", 360, (pygame.K_a,), (2,), False, True),
 )
 
 # The scripted input state. The runtime reads the keyboard snapshot and the
@@ -183,7 +202,7 @@ def _select_frames(only: str | None) -> list[Frame]:
     An unknown name is an ERROR, not an empty set: a check over zero
     frames has nothing to say and would pass by default.
     """
-    known = sorted(name for name, _ticks, _k, _m, _b in FRAMES)
+    known = sorted(name for name, _ticks, _k, _m, _b, _s in FRAMES)
     if only is None:
         return list(FRAMES)
     if only not in known:
@@ -191,6 +210,29 @@ def _select_frames(only: str | None) -> list[Frame]:
             f"unknown frame name {only!r}; the known frames are: {', '.join(known)}"
         )
     return [frame for frame in FRAMES if frame[0] == only]
+
+
+def _force_shake(scene: GameplayRuntime) -> None:
+    """Force the runtime's screen shake to a non-zero INTEGER offset.
+
+    The shake is the Eiserloh trauma^2 model (`src/systems/screen_shake.py`):
+    `offset = max_px * trauma^2 * noise`. The trauma alone is not enough --
+    the noise is what gives the offset its SIGN and its MAGNITUDE, and it
+    is refreshed by `ScreenShake.update()` on every runtime tick.
+
+    So the harness pins all three: trauma 1.0, noise (1.0, 1.0) and the
+    production `max_px` of 8.0. The offset is then (8.0, 8.0) and the
+    runtime's `int()` truncation keeps it at (8, 8) -- the same shake the
+    Task 1 review measured.
+
+    The state is set AFTER the last tick: `GameplayRuntime.update()` calls
+    `ScreenShake.update()`, which would decay the trauma and re-roll the
+    noise.
+    """
+    shake = scene._shake
+    shake.trauma = 1.0
+    shake._noise_x = 1.0
+    shake._noise_y = 1.0
 
 
 def _assert_fresh_scene(
@@ -240,7 +282,7 @@ def _release() -> None:
     _MOUSE_STATE[:] = [False, False, False]
 
 
-def capture(out_dir: Path, only: str | None = None) -> dict[str, str]:
+def capture(out_dir: Path, only: str | None = None, force_shake: bool = False) -> dict[str, str]:
     """Capture the frames and return {name: md5}."""
     frames = _select_frames(only)
     pygame.init()
@@ -249,7 +291,7 @@ def capture(out_dir: Path, only: str | None = None) -> dict[str, str]:
     out_dir.mkdir(parents=True, exist_ok=True)
     digests: dict[str, str] = {}
     used_scenes: list[tuple[str, GameplayRuntime]] = []
-    for name, ticks, keys, mouse_buttons, is_boss in frames:
+    for name, ticks, keys, mouse_buttons, is_boss, shake in frames:
         scene = _build_scene(is_boss)
         _assert_fresh_scene(scene, name, used_scenes)
         used_scenes.append((name, scene))
@@ -258,6 +300,8 @@ def capture(out_dir: Path, only: str | None = None) -> dict[str, str]:
             _press(keys, mouse_buttons)
             scene.update(DT)
             _release()
+        if shake or force_shake:
+            _force_shake(scene)
         # The scene is DRAWN EXACTLY ONCE. A draw mutates the scene
         # (`_draw_engine_flame` emits a spark with `random.random()` DURING
         # the draw), so rendering the same scene twice yields two
@@ -289,13 +333,13 @@ def _pixel_diff(left: bytes, right: bytes) -> int:
     )
 
 
-def _check(only: str | None, golden_dir: Path) -> int:
+def _check(only: str | None, golden_dir: Path, force_shake: bool = False) -> int:
     """Capture twice, compare the captures and the committed goldens."""
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmp:
-        first = capture(Path(tmp) / "first", only)
-        second = capture(Path(tmp) / "second", only)
+        first = capture(Path(tmp) / "first", only, force_shake)
+        second = capture(Path(tmp) / "second", only, force_shake)
         captured = Path(tmp) / "first"
         if not first:
             print("ERROR: nothing was captured: a check over zero frames cannot fail")
@@ -379,12 +423,20 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="capture twice and fail if the bytes differ",
     )
+    parser.add_argument(
+        "--shake",
+        action="store_true",
+        help=(
+            "force the screen shake to (8, 8) on EVERY frame, not only on the "
+            "frames whose entry asks for it (diagnostic)"
+        ),
+    )
     args = parser.parse_args(argv)
 
     try:
         if args.check:
-            return _check(args.only, args.golden)
-        digests = capture(args.out, args.only)
+            return _check(args.only, args.golden, args.shake)
+        digests = capture(args.out, args.only, args.shake)
     except HarnessError as exc:
         print(f"ERROR: {exc}")
         return 1

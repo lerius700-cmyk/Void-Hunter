@@ -32,6 +32,7 @@ from src.entities.enemies import EnemyKind, EnemyPool, Enemy
 from src.entities.enemies.boss import Boss, BossId, BossPool, BOSS_CONFIGS
 from src.entities.boss_spear import BossSpear
 from src.entities.player import Player, PlayerState
+from src.render.layer import DrawContext, LayerStack
 from src.systems.hitstop import Hitstop
 from src.systems.parallax import ParallaxBackground
 from src.systems.particle_engine import (
@@ -48,6 +49,7 @@ from src.systems.screen_shake import ScreenShake
 from src.systems.slowmo import SlowMo
 from src.systems.tron_trail import TronTrail
 from src.systems.weapon_system import WeaponLevel, WeaponPath, WeaponSystem
+from src.ui.gameplay_layers import build_layers
 from src.ui.hud import HUD
 from src.fx.bomb_burst import BombBurst
 
@@ -518,6 +520,13 @@ class GameplayRuntime:
         self._level_up_flash: float = 0.0  # brief flash when weapon levels up
         # BLOQUE 26: even more polish
         self._bomb_flash: float = 0.0  # 0..1 white flash on the player after bomb use
+        # BLOQUE 75 Fase 2: the frame's layers.
+        #
+        # Built at the END of the constructor: a layer body IS one of
+        # this runtime's draw helpers, bound to this instance. The ORDER
+        # lives in `src/ui/gameplay_layers.py`; this module keeps the
+        # bodies.
+        self._layers: LayerStack = build_layers(self)
 
     def _play_sfx(self, name: str, volume: float = 1.0) -> None:
         if self._audio is not None:
@@ -3969,89 +3978,28 @@ class GameplayRuntime:
             if self._parallax_bg is not None:
                 self._apply_background_mode(bg_mode)
                 self._parallax_bg.draw(target)
-        # BLOQUE 25: ambient drift particles in background
-        self._draw_ambient_dust(target)
-        # Shake offset
+        # BLOQUE 75 Fase 2: the frame is a stack of layers.
+        #
+        # The BACKGROUND above stays OUTSIDE the stack: it is the stack's
+        # backdrop. Everything else -- the ambient dust, the enemies, the
+        # player, the HUD -- is a layer, in the order that
+        # `src/ui/gameplay_layers.py` pins. The layer BODIES are still
+        # here, in this module; only the ORDER moved.
+        #
+        # THE SHAKE IS READ ONCE, HERE. It travels in the context and the
+        # layer bodies pass `ctx.shake` to the helpers that take it;
+        # `ctx.at()` is NOT used, so no layer ever sees the shake twice.
         shx_f, shy_f = self._shake.get_offset()
         shx, shy = int(shx_f), int(shy_f)
-        # Player damage flash: red overlay right after taking a hit
-        self._draw_player_damage_flash(target)
-        # Power-ups — BLOQUE 23: pulsing halo so they stand out
-        # BLOQUE 53c: gold rings get a special swirling render
-        self._draw_powerup_pass(target, shx, shy)
-        # Enemies
-        self._draw_enemy_pass(target, shx, shy)
-        # BLOQUE 58.12: asteroids (procedural brown sprites) + powerups
-        # Drawn on top of enemies so they overlap nicely when ships pass
-        # behind/through the asteroid field.
-        self._draw_asteroids_and_powerups(target)
-        # BLOQUE 58.10: leader glow rings for pattern leaders
-        # (drawn on playfield AFTER enemies, BEFORE bullets/particles so
-        # the ring sits on top of ships but below muzzle flashes)
-        self._draw_leader_glows(target)
-        # Boss
-        self._draw_boss_pass(target, shx, shy)
-        # BLOQUE 52: GOLIATH spear projectiles in flight
-        self._draw_boss_spear_pass(target, shx, shy)
-        # BLOQUE 53a: GOLIATH charged laser (drawn AFTER the boss so
-        # the beam sits on top of everything)
-        self._draw_shield_laser_pass(target, shx, shy)
-        # Shockwaves (under bullets so they sit behind)
-        self._draw_shockwave_pass(target, shx, shy)
-        # BLOQUE 58.14.7: bomb bursts (orange/yellow procedural circles)
-        self._draw_bomb_burst_pass(target, shx, shy)
-        # Bullets (with glow halo)
-        self._draw_bullets_with_glow(target, shx, shy)
-        # BLOQUE 39: homing missiles (drawn after bullets, before player)
-        self._draw_missiles(target, shx, shy)
-        # BLOQUE 58.11 + 58.43: Tron trail — drawn BEFORE the player so the
-        # ship sits on top of the wall, but AFTER the enemies so the trail
-        # overlaps the enemy hitboxes (which is the whole point — the
-        # wall damages enemies that overlap it).
-        # BLOQUE 58.43: NOT drawn during PROPULSION. The player now uses a
-        # blue particle stream (see _emit_propulsion_trail) instead. The
-        # Tron trail is still used internally for collision detection and
-        # can still be drawn during DASH (not just PROPULSION).
-        self._draw_tron_trail(target, shx, shy)
-        # BLOQUE 6+7: DASH after-image trail (was in v1). Drawn BEFORE the
-        # player on the playfield (not on the sprite scratch). The trail
-        # is 8 ghosts (PLAYER.AFTERIMAGE_LIFE = 0.13s each) that follow
-        # the dash path, fading from full to zero. Only visible while
-        # dashing (or just after) since afterimage is populated by the
-        # dash update loop in Player._update_dash().
-        self._draw_player_afterimage_pass(target, shx, shy)
-        # Player (only if not in DEAD state and not i-frames invisible)
-        self._draw_player_scaled_pass(target, shx, shy)
-        # BLOQUE 37: continuous L3 laser (drawn on top of player so it appears
-        # to emerge from the muzzle).
-        self._draw_continuous_laser(target, shx, shy)
-        # BLOQUE 47: aim reticle (drawn last so it sits on top of everything)
-        self._draw_reticle_pass(target, shx, shy)
-        # BLOQUE 26: bomb flash overlay on the player
-        self._draw_bomb_flash(target)
-        # Particles
-        self._draw_particles(target, shx, shy)
-        # Score popups
-        self._draw_score_popups(target, shx, shy)
-        # Wave/act indicator (top-center, small)
-        self._draw_wave_indicator(target)
-        # Play-area frame (always on top so the border is visible)
-        self._draw_play_area_frame(target)
-        # HUD (BLOQUE 25: pass t for animations; BLOQUE 58.41: kill_ratio
-        # drives the score color — 100% red+glow+gold, drops to white at <20%)
-        self._draw_hud(target)
-        # BLOQUE 58.8: pattern indicator banner (top center)
-        self._draw_pattern_banner(target)
-        # Screen flash (bomb) — drawn last, fades over time
-        self._draw_screen_flash(target)
-        # BLOQUE 22: charge release flash (yellow-white overlay, fast decay)
-        self._draw_charge_release_flash(target)
-        # BLOQUE 24: pickup flash (green overlay)
-        self._draw_pickup_flash(target)
-        # BLOQUE 24: level-up flash (cyan overlay, brief)
-        self._draw_level_up_flash(target)
-        # BLOQUE 24: speed lines when player moves fast (dashes / charge moves)
-        self._draw_speed_lines_pass(target)
+        ctx = DrawContext(
+            target=target,
+            origin=(INTERNAL_W / 2, INTERNAL_H / 2),
+            scale=1.0,
+            time=self._t,
+            shake=(shx, shy),
+            size=(INTERNAL_W, INTERNAL_H),
+        )
+        self._layers.render(ctx)
         # BLOQUE 58.16 DEBUG: render timing log
         _render_ms = (_time.perf_counter() - _render_t0) * 1000.0
         if _render_ms > 50.0:
