@@ -58,3 +58,4 @@
 ## Lock Status
 
 **Estado:** Sin lock
+| `plans/2026-11-03-bloque-75-phase2-layers.md` | Plan | Plan de implementacion de la **Fase 2** de BLOQUE 75: el motor de capas del frame (`src/render/`: `Layer`, `LayerStack`, `DrawContext`), las 30 capas del gameplay en orden medido, los dos checkpoints (2A el stack, 2B los enemigos por el pipeline) y el arnes de golden frames |

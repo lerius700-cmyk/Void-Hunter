@@ -1,19 +1,20 @@
 {
     "synapse_version":  "2.2.0",
-    "last_verification_utc":  "2026-11-03T20:44:44Z",
+    "last_verification_utc":  "2026-11-04T00:27:34Z",
     "system_status":  "healthy",
     "active_bridges":  {
 
                        },
     "short_term_memory":  {
-                              "current_objective":  "BLOQUE 75 Fase 1 IMPLEMENTADA y mergeada en la linea de release: los 8 sets de enemigos declarados y medidos (manifest.toml + anchors.toml), el auditor juzgandolos con 0 findings, el gate de Fase 1 en verde, y CERO PNG tocados. Siguiente: Fase 2 -- el motor de capas del frame (src/render/, Layer/LayerStack/DrawContext, 30 capas, dos checkpoints con golden frames). El diseno de Fase 2 ya esta commiteado; su plan todavia no.",
-                              "last_successful_action":  "Fase 1 de BLOQUE 75 mergeada (070ad76): 9 tareas TDD ejecutadas con review por tarea y un subagente revisor por tarea. Lo que quedo: 8 manifest.toml + 8 anchors.toml medidos, el auditor honra `distinct` y el margen por set y mide la correccion contra el canvas del CLIP, sets.py con una sola definicion de set, 11 archivos de guardas (el arte no se toca, el hitbox no es el canvas, la semantica declarada es la real, el auditor da 0 findings, ningun clip huerfano) y tools/sprite_pipeline/gate.py. Verificado en el arbol mergeado: suite 3.036 pass + 0 fail + 7 skipped (el fallo pre-existente de Lissajous ya no esta: lo marco la ronda de limpieza), PHASE 1 GATE OK (exit 0), R1 y R2 con diff vacio en el rango 773cf08..HEAD, 1.768 PNGs con digest identico. El gate es la parte que mas crecio: la review final encontro que G11 comparaba worktree vs HEAD (una PNG commiteada en la fase era invisible) y que G5 nunca auditaba a GOLIATH -- se arreglaron en dos olas de fix, cada una probada no-vacua en un clon de %TEMP%.",
+                              "current_objective":  "BLOQUE 75 Fase 2 EN CURSO: el motor de capas del frame. El diseno (src/render/, Layer/LayerStack/DrawContext, 30 capas, dos checkpoints, arnes de golden frames) y el plan de 10 tareas ya estan commiteados en la linea de release. Rama de trabajo: bloquec-75-phase2-layers (desde bloquec-67-goliath-port @ e619527). Lo primero y mas riesgoso: el arnes de golden frames -- tiene que ser REPRODUCIBLE (el runtime usa el random global en 31 lugares y solo siembra _asteroid_rng), porque un golden frame que se deriva no prueba nada.",
+                              "last_successful_action":  "Fase 1 de BLOQUE 75 mergeada en la linea de release (070ad76) y verificada en el arbol mergeado: suite 3.036 pass + 0 fail + 7 skipped, PHASE 1 GATE OK, R1 y R2 con diff vacio en el rango 773cf08..HEAD, 1.768 PNGs con digest identico. 15 revisiones (9 por tarea + review final + 2 olas de fix), 15 defectos, todos mios: el codigo de los implementadores no dio ni uno. La review final encontro que el gate no predicaba R1 ni R2 (G11 comparaba worktree vs HEAD; G5 nunca auditaba a GOLIATH) y la primera ola de fix rompio el CI (clone de profundidad 1 sin la base) -- las dos olas siguientes lo arreglaron, cada una probada no-vacua en un clon de %TEMP%. Merge a la linea: 2 conflictos (spec y plan), resueltos a favor de la version revisada.",
                               "active_context_pointers":  [
                                                               "docs/superpowers/specs/2026-10-30-bloque-75-migration-spec.md",
                                                               "docs/superpowers/specs/2026-11-03-bloque-75-phase2-layers-design.md",
                                                               "docs/superpowers/plans/2026-11-03-bloque-75-phase1-enemy-pipeline.md",
+                                                              "docs/superpowers/plans/2026-11-03-bloque-75-phase2-layers.md",
                                                               "docs/handoffs/HANDOFF-BLOQUE-75-2026-11-02.md"
                                                           ],
-                              "critical_blockers":  "ninguno. Aviso para la Fase 2: el gate usa PHASE_1_BASE = \"773cf08\" (constante dura, con escapes --base y $PHASE1_BASE); hay que moverla al empezar la Fase 2."
+                              "critical_blockers":  "ninguno. Para la Fase 2: el gate de Fase 1 usa PHASE_1_BASE = \"773cf08\" (constante dura; escapes --base y $PHASE1_BASE) y hay que moverla cuando termine esta fase."
                           }
 }

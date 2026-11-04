@@ -32,6 +32,7 @@ from src.entities.enemies import EnemyKind, EnemyPool, Enemy
 from src.entities.enemies.boss import Boss, BossId, BossPool, BOSS_CONFIGS
 from src.entities.boss_spear import BossSpear
 from src.entities.player import Player, PlayerState
+from src.render.layer import DrawContext, LayerStack
 from src.systems.hitstop import Hitstop
 from src.systems.parallax import ParallaxBackground
 from src.systems.particle_engine import (
@@ -48,6 +49,7 @@ from src.systems.screen_shake import ScreenShake
 from src.systems.slowmo import SlowMo
 from src.systems.tron_trail import TronTrail
 from src.systems.weapon_system import WeaponLevel, WeaponPath, WeaponSystem
+from src.ui.gameplay_layers import build_layers
 from src.ui.hud import HUD
 from src.fx.bomb_burst import BombBurst
 
@@ -518,6 +520,13 @@ class GameplayRuntime:
         self._level_up_flash: float = 0.0  # brief flash when weapon levels up
         # BLOQUE 26: even more polish
         self._bomb_flash: float = 0.0  # 0..1 white flash on the player after bomb use
+        # BLOQUE 75 Fase 2: the frame's layers.
+        #
+        # Built at the END of the constructor: a layer body IS one of
+        # this runtime's draw helpers, bound to this instance. The ORDER
+        # lives in `src/ui/gameplay_layers.py`; this module keeps the
+        # bodies.
+        self._layers: LayerStack = build_layers(self)
 
     def _play_sfx(self, name: str, volume: float = 1.0) -> None:
         if self._audio is not None:
@@ -3969,19 +3978,72 @@ class GameplayRuntime:
             if self._parallax_bg is not None:
                 self._apply_background_mode(bg_mode)
                 self._parallax_bg.draw(target)
-        # BLOQUE 25: ambient drift particles in background
-        self._draw_ambient_dust(target)
-        # Shake offset
+        # BLOQUE 75 Fase 2: the frame is a stack of layers.
+        #
+        # The BACKGROUND above stays OUTSIDE the stack: it is the stack's
+        # backdrop. Everything else -- the ambient dust, the enemies, the
+        # player, the HUD -- is a layer, in the order that
+        # `src/ui/gameplay_layers.py` pins. The layer BODIES are still
+        # here, in this module; only the ORDER moved.
+        #
+        # THE SHAKE IS READ ONCE, HERE. It travels in the context and the
+        # layer bodies pass `ctx.shake` to the helpers that take it;
+        # `ctx.at()` is NOT used, so no layer ever sees the shake twice.
         shx_f, shy_f = self._shake.get_offset()
         shx, shy = int(shx_f), int(shy_f)
-        # Player damage flash: red overlay right after taking a hit
+        ctx = DrawContext(
+            target=target,
+            origin=(INTERNAL_W / 2, INTERNAL_H / 2),
+            scale=1.0,
+            time=self._t,
+            shake=(shx, shy),
+            size=(INTERNAL_W, INTERNAL_H),
+        )
+        self._layers.render(ctx)
+        # BLOQUE 58.16 DEBUG: render timing log
+        _render_ms = (_time.perf_counter() - _render_t0) * 1000.0
+        if _render_ms > 50.0:
+            try:
+                import os as _os
+                _os.makedirs("logs", exist_ok=True)
+                with open("logs/frame_times.csv", "a", encoding="utf-8") as _f:
+                    _state = self._player.state.name if hasattr(self._player.state, "name") else str(self._player.state)
+                    _f.write(
+                        f"{_render_t0:.3f},{_render_ms:.1f},RENDER,"
+                        f"state={_state}\n"
+                    )
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
+    # BLOQUE 75 Fase 2: the frame's draw operations, named.
+    #
+    # Every body below is the inline block of `draw()` VERBATIM: same
+    # order, same conditions, same values. Nothing was moved out of the
+    # runtime -- the blocks only got names -- so this is still the same
+    # frame. `src/ui/gameplay_layers.py` calls these by name: that module
+    # owns the ORDER, this one owns the bodies.
+    #
+    # The `*_pass` methods are the layers whose inline block was a
+    # GUARDED call to a helper that already existed. The guard travels
+    # with the call, so the helper itself is left exactly as it was.
+    # ------------------------------------------------------------------
+    def _draw_player_damage_flash(self, target: pygame.Surface) -> None:
+        """Layer `player_damage_flash` (z=1): the full-screen red hit flash.
+
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         if self._player.invuln_frames > 60 - 8 and self._player.invuln_frames > 0 \
                 and not self._player.is_dead:
             flash = pygame.Surface(target.get_size(), pygame.SRCALPHA)
             flash.fill((255, 60, 40, 100))
             target.blit(flash, (0, 0))
-        # Power-ups — BLOQUE 23: pulsing halo so they stand out
-        # BLOQUE 53c: gold rings get a special swirling render
+
+    def _draw_powerup_pass(self, target: pygame.Surface, shx: int, shy: int) -> None:
+        """Layer `powerups` (z=2): the pickup pass.
+
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         for p in self._powerups:
             alpha = max(0, min(255, int(255 * (p.life / 2.0))))
             cx, cy = int(p.x) + shx, int(p.y) + shy
@@ -4024,36 +4086,61 @@ class GameplayRuntime:
             target.blit(pu_surf, rect)
             # Inner white dot
             pygame.draw.rect(target, (255, 255, 255, alpha), (rect.x + 2, rect.y + 2, 4, 4))
-        # Enemies
+
+    def _draw_enemy_pass(self, target: pygame.Surface, shx: int, shy: int) -> None:
+        """Layer `enemies` (z=3): the enemy pass.
+
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         for e in self._enemies.pool:
             if e.active:
                 # BLOQUE 58.47: scale up enemy ships by 1.05x.
                 self._draw_enemy_scaled(target, e, shx, shy)
-        # BLOQUE 58.12: asteroids (procedural brown sprites) + powerups
-        # Drawn on top of enemies so they overlap nicely when ships pass
-        # behind/through the asteroid field.
-        self._draw_asteroids_and_powerups(target)
-        # BLOQUE 58.10: leader glow rings for pattern leaders
-        # (drawn on playfield AFTER enemies, BEFORE bullets/particles so
-        # the ring sits on top of ships but below muzzle flashes)
+
+    def _draw_leader_glows(self, target: pygame.Surface) -> None:
+        """Layer `leader_glows` (z=5): the pattern leaders' glow rings.
+
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         if self._use_procedural_patterns and self._active_pattern_runtime is not None:
             from src.systems.wave_patterns.runtime import draw_leader_glows
             active_enemies = [e for e in self._enemies.pool if e.active]
             draw_leader_glows(
                 target, self._active_pattern_runtime, active_enemies, self._t,
             )
-        # Boss
+
+    def _draw_boss_pass(self, target: pygame.Surface, shx: int, shy: int) -> None:
+        """Layer `boss` (z=6): the boss, when there is one.
+
+        The guard is the one `draw()` had; `_draw_boss` is untouched.
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         if self._is_boss and self._boss is not None and self._boss.active:
             self._draw_boss(target, shx, shy)
-        # BLOQUE 52: GOLIATH spear projectiles in flight
+
+    def _draw_boss_spear_pass(self, target: pygame.Surface, shx: int, shy: int) -> None:
+        """Layer `boss_spears` (z=7): the boss's spears in flight.
+
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         for sp in self._boss_spears:
             if sp.active:
                 self._draw_boss_spear(target, sp, shx, shy)
-        # BLOQUE 53a: GOLIATH charged laser (drawn AFTER the boss so
-        # the beam sits on top of everything)
+
+    def _draw_shield_laser_pass(self, target: pygame.Surface, shx: int, shy: int) -> None:
+        """Layer `shield_laser` (z=8): GOLIATH's charged shield laser.
+
+        The guard is the one `draw()` had; `_draw_shield_laser` is
+        untouched. Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         if self._boss_shield_laser_t > 0.0:
             self._draw_shield_laser(target, shx, shy)
-        # Shockwaves (under bullets so they sit behind)
+
+    def _draw_shockwave_pass(self, target: pygame.Surface, shx: int, shy: int) -> None:
+        """Layer `shockwaves` (z=9): the expanding rings.
+
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         for s in self._shockwaves:
             r = s.radius
             life_ratio = s.life / s.max_life if s.max_life > 0 else 0
@@ -4064,68 +4151,90 @@ class GameplayRuntime:
             pygame.draw.circle(ring_surf, (255, 255, 255, alpha),
                                (int(r) + 2, int(r) + 2), int(r), 2)
             target.blit(ring_surf, (sx - int(r) - 2, sy - int(r) - 2))
-        # BLOQUE 58.14.7: bomb bursts (orange/yellow procedural circles)
+
+    def _draw_bomb_burst_pass(self, target: pygame.Surface, shx: int, shy: int) -> None:
+        """Layer `bomb_bursts` (z=10): the orange/yellow bomb bursts.
+
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         for b in self._bomb_bursts:
             # Apply screen shake offset
             shifted = pygame.Surface(target.get_size(), pygame.SRCALPHA)
             b.draw(shifted)
             target.blit(shifted, (shx, shy))
-        # Bullets (with glow halo)
-        self._draw_bullets_with_glow(target, shx, shy)
-        # BLOQUE 39: homing missiles (drawn after bullets, before player)
-        self._draw_missiles(target, shx, shy)
-        # BLOQUE 58.11 + 58.43: Tron trail — drawn BEFORE the player so the
-        # ship sits on top of the wall, but AFTER the enemies so the trail
-        # overlaps the enemy hitboxes (which is the whole point — the
-        # wall damages enemies that overlap it).
-        # BLOQUE 58.43: NOT drawn during PROPULSION. The player now uses a
-        # blue particle stream (see _emit_propulsion_trail) instead. The
-        # Tron trail is still used internally for collision detection and
-        # can still be drawn during DASH (not just PROPULSION).
+
+    def _draw_tron_trail(self, target: pygame.Surface, shx: int, shy: int) -> None:
+        """Layer `tron_trail` (z=13): the wall the ship leaves behind.
+
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         if self._tron_trail.is_active() and self._player.state != PlayerState.PROPULSION:
             self._tron_trail.draw(target, (shx, shy))
-        # BLOQUE 6+7: DASH after-image trail (was in v1). Drawn BEFORE the
-        # player on the playfield (not on the sprite scratch). The trail
-        # is 8 ghosts (PLAYER.AFTERIMAGE_LIFE = 0.13s each) that follow
-        # the dash path, fading from full to zero. Only visible while
-        # dashing (or just after) since afterimage is populated by the
-        # dash update loop in Player._update_dash().
+
+    def _draw_player_afterimage_pass(self, target: pygame.Surface, shx: int, shy: int) -> None:
+        """Layer `player_afterimage` (z=14): the dash after-image ghosts.
+
+        The guard is the one `draw()` had; `_draw_player_afterimage` is
+        untouched. Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         if self._player.afterimage:
             self._draw_player_afterimage(target, shx, shy)
-        # Player (only if not in DEAD state and not i-frames invisible)
+
+    def _draw_player_scaled_pass(self, target: pygame.Surface, shx: int, shy: int) -> None:
+        """Layer `player` (z=15): the player ship.
+
+        The guard is the one `draw()` had; `_draw_player_scaled` is
+        untouched. Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         if not self._player.is_dead:
             # BLOQUE 58.47: render the player to a scratch surface, scale
             # by PLAYER_SHIP_SCALE, then blit. The procedural player ship
             # has a 32x24 footprint; SCALE=1.05 makes it 33.6x25.2.
             self._draw_player_scaled(target, shx, shy)
-        # BLOQUE 37: continuous L3 laser (drawn on top of player so it appears
-        # to emerge from the muzzle).
-        self._draw_continuous_laser(target, shx, shy)
-        # BLOQUE 47: aim reticle (drawn last so it sits on top of everything)
+
+    def _draw_reticle_pass(self, target: pygame.Surface, shx: int, shy: int) -> None:
+        """Layer `reticle` (z=17): the aim reticle.
+
+        The guard is the one `draw()` had; `_draw_reticle` is untouched.
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         if not self._player.is_dead:
             self._draw_reticle(target, shx, shy)
-        # BLOQUE 26: bomb flash overlay on the player
+
+    def _draw_bomb_flash(self, target: pygame.Surface) -> None:
+        """Layer `bomb_flash` (z=18): the full-screen white bomb flash.
+
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         if self._bomb_flash > 0.0:
             flash_alpha = int(220 * self._bomb_flash)
             flash = pygame.Surface(target.get_size(), pygame.SRCALPHA)
             flash.fill((255, 255, 255, flash_alpha))
             target.blit(flash, (0, 0))
-        # Particles
+
+    def _draw_particles(self, target: pygame.Surface, shx: int, shy: int) -> None:
+        """Layer `particles` (z=19): the particle system.
+
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         self._particles.draw(target, (shx, shy))
-        # Score popups
-        self._draw_score_popups(target, shx, shy)
-        # Wave/act indicator (top-center, small)
-        self._draw_wave_indicator(target)
-        # Play-area frame (always on top so the border is visible)
-        self._draw_play_area_frame(target)
-        # HUD (BLOQUE 25: pass t for animations; BLOQUE 58.41: kill_ratio
-        # drives the score color — 100% red+glow+gold, drops to white at <20%)
+
+    def _draw_hud(self, target: pygame.Surface) -> None:
+        """Layer `hud` (z=23): the HUD.
+
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         ratio = 1.0
         if self._enemies_spawned_total > 0:
             ratio = min(1.0, self._scoring.kills / self._enemies_spawned_total)
         self._hud.draw(target, self._player, self._weapon, self._scoring,
                        t=self._t, kill_ratio=ratio)
-        # BLOQUE 58.8: pattern indicator banner (top center)
+
+    def _draw_pattern_banner(self, target: pygame.Surface) -> None:
+        """Layer `pattern_banner` (z=24): the pattern name, top center.
+
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         if self._use_procedural_patterns and self._active_pattern_kind_label:
             font = pygame.font.Font(None, 18)
             label = f"PATTERN: {self._active_pattern_kind_label}"
@@ -4136,47 +4245,69 @@ class GameplayRuntime:
             text_y = 30
             target.blit(shadow, (text_x + 1, text_y + 1))
             target.blit(text_surf, (text_x, text_y))
-        # Screen flash (bomb) — drawn last, fades over time
+
+    def _draw_screen_flash(self, target: pygame.Surface) -> None:
+        """Layer `screen_flash` (z=25): the full-screen white flash.
+
+        One of the FOUR full-screen flashes: each one is its own layer
+        because each one was its own point in the draw sequence.
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         if self._screen_flash > 0.0:
             flash_alpha = int(200 * self._screen_flash)
             flash = pygame.Surface(target.get_size(), pygame.SRCALPHA)
             flash.fill((255, 255, 255, flash_alpha))
             target.blit(flash, (0, 0))
-        # BLOQUE 22: charge release flash (yellow-white overlay, fast decay)
+
+    def _draw_charge_release_flash(self, target: pygame.Surface) -> None:
+        """Layer `charge_release_flash` (z=26): the yellow-white flash.
+
+        One of the FOUR full-screen flashes: each one is its own layer
+        because each one was its own point in the draw sequence.
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         if self._charge_release_flash > 0.0:
             flash_alpha = int(180 * self._charge_release_flash)
             flash = pygame.Surface(target.get_size(), pygame.SRCALPHA)
             flash.fill((255, 240, 180, flash_alpha))
             target.blit(flash, (0, 0))
-        # BLOQUE 24: pickup flash (green overlay)
+
+    def _draw_pickup_flash(self, target: pygame.Surface) -> None:
+        """Layer `pickup_flash` (z=27): the green pickup flash.
+
+        One of the FOUR full-screen flashes: each one is its own layer
+        because each one was its own point in the draw sequence.
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         if self._pickup_flash > 0.0:
             flash_alpha = int(120 * self._pickup_flash)
             flash = pygame.Surface(target.get_size(), pygame.SRCALPHA)
             flash.fill((100, 255, 140, flash_alpha))
             target.blit(flash, (0, 0))
-        # BLOQUE 24: level-up flash (cyan overlay, brief)
+
+    def _draw_level_up_flash(self, target: pygame.Surface) -> None:
+        """Layer `level_up_flash` (z=28): the cyan level-up flash.
+
+        One of the FOUR full-screen flashes: each one is its own layer
+        because each one was its own point in the draw sequence.
+        Extracted verbatim from `draw()` (BLOQUE 75 Fase 2).
+        """
         if self._level_up_flash > 0.0:
             flash_alpha = int(160 * self._level_up_flash)
             flash = pygame.Surface(target.get_size(), pygame.SRCALPHA)
             flash.fill((140, 220, 255, flash_alpha))
             target.blit(flash, (0, 0))
-        # BLOQUE 24: speed lines when player moves fast (dashes / charge moves)
+
+    def _draw_speed_lines_pass(self, target: pygame.Surface) -> None:
+        """Layer `speed_lines` (z=29): the motion streaks.
+
+        The guard is the one `draw()` had -- `_draw_speed_lines` has its
+        OWN, weaker one (|vx| < 60), so the pair is not the same test.
+        `_draw_speed_lines` is untouched. Extracted verbatim from
+        `draw()` (BLOQUE 75 Fase 2).
+        """
         if abs(self._player.vx) > 80.0 and self._player.state != PlayerState.DEAD:
             self._draw_speed_lines(target)
-        # BLOQUE 58.16 DEBUG: render timing log
-        _render_ms = (_time.perf_counter() - _render_t0) * 1000.0
-        if _render_ms > 50.0:
-            try:
-                import os as _os
-                _os.makedirs("logs", exist_ok=True)
-                with open("logs/frame_times.csv", "a", encoding="utf-8") as _f:
-                    _state = self._player.state.name if hasattr(self._player.state, "name") else str(self._player.state)
-                    _f.write(
-                        f"{_render_t0:.3f},{_render_ms:.1f},RENDER,"
-                        f"state={_state}\n"
-                    )
-            except Exception:
-                pass
 
     def _draw_wave_indicator(self, target: pygame.Surface) -> None:
         """Show ACT/WAVE label in the top-center between HUD sections."""
@@ -5308,10 +5439,23 @@ class GameplayRuntime:
         dict (set by collisions/handling for any enemy) and the BLOQUE 71
         ``e.hit_timer`` field (set by ``Enemy.hit()`` for any kind; for
         MINE_ASTEROID it's set in all 4 states per the BLOQUE 71 spec).
+
+        BLOQUE 75 (Task 8): the BODY is drawn by the COMPOSITOR
+        (``_draw_enemy_body_via_pipeline``), so the runtime does NOT blit
+        it any more. The white flash stays a runtime OVERLAY, drawn on
+        top of what the compositor already put on the target: blitting
+        the body a second time would make every flashed enemy brighter
+        and would move the golden frames.
         """
         from src.core.settings import HIT_FLASH_OPACITY
         scale = self._ship_scale_enemy
-        sprite = self._get_enemy_sprite(e)
+        # BLOQUE 75 (Task 8): the BODY is drawn by the COMPOSITOR, and
+        # it hands back the RAW surface it drew. The flash overlay is
+        # built from THAT one, so it lands pixel-for-pixel on the body
+        # -- and the enemy frames are not kept twice in memory (the UI
+        # sprite cache and the compositor's own cache).
+        drawn = self._draw_enemy_body_via_pipeline(target, e, shx, shy)
+        sprite = drawn if drawn is not None else self._get_enemy_sprite(e)
         if sprite is not None:
             # BLOQUE 71.1: shape-aware 70% white flash overlay if either
             # flash source is active. Both timers can be set independently.
@@ -5320,23 +5464,44 @@ class GameplayRuntime:
             generic_flash = e.hit_timer > 0.0  # any enemy with hit_timer
             w, h = sprite.get_size()
             if flash_t > 0.0 or mine_flash or generic_flash:
-                # 1. Draw the original sprite so the shape is visible underneath.
-                scaled_base = pygame.transform.scale(
-                    sprite, (int(w * scale), int(h * scale))
-                )
-                base_rect = scaled_base.get_rect(
-                    center=(int(e.x + shx), int(e.y + shy))
-                )
-                target.blit(scaled_base, base_rect)
-                # 2. Build a shape-aware white silhouette at 70% opacity
-                #    (using the original sprite, pre-scale) and overlay it.
+                # ONLY the overlay: the body is already on the target.
+                # It is built from the RAW sprite and scaled with the
+                # SAME truncation, so it lands pixel-for-pixel on the
+                # compositor's scaled body.
+                #
+                # BLOQUE 75 (fix round 1): when the pipeline could NOT
+                # draw the body, NOBODY drew it -- the fallback body
+                # blit lives in the `elif` BELOW, which is the ELSE of
+                # this branch. A flashing enemy on that path rendered
+                # as a flat translucent silhouette with no body under
+                # it. The body is drawn here, the same way the
+                # fallback below draws it, so the overlay lands on the
+                # body instead of floating on the playfield.
+                if drawn is None:
+                    scaled_base = pygame.transform.scale(
+                        sprite, (int(w * scale), int(h * scale)),
+                    )
+                    target.blit(
+                        scaled_base,
+                        scaled_base.get_rect(
+                            center=(int(e.x + shx), int(e.y + shy))
+                        ),
+                    )
                 from src.entities.asteroid import _build_white_flash_overlay
                 overlay = _build_white_flash_overlay(sprite, HIT_FLASH_OPACITY)
                 scaled_overlay = pygame.transform.scale(
                     overlay, (int(w * scale), int(h * scale))
                 )
-                target.blit(scaled_overlay, base_rect)
-            else:
+                target.blit(
+                    scaled_overlay,
+                    scaled_overlay.get_rect(
+                        center=(int(e.x + shx), int(e.y + shy))
+                    ),
+                )
+            elif drawn is None:
+                # The pipeline could not draw this enemy: the plain
+                # sprite blit, the way the runtime behaved before the
+                # pipeline existed.
                 scaled = pygame.transform.scale(
                     sprite, (int(w * scale), int(h * scale)),
                 )
@@ -5357,6 +5522,84 @@ class GameplayRuntime:
             blit_x = int(e.x + shx) - new_w // 2
             blit_y = int(e.y + shy) - new_h // 2
             target.blit(scaled, (blit_x, blit_y))
+
+    # ------------------------------------------------------------------
+    # BLOQUE 75 (Task 8): the enemy body, drawn by the compositor
+    # ------------------------------------------------------------------
+    def _enemy_pipeline_clip(self, e: "Enemy") -> tuple[str, int] | None:
+        """The (clip id, frame) the pipeline must draw for this enemy.
+
+        The runtime KEEPS COUNTING the frames: the pipeline never
+        re-derives them. The mapping is the one ``Enemy.animation_path``
+        already uses, so the compositor draws exactly the PNG the runtime
+        used to blit:
+
+          * a plain enemy: its ``animation_state`` (idle / thrust /
+            damage / death) and its ``animation_frame``;
+          * the mine: its ``mine_state`` (closed / open1 / open2 /
+            open3). The mine's `closed` state holds FIVE VARIANTS and
+            the frame is the variant, clamped to 0..4; the `open*`
+            states are single frames.
+
+        None when the enemy is not one the pipeline can draw: the
+        sub-boss keeps its own four-direction sprites.
+        """
+        kind_value = e.kind.value if hasattr(e.kind, "value") else str(e.kind)
+        if kind_value == "sub_boss":
+            return None
+        if kind_value == "mine_asteroid":
+            state = e.mine_state
+            if state not in ("closed", "open1", "open2", "open3"):
+                # The same fallback `Enemy.animation_path` uses: the
+                # closed art, VARIANT 0.
+                return "closed", 0
+            if state == "closed":
+                return state, max(0, min(4, int(e.mine_variant)))
+            return state, 0
+        return e.animation_state, int(e.animation_frame)
+
+    def _draw_enemy_body_via_pipeline(
+        self, target: pygame.Surface, e: "Enemy", shx: int, shy: int,
+    ) -> pygame.Surface | None:
+        """Draw the enemy BODY through the compositor.
+
+        Returns the RAW surface the body was drawn from, or None when
+        the runtime has to draw it the old way (the set could not be
+        loaded, the enemy is not one of the pipeline's sets, or the frame
+        is not there).
+
+        The raw surface is returned so the flash overlay is built from
+        EXACTLY the frame the compositor drew -- not from a second copy
+        of the same PNG.
+        """
+        from src.anim.clip import load_player_for_kind
+
+        kind_value = e.kind.value if hasattr(e.kind, "value") else str(e.kind)
+        player = load_player_for_kind(kind_value)
+        if player is None:
+            return None
+        clip = self._enemy_pipeline_clip(e)
+        if clip is None:
+            return None
+        clip_id, frame = clip
+        if clip_id not in player.set.clips:
+            return None
+        raw = player.surface(clip_id, frame)
+        if raw is None:
+            # The frame is not on disk: the pipeline has nothing to
+            # draw, and a missing body is worse than the old blit.
+            return None
+        # The ORIGIN is the enemy's position with the shake applied:
+        # the layer stack adds the shake ONCE, and the compositor
+        # centres the frame on the origin (`pivot = "fixed"`).
+        player.draw(
+            target,
+            clip_id,
+            frame,
+            (int(e.x + shx), int(e.y + shy)),
+            part_ids=("body",),
+        )
+        return raw
 
     def _draw_arwing(
         self, target: pygame.Surface, cx: int, cy: int, w: int, h: int,
