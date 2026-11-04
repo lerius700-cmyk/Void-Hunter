@@ -24,8 +24,11 @@ that proves the check FAILS when the guarantee is broken:
   * a MISSING golden set fails: skipping the comparison would leave the
     weaker intra-process check and the phase gate would go green with
     ZERO proof fixtures;
-  * the proof set cannot SHRINK silently: the committed golden files and
-    the captured frames have to be the SAME set.
+  * the proof set cannot SHRINK silently: a committed golden whose frame is
+    GONE from the FRAMES table is reported, not ignored;
+  * the proof fixtures cannot be DESTROYED by accident: the default `--out`
+    is a scratch directory outside the repository, so a bare capture cannot
+    rewrite the committed goldens.
 """
 from __future__ import annotations
 
@@ -158,7 +161,15 @@ def test_check_detects_a_reused_scene(tmp_path: Path) -> None:
 
 def test_check_detects_a_golden_that_diverged(tmp_path: Path) -> None:
     """A committed golden that no longer matches the runtime is a
-    regression, and the check has to see it."""
+    regression, and the check has to see it.
+
+    The assertion is on the PIXEL divergence, not only on the
+    "GOLDEN DIVERGED" header: the orphan report (a golden whose frame is
+    gone from the FRAMES table) prints that very same header, so a test
+    that only looks at the header passes even when the pixels were never
+    compared -- the proof would be vacuous. This test has to FAIL against
+    a PRISTINE golden set: that is what makes it a proof.
+    """
     golden_dir = tmp_path / "golden"
     shutil.copytree(GOLDEN_DIR, golden_dir)
     # The golden of "enemies" now holds another frame: a valid PNG whose
@@ -169,6 +180,50 @@ def test_check_detects_a_golden_that_diverged(tmp_path: Path) -> None:
     )
     assert proc.returncode == 1, proc.stdout + proc.stderr
     assert "GOLDEN DIVERGED" in proc.stdout + proc.stderr, proc.stdout + proc.stderr
+    # The PIXELS differ -- not merely the shape of the golden set.
+    assert "the captured frame differs from the committed one" in (
+        proc.stdout + proc.stderr
+    ), proc.stdout + proc.stderr
+    assert "pixels differ" in proc.stdout + proc.stderr, proc.stdout + proc.stderr
+
+
+def test_check_of_a_single_frame_matches_the_committed_goldens(tmp_path: Path) -> None:
+    """`--only` is LEGAL: one frame can be checked against the proof.
+
+    The harness reports a golden whose frame is gone from the FRAMES table
+    as an orphan, and it compares the committed set against the FRAMES
+    TABLE -- not against the captured subset. If the reference were the
+    captured subset, every golden that was not selected would look like an
+    orphan and this check could never pass.
+    """
+    golden_dir = tmp_path / "golden"
+    shutil.copytree(GOLDEN_DIR, golden_dir)
+    proc = _run(tmp_path, "--check", "--only", "enemies", "--golden", str(golden_dir))
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "GOLDENS MATCH: enemies" in proc.stdout + proc.stderr, proc.stdout + proc.stderr
+
+
+def test_a_bare_capture_does_not_rewrite_the_committed_proof(tmp_path: Path) -> None:
+    """The proof tool must not be able to DESTROY the proof by accident.
+
+    The default `--out` used to be the committed golden directory, so a
+    bare `python tools/capture/layerstack_frames.py` silently rewrote the
+    committed proof fixtures. The default is now a scratch directory
+    outside the repository: rewriting the proof takes an explicit
+    `--out tools/golden/layerstack`.
+    """
+    before = {
+        path.name: hashlib.md5(path.read_bytes()).hexdigest()
+        for path in sorted(GOLDEN_DIR.glob("*.png"))
+    }
+    assert before, "the committed proof set is empty"
+    proc = _run(tmp_path)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    after = {
+        path.name: hashlib.md5(path.read_bytes()).hexdigest()
+        for path in sorted(GOLDEN_DIR.glob("*.png"))
+    }
+    assert after == before, "the bare capture rewrote the committed proof"
 
 
 def test_check_fails_when_the_golden_set_is_missing(tmp_path: Path) -> None:

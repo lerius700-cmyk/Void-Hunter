@@ -50,9 +50,16 @@ cannot see is a hypothesis, so each one fails loudly:
      the comparison would leave the weaker intra-process check that #3
      exists to replace, and the Phase 2 gate (P2-G2) would go green with
      ZERO proof fixtures.
-  5. The proof set cannot SHRINK silently: the committed golden files and
-     the captured frames have to be the SAME set. A golden with no capture
-     (a frame dropped from the FRAMES table) is reported, not ignored.
+  5. The proof set cannot SHRINK silently: a committed golden whose frame
+     is GONE from the FRAMES table is reported, not ignored. The reference
+     is the FRAMES TABLE, not the captured subset -- comparing against the
+     captured subset would report every unselected golden as an orphan
+     and `--only` could never be used.
+  6. The proof fixtures cannot be DESTROYED by accident: the default
+     `--out` is a scratch directory outside the repository, so a bare
+     capture cannot rewrite the committed proof. Rewriting it takes an
+     explicit `--out tools/golden/layerstack`, and the harness says so
+     out loud when it happens.
 
 The scene is DRAWN EXACTLY ONCE per capture: a draw mutates the scene
 (`_draw_engine_flame` emits a spark with `random.random()` DURING the
@@ -66,8 +73,16 @@ is (8, 8), and it is the frame that proves the shake travels through
 the stack exactly once.
 
 Usage:
+    python tools/capture/layerstack_frames.py
+        captures into the SCRATCH directory (the default `--out`), never
+        into the committed proof;
     python tools/capture/layerstack_frames.py --out tools/golden/layerstack
+        REWRITES the committed proof -- the only way to do it, and the
+        harness warns about it;
     python tools/capture/layerstack_frames.py --check
+        compares the fresh capture against the committed proof;
+    python tools/capture/layerstack_frames.py --check --only enemies
+        compares ONE frame against the committed proof;
     python tools/capture/layerstack_frames.py --check --shake  (diagnostic:
         forces the shake on EVERY frame, so the five non-shake goldens
         report as diverged -- that is the point of the flag)
@@ -83,6 +98,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 import hashlib
 import random
 import sys
+import tempfile
 from pathlib import Path
 from typing import TypeAlias
 
@@ -99,6 +115,14 @@ DT = 1.0 / 60.0
 
 # The committed golden frames: the proof itself.
 GOLDEN_DIR = ROOT / "tools" / "golden" / "layerstack"
+
+# The default `--out`: a SCRATCH directory OUTSIDE the repository. The
+# proof fixtures must not be rewritable by a stray capture -- the default
+# `--out` used to be GOLDEN_DIR, so a bare
+# `python tools/capture/layerstack_frames.py` silently OVERWROTE the
+# committed proof with a fresh capture. The proof is now rewritten only on
+# purpose: `--out tools/golden/layerstack`.
+SCRATCH_DIR = Path(tempfile.gettempdir()) / "void-hunter" / "layerstack_capture"
 
 # (name, ticks, keys, mouse_buttons, is_boss, shake)
 Frame: TypeAlias = tuple[str, int, tuple[int, ...], tuple[int, ...], bool, bool]
@@ -335,8 +359,6 @@ def _pixel_diff(left: bytes, right: bytes) -> int:
 
 def _check(only: str | None, golden_dir: Path, force_shake: bool = False) -> int:
     """Capture twice, compare the captures and the committed goldens."""
-    import tempfile
-
     with tempfile.TemporaryDirectory() as tmp:
         first = capture(Path(tmp) / "first", only, force_shake)
         second = capture(Path(tmp) / "second", only, force_shake)
@@ -388,16 +410,22 @@ def _check(only: str | None, golden_dir: Path, force_shake: bool = False) -> int
                 )
             elif golden_digest != digest:
                 print(f"NOTE: {name}: the pixels match but the bytes differ (the PNG encoder)")
-        # The proof set cannot SHRINK silently. The comparison walks the
-        # CAPTURED frames, so a committed golden with no capture (a frame
-        # dropped from the FRAMES table) would never be looked at. The two
-        # sets have to be the same set: a capture with no golden is already
-        # reported above, and a golden with no capture is reported here.
+        # The proof set cannot SHRINK silently. A committed golden whose
+        # frame is GONE from the FRAMES table would never be looked at, so
+        # the committed set is compared against the FRAMES TABLE -- NOT
+        # against the captured subset. Comparing against the captured
+        # subset would make `--only` illegal: every golden that was not
+        # selected would be reported as an orphan and the check could
+        # never run over a single frame.
+        #
+        # The other direction is already covered above: a CAPTURED frame
+        # with no committed golden is reported as a divergence.
+        frame_names = {frame[0] for frame in FRAMES}
         committed = {path.stem for path in golden_dir.glob("*.png")}
-        for name in sorted(committed - set(first)):
+        for name in sorted(committed - frame_names):
             diverged.append(
                 f"  {name}: there is a committed golden frame with no capture "
-                "to compare against"
+                "to compare against (the frame is gone from the FRAMES table)"
             )
         if diverged:
             print("GOLDEN DIVERGED:")
@@ -410,7 +438,17 @@ def _check(only: str | None, golden_dir: Path, force_shake: bool = False) -> int
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=GOLDEN_DIR)
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=SCRATCH_DIR,
+        help=(
+            "where the captured frames are written; the default is a SCRATCH "
+            "directory outside the repository, so a bare capture can never "
+            "rewrite the committed proof (pass --out tools/golden/layerstack "
+            "to rewrite it on purpose)"
+        ),
+    )
     parser.add_argument("--only", default=None, help="capture a single frame by name")
     parser.add_argument(
         "--golden",
@@ -436,6 +474,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.check:
             return _check(args.only, args.golden, args.shake)
+        if args.out.resolve() == GOLDEN_DIR.resolve():
+            print(
+                f"WARNING: rewriting the committed proof fixtures in {args.out} "
+                "-- this is the only way to do it, and it is on purpose"
+            )
         digests = capture(args.out, args.only, args.shake)
     except HarnessError as exc:
         print(f"ERROR: {exc}")
@@ -445,6 +488,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     for name, digest in sorted(digests.items()):
         print(f"{name}: {digest}")
+    print(f"frames written to: {args.out}")
     return 0
 
 
