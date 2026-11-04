@@ -30,7 +30,7 @@ Two adaptations to the original brief were needed, both forced by pygame
     player and the HUD -- a vacuous proof. The harness calls it exactly
     like `GameplayScene.on_enter` does (src/ui/scenes.py:1291-1292).
 
-THE THREE GUARANTEES ARE ENFORCED, NOT ASSUMED. A guarantee the check
+THE GUARANTEES ARE ENFORCED, NOT ASSUMED. A guarantee the check
 cannot see is a hypothesis, so each one fails loudly:
 
   1. An unknown `--only` name captures NOTHING and the check says so and
@@ -46,6 +46,13 @@ cannot see is a hypothesis, so each one fails loudly:
      The comparison is PIXEL-LEVEL (RGB + alpha), because that is what
      Task 4 asserts, and a PNG re-encode must not be able to fake a
      regression. The byte digest is reported too.
+  4. A MISSING golden set is a FAILURE, never a pass (`_check`). Skipping
+     the comparison would leave the weaker intra-process check that #3
+     exists to replace, and the Phase 2 gate (P2-G2) would go green with
+     ZERO proof fixtures.
+  5. The proof set cannot SHRINK silently: the committed golden files and
+     the captured frames have to be the SAME set. A golden with no capture
+     (a frame dropped from the FRAMES table) is reported, not ignored.
 
 The scene is DRAWN EXACTLY ONCE per capture: a draw mutates the scene
 (`_draw_engine_flame` emits a spark with `random.random()` DURING the
@@ -307,12 +314,17 @@ def _check(only: str | None, golden_dir: Path) -> int:
         # module-level `random.random()`, a PYTHONHASHSEED-dependent
         # order). The committed frame is the property that matters: it is
         # what Task 4 asserts pixel-by-pixel.
+        #
+        # A MISSING golden set is a FAILURE, never a pass. Skipping the
+        # comparison would leave the weaker intra-process check -- the one
+        # this comparison exists to replace -- and the Phase 2 gate (P2-G2)
+        # would go green with ZERO proof fixtures.
         if not golden_dir.is_dir():
             print(
-                f"NO GOLDENS: {golden_dir} does not exist: "
-                "the golden comparison is skipped"
+                f"GOLDENS MISSING: {golden_dir} does not exist: "
+                "the committed proof fixtures are missing"
             )
-            return 0
+            return 1
         diverged: list[str] = []
         for name, digest in sorted(first.items()):
             golden_path = golden_dir / f"{name}.png"
@@ -332,6 +344,17 @@ def _check(only: str | None, golden_dir: Path) -> int:
                 )
             elif golden_digest != digest:
                 print(f"NOTE: {name}: the pixels match but the bytes differ (the PNG encoder)")
+        # The proof set cannot SHRINK silently. The comparison walks the
+        # CAPTURED frames, so a committed golden with no capture (a frame
+        # dropped from the FRAMES table) would never be looked at. The two
+        # sets have to be the same set: a capture with no golden is already
+        # reported above, and a golden with no capture is reported here.
+        committed = {path.stem for path in golden_dir.glob("*.png")}
+        for name in sorted(committed - set(first)):
+            diverged.append(
+                f"  {name}: there is a committed golden frame with no capture "
+                "to compare against"
+            )
         if diverged:
             print("GOLDEN DIVERGED:")
             for line in diverged:

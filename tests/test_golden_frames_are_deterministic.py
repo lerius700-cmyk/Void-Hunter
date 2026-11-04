@@ -8,7 +8,7 @@ regression, and a real regression can hide behind the drift.
 This test captures the SAME frame twice and requires the two PNGs to be
 byte-identical.
 
-It also guards the THREE guarantees of the harness itself. A guarantee the
+It also guards the FIVE guarantees of the harness itself. A guarantee the
 check cannot see is a hypothesis, not a guarantee, so each one has a test
 that proves the check FAILS when the guarantee is broken:
 
@@ -20,7 +20,12 @@ that proves the check FAILS when the guarantee is broken:
   * `--check` compares the fresh capture against the COMMITTED golden
     frames, not only against a second fresh capture: two captures inside
     one process are identical even when the nondeterminism is
-    per-process.
+    per-process;
+  * a MISSING golden set fails: skipping the comparison would leave the
+    weaker intra-process check and the phase gate would go green with
+    ZERO proof fixtures;
+  * the proof set cannot SHRINK silently: the committed golden files and
+    the captured frames have to be the SAME set.
 """
 from __future__ import annotations
 
@@ -164,3 +169,34 @@ def test_check_detects_a_golden_that_diverged(tmp_path: Path) -> None:
     )
     assert proc.returncode == 1, proc.stdout + proc.stderr
     assert "GOLDEN DIVERGED" in proc.stdout + proc.stderr, proc.stdout + proc.stderr
+
+
+def test_check_fails_when_the_golden_set_is_missing(tmp_path: Path) -> None:
+    """A MISSING golden set is a failure, never a pass.
+
+    Skipping the comparison would leave the weaker intra-process check
+    that the golden comparison exists to replace, and the Phase 2 gate
+    (P2-G2) would go green with ZERO proof fixtures.
+    """
+    missing = tmp_path / "no-such-golden-dir"
+    proc = _run(tmp_path, "--check", "--golden", str(missing))
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "GOLDENS MISSING" in proc.stdout + proc.stderr, proc.stdout + proc.stderr
+
+
+def test_check_fails_when_the_proof_set_shrank(tmp_path: Path) -> None:
+    """The committed golden files and the captured frames have to be the
+    SAME set.
+
+    A golden with no capture (a frame dropped from the FRAMES table) would
+    otherwise sit on disk, never compared, and the proof set could shrink
+    silently.
+    """
+    golden_dir = tmp_path / "golden"
+    shutil.copytree(GOLDEN_DIR, golden_dir)
+    # A golden with no frame to capture it.
+    shutil.copy(golden_dir / "boss.png", golden_dir / "ghost.png")
+    proc = _run(tmp_path, "--check", "--golden", str(golden_dir))
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "GOLDEN DIVERGED" in proc.stdout + proc.stderr, proc.stdout + proc.stderr
+    assert "ghost" in proc.stdout + proc.stderr, proc.stdout + proc.stderr
