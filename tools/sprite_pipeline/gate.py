@@ -65,6 +65,22 @@ ENEMY_SETS = (
 # environment variable, or the --base argument. See _resolve_base.
 PHASE_1_BASE = "773cf08"
 
+# G5's RANGE diff must not report the GENERATED measurement: the anchors
+# are produced by the auditor FROM the art, and Phase 2 changed their
+# HEADER (the header used to name a test file that only protected
+# GOLIATH). A generated file is validated by FRESHNESS -- G5's second
+# half, verify_contract -> anchors_fresh -- not by "did it change?".
+# The manifest and the PNGs stay in the range: those are the SPEC and
+# the ART, and the promise is about them.
+#
+# The exclusion is LITERAL, not a glob: only GOLIATH's freshness is
+# checked by the gate's second half, so excluding the anchors of a boss
+# that does not exist yet would open a hole with nothing behind it.
+GOLIATH_ASSETS_PATHSPEC = (
+    "Assets/sprites/bosses/",
+    ":!Assets/sprites/bosses/goliath/anchors.toml",
+)
+
 # The guards the enemy sets must pass. G13 runs them: a green gate means the
 # art was not touched, the hitbox is not the canvas, the declared semantics
 # are the real ones, the auditor is clean and the anchors are fresh.
@@ -112,18 +128,25 @@ GUARDS_TIMEOUT_S = 300
 TIMEOUT_EXIT = 124
 
 
-def _run(cmd: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
+def _run(
+    cmd: list[str],
+    timeout: int,
+    cwd: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
     """Run a command with a hard timeout, in the repository.
 
     A `subprocess.TimeoutExpired` escaping as a traceback would break the
     gate's own contract: the gate must print "PHASE 1 GATE FAILED:" and
     list what went wrong EVEN WHEN what went wrong is a hang. A timeout
     is reported as a normal failure instead.
+
+    `cwd` defaults to the repository root; the tests point it at a
+    temporary repository so they can exercise the gate's own commands.
     """
     try:
         return subprocess.run(
             cmd,
-            cwd=str(ROOT),
+            cwd=str(ROOT if cwd is None else cwd),
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -137,9 +160,29 @@ def _run(cmd: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
         )
 
 
-def _git(args: list[str]) -> subprocess.CompletedProcess[str]:
+def _git(
+    args: list[str],
+    cwd: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
     """Run a git command in the repository, with the gate's git budget."""
-    return _run(["git", *args], GIT_TIMEOUT_S)
+    return _run(["git", *args], GIT_TIMEOUT_S, cwd=cwd)
+
+
+def _goliath_assets_diff(
+    base: str,
+    repo: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """The stat of GOLIATH's assets that changed inside the phase range.
+
+    The SAME command, with the SAME pathspec, that G5's range half runs
+    -- in `repo`, which is the gate's own root unless a caller says
+    otherwise. The test calls it with a temporary repository, so it
+    exercises the gate's OWN pathspec instead of a copy of it.
+    """
+    return _git(
+        ["diff", "--stat", f"{base}..HEAD", "--", *GOLIATH_ASSETS_PATHSPEC],
+        cwd=repo,
+    )
 
 
 def _describe(proc: subprocess.CompletedProcess[str]) -> str:
@@ -284,9 +327,7 @@ def main(argv: list[str] | None = None) -> int:
     # G11 has already said why and the gate is already failing, so the
     # check is reported as "did not run" instead of as a cryptic git error.
     if not base_missing:
-        bosses = _git(
-            ["diff", "--stat", f"{base}..HEAD", "--", "Assets/sprites/bosses/"]
-        )
+        bosses = _goliath_assets_diff(base)
         if bosses.returncode != 0:
             failures.append(
                 f"G5 goliath: the git command failed (exit {bosses.returncode}): "
