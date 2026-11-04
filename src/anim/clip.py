@@ -14,7 +14,7 @@ from pathlib import Path
 import pygame
 
 from src.anim.anchors import AnchorSet
-from src.anim.manifest import AnimSet, Clip
+from src.anim.manifest import AnimSet, Clip, Part
 from src.anim.parts import draw_part
 
 
@@ -35,6 +35,10 @@ class ClipPlayer:
         # The frames are loaded once and kept: a clip is played at 10-30 fps
         # and the PNG is decoded from disk every time otherwise.
         self._surface_cache: dict[Path, pygame.Surface] = {}
+        # The SCALED frames are kept too, for the same reason: the enemy
+        # sets are drawn at 1.05x and `pygame.transform.scale` on every
+        # single frame would cost more than the blit it feeds.
+        self._scaled_cache: dict[tuple[str, int, float, float], pygame.Surface] = {}
 
     def state(self, clip_id: str, elapsed: float) -> ClipState:
         """The frame index for `elapsed` seconds into `clip_id`.
@@ -89,6 +93,51 @@ class ClipPlayer:
         self._surface_cache[path] = loaded
         return loaded
 
+    def canvas_for(self, clip_id: str) -> tuple[int, int]:
+        """The canvas the clip is drawn on: its OWN, or the set's.
+
+        A clip may override the set's canvas: the mine's death art is
+        32x32 inside a 64x64 set, and it has to be centred on ITS OWN
+        canvas -- the set's would push it half a screen away.
+
+        The lookup is a `.get()` and not `set.clip()` on purpose: a clip
+        id that does not exist draws nothing, and it must not raise.
+        """
+        clip = self.set.clips.get(clip_id)
+        if clip is not None and clip.canvas:
+            return clip.canvas
+        return self.set.canvas
+
+    def scaled_surface(
+        self, clip_id: str, frame: int, part: Part
+    ) -> pygame.Surface | None:
+        """The frame's surface, scaled by the part's scale.
+
+        The runtime draws the enemy at `_ship_scale_enemy` (1.05) with the
+        SAME truncation: `int(32 * 1.05) == 33`. Reproducing that exactly
+        is what keeps the golden frames identical.
+
+        A part that declares NO scale gets the raw surface back, untouched:
+        that is GOLIATH's case, and the boss must not move a single pixel.
+        """
+        raw = self.surface(clip_id, frame)
+        if raw is None:
+            return None
+        sx, sy = part.scale
+        if sx == 1.0 and sy == 1.0:
+            return raw
+        width = int(raw.get_width() * sx)
+        height = int(raw.get_height() * sy)
+        if width <= 0 or height <= 0:
+            return None
+        key = (clip_id, frame, sx, sy)
+        cached = self._scaled_cache.get(key)
+        if cached is not None:
+            return cached
+        scaled = pygame.transform.scale(raw, (width, height))
+        self._scaled_cache[key] = scaled
+        return scaled
+
     def draw(
         self,
         target: pygame.Surface,
@@ -101,8 +150,15 @@ class ClipPlayer:
         wanted = set(part_ids) if part_ids else None
         parts = sorted(self.set.parts, key=lambda p: p.z)
         anchor = self.anchors.get(clip_id, frame)
+        # The CLIP's canvas, not the set's: a clip that declares one owns
+        # the frame it draws.
+        canvas = self.canvas_for(clip_id)
         for part in parts:
             if wanted is not None and part.id not in wanted:
                 continue
-            surf = self.surface(clip_id, frame) if part.draw == "frames" else None
-            draw_part(target, part, surf, anchor, origin, self.set.canvas)
+            surf = (
+                self.scaled_surface(clip_id, frame, part)
+                if part.draw == "frames"
+                else None
+            )
+            draw_part(target, part, surf, anchor, origin, canvas)
