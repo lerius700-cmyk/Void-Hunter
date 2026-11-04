@@ -938,6 +938,39 @@ this test is the proof, and it must be green BEFORE and AFTER. If it fails
 now, the golden frames are stale: re-capture them and commit that separately
 before touching the runtime.
 
+- [ ] **Step 2b: Capture a sixth golden frame WITH a non-zero shake**
+
+The five golden scenes all have an **integer shake of (0, 0)** — the shake
+truncates to zero in every one of them — so the golden set as it stands never
+exercises the layers that consume the shake. A regression in the shake
+plumbing would leave all five frames identical and the phase's proof would
+not notice.
+
+The Task 1 review proved the gap and the fix: forcing the runtime's screen
+trauma so the integer shake is non-zero yields **0 differing pixels** between
+the inline frame and the stack path (with shake `(8, 8)`), i.e. the stack
+handles the shake correctly. But that was a throwaway experiment — the
+committed golden set does not cover it.
+
+So, BEFORE touching the runtime, capture a sixth frame with the shake forced:
+
+1. Add a `--shake` flag to `tools/capture/layerstack_frames.py` that sets the
+   runtime's screen trauma so the integer shake is non-zero. Read the
+   runtime's own shake code for the exact attribute names; the Task 1 review
+   used `trauma = 1.0` with the noise offsets set to `1.0`, which produced
+   the integer shake `(8, 8)`.
+2. Add a `shake` entry to the harness's `FRAMES` table, captured at a tick
+   where something is on screen (the same tick discipline as the others: the
+   scene is built, ticked, and rendered exactly ONCE — a draw MUTATES the
+   scene: `_draw_engine_flame` emits a spark with `random.random()` during
+   the draw).
+3. Capture it and commit it with the others:
+   ```powershell
+   python tools\capture\layerstack_frames.py --out tools\golden\layerstack
+   ```
+4. Add the sixth name to the parametrized list in
+   `tests/test_layer_stack_renders_identical_frames.py` (Step 1 above).
+
 - [ ] **Step 3: Make the frame loop use the stack**
 
 In `src/ui/gameplay_runtime.py`:
