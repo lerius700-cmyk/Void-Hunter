@@ -1,8 +1,9 @@
 """BLOQUE 75: the manifest grows the fields the enemy sets need.
 
 `distinct`, `cut_margin` and `clip.canvas` are USED in Phase 1. `mode` and
-`on_end` are PARSED but not enforced yet: enforcing them now would reject
-GOLIATH's own manifest, which declares neither.
+`on_end` are ENFORCED since Phase 2: a clip that declares them is held to
+the vocabulary, and a clip that declares NEITHER keeps the derived values
+-- which is why GOLIATH, which declares neither, still loads.
 """
 from __future__ import annotations
 
@@ -24,6 +25,21 @@ def _write(tmp_path: Path, body: str) -> None:
 
 
 def test_the_new_fields_are_parsed(tmp_path):
+    """The probe declares a clip that the Phase 2 vocabulary ACCEPTS.
+
+    Two rules are in play, and the probe has to satisfy both:
+
+    - `mode = "variants"` means every frame is a DIFFERENT image, so
+      `distinct` has to equal `frames`. The old `frames = 10` with
+      `distinct = 3` was the "ten slots cycling three poses" pattern,
+      which belongs to `mode = "sequence"`, not to `"variants"`;
+    - `on_end = "reset"` says the clip does not loop, so `loop` has to
+      be false. Without it `loop` derives to true and the clip is
+      rejected.
+
+    Both rules are the loader's, not the probe's: the probe has to learn
+    them.
+    """
     _write(
         tmp_path,
         '[meta]\n'
@@ -34,12 +50,13 @@ def test_the_new_fields_are_parsed(tmp_path):
         '\n'
         '[[clips]]\n'
         'id = "idle"\n'
-        'frames = 10\n'
+        'frames = 3\n'
         'fps = 12.5\n'
         'distinct = 3\n'
         'canvas = [16, 16]\n'
         'mode = "variants"\n'
         'on_end = "reset"\n'
+        'loop = false\n'
         '\n'
         '[[parts]]\n'
         'id = "body"\n'

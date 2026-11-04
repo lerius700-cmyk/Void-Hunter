@@ -13,8 +13,17 @@ be able to regress the generated anchors.
 BLOQUE 74 (final review): EVERY run happens against a COPY of the set in
 `tmp_path`, never against the repository. `--fix` rewrites anchors.toml and
 can mirror the shipped frames, so a test that ran it in place could rewrite
-the shipped art in the middle of the suite. The copy is made by a fixture
-and the CLI is pointed at it with `--root`.
+the shipped art in the middle of the suite. The copy is made by a fixture.
+
+There are TWO ways into the pipeline, and both have to be pointed at it:
+
+- the SUBPROCESS CLI is pointed at the copy with `--root`;
+- the IN-PROCESS entry point (`run.main`) has no `--root` to be given, so
+  the fixture points it at the copy by patching the RESOLUTION: `run.py`
+  resolves the set first and then loads it from the directory that holds
+  the resolved one, so the resolution is what decides WHERE the set is.
+  Patching the loader alone is not enough -- `run.py` hands it a root
+  that points at the repository, and the copy is never reached.
 """
 from __future__ import annotations
 
@@ -38,9 +47,10 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from sprite_pipeline import run as pipeline  # noqa: E402
 
-# The real loader, captured before the fixture points the pipeline at the
-# copy.
+# The real entry points, captured before the fixture points the pipeline
+# at the copy.
 _REAL_LOAD_SET = pipeline.load_set
+_REAL_RESOLVE_SET = pipeline.resolve_set
 
 GOLIATH = ROOT / "Assets" / "sprites" / "bosses" / "goliath"
 SHIPPED_ANCHORS = GOLIATH / "anchors.toml"
@@ -67,8 +77,22 @@ def goliath_copy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     copy = sets_root / "goliath"
     shutil.copytree(GOLIATH, copy)
 
-    # The in-process entry point resolves the set through its own
-    # `load_set` binding, so it is pointed at the copy too.
+    # The in-process entry point RESOLVES the set first and then loads it
+    # from the directory that holds the resolved one (`run.py`:
+    # `load_set(args.set, root=set_dir.parent)`). The resolution is what
+    # decides WHERE the set is, so THAT is what has to be pointed at the
+    # copy: patching only the loader is not enough, because `run.py`
+    # hands it a root that points at the repository and the copy is
+    # never reached.
+    monkeypatch.setattr(
+        pipeline,
+        "resolve_set",
+        lambda name, root=None: _REAL_RESOLVE_SET(
+            name, root if root is not None else sets_root
+        ),
+    )
+    # The loader is pointed at the copy too, so the two agree even if the
+    # resolution is bypassed.
     monkeypatch.setattr(
         pipeline,
         "load_set",
@@ -81,6 +105,17 @@ def goliath_copy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def _md5(path: Path) -> str:
     return hashlib.md5(path.read_bytes()).hexdigest()
+
+
+def _fingerprint(path: Path) -> tuple[str, int]:
+    """The content AND the mtime of a file.
+
+    The mtime is half of the fingerprint on purpose: `--fix` writes the
+    anchors UNCONDITIONALLY, so a run that reaches the shipped set
+    rewrites the file even when the content comes out identical -- and a
+    guard that only compares md5 cannot see that.
+    """
+    return _md5(path), path.stat().st_mtime_ns
 
 
 def _run_cli(*args: str) -> subprocess.CompletedProcess:
@@ -188,6 +223,35 @@ def test_the_shipped_anchors_are_not_touched_by_the_suite(goliath_copy: Path):
 
     assert proc.returncode == 0, proc.stdout.decode("utf-8")
     assert _md5(SHIPPED_ANCHORS) == shipped_before
+
+
+def test_the_in_process_run_does_not_touch_the_shipped_set(goliath_copy: Path):
+    """The guard on the guard: the IN-PROCESS run must not reach the shipped set.
+
+    The other guard (`test_the_shipped_anchors_are_not_touched_by_the_suite`)
+    runs the CLI as a SUBPROCESS with `--root`, so it never exercised the
+    in-process path -- the one that had lost its isolation.
+
+    The fingerprint carries the mtime as well as the content: a rewrite
+    with identical content leaves the md5 unchanged, so the md5 alone
+    cannot see that the shipped file was written.
+    """
+    shipped_before = _fingerprint(SHIPPED_ANCHORS)
+    frames_before = {
+        path: _fingerprint(path) for path in sorted(GOLIATH.rglob("*.png"))
+    }
+
+    assert pipeline.main(["goliath", "--fix"]) == 0
+
+    assert _fingerprint(SHIPPED_ANCHORS) == shipped_before, (
+        "the in-process run rewrote the SHIPPED anchors: the fixture no "
+        "longer isolates the set it resolves"
+    )
+    after = {path: _fingerprint(path) for path in frames_before}
+    assert after == frames_before, (
+        "the in-process run touched the SHIPPED frames: the fixture no "
+        "longer isolates the set it resolves"
+    )
 
 
 def test_the_dry_run_does_not_write_the_anchors(
