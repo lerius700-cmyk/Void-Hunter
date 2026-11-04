@@ -41,6 +41,11 @@ ENEMY_SETS = (
     "kamikaze",
     "sniper",
     "turret",
+    # BLOQUE 75 (Task 8): the mine was MISSING here. Its art is 64x64 on
+    # a 64x64 canvas -- the only set whose scaled size (67x67) is not
+    # 33x33 -- and nothing pinned its scale, so deleting the line from
+    # its manifest left this whole file GREEN.
+    "mine_asteroid",
 )
 
 # A set whose body part declares the runtime's scale. Its frame is 32x32,
@@ -140,7 +145,7 @@ def test_the_enemy_manifests_declare_that_scale():
     from src.anim.manifest import load_set
 
     enemies = ROOT / "Assets" / "sprites" / "enemies"
-    for name in ("scout", "cruiser", "drone", "heavy", "kamikaze", "sniper", "turret"):
+    for name in ENEMY_SETS:
         anim_set = load_set(name, root=enemies)
         body = anim_set.part("body")
         assert body.scale == (1.05, 1.05), name
