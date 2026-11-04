@@ -184,7 +184,7 @@ así que una capa nunca ve una superficie que no sea la que se está pintando.
 | 11 | `bullets` | `rt._draw_bullets_with_glow(target, shx, shy)` |
 | 12 | `missiles` | `rt._draw_missiles(target, shx, shy)` |
 | 13 | `tron_trail` | `rt._tron_trail.draw(target, (shx, shy))` |
-| 14 | `player_afterimage` | `rt._draw_player_afterimage(target, shx, shy)` |
+| 14 | `player_afterimage` | `rt._draw_player_afterimage_pass(target, shx, shy)` |
 | 15 | `player` | `rt._draw_player_scaled_pass(target, shx, shy)` |
 | 16 | `continuous_laser` | `rt._draw_continuous_laser(target, shx, shy)` |
 | 17 | `reticle` | `rt._draw_reticle_pass(target, shx, shy)` |
