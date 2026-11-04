@@ -29,7 +29,7 @@ These apply to **every** task. Copy them verbatim into any dispatch brief.
 | — | **The internal resolution stays 320×480** | `src/core/settings.py::INTERNAL_W/INTERNAL_H`; the window scaling stays in `Game._present()` |
 | — | **The baseline** | `python -m pytest tests\ --tb=no` → **0 failed**. On this branch the suite collects **3 038** tests (3 031 passed + 6 skipped + 1 xfailed). **Treat the count as a DELTA, not an absolute number:** each task adds its own tests, and an absolute count breaks the moment another agent adds one. (The Phase 1 plan shipped with "3 036 passed" — that number was the suite's TOTAL, not its passed count; the implementer of Task 2 caught it.) |
 | — | pytest output | pytest 9.1.1 omits the final counts line on a full-suite run: use `--junitxml=<path in %TEMP%>` and read the totals from the XML, or run with `-v`. Report real numbers. |
-| — | mypy | **not installed** in the interpreter. Do NOT install it. The Phase 1 gate runs it through `uvx mypy` with mypy's `--python-executable`, so it finds pygame 2.6.1's shipped `py.typed`. Write strict-clean annotations by hand (`mypy strict = true`). |
+| — | mypy | **The SYSTEM python has no mypy — but the PROJECT's venv does: `F:\AI\MM\void-hunter\.venv\Scripts\python.exe` ships mypy 2.4.0.** That is the interpreter the repo's own gate uses (`docs/handoffs/HANDOFF-BLOQUE-75-2026-11-02.md:87`). Run the gate with it: `& F:\AI\MM\void-hunter\.venv\Scripts\python.exe -m mypy src\render\` (and `… -m mypy src\anim\` — the documented gate, currently green). **Install nothing.** Measured at `39f5113`: `mypy src/anim/` → 0 errors in 6 files; `mypy src/render/` → 0 errors in 2 files. (Note: `mypy src/` is NOT clean — 182 pre-existing errors, all in `src/ui/` and `src/core/`, identical before and after this phase.) |
 | — | Windows / PowerShell 5.1 | no `&&`, no `ls -la`, no `head`/`tail`/`grep`. **There is NO Git Bash** (the `bash.exe` on PATH is the WSL launcher). |
 | — | Line endings | the repo's `.py` files are CRLF, no BOM. The generated `.toml` files are LF (`.gitattributes`: `*.toml text eol=lf`). |
 | — | Commits | one per task, message given in the task, explicit paths only (`git add <paths>`, never `-A`) |
@@ -1641,7 +1641,7 @@ Add to `tools/sprite_pipeline/gate.py`:
 |---|---|---|
 | P2-G1 | the golden frames are pixel-identical to the committed ones | `tests/test_layer_stack_renders_identical_frames.py` is green |
 | P2-G2 | the harness is reproducible | `tools/capture/layerstack_frames.py --check` exits 0 |
-| P2-G3 | `mypy src/render/` is clean | 0 errors |
+| P2-G3 | `mypy src/render/` is clean | 0 errors, run with the PROJECT's venv interpreter: `& F:\AI\MM\void-hunter\.venv\Scripts\python.exe -m mypy src\render\` (mypy 2.4.0). Also check `… -m mypy src\anim\` (the documented gate, currently 0 errors in 6 files). |
 | P2-G4 | the layer order is pinned | `tests/test_layer_stack_order.py` is green |
 | P2-G5 | the enemy PNGs did not move | `git diff --stat <phase2 base>..HEAD -- '*.png' ':!tools/golden/'` is empty — **`tools/golden/` is EXCLUDED**: the golden frames are proof fixtures, not art, and Task 1 commits them (spec decision B3). The same exclusion is already in the Phase 1 gate's G11 (`tools/sprite_pipeline/gate.py`, commit `1e423da`). |
 | P2-G6 | GOLIATH's contract still holds | `verify_contract.verify("goliath", None)` passes |
