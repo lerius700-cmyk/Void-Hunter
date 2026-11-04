@@ -5468,6 +5468,25 @@ class GameplayRuntime:
                 # It is built from the RAW sprite and scaled with the
                 # SAME truncation, so it lands pixel-for-pixel on the
                 # compositor's scaled body.
+                #
+                # BLOQUE 75 (fix round 1): when the pipeline could NOT
+                # draw the body, NOBODY drew it -- the fallback body
+                # blit lives in the `elif` BELOW, which is the ELSE of
+                # this branch. A flashing enemy on that path rendered
+                # as a flat translucent silhouette with no body under
+                # it. The body is drawn here, the same way the
+                # fallback below draws it, so the overlay lands on the
+                # body instead of floating on the playfield.
+                if drawn is None:
+                    scaled_base = pygame.transform.scale(
+                        sprite, (int(w * scale), int(h * scale)),
+                    )
+                    target.blit(
+                        scaled_base,
+                        scaled_base.get_rect(
+                            center=(int(e.x + shx), int(e.y + shy))
+                        ),
+                    )
                 from src.entities.asteroid import _build_white_flash_overlay
                 overlay = _build_white_flash_overlay(sprite, HIT_FLASH_OPACITY)
                 scaled_overlay = pygame.transform.scale(
