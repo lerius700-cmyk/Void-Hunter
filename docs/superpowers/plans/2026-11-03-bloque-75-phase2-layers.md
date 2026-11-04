@@ -1113,6 +1113,27 @@ from src.anim.parts import _base
 from src.anim.manifest import Part
 
 
+def _part(pivot: str) -> Part:
+    """A `Part` with every required field filled.
+
+    `Part` has NINE required fields and no defaults, so a short
+    `Part(id=..., draw=..., pivot=..., z=0)` raises TypeError. Building it
+    through a helper keeps the test readable without touching
+    `src/anim/manifest.py` (which is not this task's file).
+    """
+    return Part(
+        id="body",
+        draw="frames",
+        pivot=pivot,
+        z=0,
+        offset=(0.0, 0.0),
+        scale=(1.0, 1.0),
+        radii=(),
+        detect=None,
+        on_missing="interpolate",
+    )
+
+
 @pytest.fixture(scope="module")
 def display():
     pygame.init()
@@ -1132,15 +1153,17 @@ def _anchor(dx: int, dy: int) -> FrameAnchor:
 
 
 def test_a_centroid_pivot_applies_the_correction():
-    part = Part(id="body", draw="frames", pivot="centroid", z=0)
+    part = _part("centroid")
     x, y = _base((100, 100), (32, 32), _anchor(3, -2), part)
-    assert (x, y) == (100 + 3, 100 - 2)
+    # 100 - 32//2 + 3, 100 - 32//2 - 2
+    assert (x, y) == (87, 82)
 
 
 def test_a_fixed_pivot_does_not_apply_the_correction():
-    part = Part(id="body", draw="frames", pivot="fixed", z=0)
+    part = _part("fixed")
     x, y = _base((100, 100), (32, 32), _anchor(3, -2), part)
-    assert (x, y) == (100, 100)
+    # 100 - 32//2, 100 - 32//2 -- centred, with no correction
+    assert (x, y) == (84, 84)
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
