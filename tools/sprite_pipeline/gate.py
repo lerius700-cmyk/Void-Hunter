@@ -337,8 +337,19 @@ def main(argv: list[str] | None = None) -> int:
     # The base commit was already verified above: when it is missing, the
     # gate has already failed with the reason, and the range check is
     # reported as "did not run" instead of as a cryptic git error.
+    #
+    # BLOQUE 75 Fase 2: the RANGE check excludes ``tools/golden/``. The
+    # golden frames are PROOF FIXTURES, not art: BLOQUE 75 Fase 2 Task 1
+    # commits them (spec decision B3 -- the measurement is versioned), and
+    # a `*.png` pathspec cannot tell a new fixture from a changed sprite.
+    # The promise G11 protects -- "not one PNG byte of the ART changed" --
+    # is untouched: `Assets/sprites/` is not excluded, and the WORKING TREE
+    # check below keeps the strict `*.png` pathspec, so a golden frame
+    # edited by hand on disk still turns the gate red.
     if not base_missing:
-        png_range = _git(["diff", "--stat", f"{base}..HEAD", "--", "*.png"])
+        png_range = _git(
+            ["diff", "--stat", f"{base}..HEAD", "--", "*.png", ":!tools/golden/"]
+        )
         if png_range.returncode != 0:
             failures.append(
                 f"G11: the git command failed (exit {png_range.returncode}): "
