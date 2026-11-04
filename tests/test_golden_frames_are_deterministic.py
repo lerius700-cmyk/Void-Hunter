@@ -8,7 +8,7 @@ regression, and a real regression can hide behind the drift.
 This test captures the SAME frame twice and requires the two PNGs to be
 byte-identical.
 
-It also guards the FIVE guarantees of the harness itself. A guarantee the
+It also guards the SIX guarantees of the harness itself. A guarantee the
 check cannot see is a hypothesis, not a guarantee, so each one has a test
 that proves the check FAILS when the guarantee is broken:
 
@@ -28,7 +28,9 @@ that proves the check FAILS when the guarantee is broken:
     GONE from the FRAMES table is reported, not ignored;
   * the proof fixtures cannot be DESTROYED by accident: the default `--out`
     is a scratch directory outside the repository, so a bare capture cannot
-    rewrite the committed goldens.
+    rewrite the committed goldens -- and the guard that watches it is able
+    to SEE a rewrite: the mtime moves even when the (reproducible) bytes do
+    not, and the effective default `--out` is pinned by a white-box check.
 """
 from __future__ import annotations
 
@@ -71,6 +73,36 @@ H._build_scene = _reused
 raise SystemExit(H.main(["--check"]))
 """
 
+# The probe that observes the EFFECTIVE default `--out` of the harness.
+#
+# It IMPORTS the harness module and intercepts `capture`, so the value it
+# reports is the one ARGPARSE resolved -- not a constant read out of the
+# source and not the harness's own idea of what the default is. It runs in
+# a SUBPROCESS because importing the harness inserts its own ROOT at the
+# front of `sys.path`, and that must not leak into the pytest process.
+_DEFAULT_OUT_PROBE = """
+import importlib.util
+import sys
+from pathlib import Path
+
+harness = Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location("vh_layerstack_frames", harness)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+seen = []
+
+
+def _fake_capture(out_dir, only=None, force_shake=False):
+    seen.append(Path(out_dir))
+    return {"probe": "0" * 32}
+
+
+module.capture = _fake_capture
+module.main([])
+print("DEFAULT_OUT=" + (str(seen[0]) if seen else "<none>"))
+"""
+
 
 def _run(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -80,6 +112,32 @@ def _run(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
         cwd=str(cwd),
         timeout=300,
     )
+
+
+def _effective_default_out(tmp_path: Path) -> Path:
+    """The `--out` the harness uses when the caller passes none.
+
+    The harness is IMPORTED in a subprocess and its `capture` is
+    intercepted, so the value observed is the one ARGPARSE resolved for
+    `--out` -- the default itself, not a constant read out of the source.
+    """
+    probe = tmp_path / "probe_default_out.py"
+    probe.write_text(_DEFAULT_OUT_PROBE, encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, str(probe), str(HARNESS)],
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=300,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    reported = [
+        line.split("=", 1)[1]
+        for line in proc.stdout.splitlines()
+        if line.startswith("DEFAULT_OUT=")
+    ]
+    assert len(reported) == 1, proc.stdout + proc.stderr
+    return Path(reported[0])
 
 
 def test_the_harness_exists() -> None:
@@ -206,24 +264,65 @@ def test_check_of_a_single_frame_matches_the_committed_goldens(tmp_path: Path) -
 def test_a_bare_capture_does_not_rewrite_the_committed_proof(tmp_path: Path) -> None:
     """The proof tool must not be able to DESTROY the proof by accident.
 
-    The default `--out` used to be the committed golden directory, so a
-    bare `python tools/capture/layerstack_frames.py` silently rewrote the
-    committed proof fixtures. The default is now a scratch directory
-    outside the repository: rewriting the proof takes an explicit
-    `--out tools/golden/layerstack`.
+    WHAT MAKES A REWRITE OBSERVABLE. The capture is byte-reproducible, so
+    a rewrite of the committed goldens leaves the BYTES identical: an md5
+    comparison cannot see it, and a guard built on md5 alone would pass
+    while the proof was being rewritten -- a guarantee the check cannot
+    see is a hypothesis. Two things CAN see it, and both are asserted
+    here:
+
+      * the MTIME -- rewriting a file updates `st_mtime_ns` even when the
+        bytes are identical, so the mtime is compared before and after;
+      * the DEFAULT -- the harness is imported and the EFFECTIVE default
+        `--out` is observed: it must not be the golden directory, and it
+        must live OUTSIDE the repository.
+
+    The md5 comparison is kept: it proves the CONTENT was not corrupted.
+    It is not the discriminator -- on its own it would be vacuous.
     """
     before = {
-        path.name: hashlib.md5(path.read_bytes()).hexdigest()
+        path.name: (
+            hashlib.md5(path.read_bytes()).hexdigest(),
+            path.stat().st_mtime_ns,
+        )
         for path in sorted(GOLDEN_DIR.glob("*.png"))
     }
     assert before, "the committed proof set is empty"
     proc = _run(tmp_path)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     after = {
-        path.name: hashlib.md5(path.read_bytes()).hexdigest()
+        path.name: (
+            hashlib.md5(path.read_bytes()).hexdigest(),
+            path.stat().st_mtime_ns,
+        )
         for path in sorted(GOLDEN_DIR.glob("*.png"))
     }
-    assert after == before, "the bare capture rewrote the committed proof"
+    assert {name: digest for name, (digest, _mtime) in after.items()} == {
+        name: digest for name, (digest, _mtime) in before.items()
+    }, "the bare capture changed the BYTES of the committed proof"
+    # The discriminator: the bytes are reproducible, so a rewrite is
+    # invisible to a digest -- but it is not invisible to the mtime.
+    rewritten = sorted(
+        name
+        for name in before
+        if name in after and before[name][1] != after[name][1]
+    )
+    assert not rewritten, (
+        "the bare capture REWROTE the committed proof: the mtime changed on "
+        f"{rewritten} while the bytes stayed identical, so a digest "
+        "comparison cannot see it"
+    )
+
+    # The constant behind the behaviour: the effective default `--out`.
+    default_out = _effective_default_out(tmp_path)
+    assert default_out.resolve() != GOLDEN_DIR.resolve(), (
+        f"the default --out of the harness IS the committed proof directory "
+        f"({default_out}): a bare capture rewrites the proof"
+    )
+    assert ROOT not in default_out.resolve().parents, (
+        f"the default --out of the harness ({default_out}) is INSIDE the "
+        f"repository ({ROOT}): the scratch directory has to live outside it"
+    )
 
 
 def test_check_fails_when_the_golden_set_is_missing(tmp_path: Path) -> None:
