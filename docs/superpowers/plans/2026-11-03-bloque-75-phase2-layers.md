@@ -1786,3 +1786,71 @@ part)` keeps its signature and only its body changes.
 each one in the runtime. That is stated in Task 3 and Task 4, and the golden
 frames are the backstop: a wrong guess shows up as differing pixels, not as a
 silent pass.
+
+---
+
+# Corrections log (added while the phase was executed)
+
+This section is appended to the plan as the phase runs, so the audit trail
+survives in git. **The briefs themselves live in `.superpowers/` (gitignored)
+and are NOT rewritten once dispatched** — a rewritten brief cannot be audited
+("deviation vs the brief" becomes invisible). Corrections go to a new,
+versioned brief file and are recorded here.
+
+Every defect listed below was found by a **reviewer** or by an
+**implementer**; none was found by reading the diff.
+
+## The briefs (controller defects)
+
+| Brief | Defect | Severity | Who found it |
+|---|---|---|---|
+| Task 5 | the expected coordinates were arithmetically impossible: the base `_base` subtracts `canvas // 2`, so `centroid` is `(87, 82)` and `fixed` is `(84, 84)`, not `(103, 98)` / `(100, 100)` | Critical | implementer + reviewer |
+| Task 5 | the test snippet was not executable: `Part` has NINE required fields and no defaults, so `Part(id=..., draw=..., pivot=..., z=0)` raises `TypeError` | Critical | implementer + reviewer |
+| Task 5 | the helper's field values (`radii=()`, `on_missing="interpolate"`) were not the parser's real defaults (`radii=None`, `on_missing="fallback"`) | Minor | reviewer |
+| Task 5 | the brief on disk was REWRITTEN IN PLACE after the implementer had committed and reported, so the deviation record was destroyed | Critical (process) | reviewer |
+| Task 7 | Step 2 predicted "2 passed" for a file that holds 7 test functions | Minor | implementer |
+| Task 7 | the brief did not say that the manifests are hand-edited SPECs whose prose must document every field they encode | Important | controller (preflight) |
+| Task 8 | "5 passed" for a golden test that is parametrized over SIX frames | Minor | controller (preflight) |
+| Task 8 | the flash path would have blitted the enemy body TWICE (the runtime's flash branch draws body+overlay, but the compositor draws the body) | Important | controller (preflight) |
+| Task 8 | **the golden frames are BLIND to whether the enemies went through the pipeline** — a runtime that never calls the compositor draws the same pixels | Important | controller (preflight) |
+| Task 9 | the "an archive clip must not declare an fps" rule cannot be checked on the parsed `Clip` (its `fps` default is 10, indistinguishable from a declared `fps = 10`): it needs the RAW entry | Important | controller (preflight) |
+| Task 9 | editing the mine's manifest changes its `manifest_sha256`, so its `anchors.toml` goes stale and the Phase 1 gate turns RED — the brief did not say to regenerate it | Important | controller (preflight) |
+| Task 10 | the gate has NO `--phase` argument: the brief assumed one existed | Important | controller (preflight) |
+| Task 10 | the brief hardcoded an absolute path to the developer's venv, which does not exist in a worktree nor in CI | Important | controller (preflight) |
+| Task 10 | a SKIPPED test is not a pass: the golden test SKIPS a case when its golden is missing, and `pytest -q` exits 0 when everything was skipped | Important | controller (preflight) |
+
+## The implementation (defects the implementers caught)
+
+| Task | Defect | Severity |
+|---|---|---|
+| Task 7 | the Phase 1 gate's check G5 diffs the whole `Assets/sprites/bosses/` directory over a commit range, so Phase 2's legitimate change to GOLIATH's **generated** `anchors.toml` turned the gate RED — and there is no escape (not regenerating it makes `verify_contract` report it stale) | Important |
+
+**The principle it produced:** a GENERATED file is validated by **freshness**
+("is it current?"), not by "did it change?". The freshness of GOLIATH's
+anchors was already checked, by G5's second half (`verify_contract` →
+`anchors_fresh`). Fix: `42d252e` narrows G5's RANGE pathspec to exclude the
+generated measurement, keeping the manifest and the PNGs inside the diff.
+
+## The reviews (defects in the committed work)
+
+| Task | Defect | Severity |
+|---|---|---|
+| Task 5 | the `fixed` pivot's guarantee was **unpinned by the public path**: the two new tests called the private `_base()`, and a mutation that makes `draw_part` ignore the pivot left the **whole suite green** (3072 total / 3064 passed / 0 failures) | Important |
+
+**The principle it produced:** a pixel-equality proof proves the PIXELS, not
+the PATH. A checkpoint that says "the observable behaviour did not change"
+needs TWO proofs: the equality of the result, and a test that the new code
+path was actually exercised. Fix: `9d9742d` adds a test that renders a `fixed`
+part through `parts.draw_part()` and asserts where the **pixels** land.
+
+## The process rules this phase ended with
+
+1. **A brief is written once, before dispatch, and frozen.** Corrections go to
+   a new versioned file (`task-N-brief-r1.md`) and to the log above.
+2. **The implementation outranks the brief.** When they disagree, the
+   implementation is kept and the brief is corrected afterwards — but only if
+   the implementer REPORTS the deviation instead of improvising.
+3. **Every new test must be shown to be able to fail**, by mutating the code
+   and pasting the red run.
+4. **Never two implementers committing in the same worktree** (the git index
+   race). Reviews may run in parallel; implementers may not.
