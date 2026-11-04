@@ -1,19 +1,32 @@
-"""BLOQUE 75: the Phase 1 gate.
+"""BLOQUE 75: the gate of the enemy pipeline.
 
-One command that decides whether the enemy sets are ready for Phase 2.
-It runs EVERY check and reports all the failures, not just the first.
+One command that decides whether a phase of the pipeline is done. It runs
+EVERY check and reports all the failures, not just the first.
 
     python tools/sprite_pipeline/gate.py
     python tools/sprite_pipeline/gate.py --base 773cf08
+    python tools/sprite_pipeline/gate.py --phase 2
+    python tools/sprite_pipeline/gate.py --phase 2 --base e619527
 
-Exit 0 -> PHASE 1 GATE OK. Exit 1 -> PHASE 1 GATE FAILED: <the list>.
+Exit 0 -> PHASE <n> GATE OK. Exit 1 -> PHASE <n> GATE FAILED: <the list>.
 
-The base commit of the phase comes from --base, else from the PHASE1_BASE
-environment variable, else from the PHASE_1_BASE constant in this file.
+The base commit of the phase comes from --base, else from the
+PHASE<n>_BASE environment variable, else from the PHASE_<n>_BASE constant
+in this file.
 
 The gate measures the PHASE RANGE (base..HEAD) and NOT ONLY the working
 tree: a PNG committed INSIDE the phase is invisible to `git diff HEAD`,
 and the phase's own promise is that not one PNG byte changed.
+
+PHASE 1 (the default, so a bare `gate.py` keeps meaning Phase 1) guards
+the ENEMY SETS: the audit, the anchors, the discovery, the type gate and
+the art. PHASE 2 guards the LAYERED RENDERING ENGINE: the golden frames,
+the reproducible capture, the type gate of src/render/ and src/anim/, the
+pinned layer order and the art.
+
+A SKIPPED test is not a pass: the checks that run pytest read its junit
+XML and require skipped == 0, because `pytest -q` exits 0 when every
+case was skipped.
 """
 from __future__ import annotations
 
@@ -23,6 +36,8 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
@@ -64,6 +79,18 @@ ENEMY_SETS = (
 # It can be pointed elsewhere WITHOUT editing this file: the PHASE1_BASE
 # environment variable, or the --base argument. See _resolve_base.
 PHASE_1_BASE = "773cf08"
+
+# The base commit of Phase 2: the HEAD of the release line when Phase 2
+# started -- Phase 1 was already merged there, so the Phase 2 range
+# (e619527..HEAD) holds ONLY the work of this phase.
+#
+# The range holds the six golden frames, which are PROOF FIXTURES and not
+# art: P2-G5 excludes `tools/golden/` from its range half, exactly as the
+# Phase 1 gate's G11 already does.
+#
+# It can be pointed elsewhere WITHOUT editing this file: the PHASE2_BASE
+# environment variable, or the --base argument. See _resolve_base.
+PHASE_2_BASE = "e619527"
 
 # G5's RANGE diff must not report the GENERATED measurement: the anchors
 # are produced by the auditor FROM the art, and Phase 2 changed their
@@ -121,6 +148,43 @@ GUARD_TESTS = (
 GIT_TIMEOUT_S = 60
 MYPY_TIMEOUT_S = 300
 GUARDS_TIMEOUT_S = 300
+
+# The budget of the Phase 2 capture. The harness builds a scene and ticks
+# it 180..420 times per frame, and `--check` captures EVERY frame TWICE,
+# so this is the most expensive thing the gate does.
+GOLDEN_TIMEOUT_S = 300
+
+# ---------------------------------------------------------------------------
+# BLOQUE 75 Fase 2: what the Phase 2 gate checks.
+#
+# P2-G1: the golden frames are pixel-identical to the committed ones. The
+# proof is ONE parametrized test -- six cases, one per frame -- and it
+# SKIPS a case when its golden is missing. `pytest -q` exits 0 when every
+# case was skipped, so the gate reads the junit XML and requires
+# skipped == 0: a SKIPPED test is not a pass.
+GOLDEN_TEST = (
+    "tests/test_layer_stack_renders_identical_frames.py"
+    "::test_the_frame_is_pixel_identical"
+)
+GOLDEN_TEST_CASES = 6
+
+# P2-G4: the layer order is DATA, not code, and the order is pinned here.
+LAYER_ORDER_TEST = "tests/test_layer_stack_order.py"
+LAYER_ORDER_TEST_CASES = 3
+
+# The six frames the proof needs. P2-G2 must see EVERY one of them in the
+# harness' own "GOLDENS MATCH:" line: an exit code alone would not say
+# WHICH frames were compared.
+GOLDEN_FRAME_NAMES = ("boss", "enemies", "firing", "hud", "mine_open", "shake")
+
+# The reproducible capture harness.
+GOLDEN_HARNESS = "tools/capture/layerstack_frames.py"
+
+# The type gates of this phase: `src/anim/` (the compositor) and
+# `src/render/` (the layer stack). `mypy src/` as a whole is NOT clean
+# (the pre-existing errors of src/ui/ and src/core/ are not this phase's
+# business), so the gate names the two directories it owns.
+MYPY_TARGETS = ("src/render/", "src/anim/")
 
 # The exit code the gate synthesises for a subprocess that did not finish
 # inside its budget. It is the conventional "timeout" code and it lets the
@@ -192,16 +256,23 @@ def _describe(proc: subprocess.CompletedProcess[str]) -> str:
     return proc.stdout.strip() or proc.stderr.strip() or "(no output)"
 
 
-def _resolve_base(argument: str | None) -> str:
+def _phase_base(phase: int) -> str:
+    """The base commit constant of the phase."""
+    if phase == 2:
+        return PHASE_2_BASE
+    return PHASE_1_BASE
+
+
+def _resolve_base(argument: str | None, phase: int = 1) -> str:
     """The commit the phase range is measured from.
 
     The precedence is, from the strongest to the weakest:
 
       1. the `--base` argument -- an explicit request from the caller;
-      2. the PHASE1_BASE environment variable -- lets a checkout that
+      2. the PHASE<n>_BASE environment variable -- lets a checkout that
          legitimately lacks the constant's commit run the gate without
          editing the code (a CI job can point the gate at its own base);
-      3. the PHASE_1_BASE constant in this file.
+      3. the PHASE_<n>_BASE constant in this file.
 
     The argument wins over the environment variable so the gate can be
     pointed at another base -- or at a deliberately wrong one -- from the
@@ -209,26 +280,172 @@ def _resolve_base(argument: str | None) -> str:
     """
     if argument:
         return argument
-    return os.environ.get("PHASE1_BASE") or PHASE_1_BASE
+    return os.environ.get(f"PHASE{phase}_BASE") or _phase_base(phase)
+
+
+def _missing_base_failure(base: str, phase: int, range_checks: str) -> str:
+    """The failure the gate reports when the base commit is not there.
+
+    A missing base is an ENVIRONMENT failure, not a phase failure: a wrong
+    constant or a shallow clone. The range checks are NOT silently
+    skipped -- the message says they did not run and the gate goes red.
+    """
+    return (
+        f"the base commit {base!r} is not in this repository, so the "
+        f"phase range ({base}..HEAD) could not be measured: the range "
+        f"checks ({range_checks}) did NOT run and the gate FAILS rather than "
+        f"skipping them. Either PHASE_{phase}_BASE is wrong, or this clone is "
+        f"shallow -- `git fetch --unshallow` (or `git fetch --depth=0`) "
+        f"brings the history the phase-range checks need."
+    )
+
+
+def _junit_counts(xml_path: Path) -> dict[str, int]:
+    """The totals pytest wrote into its junit XML.
+
+    pytest 9 writes the counts on the `<testsuite>` elements; the
+    `<testsuites>` root carries only a NAME, so the totals are the SUM
+    over the suites -- reading the root's attributes would read nothing.
+    """
+    root = ET.parse(xml_path).getroot()
+    totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
+    for suite in root.iter("testsuite"):
+        for key in totals:
+            totals[key] += int(suite.get(key, "0"))
+    return totals
+
+
+def _is_inside_the_repository(path: Path) -> bool:
+    """Whether the path lives inside the repository (constraint L7)."""
+    try:
+        path.resolve().relative_to(ROOT.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def _run_pytest_with_junit(
+    targets: list[str],
+    expected_tests: int,
+    timeout: int,
+) -> list[str]:
+    """Run pytest and return the problems (empty when the run is green).
+
+    The junit XML is READ, not the exit code: `pytest -q` exits 0 when
+    every case was SKIPPED, and a skipped test is not a pass. So the gate
+    requires the expected number of cases, zero failures, zero errors and
+    ZERO skips.
+
+    The XML is written OUTSIDE the repository (L7) and the temporary
+    directory is removed when this returns.
+    """
+    with tempfile.TemporaryDirectory(prefix="b75-gate-") as tmp:
+        xml_path = Path(tmp) / "junit.xml"
+        if _is_inside_the_repository(xml_path):
+            return [
+                "the junit XML would be written INSIDE the repository (L7): "
+                f"{xml_path}"
+            ]
+        proc = _run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                *targets,
+                "-q",
+                "--no-header",
+                f"--junitxml={xml_path}",
+            ],
+            timeout,
+        )
+        if proc.returncode != 0:
+            return [f"pytest exited {proc.returncode}:\n{_describe(proc)[-4000:]}"]
+        if not xml_path.is_file():
+            return ["pytest wrote no junit XML: the result cannot be read"]
+        try:
+            totals = _junit_counts(xml_path)
+        except (ET.ParseError, OSError, ValueError) as exc:
+            return [f"the junit XML could not be read: {exc}"]
+        problems: list[str] = []
+        if totals["tests"] != expected_tests:
+            problems.append(
+                f"expected {expected_tests} test cases, pytest ran "
+                f"{totals['tests']}"
+            )
+        if totals["failures"]:
+            problems.append(f"{totals['failures']} case(s) FAILED")
+        if totals["errors"]:
+            problems.append(f"{totals['errors']} case(s) ERRORED")
+        if totals["skipped"]:
+            problems.append(
+                f"{totals['skipped']} case(s) were SKIPPED: a skipped test "
+                "is not a pass"
+            )
+        return problems
+
+
+def _missing_golden_names(output: str) -> list[str]:
+    """The golden frames the harness did NOT report as matching.
+
+    The harness prints "GOLDENS MATCH: <the frames it compared>". The
+    gate reads that line instead of trusting the exit code: a harness
+    that compared ONE frame and exited 0 is not a proof of six.
+    """
+    reported: set[str] = set()
+    for line in output.splitlines():
+        if line.startswith("GOLDENS MATCH:"):
+            reported = {
+                name.strip() for name in line.split(":", 1)[1].split(",")
+            }
+    return [name for name in GOLDEN_FRAME_NAMES if name not in reported]
+
+
+def _print_verdict(phase: int, failures: list[str]) -> int:
+    """Print the verdict and return the exit code."""
+    if failures:
+        print(f"PHASE {phase} GATE FAILED:")
+        for failure in failures:
+            print(f"  - {failure}")
+        return 1
+    print(f"PHASE {phase} GATE OK")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="The BLOQUE 75 Phase 1 gate: every check, every failure."
+        description="The BLOQUE 75 gate: every check, every failure."
     )
     parser.add_argument(
         "--base",
         default=None,
         metavar="BASE",
         help=(
-            "the base commit of Phase 1 (the range the gate measures). "
-            "Precedence: --base, then the PHASE1_BASE environment variable, "
-            "then the PHASE_1_BASE constant in this file"
+            "the base commit of the phase (the range the gate measures). "
+            "Precedence: --base, then the PHASE<n>_BASE environment variable, "
+            "then the PHASE_<n>_BASE constant in this file"
+        ),
+    )
+    parser.add_argument(
+        "--phase",
+        type=int,
+        choices=(1, 2),
+        default=1,
+        help=(
+            "which phase's gate to run: 1 = the enemy sets (the default, so "
+            "a bare `gate.py` keeps meaning Phase 1), 2 = the layered "
+            "rendering engine"
         ),
     )
     args = parser.parse_args(argv)
-    base = _resolve_base(args.base)
+    base = _resolve_base(args.base, args.phase)
 
+    if args.phase == 2:
+        return _run_phase_2(base)
+    return _run_phase_1(base)
+
+
+def _run_phase_1(base: str) -> int:
+    """The Phase 1 gate: the enemy sets are ready for Phase 2."""
     pygame.init()
     ensure_display()
 
@@ -298,14 +515,7 @@ def main(argv: list[str] | None = None) -> int:
     base_check = _git(["rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"])
     base_missing = base_check.returncode != 0
     if base_missing:
-        failures.append(
-            f"G11: the base commit {base!r} is not in this repository, so the "
-            f"phase range ({base}..HEAD) could not be measured: the range "
-            f"checks (G5, G11) did NOT run and the gate FAILS rather than "
-            f"skipping them. Either PHASE_1_BASE is wrong, or this clone is "
-            f"shallow -- `git fetch --unshallow` (or `git fetch --depth=0`) "
-            f"brings the history the phase-range checks need."
-        )
+        failures.append(f"G11: {_missing_base_failure(base, 1, 'G5, G11')}")
 
     # G5: GOLIATH is unharmed. TWO halves:
     #
@@ -429,13 +639,134 @@ def main(argv: list[str] | None = None) -> int:
         detail = _describe(proc)
         failures.append(f"G13: the enemy guards are red:\n{detail[-4000:]}")
 
-    if failures:
-        print("PHASE 1 GATE FAILED:")
-        for failure in failures:
-            print(f"  - {failure}")
-        return 1
-    print("PHASE 1 GATE OK")
-    return 0
+    return _print_verdict(1, failures)
+
+
+def _run_phase_2(base: str) -> int:
+    """The Phase 2 gate: the layered rendering engine is done.
+
+    Six checks, and every one of them can fail:
+
+      P2-G1  the golden frames are pixel-identical to the committed ones;
+      P2-G2  the capture harness is reproducible;
+      P2-G3  the type gate of src/render/ and src/anim/ is clean;
+      P2-G4  the layer order is pinned;
+      P2-G5  not one PNG byte of the art moved;
+      P2-G6  GOLIATH's contract still holds.
+    """
+    pygame.init()
+    ensure_display()
+
+    failures: list[str] = []
+
+    # The base commit must EXIST for the phase range to be measurable, and
+    # a missing base FAILS the gate: the range check is reported as "did
+    # not run" instead of as a cryptic git error.
+    base_check = _git(["rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"])
+    base_missing = base_check.returncode != 0
+    if base_missing:
+        failures.append(f"P2-G5: {_missing_base_failure(base, 2, 'P2-G5')}")
+
+    # P2-G1: the golden frames are pixel-identical to the committed ones.
+    # The junit XML is read, not the exit code: the test SKIPS a case when
+    # its golden is missing, and pytest exits 0 when everything was
+    # skipped.
+    for problem in _run_pytest_with_junit(
+        [GOLDEN_TEST], GOLDEN_TEST_CASES, GUARDS_TIMEOUT_S
+    ):
+        failures.append(f"P2-G1: {problem}")
+
+    # P2-G2: the harness is reproducible AND compared all six frames. The
+    # OUTPUT is checked, not only the exit code: a harness that compared
+    # one frame and exited 0 is not a proof of six.
+    proc = _run(
+        [sys.executable, str(ROOT / GOLDEN_HARNESS), "--check"],
+        GOLDEN_TIMEOUT_S,
+    )
+    if proc.returncode != 0:
+        failures.append(
+            f"P2-G2: the harness is not reproducible:\n{_describe(proc)[-4000:]}"
+        )
+    else:
+        missing = _missing_golden_names(proc.stdout)
+        if missing:
+            failures.append(
+                "P2-G2: the harness did not report every golden frame: "
+                f"missing {', '.join(missing)}"
+            )
+
+    # P2-G3: the type gate. `mypy src/` as a whole is NOT clean (the
+    # pre-existing errors of src/ui/ and src/core/ are not this phase's
+    # business), so the gate names the two directories it owns.
+    mypy_cmd = _mypy_command()
+    if mypy_cmd is None:
+        failures.append(
+            "P2-G3: mypy cannot be run -- install the dev requirements "
+            "(`python -m pip install -r requirements-dev.txt`) or make `uvx` available"
+        )
+    else:
+        proc = _run([*mypy_cmd, *MYPY_TARGETS], MYPY_TIMEOUT_S)
+        if proc.returncode != 0:
+            failures.append(
+                f"P2-G3: mypy reported errors in {' and '.join(MYPY_TARGETS)}:\n"
+                f"{_describe(proc)[-4000:]}"
+            )
+
+    # P2-G4: the layer order is pinned -- and the run must have really
+    # happened: 3 cases, 0 failures, 0 skips.
+    for problem in _run_pytest_with_junit(
+        [LAYER_ORDER_TEST], LAYER_ORDER_TEST_CASES, GUARDS_TIMEOUT_S
+    ):
+        failures.append(f"P2-G4: {problem}")
+
+    # P2-G5: not one PNG byte of the art moved. TWO halves, exactly as
+    # G11 does:
+    #
+    #   * the RANGE check is the one that matters for the phase's promise
+    #     (a PNG committed inside the phase is invisible to `git diff
+    #     HEAD`), and it EXCLUDES `tools/golden/`: the golden frames are
+    #     PROOF FIXTURES, not art;
+    #   * the WORKING TREE check keeps the strict `*.png` pathspec, so a
+    #     golden frame edited by hand on disk still turns the gate red.
+    if not base_missing:
+        png_range = _git(
+            ["diff", "--stat", f"{base}..HEAD", "--", "*.png", ":!tools/golden/"]
+        )
+        if png_range.returncode != 0:
+            failures.append(
+                f"P2-G5: the git command failed (exit {png_range.returncode}): "
+                f"{_describe(png_range)}"
+            )
+        elif png_range.stdout.strip():
+            failures.append(
+                f"P2-G5: PNG files changed inside the phase ({base}..HEAD):\n"
+                f"{png_range.stdout.strip()}"
+            )
+
+    png_tree = _git(["diff", "--stat", "HEAD", "--", "*.png"])
+    if png_tree.returncode != 0:
+        failures.append(
+            f"P2-G5: the git command failed (exit {png_tree.returncode}): "
+            f"{_describe(png_tree)}"
+        )
+    elif png_tree.stdout.strip():
+        failures.append(
+            f"P2-G5: PNG files changed in the working tree:\n{png_tree.stdout.strip()}"
+        )
+
+    # P2-G6: GOLIATH's contract still holds. The contract is NOT
+    # re-invented here: verify_contract.py already owns it.
+    #
+    # verify_contract is imported HERE, on purpose: the module sets
+    # SDL_VIDEODRIVER=dummy AT IMPORT TIME, so importing it at module
+    # level would make the gate permanently headless.
+    from sprite_pipeline.verify_contract import verify as verify_set_contract
+
+    goliath_failures, _report = verify_set_contract("goliath", None)
+    for line in goliath_failures:
+        failures.append(f"P2-G6: {line}")
+
+    return _print_verdict(2, failures)
 
 
 def _mypy_command() -> list[str] | None:
