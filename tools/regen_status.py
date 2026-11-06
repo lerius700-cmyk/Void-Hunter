@@ -185,23 +185,49 @@ def _bundle_entries(exe: Path) -> list[str]:
         return []
 
 
+# The sets whose manifest AND anchors the frozen bundle has to carry.
+# BLOQUE 75 Phase 2: the enemy manifests are LOAD-BEARING at runtime --
+# the runtime reads them every frame to draw the enemies. Before Phase 2
+# only GOLIATH's two files were checked, so a bundle with the boss's
+# manifest and none of the enemies' would have passed, and the enemies
+# would have fallen back silently.
+BUNDLED_SETS = (
+    "Assets/sprites/bosses/goliath",
+    "Assets/sprites/enemies/cruiser",
+    "Assets/sprites/enemies/drone",
+    "Assets/sprites/enemies/heavy",
+    "Assets/sprites/enemies/kamikaze",
+    "Assets/sprites/enemies/mine_asteroid",
+    "Assets/sprites/enemies/scout",
+    "Assets/sprites/enemies/sniper",
+    "Assets/sprites/enemies/turret",
+)
+
+
+def frozen_assets_verified(entries: list[str]) -> bool:
+    """Whether the bundle carries the manifest AND the anchors of every set.
+
+    Pure on purpose: the reading of the bundle needs PyInstaller and a real
+    .exe, and the DECISION does not.
+    """
+    normalised = {entry.replace("\\", "/") for entry in entries}
+    for set_dir in BUNDLED_SETS:
+        for name in ("manifest.toml", "anchors.toml"):
+            wanted = f"{set_dir}/{name}"
+            if not any(entry.endswith(wanted) for entry in normalised):
+                return False
+    return True
+
+
 def _frozen_assets_verified(exe: Path) -> bool:
-    """Whether the manifest AND the anchors are really inside the binary.
+    """Whether the bundle really carries the nine sets.
 
     The row used to claim this without checking. A claim the generator
     does not verify is exactly the kind of lie this tool exists to
-    prevent: the block says "verificado con el manifest y los anchors
-    dentro del bundle" and nothing had ever looked.
+    prevent: the block says "verificado con los 9 sets ... manifest y
+    anchors dentro del bundle" and nothing had ever looked.
     """
-    entries = _bundle_entries(exe)
-    if not entries:
-        return False
-    normalised = {entry.replace("\\", "/") for entry in entries}
-    wanted = (
-        "Assets/sprites/bosses/goliath/manifest.toml",
-        "Assets/sprites/bosses/goliath/anchors.toml",
-    )
-    return all(any(entry.endswith(name) for entry in normalised) for name in wanted)
+    return frozen_assets_verified(_bundle_entries(exe))
 
 
 def _build_row(exe: Path, exe_mb: float) -> str:
@@ -220,13 +246,14 @@ def _build_row(exe: Path, exe_mb: float) -> str:
         )
     if _frozen_assets_verified(exe):
         frozen = (
-            "— el path congelado (`<_MEIPASS>/Assets/sprites/bosses`) verificado "
-            "con el manifest y los anchors dentro del bundle"
+            "— el path congelado (`<_MEIPASS>/Assets/sprites`) verificado "
+            "con los 9 sets (GOLIATH + 8 enemigos), manifest y anchors "
+            "dentro del bundle"
         )
     else:
         frozen = (
             "— el path congelado NO se pudo verificar: el bundle no se pudo leer "
-            "o no contiene el manifest y los anchors"
+            "o no contiene los 9 sets (manifest + anchors)"
         )
     return (
         f"**reconstruido** para {VERSION} ({exe_mb} MB) en `{BINARY_REL}` "

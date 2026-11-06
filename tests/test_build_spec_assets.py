@@ -69,3 +69,19 @@ def test_the_original_tracks_are_still_bundled():
             f"{name} is missing from the Assets root, so it cannot be bundled"
         )
         assert "_lp" not in name
+
+
+def test_the_bundle_carries_the_manifest_of_every_set():
+    """The `datas` covers the tree where the nine manifests live.
+
+    `build.spec` bundles `Assets/sprites` as a directory, so every
+    `manifest.toml` and `anchors.toml` under it goes in. If that entry
+    ever changes, the frozen build would lose the enemy manifests and
+    the enemies would fall back silently -- with no error anywhere.
+    """
+    spec = (ROOT / "build.spec").read_text(encoding="utf-8")
+    assert '"Assets" / "sprites"' in spec
+    for kind in ("scout", "cruiser", "drone", "heavy", "kamikaze", "sniper", "turret", "mine_asteroid"):
+        set_dir = ROOT / "Assets" / "sprites" / "enemies" / kind
+        assert (set_dir / "manifest.toml").is_file(), kind
+        assert (set_dir / "anchors.toml").is_file(), kind
