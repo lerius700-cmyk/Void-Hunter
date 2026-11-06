@@ -34,7 +34,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from verify_clean_copy import DEFAULT_REF, verify  # noqa: E402
 
-REF = "bloquec-67-goliath-port"
+REF = "HEAD"
 
 
 def _cut(tmp_path: Path, subpaths: list[str], ref: str = REF) -> Path:
