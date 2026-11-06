@@ -42,6 +42,15 @@ PHASES = (1, 2)
 # failed on that very same base.
 ERROR_EXIT = 1
 
+# The SAME budget the gate gives its own git calls (`gate.GIT_TIMEOUT_S`,
+# 60 s). Every other git call in the pipeline is bounded; this module's
+# `git merge-base --is-ancestor` was not, and a hung git there turned the
+# CI job into its 25-minute wall with NO diagnosis -- the exact outcome
+# the gate's own budget exists to avoid. A git that does not answer is a
+# base the gate cannot resolve, and an unresolvable base is an ERROR
+# (exit 1), not a phase that does not apply.
+GIT_TIMEOUT_S = gate.GIT_TIMEOUT_S
+
 
 class Applicability(Enum):
     """What the repository says about the base commit of a phase.
@@ -63,11 +72,26 @@ def applicable(base: str, repo: Path) -> tuple[Applicability, str]:
     Returns `(status, reason)`. The reason is empty when the phase
     applies.
     """
-    proc = subprocess.run(
-        ["git", "-C", str(repo), "merge-base", "--is-ancestor", base, "HEAD"],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(repo), "merge-base", "--is-ancestor", base, "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=GIT_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        # A git that does not answer is a base the repository cannot
+        # resolve. The gate FAILS on such a base, so the runner has to
+        # fail on it too -- and it has to say WHY: a hung git would
+        # otherwise take the whole CI job down with its wall-clock
+        # timeout and NO diagnosis at all.
+        return (
+            Applicability.UNRESOLVABLE,
+            f"git did not answer whether {base!r} is an ancestor of HEAD "
+            f"within {GIT_TIMEOUT_S}s. The repository may be locked, or the "
+            f"clone is too large to walk; the gate cannot decide, so it "
+            f"fails instead of skipping",
+        )
     if proc.returncode == 0:
         return Applicability.APPLIES, ""
     if proc.returncode == 1:

@@ -212,7 +212,9 @@ def _ensure_frame_display() -> None:
     every frame would look missing and the check would report a lie.
 
     The dummy driver is enough, and it keeps the command headless: a
-    check must never open a window.
+    check must never open a window. `setdefault` RESPECTS a driver the
+    caller already chose, so the headless guarantee is the DEFAULT, not
+    an override -- a caller that set `SDL_VIDEODRIVER` keeps it.
     """
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     import pygame

@@ -4012,7 +4012,7 @@ class GameplayRuntime:
                         f"{_render_t0:.3f},{_render_ms:.1f},RENDER,"
                         f"state={_state}\n"
                     )
-            except Exception:
+            except OSError:
                 pass
 
     # ------------------------------------------------------------------
