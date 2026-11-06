@@ -142,7 +142,7 @@ previo dejaría el bloque apuntando a un archivo que no existe.
 | `docs/handoffs/HANDOFF-BLOQUE-75-RELEASE-2026-11-04.md` | el cierre corto de la release: qué se publicó, cómo se verifica, qué NO se hizo | este trabajo |
 | `CLAUDE.md` (bloque STATUS) | **regenerado** con `python tools/regen_status.py` — no editado a mano (H3) | el generador |
 | `.synapse` | el puntero a la release y el estado del repo | este trabajo |
-| `tools/capture/probe_layer_stack.py` | la herramienta de verificación del binario (sección 4) | este trabajo |
+| `tools/capture/probe_layer_stack.py` | **NO**: el probe es un comando del juego (`main.py --check-pipeline`), porque tiene que correr DENTRO del `.exe` (ver §4) | — |
 
 **El changelog es la parte delicate**: la entrada tiene que decir **qué cambia
 para quien juega** (nada visual) y **qué cambia para quien desarrolla** (todo el
@@ -169,19 +169,21 @@ canta créditos internos no sirve.
 | La suite sigue verde | `python -m pytest tests\ --tb=no` → 0 fallos |
 | El CI no se rompió | el job `pytest` de Linux sigue verde en el mismo push |
 
-**El probe de capas** es una herramienta nueva del repo: `tools/capture/probe_layer_stack.py`.
-Instrumenta `LayerStack.render` y **corre el binario** (o `main.py`), y reporta
-cuántos frames de gameplay hubo, cuántos renders del stack y cuántas capas por
-frame. Ya existe como script suelto en `%TEMP%` (el que se usó para esta fase);
-pasa al repo porque si vive afuera **la verificación no es reproducible**: en la
-próxima sesión el script ya no está y nadie puede repetirla.
+**El probe es un comando del juego**, `main.py --check-pipeline`: reporta si los
+ocho sets de enemigos cargan (con su pivote y su escala) y si la tabla de 30
+capas tiene los métodos que el runtime ofrece. **Tiene que vivir en el juego
+porque un script aparte no puede observar al `.exe`**: el espía vive en el
+proceso padre y el binario congelado corre en otro. La pregunta que hay que
+responder es *"¿este build puede dibujar los enemigos por el compositor?"*, y
+la única forma de responderla **dentro** del binario es que el binario lo
+reporte.
 
-**Un detalle que el probe tiene que resolver:** el juego normal **no llega al
-gameplay en headless** — el menú post-cinematica (BLOQUE 73.7) espera input. El
-probe tiene que saltar al boss (`--boss goliath`) o mandar input; si no, reporta
-"0 renders" y parece que el motor no funciona.
+**Un detalle que el comando tiene que resolver:** el juego normal **no llega al
+gameplay en headless** — el menú post-cinematica (BLOQUE 73.7) espera input. Un
+smoke que no salte al boss (`--boss goliath`) reporta cero frames y parece que
+el motor no funciona.
 
-**El probe tiene que correr contra el `.exe`**, no contra el source: es la
+**El comando tiene que correr contra el `.exe`**, no contra el source: es la
 única prueba de que el bundle frozen encuentra los manifests y dibuja los enemigos
 por el compositor. Si el `.exe` no los tiene, el juego no se rompe — dibuja los
 enemigos por el camino viejo — y eso no se ve en ningún test.
