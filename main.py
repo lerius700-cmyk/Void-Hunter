@@ -116,6 +116,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Validate imports + settings; exit 0 if OK, 1 if broken.",
     )
     parser.add_argument(
+        "--check-pipeline", action="store_true",
+        help=("BLOQUE 75: report whether the enemy pipeline is available in "
+              "THIS build; exit 0 if all eight sets load, 1 if not."),
+    )
+    parser.add_argument(
         "--profile", action="store_true",
         help="Run with FPS overlay (BLOQUE 14+).",
     )
@@ -190,6 +195,65 @@ def _cmd_check() -> int:
     print(f"  Window           = {WINDOW_W}x{WINDOW_H}")
     print(f"  Mixer            = {MIXER_CHANNELS} ch @ {MIXER_SAMPLE_RATE} Hz")
     print(f"  BLOQUE 16: full game with 15 scenes, 18 waves, 4 bosses.")
+    return 0
+
+
+def _cmd_check_pipeline() -> int:
+    """BLOQUE 75: is the enemy pipeline available in THIS build?
+
+    After Phase 2 the runtime reads the enemy manifests every frame to
+    draw the enemies. A frozen build that does not carry them falls back
+    to the old draw path WITHOUT AN ERROR: the game still runs, the
+    enemies still appear, and nothing reports it.
+
+    This command runs INSIDE the frozen build too, so it is the check
+    that can answer the question about the .exe the user downloads.
+    """
+    try:
+        from src.anim.clip import load_player_for_kind
+        from src.ui.gameplay_layers import LAYER_BODIES
+        from src.ui.gameplay_runtime import GameplayRuntime
+    except ImportError as exc:
+        print(f"VOID HUNTER pipeline check FAIL: {exc}", file=sys.stderr)
+        return 1
+
+    kinds = (
+        "scout", "cruiser", "drone", "heavy",
+        "kamikaze", "sniper", "turret", "mine_asteroid",
+    )
+    failures: list[str] = []
+    print("VOID HUNTER pipeline check")
+    for kind in kinds:
+        player = load_player_for_kind(kind)
+        if player is None:
+            failures.append(f"{kind}: the set did not load")
+            print(f"  {kind:<14} FAILED to load")
+            continue
+        anim_set = player.set
+        body = next((p for p in anim_set.parts if p.id == "body"), None)
+        if body is None:
+            failures.append(f"{kind}: no 'body' part")
+            print(f"  {kind:<14} FAILED: no body part")
+            continue
+        clips = len(anim_set.clips)
+        print(
+            f"  {kind:<14} {clips} clips  "
+            f"pivot={body.pivot}  scale={body.scale}"
+        )
+        if body.pivot != "fixed" or body.scale != (1.05, 1.05):
+            failures.append(f"{kind}: pivot={body.pivot} scale={body.scale}")
+
+    missing = [m for m in LAYER_BODIES if not hasattr(GameplayRuntime, m)]
+    print(f"  layers: {len(LAYER_BODIES)}  missing methods: {missing or 'none'}")
+    if missing:
+        failures.append(f"the layer table names methods the runtime lacks: {missing}")
+
+    if failures:
+        print("VOID HUNTER pipeline check FAIL:", file=sys.stderr)
+        for failure in failures:
+            print(f"  - {failure}", file=sys.stderr)
+        return 1
+    print("VOID HUNTER pipeline check OK")
     return 0
 
 
@@ -452,6 +516,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.check:
         return _cmd_check()
+
+    if args.check_pipeline:
+        return _cmd_check_pipeline()
 
     if args.validate_waves:
         from src.systems.wave_manager import WaveManager
