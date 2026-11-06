@@ -2,8 +2,9 @@
 
 **Date:** 2026-11-04
 **Branch:** `bloquec-67-goliath-port` (la línea de release; `master` no se toca)
-**Status:** el binario está construido y verificado; el tag y el release de
-GitHub los publica la tarea siguiente de la ola.
+**Status:** **publicado**. El tag `v1.9.0` y el release de GitHub existen:
+`published_at` 2026-11-06T03:17:08Z, `draft: false`, asset
+`VoidHunter-v1.9.0-win64.zip`, y `releases/latest` → `v1.9.0`.
 
 ---
 
@@ -15,8 +16,8 @@ GitHub los publica la tarea siguiente de la ola.
 | Binario | `F:\AI\MM\void-hunter\dist\void-hunter-v1.9.0.exe` |
 | Tamaño | 230.900.897 bytes (220,2 MB) |
 | SHA256 | `D8EDB1FD4EA332E8AB183165DECD3025AB209CD691B93AEA1C41BFBB49E9AE36` |
-| Tag | `v1.9.0` — lo crea la tarea siguiente |
-| Asset del release | `VoidHunter-v1.9.0-win64.zip` — lo crea la tarea siguiente |
+| Tag | `v1.9.0` — publicado, apunta al commit de la release `157af82` |
+| Asset del release | `VoidHunter-v1.9.0-win64.zip` — publicado |
 
 La release cierra tres cosas:
 
@@ -101,11 +102,25 @@ git diff --name-status 773cf08..HEAD -- '*.png'
 #              mismo digest de árbol.
 ```
 
-**El CI de la línea de release está verde:** run `42148928648`
-(`completed/success`), jobs `pytest` y `gates`.
+**El CI de la línea de release está verde.** Los dos runs que **cubren la
+release** son:
+
+| run | head SHA | qué cubre |
+|---|---|---|
+| `42155472049` | `157af82` | el commit de la release (`157af82` = el tag `v1.9.0`) |
+| `42156102393` | `fd314d4` | la punta de la rama (`fd314d4`) |
+
+Ambos `completed/success`, con los jobs `pytest` y `gates` en verde.
+
+> Ojo con el run que este documento citaba antes: `42148928648` es verde,
+> pero su `headSha` es `9565139`, **cuatro commits antes** del commit de la
+> release. Servía para probar que el job `gates` funciona; no prueba esta
+> release.
 
 ```powershell
-gh run view 42148928648 --json status,conclusion,headBranch
+gh run view 42155472049 --json status,conclusion,headSha
+gh run view 42156102393 --json status,conclusion,headSha
+gh run list --workflow test.yml --branch bloquec-67-goliath-port
 ```
 
 ---
@@ -125,16 +140,26 @@ trabajo o prometa lo que no está.
   pipeline reproduce el runtime con fidelidad; el arte sigue sin usarse. Quiere
   una decisión de diseño, no un fix.
 - **`CARRIER` no tiene set.** No existe `Assets/sprites/enemies/carrier/`: ese
-  enemigo sigue por el camino procedural, como antes, pero ahora paga una
-  llamada `load_player_for_kind("carrier")` por frame que no encuentra nada.
-- **La rama legacy de `_get_enemy_sprite` es código muerto.** Los
-  `Assets/sprites/enemy_<kind>.png` ya no existen (0 archivos), así que la
-  rama que los busca nunca se toma.
-- **La salida de build está en 941,7 MB contra un techo de 1200 MB.** No es
-  un problema todavía, pero el margen se come en el `dist/` de cada worktree.
-  Lo que lo baja es **borrar el worktree de la Fase 2**
-  (`git worktree remove .worktrees/bloquec-75-phase2-layers`), que es el paso
-  de limpieza de la tarea siguiente.
+  enemigo sigue por el camino procedural, como antes. La llamada
+  `load_player_for_kind("carrier")` por frame **no es un defecto de
+  rendimiento**: `src/anim/manifest.py` cachea el fallo (`_LOADED_FAILED`), así
+  que después del primer frame es una consulta a un `set`, no un re-parseo
+  del manifiesto.
+- **La rama legacy de `_get_enemy_sprite` —la del PNG de un frame— es código
+  muerto.** Los `Assets/sprites/enemy_<kind>.png` ya no existen (0 archivos),
+  así que esa rama nunca se toma.
+  **Pero `_get_enemy_sprite` NO se puede borrar:** su *primera* rama —la que
+  resuelve `e.animation_path` y dibuja el frame por frame del pipeline— está
+  viva, y es **la red de seguridad que mantiene los píxeles idénticos cuando
+  el pipeline falla**. La revisión final lo comprobó por mutación: con el
+  pipeline devolviendo `None`, los seis goldens siguen en verde. Borrar esa
+  rama rompería la paridad de píxeles en silencio.
+- **La salida de build se mide, no se recuerda.** El techo es 1200 MB y la
+  cifra vive en la fila `Salida de build (dist/)` del bloque
+  `STATUS:GENERATED` de `CLAUDE.md`, que la produce
+  `python tools/repo_budget.py`. Aquí no hay número escrito a mano porque
+  cambiaría con cada build: un número fijo en un documento es un número que
+  miente en la regeneración siguiente.
 - **El `.exe` no se reconstruye por fase:** se reconstruye una vez, al cierre.
   Por eso el `dist/` acumula binarios viejos (v1.8.1 y v1.9.0 conviven).
 - **La Fase 3 no arrancó.** No hay spec, ni plan, ni worktree para ella.
@@ -204,13 +229,96 @@ El log con cada defecto encontrado está en
 | El log de correcciones | `docs/superpowers/plans/2026-11-03-bloque-75-phase2-layers.md` → "# Corrections log" |
 | Este handoff | `docs/handoffs/HANDOFF-BLOQUE-75-RELEASE-2026-11-04.md` |
 
-**Lo siguiente, en orden:**
+**Lo que se hizo (ya no está pendiente):**
 
-1. El zip: `Compress-Archive -Path F:\AI\MM\void-hunter\dist\void-hunter-v1.9.0.exe -DestinationPath F:\AI\MM\void-hunter\dist\VoidHunter-v1.9.0-win64.zip -Force`.
-2. El tag anotado `v1.9.0` sobre el commit de la documentación.
-3. `gh release create v1.9.0 F:\AI\MM\void-hunter\dist\VoidHunter-v1.9.0-win64.zip --latest --title "VOID HUNTER v1.9.0 (BLOQUE 75) - el pipeline de sprites y el motor de capas del frame" --notes-file release-notes-v1.9.0.md`.
-4. `git push origin bloquec-67-goliath-port`.
-5. La limpieza: `git worktree remove F:\AI\MM\void-hunter\.worktrees\bloquec-75-phase2-layers`, `git worktree prune`, `git branch -d bloquec-75-phase2-layers` — y con eso la salida de build baja de los 941,7 MB.
+1. **El zip** — `F:\AI\MM\void-hunter\dist\VoidHunter-v1.9.0-win64.zip`
+   (229.436.399 bytes).
+2. **El tag anotado `v1.9.0`** — sobre `157af82`, el commit de la release
+   (`git rev-list -n 1 v1.9.0` → `157af82370a94c2b0a74ec8d82d194a871aafb01`).
+3. **`gh release create v1.9.0 … --latest`** — publicado el
+   2026-11-06T03:17:08Z, `draft: false`, `prerelease: false`, asset
+   `VoidHunter-v1.9.0-win64.zip`. `releases/latest` → `v1.9.0`.
+4. **`git push origin bloquec-67-goliath-port`** — el CI corrió sobre el
+   commit de la release (`157af82`) y sobre la punta (`fd314d4`), los dos en
+   verde.
+
+**La limpieza — lo que realmente queda (el paso 5 decía dos cosas que ya no
+existen):**
+
+- El worktree de la Fase 2 **ya está desregistrado**: `git worktree list`
+  muestra sólo la raíz y `bloquec-67-goliath-port`. No hay nada que quitar
+  con `git worktree remove`, y la rama `bloquec-75-phase2-layers` **ya no
+  existe** — `git branch -d bloquec-75-phase2-layers` fallaría.
+- Lo que queda es un directorio **sin build output**:
+  `F:\AI\MM\void-hunter\.worktrees\bloquec-67-phase2-layers` (0 MB de
+  `dist/`; sólo conserva
+  `.superpowers/sdd/2026-11-04-bloque-75-cierre-de-entrega/ledger-addendum.md`,
+  2.384 bytes). Se puede borrar con `rm -r` cuando nadie más lo use.
+- La rama local que **sí** queda es `bloquec-75-sprite-migration`, más las
+  remotas `origin/bloquec-75-ci-gates`, `origin/bloquec-75-migration-spec` y
+  `origin/bloquec-75-sprite-migration`: son ramas viejas, ya mergeadas, y se
+  pueden borrar con `git branch -d` / `git push origin --delete`.
+- Los dos `.exe` duplicados del `dist/` **de este worktree**
+  (`void-hunter.exe`, byte a byte igual al `void-hunter-v1.9.0.exe` de la
+  raíz, y `void-hunter-v1.8.1.exe`, igual al de la raíz) **ya se borraron**:
+  la salida de build bajó de 1160,5 MB a 720,1 MB. **En la raíz no se tocó
+  nada**: conserva `void-hunter-v1.8.1.exe`, `void-hunter-v1.9.0.exe` y
+  `VoidHunter-v1.9.0-win64.zip`.
+
+**Lo que sigue de verdad:**
+
+1. **La Fase 3**, que no arrancó: sin spec, sin plan, sin worktree.
+2. **Los trece follow-ups** de la revisión final — están en la sección 7 de
+   este handoff, para que la próxima sesión los herede en vez de
+   redescubrirlos.
 
 Las notas del release ya están escritas y commiteadas:
 `release-notes-v1.9.0.md` (en la raíz del repo).
+
+---
+
+## 7. Los trece follow-ups de la revisión final
+
+La revisión final del rango `e619527..fd314d4` devolvió **MERGE WITH FIXES**:
+el código que se publicó es sólido, y lo que pedía eran la verdad de los
+documentos, aire en el disco y tres correcciones de una línea — todo eso ya
+está hecho. Pero dejó **trece hallazgos diferidos como tareas de seguimiento**,
+no como bloqueantes. Están acá para que la próxima sesión los herede en vez de
+redescubrirlos:
+
+1. **`gate_ci.main` — la función que el CI realmente llama — no tiene test**, y
+   `main(argv)` ignora su argumento. El `applicable()` sí está cubierto.
+2. **La regla de destino de `datas` del test de contrato del build-spec** es
+   más estricta de lo necesario: rechazaría una entrada legítima
+   `("Assets", "Assets")`.
+3. **Los tres tests de mutación de ese archivo** asertan sobre el predicado
+   compartido en vez de invocar la función de test principal.
+4. **`_ensure_frame_display()` no tiene guarda de excepción**: un fallo ahí
+   produce un traceback en vez de un FAIL limpio.
+5. **Los ocho tipos de enemigo están hardcodeados en cinco lugares** y
+   derivan de `EnemyKind` (10 miembros). Se quiere una lista canónica.
+6. **La fila `Tests` del STATUS depende de la máquina**: sus 6 skips son
+   `release/videos/ not found`, que sólo existen si el zip está descomprimido.
+7. **El ancla de la fila `Build .exe` no es ejecutable desde el árbol que
+   lleva el bloque**: resuelve sólo en la raíz del repo
+   (`dist/void-hunter-v1.9.0.exe`).
+8. **Los fixtures golden se pueden regenerar en silencio**: el harness avisa
+   pero lo permite, y el gate seguiría en verde contra una prueba nueva.
+   Fijar el SHA256 de los seis goldens convertiría una regeneración en un
+   diff visible y deliberado.
+9. **En `master` el job `gates` es un no-op verde** (ninguna de las dos bases
+   es ancestro de `master`, así que ambas fases hacen SKIP con exit 0). Un
+   flag `--require-applies` en el paso de la rama de release lo endurecería
+   contra un squash o un rebase.
+10. **Ramas remotas viejas**: `origin/bloquec-75-ci-gates`,
+    `origin/bloquec-75-migration-spec`, `origin/bloquec-75-sprite-migration`, y
+    la local `bloquec-75-sprite-migration`.
+11. **`gh` registró `target_commitish: "master"`** en el release, aunque el tag
+    apunta al commit de la release (`157af82`).
+12. **El prefijo de commit `ci:` está fuera de la lista global del plan**
+    (`feat:/fix:/docs:/test:/build:`); el plan sanciona `merge:`, que es lo que
+    usan los dos commits de merge.
+13. **`src/ui/gameplay_runtime.py:1698` conserva una ruta de fallback
+    hardcodeada** `D:/AI/void-hunter/logs/_sub_boss.log`, de la era v1.4.0.
+    Es preexistente, pero va a morder al primer agente que corra el juego
+    desde otra unidad.

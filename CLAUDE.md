@@ -265,8 +265,8 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 | Remote | github.com/lerius700-cmyk/Void-Hunter | `git remote -v` |
 | Build .exe | **reconstruido** para v1.9.0 (220.2 MB) en `dist/void-hunter-v1.9.0.exe` — el path congelado (`<_MEIPASS>/Assets/sprites`) verificado con los 9 sets (GOLIATH + 8 enemigos), manifest y anchors dentro del bundle; SHA256 `D8EDB1FD4EA332E8AB183165DECD3025AB209CD691B93AEA1C41BFBB49E9AE36` | `Get-Item dist/void-hunter-v1.9.0.exe` (raiz del repo) |
 | Peso del arbol trackeado | 204.9 MB | `python tools/repo_budget.py` |
-| Salida de build (dist/) | 1160.5 MB | `python tools/repo_budget.py` |
-| Historia (.git/) | 506.4 MB | `python tools/repo_budget.py` |
+| Salida de build (dist/) | 720.1 MB | `python tools/repo_budget.py` |
+| Historia (.git/) | 506.5 MB | `python tools/repo_budget.py` |
 | Tiles Asteroid Approach | 6 PNG (320×480) en `Assets/background/tiles/act1/` | `Get-ChildItem Assets/background/tiles/act1/*.png` |
 | Frames GOLIATH | 60 PNG (6 anim × 10) en `Assets/sprites/bosses/goliath/` | `Get-ChildItem Assets/sprites/bosses/goliath/*/frame_*.png` |
 | Manifiesto + anclas de GOLIATH | 1 `manifest.toml` (spec) + 1 `anchors.toml` (horneado) | `Get-ChildItem Assets/sprites/bosses/goliath/*.toml` |

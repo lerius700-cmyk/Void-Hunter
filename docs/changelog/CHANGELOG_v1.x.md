@@ -2547,10 +2547,16 @@ ningún error**), y ahora eso se verifica, en el binario, con un comando.
   de la mina por `mine_state` (`closed`/`open1`/`open2`/`open3`); el quinto
   clip del manifiesto sigue sin reproducirse. Quiere una decisión, no un fix.
 - **`CARRIER` no tiene set.** Sigue por el camino procedural, como antes.
-- **La rama legacy de `_get_enemy_sprite` es código muerto**: los
-  `Assets/sprites/enemy_<kind>.png` ya no existen.
-- **La salida de build está en 941,7 MB de un techo de 1200 MB.** El borrado
-  del worktree de la Fase 2, en la tarea siguiente, es lo que la baja.
+- **La rama legacy de `_get_enemy_sprite` —la del PNG de un frame— es código
+  muerto**: los `Assets/sprites/enemy_<kind>.png` ya no existen. **Pero
+  `_get_enemy_sprite` no se puede borrar**: su primera rama (la que resuelve
+  `e.animation_path`) es viva y es la red de seguridad que mantiene los
+  píxeles idénticos cuando el pipeline falla.
+- **La salida de build está medida contra un techo de 1200 MB.** La cifra
+  exacta vive en la fila `Salida de build (dist/)` del bloque
+  `STATUS:GENERATED` de `CLAUDE.md`, y la produce
+  `python tools/repo_budget.py`; no se escribe aquí porque cambia con cada
+  build.
 - **El `.exe` no se reconstruye por fase**: se reconstruye una vez, al cierre.
 
 ### Verificación
@@ -2559,9 +2565,13 @@ Suite **3130 tests, 0 fallos** (3123 pass + 6 skipped + 1 xfailed) ·
 `tools/sprite_pipeline/gate_ci.py` → `PHASE 1 GATE OK` y `PHASE 2 GATE OK` ·
 el binario `--check-pipeline` → exit 0, los 8 sets en `pivot=fixed
 scale=(1.05, 1.05)`, `layers: 30` · el bundle verificado con los 9 sets (el
-de la v1.8.1, con 1 de 9) · CI `42148928648` en verde, jobs `pytest` y
+de la v1.8.1, con 1 de 9) · CI en verde: `42155472049` (commit de la release,
+`157af82`) y `42156102393` (punta de la rama, `fd314d4`), jobs `pytest` y
 `gates` · **0 PNGs modificados o borrados** en `773cf08..HEAD` y digest
 idéntico de los 1768 PNGs de `Assets/`.
+
+La release quedó **publicada** el 2026-11-06T03:17:08Z (`draft: false`, asset
+`VoidHunter-v1.9.0-win64.zip`, `releases/latest` → `v1.9.0`).
 
 Handoff: `docs/handoffs/HANDOFF-BLOQUE-75-RELEASE-2026-11-04.md`.
 
