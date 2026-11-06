@@ -77,7 +77,7 @@ ENEMY_SETS = (
 # failure the gate exists to catch.
 #
 # It can be pointed elsewhere WITHOUT editing this file: the PHASE1_BASE
-# environment variable, or the --base argument. See _resolve_base.
+# environment variable, or the --base argument. See resolve_base.
 PHASE_1_BASE = "773cf08"
 
 # The base commit of Phase 2: the HEAD of the release line when Phase 2
@@ -89,7 +89,7 @@ PHASE_1_BASE = "773cf08"
 # Phase 1 gate's G11 already does.
 #
 # It can be pointed elsewhere WITHOUT editing this file: the PHASE2_BASE
-# environment variable, or the --base argument. See _resolve_base.
+# environment variable, or the --base argument. See resolve_base.
 PHASE_2_BASE = "e619527"
 
 # G5's RANGE diff must not report the GENERATED measurement: the anchors
@@ -270,7 +270,7 @@ def _phase_base(phase: int) -> str:
     return PHASE_1_BASE
 
 
-def _resolve_base(argument: str | None, phase: int = 1) -> str:
+def resolve_base(argument: str | None, phase: int = 1) -> str:
     """The commit the phase range is measured from.
 
     The precedence is, from the strongest to the weakest:
@@ -444,7 +444,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     args = parser.parse_args(argv)
-    base = _resolve_base(args.base, args.phase)
+    base = resolve_base(args.base, args.phase)
 
     if args.phase == 2:
         return _run_phase_2(base)
