@@ -11,6 +11,11 @@ import argparse
 import os
 import sys
 import time
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.anim.clip import ClipPlayer
 
 
 # BLOQUE 58.55: set the SDL audio driver BEFORE pygame.init(). The
@@ -198,33 +203,71 @@ def _cmd_check() -> int:
     return 0
 
 
-def _cmd_check_pipeline() -> int:
-    """BLOQUE 75: is the enemy pipeline available in THIS build?
+def _ensure_frame_display() -> None:
+    """A video surface, so the frames can actually be READ.
 
-    After Phase 2 the runtime reads the enemy manifests every frame to
-    draw the enemies. A frozen build that does not carry them falls back
-    to the old draw path WITHOUT AN ERROR: the game still runs, the
-    enemies still appear, and nothing reports it.
+    `ClipPlayer.surface()` converts every frame with `convert_alpha()`,
+    and pygame refuses that without an initialised display -- and the
+    loader SWALLOWS the error and returns None, so without a display
+    every frame would look missing and the check would report a lie.
 
-    This command runs INSIDE the frozen build too, so it is the check
-    that can answer the question about the .exe the user downloads.
+    The dummy driver is enough, and it keeps the command headless: a
+    check must never open a window.
+    """
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    import pygame
+    if not pygame.display.get_init():
+        pygame.display.init()
+    if pygame.display.get_surface() is None:
+        pygame.display.set_mode((1, 1))
+
+
+def _missing_frames(player: ClipPlayer) -> list[str]:
+    """The frames of a set the loader cannot resolve.
+
+    The runtime falls back to the old draw path when a frame is missing
+    -- `player.surface()` returns None and the draw helper gives up --
+    so a set whose PNGs did not travel in the bundle is a set the
+    runtime will NOT draw through the compositor. A manifest that
+    travels alone does not make the pipeline usable.
+    """
+    missing: list[str] = []
+    for clip_id, clip in player.set.clips.items():
+        for frame in range(clip.frames):
+            if player.surface(clip_id, frame) is None:
+                missing.append(f"{clip.dir}/frame_{frame:02d}.png")
+    return missing
+
+
+def _pipeline_report(root: Path | None = None) -> tuple[int, list[str]]:
+    """(exit code, failure lines) for the enemy pipeline check.
+
+    `root` is the directory that HOLDS the enemy sets. None means the
+    default one -- the enemies root, resolved the way the runtime
+    resolves it (the frozen bundle included). It is a parameter so the
+    FAILURE path can be exercised without touching the repository:
+    point it at an empty directory and every set fails to load.
     """
     try:
         from src.anim.clip import load_player_for_kind
         from src.ui.gameplay_layers import LAYER_BODIES
         from src.ui.gameplay_runtime import GameplayRuntime
     except ImportError as exc:
-        print(f"VOID HUNTER pipeline check FAIL: {exc}", file=sys.stderr)
-        return 1
+        return 1, [f"the pipeline modules could not be imported: {exc}"]
 
     kinds = (
         "scout", "cruiser", "drone", "heavy",
         "kamikaze", "sniper", "turret", "mine_asteroid",
     )
+    # The frames have to be READABLE, not just declared: the runtime
+    # falls back for a missing PNG exactly like it does for a missing
+    # manifest, and a check that only reads the `.toml` files would say
+    # OK about a build that quietly draws the old way.
+    _ensure_frame_display()
     failures: list[str] = []
     print("VOID HUNTER pipeline check")
     for kind in kinds:
-        player = load_player_for_kind(kind)
+        player = load_player_for_kind(kind, root=root)
         if player is None:
             failures.append(f"{kind}: the set did not load")
             print(f"  {kind:<14} FAILED to load")
@@ -236,25 +279,55 @@ def _cmd_check_pipeline() -> int:
             print(f"  {kind:<14} FAILED: no body part")
             continue
         clips = len(anim_set.clips)
+        total_frames = sum(clip.frames for clip in anim_set.clips.values())
+        missing_frames = _missing_frames(player)
         print(
             f"  {kind:<14} {clips} clips  "
-            f"pivot={body.pivot}  scale={body.scale}"
+            f"pivot={body.pivot}  scale={body.scale}  "
+            f"frames={total_frames - len(missing_frames)}/{total_frames}"
         )
         if body.pivot != "fixed" or body.scale != (1.05, 1.05):
             failures.append(f"{kind}: pivot={body.pivot} scale={body.scale}")
+        if missing_frames:
+            failures.append(
+                f"{kind}: {len(missing_frames)} of {total_frames} frames are "
+                f"missing (first: {missing_frames[0]})"
+            )
 
-    missing = [m for m in LAYER_BODIES if not hasattr(GameplayRuntime, m)]
-    print(f"  layers: {len(LAYER_BODIES)}  missing methods: {missing or 'none'}")
-    if missing:
-        failures.append(f"the layer table names methods the runtime lacks: {missing}")
+    missing_methods = [m for m in LAYER_BODIES if not hasattr(GameplayRuntime, m)]
+    print(
+        f"  layers: {len(LAYER_BODIES)}  "
+        f"missing methods: {missing_methods or 'none'}"
+    )
+    if missing_methods:
+        failures.append(
+            f"the layer table names methods the runtime lacks: {missing_methods}"
+        )
 
+    if failures:
+        return 1, failures
+    return 0, []
+
+
+def _cmd_check_pipeline() -> int:
+    """BLOQUE 75: is the enemy pipeline available in THIS build?
+
+    After Phase 2 the runtime reads the enemy manifests every frame to
+    draw the enemies. A frozen build that does not carry them falls back
+    to the old draw path WITHOUT AN ERROR: the game still runs, the
+    enemies still appear, and nothing reports it.
+
+    This command runs INSIDE the frozen build too, so it is the check
+    that can answer the question about the .exe the user downloads.
+    """
+    code, failures = _pipeline_report()
     if failures:
         print("VOID HUNTER pipeline check FAIL:", file=sys.stderr)
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
-        return 1
-    print("VOID HUNTER pipeline check OK")
-    return 0
+    else:
+        print("VOID HUNTER pipeline check OK")
+    return code
 
 
 def _cmd_stress(duration: int) -> int:
