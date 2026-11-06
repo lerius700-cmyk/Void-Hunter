@@ -16,6 +16,7 @@ los números reales de la suite.
 | `HANDOFF-SPRITE-PIPELINE-2026-10-27.md` | Handoff | BLOQUE 74: pipeline de sprites (manifiesto + auditor + anclas horneadas). Incluye qué es el pipeline, los 7 estados, los truth anchors y lo que NO está hecho (el `.exe` no se reconstruyó, el camino congelado no se ejercitó) |
 | `HANDOFF-BLOQUE-75-2026-11-02.md` | Handoff | BLOQUE 75: el cache del lowpass de pausa que sobrevive a la sesión, el WAV generado fuera del bundle (278 → 220 MB), el presupuesto de disco con test, y el handoff entre agentes con su spec y su plan de Fase 1 |
 | `HANDOFF-BLOQUE-75-PHASE2-2026-11-04.md` | Handoff | BLOQUE 75 Fase 2: el motor de capas del frame (`src/render/`, 30 capas, dos checkpoints) y los enemigos dibujados por el compositor del pipeline, con 0 píxeles movidos. Incluye las 5 garantías y cómo se prueban, la regla de los briefs congelados, y el **pendiente de CI**: el gate de Fase 2 no está cableado y el `timeout-minutes` del job es menor que su presupuesto |
+| `HANDOFF-BLOQUE-75-RELEASE-2026-11-04.md` | Handoff | BLOQUE 75: la release **v1.9.0**. Qué se publica (binario, SHA256, CI en verde) y cómo se verifica (los comandos con su salida esperada). **Cierra el pendiente de CI** de la Fase 2: el job `gates` ya corre los dos gates en `windows-latest`. Incluye **qué NO se hizo**: el motor de capas cubre una escena de quince, el clip `death` de la mina nunca se reproduce, `CARRIER` no tiene set, la rama legacy de `_get_enemy_sprite` es código muerto, y el `dist/` está en 941,7 MB de un techo de 1200 MB |
 
 ---
 

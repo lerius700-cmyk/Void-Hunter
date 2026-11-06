@@ -2480,6 +2480,91 @@ presupuesto bajo los tres techos · `.exe --check` y `--boss goliath
 `F:\AI\MM\void-hunter-baseline\` verificado con
 `tools/verify_clean_copy.py` → `CLEAN COPY OK`.
 
+## BLOQUE 75 — El pipeline de sprites, el motor de capas del frame, y la release v1.9.0 (2026-11-04)
+
+Rama `bloquec-67-goliath-port` (la línea v1.4.0), publicada como **v1.9.0**.
+
+### Qué es
+
+Dos fases y un cierre. Todo lo que cambió está **debajo de los píxeles**: el
+arte no se tocó (cero PNGs modificados en `773cf08..HEAD`) y el juego se ve
+exactamente igual. Lo que cambió es **cómo se decide** lo que se ve.
+
+**1. Fase 1 — los enemigos son datos.** Los ocho sets de enemigos pasaron al
+mismo pipeline que GOLIATH: un `manifest.toml` por set (la spec, editada a
+mano) y un `anchors.toml` (la medición, horneada). El runtime ya no busca el
+frame en el disco: **pregunta** al manifiesto, y el compositor lo devuelve.
+
+**2. Fase 2 — el frame es un stack de capas.** El orden en que se dibujaba
+cada frame era código repartido en el runtime. Ahora es **datos**: 30 capas
+nombradas, cada una con su `z` explícito (0..29), cada una llamando al código
+de dibujo que ya existía. El motor vive en `src/render/` y es genérico:
+`Layer`, `LayerStack` y `DrawContext`, **cero imports del juego**.
+
+**3. El cierre — la puerta corre sola.** `tools/sprite_pipeline/gate_ci.py`
+decide qué gates aplican a la rama y los corre; el CI de la línea de release
+los corre en `windows-latest` con un presupuesto de 25 minutos; el bundle
+congelado se verifica contra los nueve sets; y el juego sabe decir si su
+propio pipeline de enemigos está disponible (`--check-pipeline`).
+
+### Qué cambia para quien juega
+
+**Nada visual.** Cero píxeles movidos: seis frames de referencia (*goldens*)
+comparados byte a byte antes y después, medidos dos veces (checkpoint 2A y
+2B). El `.exe` pesa 220,2 MB (35 KB más que el de la v1.8.1: son los nueve
+manifests que ahora viajan dentro) y el self-test sigue reportando 15 escenas,
+18 olas y 4 bosses.
+
+Lo que sí cambia es invisible, y es una mejora: el `.exe` de la v1.9.0
+**lleva los nueve manifests** (GOLIATH + los 8 enemigos). El de la v1.8.1
+llevaba **1 de 9**: el del boss. Desde la Fase 2 los manifests de enemigos
+son *load-bearing* (sin ellos el build congelado cae al camino viejo **sin
+ningún error**), y ahora eso se verifica, en el binario, con un comando.
+
+### Qué cambia para quien desarrolla
+
+| | antes | después |
+|---|---|---|
+| El frame | un `draw` por escena, en orden de código | **30 capas** con `z` explícito |
+| El cuerpo del enemigo | el runtime cargaba un PNG y lo escalaba 1.05 | el **compositor** lo dibuja, desde el manifiesto |
+| El pivote | una corrección de registro medida, aplicada a todos | el manifiesto **declara** `pivot = "fixed"` |
+| La escala | `1.05` hardcodeado en el runtime | el manifiesto **declara** `scale = [1.05, 1.05]` |
+| La puerta | la suite | la suite **+ dos gates**, en el CI |
+
+- Los **enemigos son datos**: el pivote, la escala y el vocabulario
+  `mode`/`on_end` viven en el manifiesto, no en el código del juego.
+- El gate de la Fase 2 (**P2-G1..G6**) corre **en el CI**, junto al de la
+  Fase 1 (**G1..G13**). Una puerta que sólo existe en la máquina de quien la
+  escribió no es una puerta.
+- El `.exe` **reporta** si su pipeline está disponible: `--check-pipeline`
+  responde lo mismo en el source y en el binario congelado.
+
+### Lo que NO se hizo
+
+- **El motor de capas cubre una escena de quince.** Sólo el gameplay usa el
+  `LayerStack`; las otras catorce escenas siguen dibujando como siempre.
+- **El clip `death` de la mina nunca se reproduce.** El runtime elige el clip
+  de la mina por `mine_state` (`closed`/`open1`/`open2`/`open3`); el quinto
+  clip del manifiesto sigue sin reproducirse. Quiere una decisión, no un fix.
+- **`CARRIER` no tiene set.** Sigue por el camino procedural, como antes.
+- **La rama legacy de `_get_enemy_sprite` es código muerto**: los
+  `Assets/sprites/enemy_<kind>.png` ya no existen.
+- **La salida de build está en 941,7 MB de un techo de 1200 MB.** El borrado
+  del worktree de la Fase 2, en la tarea siguiente, es lo que la baja.
+- **El `.exe` no se reconstruye por fase**: se reconstruye una vez, al cierre.
+
+### Verificación
+
+Suite **3130 tests, 0 fallos** (3123 pass + 6 skipped + 1 xfailed) ·
+`tools/sprite_pipeline/gate_ci.py` → `PHASE 1 GATE OK` y `PHASE 2 GATE OK` ·
+el binario `--check-pipeline` → exit 0, los 8 sets en `pivot=fixed
+scale=(1.05, 1.05)`, `layers: 30` · el bundle verificado con los 9 sets (el
+de la v1.8.1, con 1 de 9) · CI `42148928648` en verde, jobs `pytest` y
+`gates` · **0 PNGs modificados o borrados** en `773cf08..HEAD` y digest
+idéntico de los 1768 PNGs de `Assets/`.
+
+Handoff: `docs/handoffs/HANDOFF-BLOQUE-75-RELEASE-2026-11-04.md`.
+
 ## BLOQUE 74 — Pipeline de sprites: el runtime deja de medir el arte (2026-10-27)
 
 Rama `bloquec-74-sprite-pipeline` (mergeada en `bloquec-67-goliath-port`,

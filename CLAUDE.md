@@ -260,7 +260,7 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 | LOC tests/ | 31002 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
 | Silos SF+SM | 9 (Lite) | `Get-ChildItem docs -Directory \| Measure-Object` |
 | Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
-| Versión | v1.8.0 (BLOQUE 74 — pipeline de sprites) | `git log --oneline -1` |
+| Versión | v1.9.0 (BLOQUE 75 — pipeline de sprites + motor de capas del frame) | `python -c "import re,pathlib; print(re.search(r'VERSION = .(v[0-9.]+).', pathlib.Path('tools/regen_status.py').read_text(encoding='utf-8')).group(1))"` |
 | Rama | bloquec-67-goliath-port | `git branch --show-current` |
 | Remote | github.com/lerius700-cmyk/Void-Hunter | `git remote -v` |
 | Build .exe | **reconstruido** para v1.9.0 (220.2 MB) en `dist/void-hunter-v1.9.0.exe` — el path congelado (`<_MEIPASS>/Assets/sprites`) verificado con los 9 sets (GOLIATH + 8 enemigos), manifest y anchors dentro del bundle; SHA256 `D8EDB1FD4EA332E8AB183165DECD3025AB209CD691B93AEA1C41BFBB49E9AE36` | `Get-Item dist/void-hunter-v1.9.0.exe` (raiz del repo) |
