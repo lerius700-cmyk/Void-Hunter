@@ -78,8 +78,8 @@ CLAUDE = ROOT / "CLAUDE.md"
 # too. A block that lies and a generator that agrees with the lie is
 # worse than either alone: the next regeneration puts the broken anchor
 # back.
-BINARY_REL = "dist/void-hunter-v1.8.1.exe"
-VERSION = "v1.8.1"
+BINARY_REL = "dist/void-hunter-v1.9.0.exe"
+VERSION = "v1.9.0"
 
 # The failures this project KNOWS about, by test id. The block says
 # whether the failures are the known pre-existing ones, and that claim

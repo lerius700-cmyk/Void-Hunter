@@ -256,17 +256,17 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 |---------|-------|------------------------|
 | Líneas de código (src/) | 30036 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
 | Archivos Python (src/) | 96 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
-| Tests (tests/) | 3.101 pass + 0 fail + 1 xfail + 6 skipped (3.108 total) | `python -m pytest tests/ --tb=no` |
-| LOC tests/ | 30382 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
+| Tests (tests/) | 3.123 pass + 0 fail + 1 xfail (fallo conocido) + 6 skipped (3.129 total) | `python -m pytest tests/ --tb=no` |
+| LOC tests/ | 31002 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
 | Silos SF+SM | 9 (Lite) | `Get-ChildItem docs -Directory \| Measure-Object` |
 | Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
 | Versión | v1.8.0 (BLOQUE 74 — pipeline de sprites) | `git log --oneline -1` |
 | Rama | bloquec-67-goliath-port | `git branch --show-current` |
 | Remote | github.com/lerius700-cmyk/Void-Hunter | `git remote -v` |
-| Build .exe | **reconstruido** para v1.8.1 (220.2 MB) en `dist/void-hunter-v1.8.1.exe` — el path congelado (`<_MEIPASS>/Assets/sprites/bosses`) verificado con el manifest y los anchors dentro del bundle; SHA256 `FA4A8684521EB74E9F67CE8AFDAE9B17A76B0FCE725CC44FB84D58370E46A256` | `Get-Item dist/void-hunter-v1.8.1.exe` (raiz del repo) |
-| Peso del arbol trackeado | 204.0 MB | `python tools/repo_budget.py` |
-| Salida de build (dist/) | 501.3 MB | `python tools/repo_budget.py` |
-| Historia (.git/) | 504.8 MB | `python tools/repo_budget.py` |
+| Build .exe | **reconstruido** para v1.9.0 (220.2 MB) en `dist/void-hunter-v1.9.0.exe` — el path congelado (`<_MEIPASS>/Assets/sprites`) verificado con los 9 sets (GOLIATH + 8 enemigos), manifest y anchors dentro del bundle; SHA256 `D8EDB1FD4EA332E8AB183165DECD3025AB209CD691B93AEA1C41BFBB49E9AE36` | `Get-Item dist/void-hunter-v1.9.0.exe` (raiz del repo) |
+| Peso del arbol trackeado | 204.9 MB | `python tools/repo_budget.py` |
+| Salida de build (dist/) | 941.7 MB | `python tools/repo_budget.py` |
+| Historia (.git/) | 506.5 MB | `python tools/repo_budget.py` |
 | Tiles Asteroid Approach | 6 PNG (320×480) en `Assets/background/tiles/act1/` | `Get-ChildItem Assets/background/tiles/act1/*.png` |
 | Frames GOLIATH | 60 PNG (6 anim × 10) en `Assets/sprites/bosses/goliath/` | `Get-ChildItem Assets/sprites/bosses/goliath/*/frame_*.png` |
 | Manifiesto + anclas de GOLIATH | 1 `manifest.toml` (spec) + 1 `anchors.toml` (horneado) | `Get-ChildItem Assets/sprites/bosses/goliath/*.toml` |
