@@ -221,18 +221,40 @@ def test_a_non_ascii_path_is_not_mangled(tmp_path: Path):
 
 
 def test_the_default_ref_resolves_wherever_the_tests_run(tmp_path: Path):
-    """The default `--ref` matches the tree the baseline was cut from.
+    """The default `--ref` resolves FOR REAL, wherever the tests run.
 
-    The tool ships with a default ref, and the baseline is cut from the
-    work branch. If the default is a different tree, the tool reports a
-    pristine baseline as CONTAMINATED -- which is exactly what happened
-    before this was pinned.
+    The tool ships with a default ref, and this guard used to assert
+    only that the constant was a non-empty string and then compare the
+    copy against a HARDCODED "HEAD" -- so it never checked the default
+    at all. A default that names a BRANCH is exactly what broke it: on
+    a CI runner the release line exists only as
+    `refs/remotes/origin/...`, and `git archive` does not resolve
+    remote-tracking refs, so the tool died with exit 128, "not a valid
+    object name".
+
+    So the guard resolves the DEFAULT for real: it asks git whether
+    `git archive` accepts it, then cuts the copy from it and verifies
+    the copy against it. A default that does not resolve fails HERE, in
+    the suite, instead of on a runner.
     """
-    # The default ref has to be a branch that exists wherever the tests
-    # run: HEAD is the checkout itself, on a CI runner and on a machine.
     assert DEFAULT_REF, "the tool must have a default ref"
-    copy = _cut(tmp_path, ["src"], ref="HEAD")
-    report = verify(copy, "HEAD", ROOT, ["src"])
+
+    # The capability the tool actually needs from a ref: `git archive`
+    # has to accept it. A bare branch name that exists only as
+    # `refs/remotes/origin/...` does NOT resolve -- `git rev-parse
+    # --verify` rejects it too ("Needed a single revision", exit 128),
+    # so the check has to be the one the tool really performs.
+    archived = subprocess.run(
+        ["git", "-C", str(ROOT), "archive", "--format=tar", DEFAULT_REF, "src"],
+        capture_output=True,
+    )
+    assert archived.returncode == 0, (
+        f"the default ref {DEFAULT_REF!r} is not usable by `git archive`: "
+        f"{archived.stderr.decode('utf-8', 'replace').strip()}"
+    )
+
+    copy = _cut(tmp_path, ["src"], ref=DEFAULT_REF)
+    report = verify(copy, DEFAULT_REF, ROOT, ["src"])
     assert report.ok, report.describe()
 
 

@@ -9,12 +9,20 @@ any time instead of being edited by hand.
 
 The scope
 ---------
-This generator owns TEN of the block's rows: the two LOC counts, the
-file count, the test count, the silo count, the branch, the build, and
-the three disk weights.
-The other rows (version, compliance, remote, tiles, frame counts,
-videos, sprite sheets) are measured by other commands and are left
-alone -- the block names the command for each one.
+This generator owns ELEVEN of the block's rows: the two LOC counts, the
+file count, the test count, the silo count, the branch, the version, the
+build, and the three disk weights.
+The other rows (compliance, remote, tiles, frame counts, videos, sprite
+sheets) are measured by other commands and are left alone -- the block
+names the command for each one.
+
+The VERSION row used to be one of the unowned ones, and that is how it
+came to contradict its own anchor: the row said v1.8.0 and named
+`git log --oneline -1` as the thing that measures it -- which is a
+COMMIT SUBJECT, not a version. The row is owned here now, because this
+file holds the only version in the codebase (there is no version string
+anywhere in `src/`), and because a row that no generator owns is a row
+that drifts.
 
 Which tree is measured
 ----------------------
@@ -80,6 +88,11 @@ CLAUDE = ROOT / "CLAUDE.md"
 # back.
 BINARY_REL = "dist/void-hunter-v1.9.0.exe"
 VERSION = "v1.9.0"
+# The parenthetical of the "Versión" row: what THIS release carries.
+# It lives next to VERSION so that a bump is ONE place and not two. A
+# row whose text is written by hand NEXT to the constant that measures
+# it is exactly how the version drifted in the first place.
+RELEASE_NOTE = "BLOQUE 75 — pipeline de sprites + motor de capas del frame"
 
 # The failures this project KNOWS about, by test id. The block says
 # whether the failures are the known pre-existing ones, and that claim
@@ -292,7 +305,11 @@ def main() -> int:
     tail = output.splitlines()[-1] if output else ""
     failed, passed, skipped = parse_pytest_summary(tail)
     xfailed = parse_pytest_xfailed(tail)
-    total = failed + passed + skipped
+    # The xfailed tests ARE part of the suite: the row's TEXT names them
+    # ("+ N xfail (fallo conocido)"), so the total has to count them too.
+    # Without this the parts of the row did not add up to its own total
+    # -- 3.123 + 1 + 6 is 3.130, and the row used to say 3.129.
+    total = failed + passed + skipped + xfailed
     if total == 0:
         print(f"could not read the pytest summary: {tail}")
         return 1
@@ -300,7 +317,10 @@ def main() -> int:
     unknown = [f for f in failure_ids if f not in KNOWN_PREEXISTING_FAILURES]
 
     print(f"src LOC={src_loc} files={src_files} | tests LOC={tests_loc}")
-    print(f"suite: {passed} pass / {failed} fail / {skipped} skipped ({total})")
+    print(
+        f"suite: {passed} pass / {failed} fail / {skipped} skipped "
+        f"/ {xfailed} xfailed ({total})"
+    )
     print(f"silos={n_silos} exe={exe_mb}MB branch={branch}")
     if failure_ids:
         print(f"failing: {', '.join(failure_ids)}")
@@ -329,6 +349,11 @@ def main() -> int:
         "Peso del arbol trackeado": f"{budget.tracked_mb:.1f} MB",
         "Salida de build (dist/)": f"{budget.dist_mb:.1f} MB",
         "Historia (.git/)": f"{budget.git_mb:.1f} MB",
+        # The version is a CONSTANT of this file, so the row is written
+        # from that constant. The row used to be written by hand and it
+        # contradicted its own anchor: it said v1.8.0 and named
+        # `git log --oneline -1`, which measures a COMMIT SUBJECT.
+        "Versión": f"{VERSION} ({RELEASE_NOTE})",
         "Rama": branch,
         "Build .exe": _build_row(exe, exe_mb),
     }
@@ -344,6 +369,16 @@ def main() -> int:
         "Peso del arbol trackeado": "`python tools/repo_budget.py`",
         "Salida de build (dist/)": "`python tools/repo_budget.py`",
         "Historia (.git/)": "`python tools/repo_budget.py`",
+        # The anchor of the version has to MEASURE the version. It used
+        # to name `git log --oneline -1`, which measures a commit
+        # subject -- and the row it was supposed to back said v1.8.0
+        # while the commit it named said v1.9.0. This command imports
+        # the constant the row is written from, so the row and its
+        # anchor cannot disagree.
+        "Versión": (
+            "`python -c \"import sys; sys.path.insert(0,'tools'); "
+            "from regen_status import VERSION; print(VERSION)\"`"
+        ),
     }
 
     out: list[str] = []

@@ -2,9 +2,9 @@
 
 **Perfil SF/SM:** Lite
 **Schema target:** `.synapse` 2.2.0 (acepta 2.1.0 legacy)
-**Versión actual:** v1.8.1 (BLOQUE 75 — cache persistente del lowpass, presupuesto de disco y handoff entre agentes; línea v1.4.0 + GOLIATH + menú post-cinematica)
+**Versión actual:** v1.9.0 (BLOQUE 75 — pipeline de sprites + motor de capas del frame; línea v1.4.0 + GOLIATH + menú post-cinematica)
 **Tipo:** CODE (Python + pygame 2.6, stdlib only + numpy para lowpass audio)
-**Test count:** 2,886 pass + 1 fail pre-existente + 6 skipped (2,893 total)
+**Test count:** 3,123 pass + 0 fail + 1 xfail (fallo conocido) + 6 skipped (3,130 total)
 
 ---
 
@@ -203,7 +203,7 @@ máquina**. Reglas:
    directorio: se pisan el índice, el `HEAD` y los archivos.
    ```
    F:\AI\MM\void-hunter\                                    → master        (v1.6.3, OTRA línea)
-   F:\AI\MM\void-hunter\.worktrees\bloquec-67-goliath-port   → bloquec-67-…  (la línea de release, v1.8.0)
+   F:\AI\MM\void-hunter\.worktrees\bloquec-67-goliath-port   → bloquec-67-…  (la línea de release, v1.9.0)
    F:\AI\MM\void-hunter\.worktrees\bloquec-75-…              → la rama del BLOQUE en curso
    ```
 2. **La base de todo trabajo nuevo es `bloquec-67-goliath-port`**, nunca
@@ -223,7 +223,7 @@ máquina**. Reglas:
 
 | Línea | Versión | Qué es |
 |---|---|---|
-| `bloquec-67-goliath-port` | **v1.8.0** | La línea de release (BLOQUE 74: pipeline de sprites). **Base del trabajo nuevo.** |
+| `bloquec-67-goliath-port` | **v1.9.0** | La línea de release (BLOQUE 74: pipeline de sprites; BLOQUE 75: motor de capas del frame). **Base del trabajo nuevo.** |
 | `master` | v1.6.3 | Línea vieja. 8 commits sin pushear. **No tocar.** |
 
 **Próximo BLOQUE:** 75 — migración del pipeline de sprites (2 fases con
@@ -256,17 +256,17 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 |---------|-------|------------------------|
 | Líneas de código (src/) | 30036 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
 | Archivos Python (src/) | 96 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
-| Tests (tests/) | 3.123 pass + 0 fail + 1 xfail (fallo conocido) + 6 skipped (3.129 total) | `python -m pytest tests/ --tb=no` |
-| LOC tests/ | 31002 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
+| Tests (tests/) | 3.123 pass + 0 fail + 1 xfail (fallo conocido) + 6 skipped (3.130 total) | `python -m pytest tests/ --tb=no` |
+| LOC tests/ | 31024 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
 | Silos SF+SM | 9 (Lite) | `Get-ChildItem docs -Directory \| Measure-Object` |
 | Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
-| Versión | v1.9.0 (BLOQUE 75 — pipeline de sprites + motor de capas del frame) | `python -c "import re,pathlib; print(re.search(r'VERSION = .(v[0-9.]+).', pathlib.Path('tools/regen_status.py').read_text(encoding='utf-8')).group(1))"` |
+| Versión | v1.9.0 (BLOQUE 75 — pipeline de sprites + motor de capas del frame) | `python -c "import sys; sys.path.insert(0,'tools'); from regen_status import VERSION; print(VERSION)"` |
 | Rama | bloquec-67-goliath-port | `git branch --show-current` |
 | Remote | github.com/lerius700-cmyk/Void-Hunter | `git remote -v` |
 | Build .exe | **reconstruido** para v1.9.0 (220.2 MB) en `dist/void-hunter-v1.9.0.exe` — el path congelado (`<_MEIPASS>/Assets/sprites`) verificado con los 9 sets (GOLIATH + 8 enemigos), manifest y anchors dentro del bundle; SHA256 `D8EDB1FD4EA332E8AB183165DECD3025AB209CD691B93AEA1C41BFBB49E9AE36` | `Get-Item dist/void-hunter-v1.9.0.exe` (raiz del repo) |
 | Peso del arbol trackeado | 204.9 MB | `python tools/repo_budget.py` |
 | Salida de build (dist/) | 941.7 MB | `python tools/repo_budget.py` |
-| Historia (.git/) | 506.5 MB | `python tools/repo_budget.py` |
+| Historia (.git/) | 506.6 MB | `python tools/repo_budget.py` |
 | Tiles Asteroid Approach | 6 PNG (320×480) en `Assets/background/tiles/act1/` | `Get-ChildItem Assets/background/tiles/act1/*.png` |
 | Frames GOLIATH | 60 PNG (6 anim × 10) en `Assets/sprites/bosses/goliath/` | `Get-ChildItem Assets/sprites/bosses/goliath/*/frame_*.png` |
 | Manifiesto + anclas de GOLIATH | 1 `manifest.toml` (spec) + 1 `anchors.toml` (horneado) | `Get-ChildItem Assets/sprites/bosses/goliath/*.toml` |

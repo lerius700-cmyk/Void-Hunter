@@ -29,9 +29,13 @@ not as contamination. A file the repository does NOT ignore --
 `not_in_the_tree.txt`, a stray `.png` in `Assets/` -- is contamination,
 and that is what the tool is for.
 
-The default `--ref` is the branch the baseline is cut from. Verifying a
-copy against any OTHER tree compares two different things and reports
-the difference as contamination, which is a lie.
+The default `--ref` is HEAD: the checkout itself. It has to be a tree
+that EXISTS wherever the tool runs, and a branch NAME does not: on a CI
+runner the release line exists only as a remote-tracking ref, and `git
+archive` does not resolve those -- the tool died with exit 128, "not a
+valid object name". Verifying a copy against any OTHER tree compares
+two different things and reports the difference as contamination, which
+is a lie; HEAD is the one tree that is always there.
 
 Usage:
     python tools/verify_clean_copy.py --tree F:\\AI\\MM\\void-hunter-baseline
@@ -47,7 +51,15 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-DEFAULT_REF = "bloquec-75-sprite-migration"
+# The tree a copy is verified against when no `--ref` is given: HEAD,
+# the checkout itself.
+#
+# A branch NAME is not a safe default. On a CI runner the release line
+# exists only as refs/remotes/origin/..., and `git archive` does not
+# resolve remote-tracking refs: the tool died with exit 128, "not a
+# valid object name". HEAD is the checkout itself, so it is there on a
+# runner and on a machine.
+DEFAULT_REF = "HEAD"
 
 
 @dataclass
