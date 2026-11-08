@@ -10,8 +10,13 @@
 |---------|------|-------------|
 | `CHANGELOG_v1.x.md` | Histórico | Changelog detallado de versiones v1.x (BLOQUE 1 → 58.14.4) |
 | `CHANGELOG.md` | Raíz | Changelog de muy alto nivel (releases shipped) |
+| `release-notes-v1.9.0.md` | Release | Notas de la v1.9.0 (BLOQUE 75): el texto publicado en GitHub |
 
 > **Nota:** `CHANGELOG.md` fue movido desde la raíz del repo (BLOQUE SF+SM 2026-08-17) para resolver el huérfano de Tree Integrity.
+
+> **Nota (2026-11-04):** `release-notes-v1.9.0.md` vivía en la raíz del repo y era el
+> último huérfano de Tree Integrity (la auditoría SF+SM lo marcó 🟡). Las notas de una
+> release son historia del producto: viven acá, con el changelog.
 
 ---
 
@@ -22,6 +27,7 @@
 | `CONTEXT.md` | L (LOAD) | Misión del silo |
 | `CHANGELOG_v1.x.md` | L (LOAD) | Historia detallada — consultar antes de cambiar algo |
 | `CHANGELOG.md` | R (REFERENCE) | Releases shipped (auto-generable desde CHANGELOG_v1.x) |
+| `release-notes-v1.9.0.md` | R (REFERENCE) | Notas de la release v1.9.0 (BLOQUE 75) |
 
 > Las tres marcas `L (LOAD)`, `S (SKIP)`, `R (REFERENCE)` aparecen literalmente.
 

@@ -1,23 +1,19 @@
 {
-    "synapse_version":  "2.2.0",
-    "last_verification_utc":  "2026-11-06T04:00:02Z",
-    "system_status":  "healthy",
-    "active_bridges":  {
-
-                       },
-    "short_term_memory":  {
-                              "current_objective":  "BLOQUE 75 CERRADO Y PUBLICADO en la linea de release (bloquec-67-goliath-port, HEAD dd9176f + este commit): la release v1.9.0 esta publicada (tag v1.9.0 sobre 157af82; published_at 2026-11-06T03:17:08Z, draft=false, prerelease=false, asset VoidHunter-v1.9.0-win64.zip; releases/latest -\u003e v1.9.0). ESTA SESION (la ola de fixes de la revision final, veredicto MERGE WITH FIXES) corrigio lo que la revision pidio: (1) tools/sprite_pipeline/gate_ci.py -- el git merge-base --is-ancestor ya tiene presupuesto (gate.GIT_TIMEOUT_S = 60 s) y un timeout se reporta como UNRESOLVABLE (exit 1, PHASE n GATE ERROR) en vez de colgarse hasta el muro del job; (2) main.py -- el docstring de _ensure_frame_display() ya no promete una ventana que no puede garantizar (setdefault respeta un driver que el caller ya haya elegido; el headless es el default, no un override); (3) src/ui/gameplay_runtime.py:4015 -- except Exception -\u003e except OSError; (4) disco -- borrados los dos .exe DUPLICADOS del dist/ de ESTE worktree (void-hunter.exe, byte a byte igual al void-hunter-v1.9.0.exe de la raiz, y void-hunter-v1.8.1.exe, igual al de la raiz): la salida de build bajo de 1160,5 MB a 720,1 MB contra un techo de 1200 MB, y el STATUS quedo regenerado; (5) documentos -- el handoff de release, el changelog y el CONTEXT del silo ya no dicen que la release este pendiente, citan los CI runs que de verdad la cubren (42155472049 sobre 157af82 y 42156102393 sobre fd314d4) y ya no dicen que la rama legacy de _get_enemy_sprite se pueda borrar. LO QUE SIGUE: la Fase 3 (sin spec, sin plan, sin worktree) y los 13 follow-ups de la revision final, escritos en la seccion 7 del handoff de release.",
-                              "last_successful_action":  "La ola de fixes de la revision final de BLOQUE 75 aplicada y verificada en el worktree de la linea de release. MEDIDO en este arbol: suite 3.130 tests / 0 fallos (3.123 pass + 6 skipped + 1 xfailed), gate_ci.py: PHASE 1 GATE OK y PHASE 2 GATE OK (exit 0), python tools/repo_budget.py: tracked 204,9 MB / 300 MB ok, dist 720,1 MB / 1200 MB ok (antes 1160,5 MB), y el .git/ en advisory sin techo (su cifra exacta vive en la fila Historia (.git/) del STATUS y cambia con cada commit, asi que no se copia aqui). El STATUS quedo regenerado con tools/regen_status.py con el diff limitado a las filas Salida de build (dist/) e Historia (.git/). R1 intacto: 0 PNGs modificados o borrados. Publicacion verificada por API: published_at 2026-11-06T03:17:08Z, draft=false, asset VoidHunter-v1.9.0-win64.zip, releases/latest -\u003e v1.9.0, tag v1.9.0 -\u003e 157af82. CI: 42155472049 (headSha 157af82, el commit de la release) y 42156102393 (headSha fd314d4, la punta de la rama), los dos completed/success con los jobs pytest y gates en verde. El run 42148928648 tambien salio verde, pero su headSha es 9565139, cuatro commits antes del commit de la release: ya no se cita como prueba de esta release.",
-                              "active_context_pointers":  [
-                                                              "docs/handoffs/HANDOFF-BLOQUE-75-RELEASE-2026-11-04.md",
-                                                              "docs/handoffs/HANDOFF-BLOQUE-75-PHASE2-2026-11-04.md",
-                                                              "docs/superpowers/plans/2026-11-04-bloque-75-cierre-de-entrega.md",
-                                                              "docs/superpowers/specs/2026-11-04-bloque-75-cierre-de-entrega-design.md",
-                                                              "docs/superpowers/plans/2026-11-03-bloque-75-phase2-layers.md",
-                                                              "docs/superpowers/specs/2026-10-30-bloque-75-migration-spec.md",
-                                                              "docs/handoffs/HANDOFF-BLOQUE-75-2026-11-02.md",
-                                                              "release-notes-v1.9.0.md"
-                                                          ],
-                              "critical_blockers":  "ninguno tecnico. La release v1.9.0 esta publicada y el tip de la rama esta en verde. PENDIENTE PARA EL PROXIMO AGENTE: (a) la Fase 3, que no arranco (sin spec, sin plan, sin worktree); (b) los 13 follow-ups de la revision final, escritos en la seccion 7 del handoff docs/handoffs/HANDOFF-BLOQUE-75-RELEASE-2026-11-04.md -- los mas urgent: gate_ci.main no tiene test y main(argv) ignora su argumento; los fixtures golden se pueden regenerar en silencio y el gate seguiria verde contra una prueba nueva (fijales el SHA256 a los seis); en master el job gates es un no-op verde y hace falta un --require-applies; la fila Build .exe del STATUS no resuelve desde el arbol que lleva el bloque; y la ruta hardcodeada D:/AI/void-hunter/logs/_sub_boss.log en gameplay_runtime.py:1698. Ojo con lo que NO es un defecto: la rama legacy de _get_enemy_sprite NO se puede borrar (es la red de seguridad que mantiene los pixeles identicos cuando el pipeline falla -- con el pipeline devolviendo None los 6 goldens siguen verdes), y la llamada load_player_for_kind(\"carrier\") por frame NO es un problema de rendimiento (manifest.py cachea el fallo en _LOADED_FAILED: es una consulta a un set, no un re-parseo). Ver el handoff de release, secciones 3 y 7."
-                          }
+  "synapse_version": "2.2.0",
+  "last_verification_utc": "2026-11-07T22:49:42Z",
+  "system_status": "healthy",
+  "active_bridges": {},
+  "short_term_memory": {
+    "current_objective": "gstack-review de BLOQUE 75 sobre la linea de release: 3 CRITICAL corregidos (el gate pasaba en verde con un rango vacio; --boss phantom anunciaba PHANTOM y spawneaba NEMESIS; --act N se perdia en silencio) y 18 fixes mecanicos, todo verificado. Falta commitear la ola y resolver 3 decisiones del usuario.",
+    "last_successful_action": "La ola de fixes de la revision aplicada en el worktree de la linea de release y verificada en este arbol: suite 3162 tests / 0 fallos / 0 errores / 7 skipped (6 skipped + 1 xfailed); tools/sprite_pipeline/gate.py --phase 1 y --phase 2 ambos 'GATE OK' (exit 0), y --phase 1 --base HEAD 'GATE FAILED' (exit 1: la contraposicion del rango vacio); main.py --check responde 15 scenes / 18 waves / 4 bosses, y --check-pipeline reporta los 8 sets con pivot=fixed scale=(1.05,1.05) y layers: 30; --boss phantom imprime 'jumped to PHANTOM (act 3)'; Game(act=2) deja ACT_INTRO._act=2, GAMEPLAY._rt._act=2 y _wave_idx=6 (antes 0); audit_sf_sm.py --perfil=lite da SF COMPLIANCE 7/7 con 0 findings, tras mover el ultimo huerfano (release-notes-v1.9.0.md) al silo changelog. R1 intacto: 0 PNGs modificados.",
+    "active_context_pointers": [
+      "docs/handoffs/HANDOFF-BLOQUE-75-GSTACK-REVIEW-2026-11-07.md",
+      "docs/handoffs/HANDOFF-BLOQUE-75-RELEASE-2026-11-04.md",
+      "docs/superpowers/plans/2026-11-03-bloque-75-phase2-layers.md",
+      "docs/changelog/release-notes-v1.9.0.md",
+      "docs/bloques/BLOQUE_75_CHECKLIST.md",
+      "docs/changelog/CHANGELOG_v1.x.md"
+    ],
+    "critical_blockers": "ninguno tecnico. PENDIENTE DEL USUARIO (esta ola NO se commiteo, por la regla del proyecto de preguntar antes): (a) commitear la ola de fixes, que esta SIN COMMITear en F:\\AI\\MM\\void-hunter\\.worktrees\\bloquec-67-goliath-port (18 archivos modificados + 2 nuevos); (b) branch protection: el gate del CI corre y falla el job, pero NO bloquea merges (no hay proteccion en ninguna de las dos ramas; HTTP 404 en la API); (c) el lowpass: el diff saco el WAV filtrado del bundle y movio 6,18 s de CPU bloqueante (medidos) al hilo principal al entrar en GAMEPLAY, y 6,1 s + 63,9 MB en CADA sesion si la carpeta del .exe no es escribible (Program Files); (d) rotar el AccessKey de Aliyun LTAI5t9dXq2sLrMZ8f1XfiFZ, que quedo en el HISTORIAL de git (commit 7d315aa) de un repo publico, aunque ya se saco del arbol de trabajo."
+  }
 }

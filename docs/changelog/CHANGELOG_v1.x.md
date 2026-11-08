@@ -1,11 +1,10 @@
 # VOID HUNTER — Changelog & Bug Log
 
-**Proyecto:** VOID HUNTER (D:\AI\void-hunter)
+**Proyecto:** VOID HUNTER (F:\AI\MM\void-hunter)
 **Repositorio:** https://github.com/lerius700-cmyk/Void-Hunter
-**Stack:** Python 3.11 + pygame 2.6 (sin numpy/scipy, stdlib math only)
-**Total código:** ~30,000 líneas en 130+ archivos Python
-**Total tests:** 1,103 passing
-**Última revisión:** 2026-08-15 16:18 PM
+**Stack:** Python 3.11 + pygame 2.6 (stdlib + pygame; numpy sólo para el lowpass del pause)
+**Métricas:** las vive el bloque `STATUS` de `CLAUDE.md`, que `tools/regen_status.py` regenera desde el árbol. No se copian aquí: dos fuentes de verdad para el mismo número es una de las dos incorrecta (este header decía "1,103 passing" cuando la suite ya iba por 3.100).
+**Última revisión:** 2026-11-04
 
 ## BLOQUE 71 — Asteroid Hit Feedback (2026-09-09)
 
