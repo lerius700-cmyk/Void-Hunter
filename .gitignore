@@ -138,3 +138,10 @@ Assets/*_lp*.wav
 # executable (or the project root when running from source) and is
 # rebuilt by the game when it is missing.
 _vh_cache/
+
+# BLOQUE 76: the presigned upload URLs of the tile generator.
+# The committed `_batch_args.json` keeps the PROMPTS (the reproducible
+# part) and drops the URLs: a presigned URL carries the account's
+# AccessKey ID and a signature, and it was published in a PUBLIC repo.
+# The URL for a new run goes in the local file, which is ignored.
+tools/tiles/ai_gen/_batch_args.local.json

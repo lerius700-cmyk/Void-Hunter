@@ -65,10 +65,17 @@ def _mcode_tools_available() -> bool:
     FileNotFoundError instead of running. The tests below are about the
     wrapper's ARGUMENTS, not about the CLI: they skip when the tool is
     not there.
+
+    BLOQUE 76: ONLY FileNotFoundError means "not installed". A bare
+    `except Exception` also swallowed a BROKEN wrapper -- and the tests
+    below are the ones that exist to catch a broken wrapper, so the
+    probe was disabling the guard it stood in for. A wrapper that raises
+    anything else must fail loudly, not skip the tests that would have
+    reported it.
     """
     try:
         _mcode_cmd()
-    except Exception:
+    except FileNotFoundError:
         return False
     return True
 

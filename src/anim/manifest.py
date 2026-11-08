@@ -485,6 +485,28 @@ def _validate_clip_vocabulary(
         )
 
 
+def _validate_clip_dir(set_name: str, clip_id: str, value: str) -> str:
+    """The clip's directory must be ONE name inside the set.
+
+    `clip.dir` is concatenated to the set's path to FIND the frames
+    (src/anim/clip.py) and to WRITE the repaired ones
+    (tools/sprite_pipeline/repair.py). A manifest that declares
+    `dir = "../../.."` takes the game -- and the repair -- outside the set
+    the frame belongs to.
+
+    BLOQUE 76: the rule costs nothing: every manifest in the repository
+    declares a plain name ("idle", "javelin", "phase1_idle", ...).
+    """
+    if not value:
+        raise ManifestError(f"{set_name}: the clip {clip_id!r} has no dir")
+    if value in (".", "..") or "/" in value or "\\" in value:
+        raise ManifestError(
+            f"{set_name}: the clip {clip_id!r} declares the dir {value!r}, "
+            "which is not a single name inside the set"
+        )
+    return value
+
+
 def load_set(name: str, root: Path | None = None) -> AnimSet:
     """Load and validate the manifest of the set called `name`.
 
@@ -548,7 +570,7 @@ def load_set(name: str, root: Path | None = None) -> AnimSet:
         )
         clips[clip_id] = Clip(
             id=clip_id,
-            dir=str(entry.get("dir", clip_id)),
+            dir=_validate_clip_dir(name, clip_id, str(entry.get("dir", clip_id))),
             frames=frames,
             fps=float(entry.get("fps", 10)),
             loop=loop,

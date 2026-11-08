@@ -103,6 +103,54 @@ def test_the_failing_tests_are_named():
     ]
 
 
+# ---------------------------------------------------------------------------
+# BLOQUE 76: an ERRORED test is not a pass.
+# ---------------------------------------------------------------------------
+def test_an_errored_test_counts_as_a_failure():
+    """A test that ERRORED never ran its body.
+
+    pytest reports it as "2 passed, 1 error in 0.01s". The parser used to
+    read that as "2 passed, 0 failed", and the block then said the suite
+    was green while a test had not run at all.
+    """
+    assert regen_status.parse_pytest_summary("2 passed, 1 error in 0.01s") == (1, 2, 0)
+
+
+def test_several_errored_tests_are_counted():
+    assert regen_status.parse_pytest_summary("1 passed, 3 errors in 0.02s") == (3, 1, 0)
+
+
+def test_a_failure_and_an_error_are_both_counted():
+    assert regen_status.parse_pytest_summary(
+        "1 failed, 2 passed, 1 error in 0.03s"
+    ) == (2, 2, 0)
+
+
+def test_a_green_suite_is_still_green():
+    """The new reading does not turn a warning into a failure."""
+    assert regen_status.parse_pytest_summary(
+        "2908 passed, 6 skipped, 1 warning in 62.14s"
+    ) == (0, 2908, 6)
+
+
+def test_the_errored_test_is_named():
+    """An errored test has an id, and the block has to be able to name it.
+
+    Without the name, the block could say "1 fail" and not say WHICH test
+    had not run -- and the reader would have no way to look it up.
+    """
+    output = (
+        "=================================== ERRORS ===================================\n"
+        "_____________________ ERROR at setup of test_boom ______________________\n"
+        "=================== short test summary info ===================\n"
+        "ERROR tests/test_other.py::test_boom - RuntimeError: boom\n"
+        "2 passed, 1 error in 0.01s\n"
+    )
+    assert regen_status.parse_pytest_failures(output) == [
+        "tests/test_other.py::test_boom",
+    ]
+
+
 def test_the_block_header_names_the_generator_that_writes_it():
     """The header must not credit a tool that only reads.
 

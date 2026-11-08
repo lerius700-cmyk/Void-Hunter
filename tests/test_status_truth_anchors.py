@@ -30,7 +30,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
-from regen_status import BINARY_REL, REPO_ROOT  # noqa: E402
+from regen_status import BINARY_REL, REPO_ROOT, VERSION  # noqa: E402
 
 
 def _status_rows() -> list[tuple[str, str, str]]:
@@ -97,15 +97,34 @@ def test_the_generator_writes_the_same_binary_the_block_shows():
 
     The generator is what rewrites the block. If it still names the old
     path, the next regeneration silently puts the broken anchor back.
+
+    BLOQUE 76: the comparison is against the generator's COMPUTED path,
+    not against its source text. The path used to be a literal spelled
+    out in the generator, so grepping the source proved the agreement; it
+    is now DERIVED from the version (one place to bump, not two), and the
+    source no longer contains the file name. What has to hold is that the
+    generator and the block name the SAME file.
     """
     rows = dict((metric, source) for metric, _, source in _status_rows())
     path = _source_path(rows["Build .exe"])
     assert path is not None
-    generator = (ROOT / "tools" / "regen_status.py").read_text(encoding="utf-8")
-    assert path.name in generator, (
-        f"the generator does not mention {path.name!r}: it would rewrite "
-        "the build row with a different path"
+    assert path == REPO_ROOT / BINARY_REL, (
+        f"the block names {path}, but the generator measures "
+        f"{REPO_ROOT / BINARY_REL}"
     )
+
+
+def test_the_binary_path_is_derived_from_the_version():
+    """The version is written ONCE.
+
+    It used to be written twice -- once as VERSION and once inside the
+    binary's file name -- and the generator's own comment claimed there
+    was only one place. Bumping VERSION alone left the block naming the
+    PREVIOUS release's binary, with that file's SHA256, under the new
+    version's label.
+    """
+    assert BINARY_REL == f"dist/void-hunter-{VERSION}.exe"
+    assert VERSION in BINARY_REL
 
 
 def test_the_build_artifact_is_there_when_this_machine_has_it():

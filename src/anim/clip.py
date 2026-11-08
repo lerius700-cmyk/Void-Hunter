@@ -36,7 +36,7 @@ class ClipPlayer:
         self.anchors = anchors
         # The frames are loaded once and kept: a clip is played at 10-30 fps
         # and the PNG is decoded from disk every time otherwise.
-        self._surface_cache: dict[Path, pygame.Surface] = {}
+        self._surface_cache: dict[tuple[str, int], pygame.Surface] = {}
         # The SCALED frames are kept too, for the same reason: the enemy
         # sets are drawn at 1.05x and `pygame.transform.scale` on every
         # single frame would cost more than the blit it feeds.
@@ -80,19 +80,26 @@ class ClipPlayer:
         must not depend on `src/ui/` (the type gate runs mypy over
         `src/anim/`, and importing the UI module from here would drag its
         errors into that gate).
+
+        BLOQUE 76: the cache is keyed by (clip id, frame), NOT by the
+        path. Building a `pathlib.Path` costs 4.25 us -- 70 times the
+        lookup it enables -- and this runs once per enemy per frame: at
+        the top of the game that was 12 ms of CPU per second burned to
+        hit a cache. The path is now built only on a MISS.
         """
-        clip = self.set.clip(clip_id)
-        path = self.set.path / clip.dir / f"frame_{frame:02d}.png"
-        cached = self._surface_cache.get(path)
+        key = (clip_id, frame)
+        cached = self._surface_cache.get(key)
         if cached is not None:
             return cached
+        clip = self.set.clip(clip_id)
+        path = self.set.path / clip.dir / f"frame_{frame:02d}.png"
         if not path.is_file():
             return None
         try:
             loaded = pygame.image.load(str(path)).convert_alpha()
         except pygame.error:
             return None
-        self._surface_cache[path] = loaded
+        self._surface_cache[key] = loaded
         return loaded
 
     def canvas_for(self, clip_id: str) -> tuple[int, int]:

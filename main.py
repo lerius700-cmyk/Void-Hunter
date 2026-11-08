@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.anim.clip import ClipPlayer
+    from src.entities.enemies.boss import BossId
 
 
 # BLOQUE 58.55: set the SDL audio driver BEFORE pygame.init(). The
@@ -377,6 +378,33 @@ def _cmd_stress(duration: int) -> int:
     return 0
 
 
+def _resolve_boss(boss: str) -> tuple["BossId", int] | None:
+    """(BossId, act) for a boss NAME, or None when the name is unknown.
+
+    BLOQUE 76: the boss is resolved by NAME against the BossId enum and
+    handed to the runtime as an id. It used to be mapped to an ACT and the
+    runtime picked the boss from the act -- so `--boss phantom` announced
+    PHANTOM and spawned NEMESIS, because act 3's boss IS NEMESIS (PHANTOM
+    comes out of the roguelike pool, not out of an act).
+
+    The act is the boss's own act for the three that HAVE one; PHANTOM
+    borrows the final act's waves, because the act only decides which waves
+    run before the fight.
+    """
+    from src.entities.enemies.boss import BossId
+
+    try:
+        boss_id = BossId(boss.lower())
+    except ValueError:
+        return None
+    boss_act = {
+        BossId.GOLIATH: 1,
+        BossId.HYDRA: 2,
+        BossId.NEMESIS: 3,
+    }
+    return boss_id, boss_act.get(boss_id, 3)
+
+
 def _cmd_play(duration: int, boss: str | None = None, act: int | None = None) -> int:
     """Default mode: launch the game window. Auto-exits after duration sec.
 
@@ -389,7 +417,20 @@ def _cmd_play(duration: int, boss: str | None = None, act: int | None = None) ->
     from src.core.game import Game
     from src.core.scene_manager import GameState
 
-    game = Game()
+    if boss is not None and act is not None:
+        # Two ways of saying the same thing, with different answers: --boss
+        # already picks the act, so --act would be silently overwritten.
+        # Checked BEFORE the Game is built: this is a usage error, and a
+        # usage error must not boot a whole game to complain about it.
+        print("VOID HUNTER: --act and --boss cannot be combined; "
+              "--boss already chooses the act", file=sys.stderr)
+        return 2
+
+    # BLOQUE 76: the act belongs to the Game, because the Game is what
+    # registers the scenes -- and the runtime computes its wave index from
+    # the act at construction time. `--act 2` used to print "jumped to
+    # act 2" and run ACT 1.
+    game = Game(act=act if act is not None else 1)
 
     if boss is not None:
         # Jump straight into the fight. transition_to validates against
@@ -397,22 +438,22 @@ def _cmd_play(duration: int, boss: str | None = None, act: int | None = None) ->
         # BOSS_FIGHT from TITLE. Each hop calls the target scene's
         # on_enter, which is what actually builds the boss.
         #
-        # The runtime picks the boss from the act number, so map the boss
-        # NAME to its act before the scene is constructed. GOLIATH is
-        # act 1's boss; HYDRA act 2; PHANTOM and NEMESIS act 3.
-        _BOSS_ACT = {
-            "goliath": 1,
-            "hydra": 2,
-            "phantom": 3,
-            "nemesis": 3,
-        }
-        act = _BOSS_ACT.get(boss.lower())
-        if act is None:
+        # BLOQUE 76: the boss is resolved by NAME against the BossId enum
+        # and handed to the runtime as an id. It used to be mapped to an
+        # ACT and the runtime picked the boss from the act -- so
+        # `--boss phantom` announced PHANTOM and spawned NEMESIS, because
+        # act 3's boss IS NEMESIS (PHANTOM comes out of the roguelike
+        # pool, not out of an act).
+        resolved = _resolve_boss(boss)
+        if resolved is None:
+            from src.entities.enemies.boss import BossId
             print(f"VOID HUNTER: unknown boss {boss!r}; "
-                  f"expected one of {sorted(_BOSS_ACT)}", file=sys.stderr)
+                  f"expected one of {sorted(b.value for b in BossId)}",
+                  file=sys.stderr)
             return 2
+        boss_id, act = resolved
         # Re-register BOSS_FIGHT for the requested act: Game.__init__
-        # hardcodes act=1, and the act is what selects the boss.
+        # hardcodes act=1, and the act is what selects the waves.
         from src.ui.scenes import BossFightScene
 
         boss_scene = BossFightScene(
@@ -421,6 +462,7 @@ def _cmd_play(duration: int, boss: str | None = None, act: int | None = None) ->
             audio=game.audio,
             get_session_score=game._get_session_score,
             set_session_score=game._set_session_score,
+            boss_id=boss_id,
         )
         # Give the re-registered scene the same `_game` back-reference the
         # Game's own registration injects (BLOQUE 73.6). Without it the
@@ -441,7 +483,7 @@ def _cmd_play(duration: int, boss: str | None = None, act: int | None = None) ->
                 print(f"VOID HUNTER: could not enter {state.value}: {exc}",
                       file=sys.stderr)
                 break
-        print(f"VOID HUNTER: jumped to {boss.upper()} (act {act})")
+        print(f"VOID HUNTER: jumped to {boss_id.value.upper()} (act {act})")
     elif act is not None:
         try:
             game.scenes.transition_to(GameState.ACT_INTRO)

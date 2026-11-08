@@ -86,8 +86,13 @@ CLAUDE = ROOT / "CLAUDE.md"
 # too. A block that lies and a generator that agrees with the lie is
 # worse than either alone: the next regeneration puts the broken anchor
 # back.
-BINARY_REL = "dist/void-hunter-v1.9.0.exe"
 VERSION = "v1.9.0"
+# The path of the .exe the build row names. It is DERIVED from VERSION:
+# writing it out meant two places to bump, while the comment below
+# claimed there was only one. Bumping VERSION alone used to leave the row
+# naming the PREVIOUS release's binary -- with THAT file's SHA256 --
+# under the new version's label.
+BINARY_REL = f"dist/void-hunter-{VERSION}.exe"
 # The parenthetical of the "Versión" row: what THIS release carries.
 # It lives next to VERSION so that a bump is ONE place and not two. A
 # row whose text is written by hand NEXT to the constant that measures
@@ -110,12 +115,22 @@ def parse_pytest_summary(tail: str) -> tuple[int, int, int]:
     everything is green, "1 failed, 11 passed in 0.22s" when there are
     no skips, and the order of the counts varies. Each count is read on
     its own, and a missing one is zero.
+
+    BLOQUE 76: an ERROR counts as a failure. A test that ERRORED (a
+    broken fixture, an exception in a teardown) never ran its body, and
+    pytest reports it as "2 passed, 1 error in 0.01s" -- a summary the
+    parser used to read as "2 passed, 0 failed". The row then said the
+    suite was green while a test had not run at all.
     """
     failed = re.search(r"(\d+) failed", tail)
+    errors = re.search(r"(\d+) errors?", tail)
     passed = re.search(r"(\d+) passed", tail)
     skipped = re.search(r"(\d+) skipped", tail)
+    failed_count = (int(failed.group(1)) if failed else 0) + (
+        int(errors.group(1)) if errors else 0
+    )
     return (
-        int(failed.group(1)) if failed else 0,
+        failed_count,
         int(passed.group(1)) if passed else 0,
         int(skipped.group(1)) if skipped else 0,
     )
@@ -128,8 +143,13 @@ def parse_pytest_xfailed(tail: str) -> int:
 
 
 def parse_pytest_failures(output: str) -> list[str]:
-    """The test ids pytest reported as FAILED, in the order it listed them."""
-    return re.findall(r"^FAILED (\S+)", output, flags=re.MULTILINE)
+    """The test ids pytest reported as FAILED or ERRORED, in order.
+
+    BLOQUE 76: an ERRORED test is named here too. pytest lists it under
+    "ERROR <id>" in the short summary; before, the id was invisible and
+    the block could not say WHICH test had not run.
+    """
+    return re.findall(r"^(?:FAILED|ERROR) (\S+)", output, flags=re.MULTILINE)
 
 
 def run(cmd: list[str], cwd: Path = ROOT) -> str:
@@ -146,24 +166,24 @@ def run(cmd: list[str], cwd: Path = ROOT) -> str:
 
 def loc(folder: str) -> str:
     """Lines of code under `folder`."""
+    # BLOQUE 76: the folder travels as an ARGUMENT, not inside the code
+    # string. Interpolating it meant a folder name could become code.
     code = (
-        "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) "
-        f"for p in pathlib.Path('{folder}').rglob('*.py')))"
+        "import pathlib, sys; "
+        "print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) "
+        "for p in pathlib.Path(sys.argv[1]).rglob('*.py')))"
     )
-    return run([PY, "-c", code])
+    return run([PY, "-c", code, folder])
 
 
 def pyfiles(folder: str) -> int:
     """Number of .py files under `folder`."""
-    out = run(
-        [
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            f"(Get-ChildItem -Recurse -Filter *.py '{folder}' | Measure-Object).Count",
-        ]
-    )
-    return int(out)
+    # BLOQUE 76: the same argument rule as `loc`, and the same count --
+    # the PowerShell pipeline it replaces (`Get-ChildItem -Recurse
+    # -Filter *.py`) counted the same files, but reached the folder
+    # through a command string.
+    code = "import pathlib, sys; print(sum(1 for p in pathlib.Path(sys.argv[1]).rglob('*.py')))"
+    return int(run([PY, "-c", code, folder]))
 
 
 def _sha256(path: Path) -> str:

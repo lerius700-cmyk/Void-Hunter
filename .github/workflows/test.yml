@@ -16,8 +16,15 @@ name: tests
 # flight can be checked without auto-firing a gate in the middle of
 # someone's work.
 #
-# The .build-venv pattern (uv-managed) installs pygame + numpy from
-# requirements.txt.
+# The dependencies are installed with the system pip, into the runner's
+# own Python. There is no uv-managed venv: the step that installed uv
+# was removed because nothing used it.
+
+# BLOQUE 76: the token is read-only and is NOT left in .git/config.
+# Without this, a pull request from a fork runs its own code in the
+# `pytest` and `gates` jobs with a token persisted on disk.
+permissions:
+  contents: read
 
 on:
   push:
@@ -56,14 +63,15 @@ jobs:
           # RANGE (base..HEAD), so it needs the base commit. The default
           # checkout is shallow (depth 1) and does not have it.
           fetch-depth: 0
+          # BLOQUE 76: the token does NOT stay in .git/config. This job
+          # runs the code of the branch it checks, and a pull request
+          # from a fork brings its own code.
+          persist-credentials: false
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Install uv
-        run: pip install uv
 
       - name: Install pygame + numpy + pytest via system pip
         # CI runs on Windows; we just need pygame + numpy. No PyInstaller
@@ -98,17 +106,25 @@ jobs:
     # reason that has nothing to do with the code. So the gates run where
     # the goldens were captured.
     #
-    # The timeout is 25 and not 15 because the Phase 2 gate's worst case is
-    # 1380 s (3 git calls of 60 s + 4 budgets of 300 s). The pytest job kills
-    # at 900 s; here the gate reports its OWN diagnosis instead of dying
-    # without one. A healthy run takes ~16 s.
+    # The timeout is 45 minutes and not 15 because the gate's budgets add
+    # up to 2340 s (39 min) when EVERY subprocess hangs: Phase 1 is 4 git
+    # calls of 60 s + mypy 300 s + the guards 300 s, Phase 2 is 3 git
+    # calls of 60 s + four 300 s budgets, and the runner itself spends two
+    # git calls of 60 s on the merge-base checks. 2340 s < 2700 s, so the
+    # gate's OWN diagnosis always lands before the job's wall clock -- a
+    # healthy run takes ~16 s.
+    #
+    # The pytest job kills at 900 s; this one reports its own diagnosis
+    # instead of dying without one.
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           # The FULL history: the gates measure the phase RANGE (base..HEAD).
           fetch-depth: 0
+          # BLOQUE 76: the token does NOT stay in .git/config.
+          persist-credentials: false
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5

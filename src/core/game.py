@@ -35,6 +35,7 @@ from src.ui.scenes import (
     VictoryScene,
 )
 from src.ui.gallery_scene import GallerySpriteScene, GalleryVideoScene  # BLOQUE 58.60
+from src.entities.enemies.boss import boss_for_act  # BLOQUE 76
 
 
 class Game:
@@ -73,7 +74,7 @@ class Game:
         # driver state mid-init.
         return (0, 0, 1920, 1080)
 
-    def __init__(self, easy: bool = False) -> None:
+    def __init__(self, easy: bool = False, act: int = 1) -> None:
         if not pygame.get_init():
             pygame.init()
         # BLOQUE 29: enable mouse + show cursor for mouse aiming
@@ -192,6 +193,14 @@ class Game:
         # (gameplay → boss → act_cleared). The new boss/act-cleared runtime
         # would otherwise start at 0, losing the player's accumulated score.
         self.session_score: int = 0
+        # BLOQUE 76: the act the game starts in. It used to be hardcoded
+        # to 1 in the two registrations below, so `main.py --act 2`
+        # printed "jumped to act 2" and ran ACT 1: the flag announced one
+        # act and the game played another. The act belongs here because
+        # the scenes are registered HERE -- and the runtime computes its
+        # wave index from the act at CONSTRUCTION time, so patching the
+        # act afterwards would leave the waves of the previous act.
+        self._act: int = act
         self._register_scenes()
         self._running: bool = True
         self._accumulator: float = 0.0
@@ -290,12 +299,12 @@ class Game:
         # from the title screen via S / V keys.
         self.scenes.register_scene(GameState.GALLERY_SPRITE, GallerySpriteScene(transition_to))
         self.scenes.register_scene(GameState.GALLERY_VIDEO, GalleryVideoScene(transition_to))
-        self.scenes.register_scene(GameState.ACT_INTRO, ActIntroScene(transition_to, act=1))
+        self.scenes.register_scene(GameState.ACT_INTRO, ActIntroScene(transition_to, act=self._act))
         # BLOQUE 58.46: pass session_score callbacks so the score carries
         # over between gameplay, boss, and act_cleared scenes.
         _register_with_back_ref(
             GameState.GAMEPLAY,
-            GameplayScene(transition_to, audio=self.audio,
+            GameplayScene(transition_to, act=self._act, audio=self.audio,
                           set_session_score=self._set_session_score),
         )
         # BLOQUE 58.8: enable procedural patterns if --patterns was used
@@ -309,7 +318,16 @@ class Game:
         # SUB_BOSS_INTRO. The previous versions did `AudioEngine()` in
         # on_enter, which re-initialized pygame.mixer and re-baked all
         # SFX + BGM (~1.2s freeze) right when the wave cleared.
-        self.scenes.register_scene(GameState.BOSS_INTRO, BossIntroScene(transition_to, audio=self.audio))
+        self.scenes.register_scene(
+            GameState.BOSS_INTRO,
+            # BLOQUE 76: the warning screen names the boss that walks in.
+            # It used to say the literal "BOSS", because the scene was
+            # registered without a name and the menu opened a path where
+            # the name matters. The name comes from the SAME map the
+            # runtime spawns the boss with.
+            BossIntroScene(transition_to, boss_name=boss_for_act(self._act).value.upper(),
+                           audio=self.audio),
+        )
         _register_with_back_ref(
             GameState.BOSS_FIGHT,
             BossFightScene(transition_to, act=1, audio=self.audio,

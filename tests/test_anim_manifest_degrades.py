@@ -294,3 +294,78 @@ def test_the_shape_error_is_a_manifest_error(
 
     with pytest.raises(manifest.ManifestError):
         manifest.load_set("goliath")
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 76: the clip's dir is ONE name inside the set.
+# ---------------------------------------------------------------------------
+def _write_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str) -> None:
+    set_dir = tmp_path / "goliath"
+    set_dir.mkdir(exist_ok=True)
+    (set_dir / "manifest.toml").write_text(body, encoding="utf-8")
+    monkeypatch.setattr(manifest, "_sets_root", lambda: tmp_path)
+
+
+@pytest.mark.parametrize(
+    "toml_dir",
+    [
+        '"../../.."',
+        '".."',
+        '"."',
+        '"sub/dir"',
+        '"sub\\\\dir"',  # TOML: the value is a single backslash
+    ],
+)
+def test_a_clip_dir_that_leaves_the_set_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, toml_dir: str
+):
+    """`clip.dir` is concatenated to the set's path.
+
+    To FIND the frames (src/anim/clip.py) and to WRITE the repaired ones
+    (tools/sprite_pipeline/repair.py). A manifest that declares
+    `dir = "../../.."` takes both outside the set the frame belongs to.
+    """
+    _write_manifest(
+        tmp_path,
+        monkeypatch,
+        '[meta]\nname = "GOLIATH"\n\n'
+        "[[clips]]\nid = \"idle\"\n"
+        f"dir = {toml_dir}\n"
+        "frames = 1\nfps = 10\nloop = true\n\n"
+        "[[parts]]\nid = \"body\"\ndraw = \"frames\"\n"
+        "pivot = \"centroid\"\nz = 0\n",
+    )
+    with pytest.raises(manifest.ManifestError):
+        manifest.load_set("goliath")
+
+
+def test_a_clip_dir_inside_the_set_is_accepted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The rule costs nothing: the shipped manifests declare plain names."""
+    _write_manifest(
+        tmp_path,
+        monkeypatch,
+        '[meta]\nname = "GOLIATH"\n\n'
+        "[[clips]]\nid = \"idle\"\n"
+        "dir = \"phase1_idle\"\n"
+        "frames = 1\nfps = 10\nloop = true\n\n"
+        "[[parts]]\nid = \"body\"\ndraw = \"frames\"\n"
+        "pivot = \"centroid\"\nz = 0\n",
+    )
+    loaded = manifest.load_set("goliath")
+    assert loaded is not None
+    assert loaded.clips["idle"].dir == "phase1_idle"
+
+
+def test_every_shipped_manifest_declares_a_single_name():
+    """The real manifests are inside the rule, and stay inside it."""
+    root = ROOT / "Assets" / "sprites"
+    for manifest_path in sorted(root.rglob("manifest.toml")):
+        set_name = manifest_path.parent.name
+        loaded = manifest.load_set(set_name, root=manifest_path.parent.parent)
+        assert loaded is not None, manifest_path
+        for clip in loaded.clips.values():
+            assert "/" not in clip.dir and "\\" not in clip.dir, (
+                f"{manifest_path}: the clip {clip.id!r} declares {clip.dir!r}"
+            )

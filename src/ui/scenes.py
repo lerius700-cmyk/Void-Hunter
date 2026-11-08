@@ -37,6 +37,7 @@ TransitionFn = Callable[[GameState], None]
 
 if TYPE_CHECKING:
     from src.audio.synth import AudioEngine
+    from src.entities.enemies.boss import BossId
     from src.systems.parallax import ParallaxBackground
 
 
@@ -574,28 +575,38 @@ class TitleScene(Scene):
                 return
             from src.systems.parallax import _STRIP_VARIANT_THEMES
             variants = len(_STRIP_VARIANT_THEMES)
-            delta = 0
-            if event.key in (pygame.K_1,):
-                delta = 0 - self._game.bg_variant_idx
-            elif event.key in (pygame.K_2,):
-                delta = 1 - self._game.bg_variant_idx
-            elif event.key in (pygame.K_3,):
-                delta = 2 - self._game.bg_variant_idx
-            elif event.key in (pygame.K_4,):
-                delta = 3 - self._game.bg_variant_idx
-            elif event.key in (pygame.K_LEFT, pygame.K_a):
-                delta = -1
-            elif event.key in (pygame.K_RIGHT, pygame.K_d):
-                delta = 1
-            if delta:
-                self._game.bg_variant_idx = (self._game.bg_variant_idx + delta) % variants
-                self._bg_variant_label_t = 1.2  # seconds the label stays on screen
-                # Apply the change to the legacy parallax fallback if
-                # the video is missing. Gameplay reads the choice from
-                # the Game object when its scene enters.
-                if self._bg is not None:
-                    self._bg.set_theme(_STRIP_VARIANT_THEMES[self._game.bg_variant_idx])
-                return
+            # BLOQUE 76: the back-reference is optional, the way every
+            # OTHER scene treats it. A TitleScene built without a Game
+            # (the tests build one) has nowhere to store the choice, so
+            # the keys that change the background do nothing -- instead of
+            # raising AttributeError in the middle of the event loop.
+            #
+            # The block is SKIPPED, not returned from: the key still has
+            # to reach the "any key starts the game" line below.
+            game = getattr(self, "_game", None)
+            if game is not None:
+                delta = 0
+                if event.key in (pygame.K_1,):
+                    delta = 0 - game.bg_variant_idx
+                elif event.key in (pygame.K_2,):
+                    delta = 1 - game.bg_variant_idx
+                elif event.key in (pygame.K_3,):
+                    delta = 2 - game.bg_variant_idx
+                elif event.key in (pygame.K_4,):
+                    delta = 3 - game.bg_variant_idx
+                elif event.key in (pygame.K_LEFT, pygame.K_a):
+                    delta = -1
+                elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                    delta = 1
+                if delta:
+                    game.bg_variant_idx = (game.bg_variant_idx + delta) % variants
+                    self._bg_variant_label_t = 1.2  # seconds the label stays on screen
+                    # Apply the change to the legacy parallax fallback if
+                    # the video is missing. Gameplay reads the choice from
+                    # the Game object when its scene enters.
+                    if self._bg is not None:
+                        self._bg.set_theme(_STRIP_VARIANT_THEMES[game.bg_variant_idx])
+                    return
             self._transition_to(GameState.CINEMATIC)
             return
         for event in pygame.event.get(pygame.MOUSEBUTTONDOWN):
@@ -1642,14 +1653,16 @@ class BossFightScene(Scene):
     def __init__(self, transition_to: "TransitionFn", act: int = 1,
                  audio: Optional["AudioEngine"] = None,
                  get_session_score: "Optional[Callable[[], int]]" = None,
-                 set_session_score: "Optional[Callable[[int], None]]" = None) -> None:
+                 set_session_score: "Optional[Callable[[int], None]]" = None,
+                 boss_id: Optional["BossId"] = None) -> None:
         self._transition_to = transition_to
         self._act = act
         # BLOQUE 58.46: callbacks for the cross-scene session score.
         self._get_session_score = get_session_score
         self._set_session_score = set_session_score
         from src.ui.gameplay_runtime import GameplayRuntime
-        self._rt = GameplayRuntime(transition_to, is_boss=True, act=act, audio=audio)
+        self._rt = GameplayRuntime(transition_to, is_boss=True, act=act, audio=audio,
+                                    boss_id=boss_id)
 
     def on_enter(self) -> None:
         # BLOQUE 73.6: apply the user-chosen background variant before
@@ -1663,6 +1676,14 @@ class BossFightScene(Scene):
             bg = getattr(self._rt, "_bg", None)
             if bg is not None:
                 bg.set_theme(_STRIP_VARIANT_THEMES[idx])
+        # BLOQUE 76: the RUNTIME needs the back-reference too, not only
+        # the scene. GameplayRuntime is not a Scene, so the injection that
+        # `_register_with_back_ref` does for scenes never reached it --
+        # the same trap BLOQUE 73.6 fixed for the gameplay scene, still
+        # open on the boss path. Today it is harmless (the boss draw
+        # ignores bg_mode); the day the boss path reads ANY field of the
+        # Game, `--boss` and the normal flow would diverge.
+        self._rt._game = game  # type: ignore[attr-defined]
         self._rt.on_enter()
         # BLOQUE 58.46: override the fresh scoring system with the player's
         # accumulated score from gameplay so the HUD doesn't reset to 0.

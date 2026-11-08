@@ -55,9 +55,20 @@ VALID_TRANSITIONS: dict[GameState, set[GameState]] = {
         GameState.ACT_CLEARED,
         GameState.GAME_OVER,
         GameState.PAUSE,
+        # BLOQUE 76: the pause screen advertises "C: CREDITS" and the
+        # scene asks for CREDITS. The table did not allow it, so the
+        # transition raised a StateError that the caller swallowed: the
+        # overlay was popped and NOTHING happened. The CreditsScene was
+        # registered all along.
+        GameState.CREDITS,
     },
     GameState.BOSS_INTRO: {GameState.BOSS_FIGHT, GameState.GAMEPLAY},
-    GameState.BOSS_FIGHT: {GameState.ACT_CLEARED, GameState.GAME_OVER, GameState.PAUSE},
+    GameState.BOSS_FIGHT: {
+        GameState.ACT_CLEARED,
+        GameState.GAME_OVER,
+        GameState.PAUSE,
+        GameState.CREDITS,  # BLOQUE 76: the same "C: CREDITS" from a boss fight
+    },
     GameState.ACT_CLEARED: {GameState.ACT_INTRO, GameState.VICTORY, GameState.TITLE},
     GameState.GAME_OVER: {GameState.TITLE, GameState.CREDITS},
     GameState.VICTORY: {GameState.CREDITS, GameState.TITLE},

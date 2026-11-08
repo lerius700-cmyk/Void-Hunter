@@ -132,26 +132,47 @@ GUARD_TESTS = (
     "tests/test_audit_runs_on_a_featureless_set.py",
 )
 
+# How many cases those guards are. The gate reads the junit XML and
+# requires EXACTLY this many, with zero failures, zero errors and ZERO
+# skips -- like its Phase 2 siblings (P2-G1, P2-G4) already do.
+#
+# BLOQUE 76: G13 used to be validated by the EXIT CODE alone. `pytest`
+# exits 0 when every case was SKIPPED, so a guard that stopped running
+# (a `pytestmark = pytest.mark.skipif(True, ...)` left behind, a missing
+# file, an import that swallows) left the gate green with the art check
+# never executed. A skipped test is not a pass -- the gate's own docstring
+# says so, and now it is enforced.
+#
+# The number is a PROMISE, not a snapshot: adding a case to a guard means
+# updating it here, and forgetting to update it makes the gate red with a
+# message that says exactly what happened.
+GUARD_TEST_CASES = 84
+
 # The budget of every subprocess the gate spawns. A subprocess that does not
 # finish inside its budget is a GATE FAILURE, not a crash.
 #
 # The budgets are sized so that the WHOLE gate fits inside the CI job's
-# budget (`timeout-minutes: 15` in .github/workflows/test.yml) even when
-# EVERY subprocess hangs: 4 git calls (4 x 60 s) + mypy (300 s) + the guards
-# (300 s) = 840 s < 900 s. That way the symptom a CI reader sees is the
-# gate's OWN documented failure -- "G13: the enemy guards are red: timed out
-# after 300s" -- and not the job's timeout with no diagnostic at all.
+# budget EVEN WHEN EVERY subprocess hangs. That way the symptom a CI reader
+# sees is the gate's OWN documented failure -- "G13: the enemy guards are
+# red: timed out after 300s" -- and not the job's timeout with no
+# diagnosis at all.
+#
+# The arithmetic, as of BLOQUE 76 (the job's clock is 45 minutes = 2700 s):
+#
+#   Phase 1   4 git x 60 s + mypy 300 s + guards 300 s   =  840 s
+#   Phase 2   3 git x 60 s + 4 x 300 s                    = 1380 s
+#   runner    2 git x 60 s (the merge-base checks)        =  120 s
+#                                                        --------
+#   worst case                                           = 2340 s  (39 min)
+#
+# 2340 s < 2700 s: the gate's own diagnosis ALWAYS lands before the job's
+# wall clock. When the sum was 2340 s against a 1500 s job, a hang could
+# still take the job down with no diagnosis -- the exact outcome these
+# budgets exist to prevent.
 #
 # A git call that takes a minute is hung (the healthy ones take
 # milliseconds), and the guards run in ~3 s (the art guard alone is 8 cases
 # with a 60 s budget each), so 300 s is a generous hang guard.
-#
-# The PHASE 2 budget does NOT fit inside that CI job: three git calls
-# (3 x 60 s) + four 300 s budgets (the golden pytest, the harness `--check`,
-# mypy and the layer-order pytest) = 1380 s > 900 s. The job's
-# `timeout-minutes` has to be raised to at least 25 minutes when the Phase 2
-# gate is wired into the CI -- see
-# docs/handoffs/HANDOFF-BLOQUE-75-PHASE2-2026-11-04.md, section 5.
 GIT_TIMEOUT_S = 60
 MYPY_TIMEOUT_S = 300
 GUARDS_TIMEOUT_S = 300
@@ -237,6 +258,27 @@ def _git(
 ) -> subprocess.CompletedProcess[str]:
     """Run a git command in the repository, with the gate's git budget."""
     return _run(["git", *args], GIT_TIMEOUT_S, cwd=cwd)
+
+
+def _range_commit_count(base: str, repo: Path | None = None) -> int | None:
+    """How many commits the phase range holds, or None if git cannot say.
+
+    The range is the gate's promise: "not one PNG byte changed inside the
+    phase". A range with ZERO commits measures nothing, so the gate would
+    report OK while the promise was never checked -- so the count is read
+    and the empty range is a failure.
+
+    None means git could not answer (an unresolvable base, a shallow
+    clone). That is NOT an empty range: the phase reports an unresolvable
+    base itself, with a better message than this one could give.
+    """
+    proc = _git(["rev-list", "--count", f"{base}..HEAD"], cwd=repo)
+    if proc.returncode != 0:
+        return None
+    try:
+        return int(proc.stdout.strip())
+    except ValueError:
+        return None
 
 
 def _goliath_assets_diff(
@@ -446,6 +488,33 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     base = resolve_base(args.base, args.phase)
 
+    # BLOQUE 76: an EMPTY range measures NOTHING.
+    #
+    # The range is how the gate sees a PNG committed INSIDE the phase:
+    # the working-tree check (`git diff HEAD`) is blind to it, and only
+    # `git diff base..HEAD` is not. With an empty range every range check
+    # has zero commits to look at, finds nothing to complain about, and
+    # the gate prints "GATE OK" for a phase it never looked at. The
+    # promise ("not one PNG byte changed inside the phase") would be
+    # UNCHECKED and the gate would still be green.
+    #
+    # This is checked FIRST, before any other check, because a gate that
+    # has to run everything before it can admit it looked at nothing is a
+    # gate that wastes the CI budget to learn it is blind.
+    count = _range_commit_count(base)
+    if count == 0:
+        return _print_verdict(
+            args.phase,
+            [
+                f"the phase range ({base}..HEAD) is EMPTY: it holds 0 "
+                "commits, so the range checks would measure NOTHING and the "
+                "gate would report OK without having checked the phase's "
+                "promise. Either the base constant is wrong, or the "
+                "phase's work is already merged and the base has to point "
+                "at the commit the phase started from"
+            ],
+        )
+
     if args.phase == 2:
         return _run_phase_2(base)
     return _run_phase_1(base)
@@ -631,20 +700,15 @@ def _run_phase_1(base: str) -> int:
         )
 
     # G13: the enemy guards are green.
-    proc = _run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            *GUARD_TESTS,
-            "-q",
-            "--no-header",
-        ],
-        GUARDS_TIMEOUT_S,
-    )
-    if proc.returncode != 0:
-        detail = _describe(proc)
-        failures.append(f"G13: the enemy guards are red:\n{detail[-4000:]}")
+    #
+    # The junit XML is READ, not the exit code: `pytest` exits 0 when
+    # every case was SKIPPED, and a skipped test is not a pass. The XML
+    # also carries the exact count, so a guard that stopped running is a
+    # failure with a diagnosis instead of a green gate.
+    for problem in _run_pytest_with_junit(
+        list(GUARD_TESTS), GUARD_TEST_CASES, GUARDS_TIMEOUT_S
+    ):
+        failures.append(f"G13: the enemy guards are red: {problem}")
 
     return _print_verdict(1, failures)
 

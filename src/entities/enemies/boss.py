@@ -33,6 +33,26 @@ class BossId(Enum):
     NEMESIS = "nemesis"
 
 
+# Which boss an ACT ends with. This map lives HERE, next to the enum it
+# names, because two places used to answer the question differently: the
+# runtime picked the boss from the act, and the boss-intro screen named
+# the one the act implied by hand.
+#
+# PHANTOM is not in the map: it comes out of the roguelike boss pool
+# (src/roguelike/boss_pool.py), not out of an act. Act 3's boss is
+# NEMESIS.
+BOSS_FOR_ACT: dict[int, BossId] = {
+    1: BossId.GOLIATH,
+    2: BossId.HYDRA,
+    3: BossId.NEMESIS,
+}
+
+
+def boss_for_act(act: int) -> BossId:
+    """The boss that closes `act`."""
+    return BOSS_FOR_ACT.get(act, BossId.GOLIATH)
+
+
 # Per-boss config
 @dataclass(frozen=True)
 class _BossConfig:

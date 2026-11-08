@@ -29,7 +29,7 @@ from src.core.settings import (
     INTERNAL_H, INTERNAL_W, FIXED_DT, PLAYER_CLICK_VS_HOLD_THRESHOLD_S,
 )
 from src.entities.enemies import EnemyKind, EnemyPool, Enemy
-from src.entities.enemies.boss import Boss, BossId, BossPool, BOSS_CONFIGS
+from src.entities.enemies.boss import Boss, BossId, BossPool, BOSS_CONFIGS, boss_for_act
 from src.entities.boss_spear import BossSpear
 from src.entities.player import Player, PlayerState
 from src.render.layer import DrawContext, LayerStack
@@ -279,11 +279,18 @@ class GameplayRuntime:
     """
 
     def __init__(self, transition_to: "TransitionFn", is_boss: bool = False, act: int = 1,
-                 audio: Optional["AudioEngine"] = None) -> None:
+                 audio: Optional["AudioEngine"] = None,
+                 boss_id: Optional[BossId] = None) -> None:
         self._transition_to = transition_to
         self._is_boss = is_boss
         self._act = act
         self._audio = audio  # shared AudioEngine; may be None (muted)
+        # BLOQUE 76: the boss can be CHOSEN, not just derived from the act.
+        # The act says which act the arena belongs to; the boss says which
+        # one walks in. Without this, `--boss phantom` could only ever
+        # spawn act 3's boss (NEMESIS) while ANNOUNCING PHANTOM, because
+        # PHANTOM comes out of the roguelike pool and not out of an act.
+        self._boss_id: Optional[BossId] = boss_id
 
         # Core
         self._player = Player()
@@ -565,11 +572,13 @@ class GameplayRuntime:
             self._particles.emit(kind_id, x, y, vx, vy, color=color)
 
     def _spawn_boss_for_act(self) -> None:
-        boss_id = {
-            1: BossId.GOLIATH,
-            2: BossId.HYDRA,
-            3: BossId.NEMESIS,  # PHANTOM + NEMESIS: default to final
-        }.get(self._act, BossId.GOLIATH)
+        # BLOQUE 76: a CHOSEN boss wins over the act's default. The act
+        # map below is the fallback for the normal flow, where the boss
+        # really is decided by the act.
+        if self._boss_id is not None:
+            boss_id = self._boss_id
+        else:
+            boss_id = boss_for_act(self._act)
         self._boss = self._bosses.spawn(boss_id)
         # BLOQUE 74: the clip's timing comes from the manifest, not from a
         # constant baked into the boss class.
