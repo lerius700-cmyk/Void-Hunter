@@ -28,7 +28,7 @@ state-machines).
 
 ---
 
-## 2. Los 3 CRITICAL (corregidos en esta ola)
+## 2. Los 3 CRITICAL (corregidos)
 
 ### 2.1 El gate pasaba en verde con un rango VACÍO
 
@@ -85,13 +85,13 @@ constructor (parchear el acto después dejaría las olas del acto anterior).
 
 | # | Archivo | Qué cambió |
 |---|---------|-----------|
-| 1 | `tools/sprite_pipeline/gate.py` | G13 lee el **junit XML** (exige 84 casos, 0 fallos, 0 errores, **0 skips**) en vez del exit code. `pytest` sale 0 si todo se skipea: un guard que deja de correr dejaba el gate verde. |
+| 1 | `tools/sprite_pipeline/gate.py` | G13 lee el **junit XML** (exige 84 casos, 0 fallos, 0 errores, **0 skips**) en vez del exit code. `pytest` sale 0 si todo se skipea: un guard que deja de correr dejaba el gate verde con el arte sin verificar. |
 | 2 | `tools/sprite_pipeline/gate.py` | Comentario del presupuesto corregido (decía `timeout-minutes: 15`). La aritmética real: 840 + 1380 + 120 = **2340 s**. |
-| 3 | `.github/workflows/test.yml` | `permissions: contents: read` + `persist-credentials: false` en los dos checkouts: el job corre código de la rama y el token no queda en `.git/config`. |
+| 3 | `.github/workflows/test.yml` | `permissions: contents: read` + `persist-credentials: false` en los dos checkouts: el job corre código de la rama y el token no debe quedar en `.git/config`. |
 | 4 | `.github/workflows/test.yml` | Borrado el paso **"Install uv"** (no lo usaba nadie) y el comentario `.build-venv` que mentía sobre él. |
 | 5 | `.github/workflows/test.yml` | El reloj del job `gates` pasa de 25 a **45 min**: 2340 s < 2700 s, así que el diagnóstico del gate SIEMPRE llega antes que el muro del job. |
 | 6 | `src/anim/manifest.py` | `clip.dir` se valida: tiene que ser **un nombre** dentro del set. Se concatenaba a la ruta para LEER los frames y para ESCRIBIR los reparados: un `dir = "../../.."` salía del set. |
-| 7 | `src/anim/clip.py` | La cache de superficies se indexa por `(clip_id, frame)` y no por `Path`: construir un `pathlib.Path` cuesta 4,25 µs (70× el lookup) y corría **por enemigo por frame** (12 ms/s de CPU al tope del juego). |
+| 7 | `src/anim/clip.py` | La cache de superficies se indexa por `(clip_id, frame)` y no por `Path`: construir un `pathlib.Path` cuesta 4,25 µs y corría **por enemigo por frame** (12 ms/s de CPU al tope del juego). El Path se construye solo en el miss. |
 | 8 | `tools/regen_status.py` | `BINARY_REL` se **deriva** de `VERSION` (una sola fuente). Antes estaban escritos dos veces y el comentario decía que había una. |
 | 9 | `tools/regen_status.py` | El parser de pytest cuenta los **errores** como fallos y nombra los tests que ERROREARON. "2 passed, 1 error" se leía como "2 pass, 0 fail" y el bloque afirmaba que la suite estaba verde. |
 | 10 | `tools/regen_status.py` | `loc()` y `pyfiles()` pasan el folder como **argumento**, no interpolado en el código ni en un `-Command` de PowerShell. |
@@ -106,11 +106,11 @@ constructor (parchear el acto después dejaría las olas del acto anterior).
 
 ---
 
-## 4. Verificación (en este árbol, working tree sin commitear)
+## 4. Verificación (en este árbol)
 
 | Check | Resultado |
 |-------|-----------|
-| `pytest tests/ --tb=short` | **3162 tests, 0 fallos, 0 errores, 7 skipped** (6 skipped + 1 xfailed) |
+| `pytest tests/ --tb=short` | **3172 tests, 0 fallos, 0 errores, 7 skipped** (6 skipped + 1 xfailed) |
 | `tools/sprite_pipeline/gate.py --phase 1` | `PHASE 1 GATE OK` (exit 0) |
 | `tools/sprite_pipeline/gate.py --phase 2` | `PHASE 2 GATE OK` (exit 0) |
 | `gate.py --phase 1 --base HEAD` | `PHASE 1 GATE FAILED` (exit 1) — la contraposición del 2.1 |
@@ -118,35 +118,84 @@ constructor (parchear el acto después dejaría las olas del acto anterior).
 | `main.py --check-pipeline` | 8 sets en `pivot=fixed scale=(1.05,1.05)`, `layers: 30`, exit 0 |
 | `main.py --boss phantom` | `jumped to PHANTOM (act 3)` |
 | `audit_sf_sm.py --perfil=lite` | **SF COMPLIANCE 7/7**, 0 findings |
+| CI sobre `bae957a` (run 42429125530) | `pytest` y `gates` en **success** |
 | R1 (arte) | 0 PNGs modificados |
 
 ---
 
-## 5. Decisiones que le pertenecen al usuario (NO se tomaron)
+## 5. Decisiones que le pertenecen al usuario
 
-### 5.1 El gate del CI no bloquea merges
-No hay branch protection en `bloquec-67-goliath-port` ni en `master`
-(HTTP 404 en la API). El gate corre y falla el job, pero un merge puede
-pasar sin él. Es el P1 abierto desde la revisión anterior.
+### 5.1 El gate del CI no bloquea merges — INSTALADO
+No había branch protection en `bloquec-67-goliath-port` ni en `master`
+(HTTP 404 en la API). El gate corría y fallaba el job, pero un merge podía
+pasar sin él. **Es el P1 abierto desde la revisión anterior.**
 
-### 5.2 El lowpass: 6,1 s de CPU bloqueante al entrar en GAMEPLAY
+**Hecho:** protección en **las dos ramas**, con `pytest` y `gates` como
+status checks **required** (`strict: false`), y `allow_force_pushes: false`
++ `allow_deletions: false` — el "no --force-push" del proyecto ahora lo
+impone GitHub, no la costumbre.
+
+`enforce_admins` quedó en **false**, a propósito: con `true` un push
+directo a la rama se rechaza (un commit nuevo no puede tener checks en
+verde antes de existir en la rama) y el flujo de pushes directos de esta
+línea queda trabado. Con `false` la puerta está en el camino de los
+**merges** (los PR), que es lo que el P1 pedía, y el owner conserva el
+push directo. Si algún día el flujo pasa a PRs, `enforce_admins` puede
+subir a `true`.
+
+### 5.2 El lowpass: 6,1 s de CPU bloqueante — DECIDIDO E IMPLEMENTADO
 El diff **sacó del bundle** el WAV filtrado (`_lp600.wav`, 63,9 MB) y lo
-pasa a calcular en runtime: `apply_lowpass_to_wav` es un bucle IIR por
+pasaba a calcular en runtime: `apply_lowpass_to_wav` es un bucle IIR por
 muestra en Python puro sobre un WAV de 91,4 MB → **6,18 s medidos**, y
-escribe 63,9 MB. El camino frío completo: 6,13 s + 63,9 MB.
-La 2ª corrida es instantánea (0,0003 s) porque hay cache, **pero si la
-carpeta del `.exe` no es escribible** (Program Files) el fallback escribe
-en `_MEIPASS`, que se borra al salir → **6,1 s + 63,9 MB en CADA sesión**.
-Opciones: (a) recalcular y publicar el WAV en el build (+63,9 MB de
-descarga, el estado anterior); (b) generarlo en un hilo al arrancar y
-bloquear la MÚSICA, no el frame; (c) dejarlo como está.
+escribe 63,9 MB. La 2ª corrida es instantánea (0,0003 s) porque hay cache,
+**pero si la carpeta del `.exe` no es escribible** (Program Files) el
+fallback escribe en `_MEIPASS`, que se borra al salir → **6,1 s + 63,9 MB
+en CADA sesión**.
 
-### 5.3 La AccessKey de Aliyun
+**Decisión del usuario:** generarlo en un hilo al arrancar, sin congelar
+el frame.
+
+**Hecho** (`src/audio/music.py`):
+- `_filtered_cache_lookup()` — el hilo principal sólo **busca**; nunca
+  genera. Un stat no congela el frame.
+- `_ensure_filtered_bgm()` — la generación (6,18 s), en un **worker
+  daemon** que sólo escribe un WAV y nunca toca pygame.
+- `update()` — llamado una vez por frame desde la escena de gameplay:
+  cuando la copia está lista, **se une al BGM en la posición en la que
+  está la canción** (`Channel.play(..., start=...)`), no en cero. Las dos
+  copias tienen que quedar alineadas: el pause es un intercambio de
+  volumen entre ellas.
+- `enter_pause_lowpass()` — exige que el canal filtrado **esté
+  reproduciendo**. Si la copia todavía no se unió, el pause pasa **sin
+  efecto** (la música sigue sonando sin filtrar). La alternativa —
+  silenciar el original y subir un canal vacío — sería SILENCIO.
+
+**Medido end-to-end** (`main.py --boss goliath --duration 5`, cache miss
+forzado con `VOID_HUNTER_LP_HZ`):
+
+| | tiempo total | congelamiento |
+|---|---|---|
+| base (copia ya cacheada, sin generación) | 8,23 s | — |
+| **antes** (generación en el hilo principal) | 14,35 s | **6,12 s** |
+| **después** (worker) | **8,79 s** | **0,56 s** (solo contención de CPU) |
+
+Los ~3,2 s restantes son el arranque propio del juego, no del lowpass.
+
+**Costo a conocer:** si el juego se cierra DURANTE la generación, el
+`.tmp.wav` a medio escribir queda en la cache (63,9 MB). La corrida
+siguiente con el mismo cutoff lo sobrescribe, así que el costo está
+acotado a un archivo temporal por cutoff.
+
+**Test:** `tests/test_lowpass_generation_is_backgrounded.py` (10 casos).
+Contraposición probada: con la generación de vuelta en el hilo principal,
+2 tests se ponen rojos (`play_gameplay_music took 1.50s`).
+
+### 5.3 La AccessKey de Aliyun — PENDIENTE DEL USUARIO
 El AccessKey **ID** `LTAI5t9dXq2sLrMZ8f1XfiFZ` quedó publicado en el
 historial de git (commit `7d315aa`) de un repo **público**. El *secret* no
 está en el repo y las URLs prefirmadas vencieron (403 verificado), así que
 no es explotable hoy — pero si esa clave sigue viva, hay que **rotarla**.
-Sacar la URL del árbol no la saca del historial.
+Sacar la URL del árbol (hecho) no la saca del historial.
 
 ---
 
@@ -176,17 +225,15 @@ Sacar la URL del árbol no la saca del historial.
    reutiliza un WAV filtrado obsoleto.
 8. Las actions del CI no están pineadas por SHA y las deps no están
    pineadas (`pillow>=10.0` es la nueva).
+9. El `.tmp.wav` de una generación interrumpida queda en la cache (63,9 MB).
+   Acotado a un archivo por cutoff, pero el presupuesto de disco no lo ve.
 
 ---
 
 ## 7. Cómo retomar
 
-El árbol está **sin commitear** en
-`F:\AI\MM\void-hunter\.worktrees\bloquec-67-goliath-port`. La ola completa
-son 18 archivos modificados + 2 nuevos. **No se commiteó** porque la regla
-del proyecto pide preguntar antes.
-
-Para verificar la ola desde cero:
+La ola quedó commiteada y pusheada en `bloquec-67-goliath-port`. Para
+verificarla desde cero:
 
 ```powershell
 cd F:\AI\MM\void-hunter\.worktrees\bloquec-67-goliath-port

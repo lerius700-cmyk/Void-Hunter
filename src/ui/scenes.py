@@ -1333,6 +1333,11 @@ class GameplayScene(Scene):
         self._rt.on_exit()
 
     def update(self, dt: float) -> None:
+        # BLOQUE 76: the filtered copy joins the BGM as soon as the
+        # background generation finishes, so the pause swap is instant.
+        # One flag check per frame.
+        from src.audio import music
+        music.update()
         self._rt.update(dt)
 
     def draw(self, target: pygame.Surface) -> None:
@@ -1711,6 +1716,10 @@ class BossFightScene(Scene):
         # ESC, which CONSUMED the entire event queue before the runtime saw
         # it — so B (missile) and LSHIFT (propulsion) silently failed in
         # the boss. Symptom: "solo dash funciona, ni misiles ni propulsor".
+        # BLOQUE 76: the boss arena plays the same gameplay BGM, so the
+        # filtered copy has to be able to join here too.
+        from src.audio import music
+        music.update()
         self._rt.update(dt)
 
     def draw(self, target: pygame.Surface) -> None:
