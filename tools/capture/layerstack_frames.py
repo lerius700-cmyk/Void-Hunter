@@ -72,6 +72,19 @@ sixth frame (`shake`) forces the runtime's trauma so the INTEGER shake
 is (8, 8), and it is the frame that proves the shake travels through
 the stack exactly once.
 
+THE FINGERPRINT (BLOQUE 76). Every capture writes a `SHA256SUMS` file
+NEXT TO the frames it wrote, in the `sha256sum` format: one line per
+photo, `<sha256>  <name>`. When the capture goes into
+`tools/golden/layerstack/`, that file IS the committed fingerprint of the
+committed proof, and it changes in the same commit as the photos: a
+deliberate change to the art is a VISIBLE diff (the old hash and the new
+hash, side by side), and a change nobody intended is a photo whose hash
+does not match the file. The gate reads the file and says so.
+
+The file describes EVERY photo of the directory, not only the ones this
+run captured: a partial capture (`--only hud`) still produces a complete
+fingerprint, so it cannot silently drop the other five.
+
 Usage:
     python tools/capture/layerstack_frames.py
         captures into the SCRATCH directory (the default `--out`), never
@@ -115,6 +128,12 @@ DT = 1.0 / 60.0
 
 # The committed golden frames: the proof itself.
 GOLDEN_DIR = ROOT / "tools" / "golden" / "layerstack"
+
+# The name of the fingerprint file that lives NEXT TO the frames (BLOQUE
+# 76). The format is the one of `sha256sum`: one line per photo,
+# `<sha256>  <name>`, with TWO spaces -- the format a human can read and
+# `sha256sum -c` can check.
+SUMS_NAME = "SHA256SUMS"
 
 # The default `--out`: a SCRATCH directory OUTSIDE the repository. The
 # proof fixtures must not be rewritable by a stray capture -- the default
@@ -306,6 +325,29 @@ def _release() -> None:
     _MOUSE_STATE[:] = [False, False, False]
 
 
+def write_sha256sums(out_dir: Path) -> Path:
+    """Write the fingerprint of the photos in `out_dir`, and return it.
+
+    The file describes EVERY photo of the directory, not only the ones
+    this run captured: a partial capture (`--only hud`) still produces a
+    complete fingerprint, so it cannot silently drop the other five.
+
+    The format is the one of `sha256sum` -- `<hash>  <name>`, two spaces
+    -- so a human can read it and `sha256sum -c` can check it. The lines
+    are LF-terminated: the file is committed, and a CRLF would make the
+    committed fingerprint depend on the machine that wrote it.
+    """
+    lines = [
+        f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}"
+        for path in sorted(out_dir.glob("*.png"))
+    ]
+    target = out_dir / SUMS_NAME
+    target.write_text(
+        "".join(f"{line}\n" for line in lines), encoding="utf-8", newline="\n"
+    )
+    return target
+
+
 def capture(out_dir: Path, only: str | None = None, force_shake: bool = False) -> dict[str, str]:
     """Capture the frames and return {name: md5}."""
     frames = _select_frames(only)
@@ -334,6 +376,12 @@ def capture(out_dir: Path, only: str | None = None, force_shake: bool = False) -
         path = out_dir / f"{name}.png"
         pygame.image.save(target, str(path))
         digests[name] = hashlib.md5(path.read_bytes()).hexdigest()
+    # BLOQUE 76: the frames carry their fingerprint. When the capture went
+    # into the committed proof, this file IS the committed fingerprint and
+    # it changes in the SAME commit as the photos: a deliberate change to
+    # the art is a visible diff, and an accidental one leaves the photo
+    # out of step with its hash.
+    write_sha256sums(out_dir)
     return digests
 
 
@@ -478,6 +526,11 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"WARNING: rewriting the committed proof fixtures in {args.out} "
                 "-- this is the only way to do it, and it is on purpose"
+            )
+            print(
+                f"         the {SUMS_NAME} of that directory is rewritten too: "
+                "the fingerprint changes in the same commit as the photos, "
+                "so a deliberate change to the art is a VISIBLE diff"
             )
         digests = capture(args.out, args.only, args.shake)
     except HarnessError as exc:

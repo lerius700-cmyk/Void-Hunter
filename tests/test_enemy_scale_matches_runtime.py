@@ -30,23 +30,19 @@ sys.path.insert(0, str(ROOT))
 from src.anim.anchors import AnchorSet
 from src.anim.clip import ClipPlayer
 from src.anim.manifest import Part, load_set
+from src.anim.sets import ENEMY_SETS
 from src.entities.enemies.enemy import Enemy, EnemyKind
 from src.ui.gameplay_runtime import GameplayRuntime
 
-ENEMY_SETS = (
-    "scout",
-    "cruiser",
-    "drone",
-    "heavy",
-    "kamikaze",
-    "sniper",
-    "turret",
-    # BLOQUE 75 (Task 8): the mine was MISSING here. Its art is 64x64 on
-    # a 64x64 canvas -- the only set whose scaled size (67x67) is not
-    # 33x33 -- and nothing pinned its scale, so deleting the line from
-    # its manifest left this whole file GREEN.
-    "mine_asteroid",
-)
+# BLOQUE 76: the canonical list of the enemy sets (the EXPECTATION of
+# `src/anim/sets.py`), imported and not written here.
+#
+# The mine was MISSING from this list once (BLOQUE 75, Task 8). Its art is
+# 64x64 on a 64x64 canvas -- the only set whose scaled size (67x67) is not
+# 33x33 -- and nothing pinned its scale, so deleting the line from its
+# manifest left this whole file GREEN. The list is canonical now, so the
+# mine cannot fall out of it again: it is a name in ONE place, and that
+# place is checked against the disk.
 
 # A set whose body part declares the runtime's scale. Its frame is 32x32,
 # exactly like the enemy art.

@@ -15,18 +15,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src.anim.manifest import load_set
+from src.anim.sets import ENEMY_SETS
 from src.entities.enemies.enemy import ENEMY_CONFIGS, EnemyKind
-
-ENEMY_SETS = (
-    "scout",
-    "cruiser",
-    "drone",
-    "heavy",
-    "kamikaze",
-    "sniper",
-    "turret",
-    "mine_asteroid",
-)
 
 
 @pytest.fixture(scope="module")

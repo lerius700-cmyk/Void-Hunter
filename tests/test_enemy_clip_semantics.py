@@ -16,16 +16,18 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src.anim.manifest import load_set
+from src.anim.sets import ENEMY_SETS
 from src.entities.enemies.enemy import Enemy
 
-ENEMY_SETS = (
-    "scout",
-    "cruiser",
-    "drone",
-    "heavy",
-    "kamikaze",
-    "sniper",
-    "turret",
+# BLOQUE 76: the list is DERIVED from the canonical one, not written
+# here. The mine is left out on purpose -- its clips are STATIC (no fps,
+# state clips instead of sequences) and it has its own tests at the
+# bottom of this file. Every OTHER set has the standard four clips, so a
+# set added to the canonical list is covered here automatically: if it
+# does not follow the standard semantics, this file says so instead of
+# skipping it in silence.
+STANDARD_CLIP_SETS = tuple(
+    name for name in ENEMY_SETS if name != "mine_asteroid"
 )
 
 
@@ -38,13 +40,13 @@ def test_the_runtime_fps_is_the_declared_fps(enemies_root: Path) -> None:
     # ANIMATION_FRAME_DURATION lives on the Enemy class, not at module level.
     runtime_fps = 1.0 / Enemy.ANIMATION_FRAME_DURATION
     assert runtime_fps == 12.5
-    for name in ENEMY_SETS:
+    for name in STANDARD_CLIP_SETS:
         anim_set = load_set(name, root=enemies_root)
         for clip in anim_set.clips.values():
             assert clip.fps == runtime_fps, f"{name}/{clip.id}"
 
 
-@pytest.mark.parametrize("name", ENEMY_SETS)
+@pytest.mark.parametrize("name", STANDARD_CLIP_SETS)
 def test_the_sequences_declare_what_the_runtime_does(enemies_root: Path, name: str) -> None:
     anim_set = load_set(name, root=enemies_root)
     idle = anim_set.clip("idle")

@@ -12,21 +12,37 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
 
-from regen_status import frozen_assets_verified
+from regen_status import BUNDLED_SETS, frozen_assets_verified
 
+# BLOQUE 76: the canonical list of the enemy sets (the EXPECTATION of
+# `src/anim/sets.py`) plus GOLIATH. This list is what the bundle HAS to
+# carry -- and `test_the_bundle_requirement_covers_every_canonical_set`
+# below holds `BUNDLED_SETS` to it, so dropping a set from the bundle
+# requirement is a failure and not a silent hole.
+from src.anim.sets import ENEMY_SETS
+
+BOSS_SET = "Assets/sprites/bosses/goliath"
 SETS = (
-    "Assets/sprites/bosses/goliath",
-    "Assets/sprites/enemies/cruiser",
-    "Assets/sprites/enemies/drone",
-    "Assets/sprites/enemies/heavy",
-    "Assets/sprites/enemies/kamikaze",
-    "Assets/sprites/enemies/mine_asteroid",
-    "Assets/sprites/enemies/scout",
-    "Assets/sprites/enemies/sniper",
-    "Assets/sprites/enemies/turret",
+    BOSS_SET,
+    *(f"Assets/sprites/enemies/{name}" for name in ENEMY_SETS),
 )
+
+
+def test_the_bundle_requirement_covers_every_canonical_set() -> None:
+    """The bundle has to carry the boss AND every canonical enemy set.
+
+    `BUNDLED_SETS` is derived from the canonical list, so this is close to
+    a tautology -- and that is the point: the assertion is that the
+    derivation did not lose a set on the way (a hand-written list could
+    drop one and nothing would say so).
+    """
+    assert set(BUNDLED_SETS) == set(SETS), (
+        "the bundle requirement does not cover exactly the canonical sets: "
+        f"{sorted(set(BUNDLED_SETS) ^ set(SETS))}"
+    )
 
 
 def _complete_entries() -> list[str]:

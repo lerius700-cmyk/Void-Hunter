@@ -23,6 +23,11 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from sprite_pipeline.sets import discover_sets, resolve_set, sets_roots
 
+# BLOQUE 76: the canonical list of the enemy sets (the EXPECTATION of
+# `src/anim/sets.py`), imported and not written here. The discovery is
+# checked AGAINST it: that is the anchor that keeps the discovery honest.
+from src.anim.sets import ENEMY_SETS
+
 
 @pytest.fixture(scope="module")
 def enemies_root() -> Path:
@@ -36,16 +41,7 @@ def test_the_two_roots_are_the_bosses_and_the_enemies():
 
 def test_the_enemy_sets_are_discovered(enemies_root):
     found = {p.name for p in discover_sets(enemies_root)}
-    assert found == {
-        "scout",
-        "cruiser",
-        "drone",
-        "heavy",
-        "kamikaze",
-        "sniper",
-        "turret",
-        "mine_asteroid",
-    }
+    assert found == set(ENEMY_SETS)
 
 
 def test_the_backup_directory_is_not_a_set(enemies_root):

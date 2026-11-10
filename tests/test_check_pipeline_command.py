@@ -31,10 +31,11 @@ sys.path.insert(0, str(ROOT))
 
 import main
 
-ENEMY_KINDS = (
-    "scout", "cruiser", "drone", "heavy",
-    "kamikaze", "sniper", "turret", "mine_asteroid",
-)
+# BLOQUE 76: the canonical list of the enemy sets (the EXPECTATION of
+# `src/anim/sets.py`), imported and not written here. The command has to
+# report exactly these -- a set that the command does not mention is a
+# set the bundle does not have to carry.
+from src.anim.sets import ENEMY_SETS as ENEMY_KINDS
 
 
 def test_the_command_reports_every_enemy_set() -> None:

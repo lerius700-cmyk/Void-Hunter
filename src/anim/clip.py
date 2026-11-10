@@ -8,8 +8,6 @@ depends on a constant hardcoded in the boss class.
 """
 from __future__ import annotations
 
-import functools
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +16,7 @@ import pygame
 from src.anim.anchors import AnchorSet, load_anchors
 from src.anim.manifest import AnimSet, Clip, Part, loaded_set
 from src.anim.parts import draw_part
+from src.anim.sets import enemies_root as _enemies_root
 
 
 @dataclass(frozen=True)
@@ -181,38 +180,13 @@ class ClipPlayer:
 # `Assets/sprites/bosses/<name>/`. `src/anim/manifest.py::_sets_root`
 # resolves only the bosses' root, and it is NOT changed: this is the one
 # place that knows BOTH roots, and it knows them separately.
-
-
-@functools.lru_cache(maxsize=1)
-def _enemies_root() -> Path:
-    """Where the enemy sets live.
-
-    The SAME probe the bosses use (`src/anim/manifest.py::_sets_root`),
-    for the other root:
-
-        running from source: <project root>/Assets/sprites/enemies
-        frozen (PyInstaller):  <_MEIPASS>/Assets/sprites/enemies
-
-    The probe is resolved on CALL, never at import time: a frozen build
-    never needs the source tree.
-
-    BLOQUE 75 (fix round 1): the resolution is MEMOIZED. The root was
-    re-resolved from the filesystem once per ENEMY, per FRAME -- the
-    player was cached but the root was not -- and the resolution costs
-    ~72-90 us on Windows. The cache keeps the "resolved on call"
-    property (the first call still happens at RUNTIME, so a frozen
-    build still reads `_MEIPASS`), and it collapses the cost to one
-    resolution per process.
-    """
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass:
-        return Path(meipass) / "Assets" / "sprites" / "enemies"
-    return (
-        Path(__file__).resolve().parent.parent.parent
-        / "Assets"
-        / "sprites"
-        / "enemies"
-    )
+#
+# BLOQUE 76: the ENEMIES probe moved to `src/anim/sets.py`, next to the
+# canonical list of the sets. It is an ALIAS, not a copy: the two names
+# are ONE function, with ONE cache, so the memoization the hot path
+# depends on is the memoization of the canonical one (and
+# `_enemies_root.cache_clear()` still works: the alias carries the
+# `cache_clear`/`cache_info` of the function it points at).
 
 
 # The player cache: one ClipPlayer per (kind, root). The manifest is

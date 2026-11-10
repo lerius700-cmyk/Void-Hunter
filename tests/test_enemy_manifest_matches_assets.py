@@ -21,16 +21,9 @@ sys.path.insert(0, str(ROOT))
 
 from src.anim.manifest import load_set
 
-ENEMY_SETS = (
-    "scout",
-    "cruiser",
-    "drone",
-    "heavy",
-    "kamikaze",
-    "sniper",
-    "turret",
-    "mine_asteroid",
-)
+# BLOQUE 76: the canonical list of the enemy sets (the EXPECTATION of
+# `src/anim/sets.py`), imported and not written here.
+from src.anim.sets import ENEMY_SETS
 
 
 @pytest.fixture(scope="module")

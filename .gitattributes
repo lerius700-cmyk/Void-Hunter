@@ -12,3 +12,12 @@
 # renormalise every tracked file and touch the worktrees of the agents
 # working on this repo in parallel.
 *.toml text eol=lf
+
+# BLOQUE 76: the fingerprint of the golden frames is TEXT too, and it has
+# the same problem for the same reason: with `core.autocrlf=true` it
+# would be checked out with CRLF on Windows and with LF elsewhere, and the
+# file is COMMITTED as the record of what the proof is. A committed record
+# whose bytes depend on the machine is not a record.
+#
+# The scope stays narrow for the same reason the rule above does.
+tools/golden/layerstack/SHA256SUMS text eol=lf

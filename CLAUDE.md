@@ -2,9 +2,9 @@
 
 **Perfil SF/SM:** Lite
 **Schema target:** `.synapse` 2.2.0 (acepta 2.1.0 legacy)
-**Versión actual:** v1.9.0 (BLOQUE 75 — pipeline de sprites + motor de capas del frame; línea v1.4.0 + GOLIATH + menú post-cinematica)
+**Versión actual:** v1.9.0 (BLOQUE 75 — pipeline de sprites + motor de capas del frame; línea v1.4.0 + GOLIATH + menú post-cinematica) · BLOQUE 76 en curso (la lista canónica de los sets + las fotos con huella)
 **Tipo:** CODE (Python + pygame 2.6, stdlib only + numpy para lowpass audio)
-**Test count:** 3,123 pass + 0 fail + 1 xfail (fallo conocido) + 6 skipped (3,130 total)
+**Test count:** 3,179 pass + 0 fail + 1 xfail (fallo conocido) + 6 skipped (3,186 total)
 
 ---
 
@@ -211,6 +211,11 @@ máquina**. Reglas:
 3. **El repo es el único canal.** Si el próximo agente lo necesita, está
    commiteado y enrutado en `CONTEXT.md`. La carpeta `.worktrees/_srcrefs/`
    es scratch por agente: **no es un canal** y no se versiona.
+   El prompt que produce el spec de este diseño (y la ruta de todo lo que
+   sigue) está en
+   `docs/superpowers/prompts/2026-10-29-bloque-75-migration-spec-prompt.md`,
+   y su spec en
+   `docs/superpowers/specs/2026-10-29-agent-context-handoff-design.md`.
 4. **El estado vive en tres lugares, en este orden de autoridad:** los
    commits (la verdad) → el handoff de `docs/handoffs/` (el resumen legible)
    → el `.synapse` (el puntero). El `.synapse` lleva **rutas**, no
@@ -219,16 +224,23 @@ máquina**. Reglas:
    `Select-String -Path CLAUDE.md -Pattern 'Versión actual'`. Si la versión
    no es la esperada, estás en la línea equivocada.
 
-### Estado actual (2026-10-29)
+### Estado actual (2026-11-10)
 
 | Línea | Versión | Qué es |
 |---|---|---|
 | `bloquec-67-goliath-port` | **v1.9.0** | La línea de release (BLOQUE 74: pipeline de sprites; BLOQUE 75: motor de capas del frame). **Base del trabajo nuevo.** |
+| `bloquec-76-contenido` | v1.9.0 + BLOQUE 76 | **En curso.** La lista canónica de los sets y las fotos con huella. En el worktree `.worktrees/bloquec-76-contenido`, **sin commitear** (esperando al usuario). |
 | `master` | v1.6.3 | Línea vieja. 8 commits sin pushear. **No tocar.** |
 
-**Próximo BLOQUE:** 75 — migración del pipeline de sprites (2 fases con
-gate). El prompt que produce su spec está en
-`docs/superpowers/prompts/2026-10-29-bloque-75-migration-spec-prompt.md`.
+**Próximo BLOQUE:** 76 — contenido de primera clase: la lista canónica de
+los 8 sets de enemigos (con la puerta del gate) y las 6 fotos de referencia
+del frame con huella digital. El spec está en
+`docs/superpowers/specs/2026-11-10-bloque-76-contenido-de-primera-clase-design.md`
+y la ejecución en `docs/handoffs/HANDOFF-BLOQUE-76-CONTENIDO-PRIMERA-CLASE-2026-11-10.md`.
+
+**Después del 76:** partir `gameplay_runtime.py` (6.700 líneas, 57 métodos
+`_draw_`), que depende de la decisión de alcance del owner
+(`docs/bloques/BLOQUE_75_CHECKLIST.md` §P4).
 
 ---
 
@@ -254,19 +266,19 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 
 | Métrica | Valor | Fuente (Truth Anchor) |
 |---------|-------|------------------------|
-| Líneas de código (src/) | 30357 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
-| Archivos Python (src/) | 96 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
-| Tests (tests/) | 3.165 pass + 0 fail + 1 xfail (fallo conocido) + 6 skipped (3.172 total) | `python -m pytest tests/ --tb=no` |
-| LOC tests/ | 31788 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
+| Líneas de código (src/) | 30493 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
+| Archivos Python (src/) | 97 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
+| Tests (tests/) | 3.179 pass + 0 fail + 1 xfail (fallo conocido) + 6 skipped (3.186 total) | `python -m pytest tests/ --tb=no` |
+| LOC tests/ | 32146 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
 | Silos SF+SM | 9 (Lite) | `Get-ChildItem docs -Directory \| Measure-Object` |
 | Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
 | Versión | v1.9.0 (BLOQUE 75 — pipeline de sprites + motor de capas del frame) | `python -c "import sys; sys.path.insert(0,'tools'); from regen_status import VERSION; print(VERSION)"` |
-| Rama | bloquec-67-goliath-port | `git branch --show-current` |
+| Rama | bloquec-76-contenido (en curso; la línea de release es bloquec-67-goliath-port) | `git branch --show-current` |
 | Remote | github.com/lerius700-cmyk/Void-Hunter | `git remote -v` |
 | Build .exe | **reconstruido** para v1.9.0 (220.2 MB) en `dist/void-hunter-v1.9.0.exe` — el path congelado (`<_MEIPASS>/Assets/sprites`) verificado con los 9 sets (GOLIATH + 8 enemigos), manifest y anchors dentro del bundle; SHA256 `C64CAD63D5107F8331BC112AB08B4FE1261ADF58939603916745AB9AD641617B` | `Get-Item dist/void-hunter-v1.9.0.exe` (raiz del repo) |
 | Peso del arbol trackeado | 205.0 MB | `python tools/repo_budget.py` |
 | Salida de build (dist/) | 720.1 MB | `python tools/repo_budget.py` |
-| Historia (.git/) | 507.0 MB | `python tools/repo_budget.py` |
+| Historia (.git/) | 351.1 MB | `python tools/repo_budget.py` |
 | Tiles Asteroid Approach | 6 PNG (320×480) en `Assets/background/tiles/act1/` | `Get-ChildItem Assets/background/tiles/act1/*.png` |
 | Frames GOLIATH | 60 PNG (6 anim × 10) en `Assets/sprites/bosses/goliath/` | `Get-ChildItem Assets/sprites/bosses/goliath/*/frame_*.png` |
 | Manifiesto + anclas de GOLIATH | 1 `manifest.toml` (spec) + 1 `anchors.toml` (horneado) | `Get-ChildItem Assets/sprites/bosses/goliath/*.toml` |
@@ -349,3 +361,14 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
   - **Para quien desarrolla**: los manifests de enemigos pasaron a ser load-bearing — un build que no los lleve caería al camino viejo sin ningún error (el juego correría, los enemigos se verían, y nada lo reportaría). Con esta release eso se verifica adentro del propio binario: `--check-pipeline` sale con exit 0 y reporta los ocho sets en `pivot=fixed scale=(1.05, 1.05)` y `layers: 30`.
   - **El cierre de la entrega**: `tools/sprite_pipeline/gate_ci.py` decide qué gates aplican a la rama y los corre (Fase 1 `G1..G13`, Fase 2 `P2-G1..P2-G6`), y el CI de la línea de release corre los dos en `windows-latest`. El bundle congelado se verifica contra los nueve sets: el binario de la v1.8.1 llevaba 1 de 9, este lleva los 9.
   - **Suite**: 3.130 tests, 0 fallos (3.123 pass + 6 skipped + 1 xfail) y los dos gates `GATE OK`.
+- **2026-11-10 (BLOQUE 76 — contenido de primera clase: la lista canónica de los sets y las fotos con huella)** — Worktree `.worktrees/bloquec-76-contenido`, rama `bloquec-76-contenido`, sobre `bloquec-67-goliath-port` @ `a0c6f6f`. **Sin bump de versión y sin reconstruir el `.exe`**: no cambia ni un píxel del bundle.
+  - **La lista de los 8 sets de enemigos deja de estar escrita en 14 archivos** y pasa a estar en **UNO**: `src/anim/sets.py`, con **DOS verdades que no se mezclan** — `ENEMY_SETS` (la **expectativa**, hardcodeada, porque si fuera derivada del disco el gate no tendría contra qué comparar) y `discover_enemy_sets()` (el **descubrimiento**, memoizado, que es lo que pregunta el runtime). La **puerta** que las une es `enemy_sets_mismatch()`, y el gate la exige: **G0**.
+  - **Los consumidores se reparten**: el gate usa las dos, `--check-pipeline` y `BUNDLED_SETS` usan la expectativa, el runtime usa el descubrimiento (dibuja lo que hay; si un set falta en el bundle, el enemigo cae al procedural, que es la degradación que ya existía), y los 10 archivos de test que parametrizaban sobre los 8 dejaron de hardcodear la lista.
+  - **La sonda de la raíz de enemigos tiene UNA definición** (`src/anim/sets.py::enemies_root`); `src/anim/clip.py` la re-exporta como alias y `tools/sprite_pipeline/sets.py` re-exporta `_is_set` (la **misma función**, no una copia).
+  - **Las 6 fotos de referencia del frame llevan huella**: `tools/golden/layerstack/SHA256SUMS` (versionado, formato `sha256sum`, LF) con el SHA256 de cada foto. El harness escribe el archivo junto a las fotos; el check compara. Un cambio **deliberado** del arte muestra el hash viejo y el nuevo en el diff; uno **accidental** deja la foto sin su hash y el gate se pone rojo.
+  - **Un test nuevo garantiza que la lista esté en un solo lugar** (`tests/test_enemy_sets_are_canonical.py`, con AST): recorre `src/`, `tools/`, `tests/` y `main.py` y falla si algún otro archivo declara la lista.
+  - **Las dos contraposiciones, ejecutadas a mano y con la salida real en el handoff**: (1) un set en disco sin declarar → el gate se pone rojo y **lo nombra** (`G0: … : zz_test_set`); (2) una foto cambiada sin actualizar el `SHA256SUMS` → el gate se pone rojo **con los dos hashes**. La primera contraposición **encontró un defecto que el spec no tenía**: el gate crasheaba con el `FileNotFoundError` del auditor en vez de dictaminar; ahora `G1`/`G2` reportan el fallo.
+  - **Un defecto del spec que el test nuevo encontró**: la lista estaba escrita en **14** archivos, no en 13 — el décimo archivo de test (`test_enemy_clip_semantics.py`) también la tenía y quedó derivado de la canónica.
+  - **Suite**: 3.186 tests, 0 fallos (3.179 pass + 6 skipped + 1 xfail) y los dos gates `GATE OK`. **R1**: 0 PNGs modificados. `audit_sf_sm` 7/7.
+  - **Handoff**: `docs/handoffs/HANDOFF-BLOQUE-76-CONTENIDO-PRIMERA-CLASE-2026-11-10.md`. **Spec**: `docs/superpowers/specs/2026-11-10-bloque-76-contenido-de-primera-clase-design.md`.
+  - STATUS:GENERATED regenerado: 30,493 LOC / 97 files en `src/`, 32,146 LOC en `tests/`, 3,186 tests, 9 silos. (La fila de `Historia (.git/)` bajó de 507,0 a 351,1 MB: la cifra commiteada estaba **vieja**, y el generador la midió contra el `.git` real.)

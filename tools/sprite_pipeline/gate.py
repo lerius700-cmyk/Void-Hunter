@@ -51,6 +51,11 @@ for _entry in (str(ROOT), str(ROOT / "tools")):
 import pygame  # noqa: E402
 
 from src.anim.manifest import load_set  # noqa: E402
+from src.anim.sets import (  # noqa: E402
+    ENEMY_SETS,
+    discover_enemy_sets,
+    enemy_sets_mismatch,
+)
 from sprite_pipeline import ensure_display  # noqa: E402
 from sprite_pipeline.audit import (  # noqa: E402
     FAIL_STATES,
@@ -59,16 +64,15 @@ from sprite_pipeline.audit import (  # noqa: E402
 )
 from sprite_pipeline.sets import discover_sets  # noqa: E402
 
-ENEMY_SETS = (
-    "scout",
-    "cruiser",
-    "drone",
-    "heavy",
-    "kamikaze",
-    "sniper",
-    "turret",
-    "mine_asteroid",
-)
+# BLOQUE 76: the list of the enemy sets is NOT written here any more. It
+# lives in `src/anim/sets.py` -- the EXPECTATION -- and it is imported, not
+# copied: a copy is a second truth that can go stale in silence, and the
+# gate is exactly the place that must not be stale.
+#
+# `ENEMY_SETS` is the EXPECTATION (what the repo must have);
+# `discover_enemy_sets()` is the DISCOVERY (what is on disk). The gate
+# asks BOTH: it audits what is there, and the G0 door demands that the two
+# coincide.
 
 # The base commit of Phase 1: the HEAD of the base branch when the phase
 # started, already merged into this branch. The gate measures the RANGE
@@ -527,15 +531,59 @@ def _run_phase_1(base: str) -> int:
 
     failures: list[str] = []
 
+    # G0 (BLOQUE 76): the DOOR. The EXPECTATION and the DISCOVERY have to
+    # coincide.
+    #
+    # Without this door, a set added to the disk (with its art, its
+    # manifest and its anchors) is a PASSENGER: the gate never audits it,
+    # the runtime never draws it, `--check-pipeline` never reports it and
+    # the bundle never demands it -- and the gate is GREEN. A new enemy
+    # (BOMBER) is exactly that case.
+    #
+    # The door runs BEFORE the audit: auditing a list that does not match
+    # the disk would audit the wrong thing.
+    mismatch = enemy_sets_mismatch()
+    if mismatch["faltan_en_disco"]:
+        failures.append(
+            "G0: hay sets declarados que no estan en disco: "
+            + ", ".join(mismatch["faltan_en_disco"])
+        )
+    if mismatch["sobran_en_disco"]:
+        failures.append(
+            "G0: hay sets en disco que no estan declarados en ENEMY_SETS "
+            "(src/anim/sets.py): " + ", ".join(mismatch["sobran_en_disco"])
+        )
+
+    # The gate audits the DISCOVERY: whatever is on disk gets audited,
+    # including a set that was never declared (the gate already failed on
+    # G0 for that one, and auditing it anyway says MORE about it).
+    #
+    # It audits the EXPECTATION too: a set that is declared but has no art
+    # on disk is audited as well, so the failure says "the manifest does
+    # not load" and not only "it is not on disk". The union audits EVERY
+    # set that either side knows about: no set is left unaudited, whichever
+    # side of the door it is on.
+    sets_to_audit = sorted(set(discover_enemy_sets()) | set(ENEMY_SETS))
+
     # G1: every enemy set audits clean.
     enemies_root = ROOT / "Assets" / "sprites" / "enemies"
-    for name in ENEMY_SETS:
+    for name in sets_to_audit:
         try:
             anim_set = load_set(name, root=enemies_root)
         except (OSError, ValueError) as exc:
             failures.append(f"G1 {name}: the manifest does not load: {exc}")
             continue
-        findings, _ = audit_set(anim_set)
+        try:
+            findings, _ = audit_set(anim_set)
+        except (OSError, ValueError) as exc:
+            # BLOQUE 76: a set on disk whose ART is missing (or unreadable)
+            # must be a FAILURE, never a traceback. The gate's own
+            # contract is to report every failure and print the verdict;
+            # a crash instead of a verdict takes the diagnosis away from
+            # whoever has to fix it -- and the set with no art is exactly
+            # the case the door exists to catch.
+            failures.append(f"G1 {name}: the set could not be audited: {exc}")
+            continue
         for finding in findings:
             if finding.state in FAIL_STATES:
                 failures.append(
@@ -549,13 +597,17 @@ def _run_phase_1(base: str) -> int:
                 )
 
     # G2 + G3: the anchors are fresh and deterministic.
-    for name in ENEMY_SETS:
+    for name in sets_to_audit:
         try:
             anim_set = load_set(name, root=enemies_root)
         except (OSError, ValueError) as exc:
             failures.append(f"G2 {name}: the manifest does not load: {exc}")
             continue
-        _, measurements = audit_set(anim_set)
+        try:
+            _, measurements = audit_set(anim_set)
+        except (OSError, ValueError) as exc:
+            failures.append(f"G2 {name}: the set could not be audited: {exc}")
+            continue
         rendered = render_anchors_toml(anim_set, measurements)
         path = enemies_root / name / "anchors.toml"
         if not path.is_file():
@@ -636,10 +688,24 @@ def _run_phase_1(base: str) -> int:
     for line in goliath_failures:
         failures.append(f"G5 goliath: {line}")
 
-    # G6: discovery finds exactly the 8 sets.
+    # G6 (BLOQUE 76): the pipeline's OWN discovery and the CANONICAL
+    # discovery agree.
+    #
+    # They are two implementations of the same rule -- "a directory is a set
+    # iff it holds a manifest.toml and its name does not start with _" --
+    # and they share the definition by re-export, so they cannot drift.
+    # This check says so out loud: a divergence would mean the pipeline
+    # audits a different set than the game draws, and the drift would be
+    # silent.
+    #
+    # (The door that compares the disk against the EXPECTATION is G0.)
     found = {p.name for p in discover_sets(enemies_root)}
-    if found != set(ENEMY_SETS):
-        failures.append(f"G6: discovery found {sorted(found)}")
+    canonical = set(discover_enemy_sets())
+    if found != canonical:
+        failures.append(
+            f"G6: the pipeline's discovery found {sorted(found)} but the "
+            f"canonical discovery found {sorted(canonical)}"
+        )
 
     # G9: the type gate. mypy must RUN and report ZERO errors.
     mypy_cmd = _mypy_command()

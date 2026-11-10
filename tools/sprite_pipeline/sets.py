@@ -13,15 +13,26 @@ naming rule does not live here.
 
 The two roots are probed in order: the bosses first (GOLIATH), then the
 enemies. The frozen build resolves the same way: the bundle is extracted to
-`_MEIPASS` and the Assets are read from THERE. (Today `tools/` is not
-bundled and nothing in `src/` imports this package, so that branch cannot
-execute in a shipped .exe yet -- the probe matches
-`src/anim/manifest.py::_sets_root()` so the two stay identical.)
+`_MEIPASS` and the Assets are read from THERE.
+
+BLOQUE 76: "is a set" and the ENEMIES probe now live in ONE place --
+`src/anim/sets.py`, next to the canonical list of the enemy sets. This
+module keeps its own API (`sets_roots()`, `resolve_set()`, `discover_sets()`)
+for the six tests and the CLIs that use it, and RE-EXPORTS the definition
+instead of repeating it: two copies of "is a set" are two truths that can
+drift, and the drift would be silent -- the pipeline would discover a set
+the game does not draw, or the other way round.
 """
 from __future__ import annotations
 
 import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.anim.sets import _is_set, enemies_root  # noqa: E402
 
 SET_DIR_NAMES = ("bosses", "enemies")
 
@@ -43,24 +54,14 @@ def sets_roots() -> list[Path]:
     """Every directory that HOLDS sets, in resolution order.
 
     The frozen bundle has no project root: the assets are read from
-    `_MEIPASS`. This is the same probe `src/anim/manifest.py::_sets_root`
-    uses, extended to the second root.
+    `_MEIPASS`. The ENEMIES root is the CANONICAL one --
+    `src.anim.sets.enemies_root()` -- so there is ONE probe for it, the
+    same one the runtime uses. The BOSSES root is the other one, and
+    `src/anim/manifest.py::_sets_root` owns it.
     """
     meipass = getattr(sys, "_MEIPASS", None)
     base = Path(meipass) if meipass else _project_root()
-    return [base / "Assets" / "sprites" / name for name in SET_DIR_NAMES]
-
-
-def _is_set(path: Path) -> bool:
-    """ONE definition of "is a set", shared by the two entry points.
-
-    A directory is a set iff its name does not start with "_" and it holds
-    a `manifest.toml`. The manifest is NOT parsed here: discovery must not
-    raise on a broken one -- the loader degrades to None for that.
-    """
-    if path.name.startswith("_"):
-        return False
-    return (path / "manifest.toml").is_file()
+    return [base / "Assets" / "sprites" / SET_DIR_NAMES[0], enemies_root()]
 
 
 def resolve_set(name: str, root: Path | None = None) -> Path:

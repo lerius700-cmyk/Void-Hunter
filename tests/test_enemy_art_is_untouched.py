@@ -21,16 +21,11 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from sprite_pipeline.sets import discover_sets
 
-ENEMY_SETS = (
-    "scout",
-    "cruiser",
-    "drone",
-    "heavy",
-    "kamikaze",
-    "sniper",
-    "turret",
-    "mine_asteroid",
-)
+# BLOQUE 76: the list of the sets is NOT written here any more. It is the
+# CANONICAL one -- the EXPECTATION of `src/anim/sets.py` -- imported, not
+# copied. A copy is a second truth that can go stale in silence, and this
+# file is one of the guards that has to notice.
+from src.anim.sets import ENEMY_SETS
 
 # The pipeline is an offline tool: it has to finish. A hung run would eat
 # CI's whole timeout budget with no diagnostic. The house pattern is
@@ -89,8 +84,9 @@ def test_the_fix_run_changes_no_png(tmp_path: Path, name: str) -> None:
     assert after == before, f"{name}: the --fix run rewrote a PNG"
 
 
-def test_the_repository_ships_exactly_the_eight_enemy_sets() -> None:
-    """The shipped tree is not a scratch pad: it holds exactly 8 sets."""
+def test_the_repository_ships_exactly_the_canonical_enemy_sets() -> None:
+    """The shipped tree is not a scratch pad: it holds exactly the sets
+    the canonical list declares."""
     enemies_root = ROOT / "Assets" / "sprites" / "enemies"
     found = {p.name for p in discover_sets(enemies_root)}
     assert found == set(ENEMY_SETS)

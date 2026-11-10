@@ -253,15 +253,17 @@ def _pipeline_report(root: Path | None = None) -> tuple[int, list[str]]:
     """
     try:
         from src.anim.clip import load_player_for_kind
+        from src.anim.sets import ENEMY_SETS
         from src.ui.gameplay_layers import LAYER_BODIES
         from src.ui.gameplay_runtime import GameplayRuntime
     except ImportError as exc:
         return 1, [f"the pipeline modules could not be imported: {exc}"]
 
-    kinds = (
-        "scout", "cruiser", "drone", "heavy",
-        "kamikaze", "sniper", "turret", "mine_asteroid",
-    )
+    # BLOQUE 76: the sets this command reports are the CANONICAL ones --
+    # the EXPECTATION of `src/anim/sets.py`, not a list written here. A
+    # set declared there and missing from the bundle has to be reported as
+    # missing, and a set missing from that list is not a set of this game.
+    kinds = ENEMY_SETS
     # The frames have to be READABLE, not just declared: the runtime
     # falls back for a missing PNG exactly like it does for a missing
     # manifest, and a check that only reads the `.toml` files would say

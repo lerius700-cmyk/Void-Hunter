@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Optional, Tuple
 
 import pygame
 
+from src.anim.sets import enemy_set_lookup
 from src.core.settings import (
     BOSS_FALLBACK_KILLS, BOSS_FALLBACK_TIMEOUT_S, BOSS_FAST_TRIGGER_S,
     INTERNAL_H, INTERNAL_W, FIXED_DT, PLAYER_CLICK_VS_HOLD_THRESHOLD_S,
@@ -5305,20 +5306,33 @@ class GameplayRuntime:
         frame_00.png, byte-equal to the new 64x64 round.png) is
         returned. The red flash is applied separately in
         ``_draw_enemy_scaled``.
+
+        BLOQUE 76: "does this kind have a set?" is asked to the
+        DISCOVERY -- the sets that are on disk -- not to a list written
+        here. The runtime draws what EXISTS: a set that is missing from
+        the bundle degrades to the procedural enemy, which is the
+        behaviour that already existed, and a set that was added to the
+        disk is drawn without anybody editing this file.
         """
         from src.ui.scenes import _load_sprite
         from src.entities.enemies.enemy import EnemyKind
         kind_value = e.kind.value if hasattr(e.kind, "value") else str(e.kind)
-        if kind_value not in {"scout", "cruiser", "heavy", "kamikaze",
-                              "drone", "sniper", "turret",
-                              "mine_asteroid"}:
+        if kind_value not in enemy_set_lookup():
             return None
         # BLOQUE 59: try the new per-frame animation path first
         if hasattr(e, "animation_path") and e.animation_path:
             anim_sprite = _load_sprite(e.animation_path)
             if anim_sprite is not None:
                 return anim_sprite
-        # Fallback to the legacy single-frame path
+        # Fallback to the legacy single-frame path.
+        #
+        # BLOQUE 76: this map stays a LITERAL on purpose. It answers a
+        # DIFFERENT question -- "which kinds have a single-frame PNG?" --
+        # not "which sets exist?" (that one is the canonical list, and it
+        # is the DISCOVERY that decides above). Folding them together
+        # would couple two facts that change for different reasons: a
+        # kind can have a set and no legacy PNG (the mine), and the legacy
+        # PNG can outlive the set.
         filename = {
             "scout":    "enemy_scout.png",
             "cruiser":  "enemy_cruiser.png",

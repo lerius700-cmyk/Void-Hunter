@@ -52,8 +52,13 @@ from pathlib import Path
 # The weight of the repository, and the ceilings it has to stay under.
 # See tools/repo_budget.py and tests/test_repo_budget.py.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+# The repository root gives `src.anim.sets`: the CANONICAL list of the
+# enemy sets (BLOQUE 76). It is the tree THIS TOOL LIVES IN, not the cwd.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from repo_budget import measure as measure_budget
 from repo_budget import repo_root
+
+from src.anim.sets import ENEMY_SETS
 
 # The tree this tool belongs to. NOT a hardcoded path: the repository is
 # worked on by more than one agent, each in its own worktree, and a
@@ -224,16 +229,15 @@ def _bundle_entries(exe: Path) -> list[str]:
 # only GOLIATH's two files were checked, so a bundle with the boss's
 # manifest and none of the enemies' would have passed, and the enemies
 # would have fallen back silently.
+#
+# BLOQUE 76: the eight enemies are NOT written here any more. They come
+# from the CANONICAL list -- the EXPECTATION of `src/anim/sets.py` -- plus
+# GOLIATH, the boss. A bundle that carries the eight sets of the
+# expectation is the bundle this game needs; a set written here and
+# nowhere else is a set the game does not know about.
 BUNDLED_SETS = (
     "Assets/sprites/bosses/goliath",
-    "Assets/sprites/enemies/cruiser",
-    "Assets/sprites/enemies/drone",
-    "Assets/sprites/enemies/heavy",
-    "Assets/sprites/enemies/kamikaze",
-    "Assets/sprites/enemies/mine_asteroid",
-    "Assets/sprites/enemies/scout",
-    "Assets/sprites/enemies/sniper",
-    "Assets/sprites/enemies/turret",
+    *(f"Assets/sprites/enemies/{name}" for name in ENEMY_SETS),
 )
 
 

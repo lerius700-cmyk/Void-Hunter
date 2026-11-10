@@ -29,20 +29,17 @@ ENEMY_ROOT = ROOT / "Assets" / "sprites" / "enemies"
 # added later is then covered automatically instead of being silently
 # uncovered.
 #
-# `KNOWN_SETS` is the cross-check that keeps the discovery honest. Without
-# it, a discovery that returned nothing would make the tests below pass
-# VACUOUSLY (the loop body would never run). With it, a known set that
-# disappears is a failure -- and a NEW set still needs no edit here.
-KNOWN_SETS = (
-    "scout",
-    "cruiser",
-    "drone",
-    "heavy",
-    "kamikaze",
-    "sniper",
-    "turret",
-    "mine_asteroid",
-)
+# `CANONICAL_SETS` is the cross-check that keeps the discovery honest.
+# Without it, a discovery that returned nothing would make the tests
+# below pass VACUOUSLY (the loop body would never run). With it, a known
+# set that disappears is a failure -- and a NEW set still needs no edit
+# here.
+#
+# BLOQUE 76: the cross-check is the CANONICAL list -- the EXPECTATION of
+# `src/anim/sets.py` -- imported, not written here. It used to be a
+# second hard-coded copy of the eight names, and a copy is a second truth
+# that can drift from the first one in silence.
+from src.anim.sets import ENEMY_SETS as CANONICAL_SETS
 
 ENEMY_SETS = tuple(sorted(path.name for path in discover_sets(ENEMY_ROOT)))
 
@@ -62,9 +59,9 @@ def enemies_root() -> Path:
 
 
 def test_the_enemy_sets_are_discovered():
-    """The discovery must find the known sets -- and must find SOME."""
+    """The discovery must find the canonical sets -- and must find SOME."""
     assert ENEMY_SETS, "no enemy set was discovered under the enemies root"
-    missing = sorted(set(KNOWN_SETS) - set(ENEMY_SETS))
+    missing = sorted(set(CANONICAL_SETS) - set(ENEMY_SETS))
     assert not missing, f"the discovery lost these sets: {missing}"
 
 

@@ -25,6 +25,7 @@ import os
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
+import hashlib
 import subprocess
 import sys
 from pathlib import Path
@@ -35,6 +36,34 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 GOLDEN = ROOT / "tools" / "golden" / "layerstack"
 HARNESS = ROOT / "tools" / "capture" / "layerstack_frames.py"
+
+# BLOQUE 76: the fingerprint of the committed proof. One line per photo,
+# `<sha256>  <name>` -- the format of `sha256sum`.
+SUMS = GOLDEN / "SHA256SUMS"
+
+
+def read_sums(path: Path) -> dict[str, str]:
+    """The fingerprint file as {name: sha256}.
+
+    The parser is written HERE, and not taken from the harness that
+    writes the file: a test that checks the file with the same code that
+    produced it cannot see a format both of them got wrong.
+    """
+    entries: dict[str, str] = {}
+    for number, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        if not line.strip():
+            continue
+        digest, separator, name = line.partition("  ")
+        assert separator, (
+            f"{path.name}:{number}: the line is not in the sha256sum format "
+            f"(<hash>  <name>): {line!r}"
+        )
+        assert len(digest) == 64, f"{path.name}:{number}: not a sha256: {digest!r}"
+        assert name not in entries, f"{path.name}:{number}: {name} appears twice"
+        entries[name] = digest
+    return entries
 
 
 @pytest.fixture(scope="module")
@@ -57,6 +86,31 @@ def display():
 def test_the_frame_is_pixel_identical(tmp_path, name, display):
     if not (GOLDEN / f"{name}.png").is_file():
         pytest.skip(f"no golden frame for {name}")
+    # BLOQUE 76: the photo has to carry its FINGERPRINT. This is inside
+    # the pixel test on purpose: the gate runs THIS test (P2-G1) with the
+    # junit XML, so a photo whose hash does not match the committed
+    # SHA256SUMS turns the GATE red -- and the gate is where the promise
+    # has to be enforced.
+    #
+    # The pixel comparison below cannot see this: a photo can be
+    # re-encoded (same pixels, different bytes) and the comparison stays
+    # green while the proof itself changed underneath.
+    assert SUMS.is_file(), (
+        f"{SUMS} is missing: the committed proof has no fingerprint, so a "
+        "change to the photos could not be told apart from a deliberate one"
+    )
+    entries = read_sums(SUMS)
+    assert f"{name}.png" in entries, (
+        f"{name}: there is no fingerprint for this photo in {SUMS.name}: "
+        "the photo was not derived from the source"
+    )
+    on_disk = hashlib.sha256((GOLDEN / f"{name}.png").read_bytes()).hexdigest()
+    assert entries[f"{name}.png"] == on_disk, (
+        f"{name}: the fingerprint does not match the committed photo "
+        f"({entries[f'{name}.png']} != {on_disk}). Either the photo was edited or "
+        "re-generated without updating the SHA256SUMS: regenerate it and "
+        f"commit {SUMS.name} together with the photo"
+    )
     proc = subprocess.run(
         [
             sys.executable,
@@ -85,6 +139,75 @@ def pygame_pixels(path: Path):
     surf = pygame.image.load(str(path)).convert_alpha()
     return tuple(surf.get_at((x, y))[:3] for y in range(surf.get_height())
                  for x in range(surf.get_width()))
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 76: the THIRD proof. The photos carry a FINGERPRINT.
+#
+# The six goldens above prove that the PICTURE did not move. They cannot
+# prove that the committed FILE did not move: a PNG can be re-encoded
+# (same pixels, different bytes) and the comparison stays green while the
+# proof underneath changed. The fingerprint file is what tells a
+# deliberate change (the photo AND its hash change, in the same commit)
+# from an accidental one (the photo changes and the hash does not).
+# ---------------------------------------------------------------------------
+
+
+def test_the_fingerprint_covers_every_committed_photo() -> None:
+    """Every committed photo has an entry, and there is no stale entry."""
+    assert SUMS.is_file(), f"{SUMS} is missing"
+    entries = read_sums(SUMS)
+    photos = {path.name for path in GOLDEN.glob("*.png")}
+    assert photos, "there is no committed photo to fingerprint"
+    missing = sorted(photos - set(entries))
+    assert not missing, f"these photos have no fingerprint: {missing}"
+    stale = sorted(set(entries) - photos)
+    assert not stale, f"the fingerprint names photos that do not exist: {stale}"
+
+
+def test_the_fingerprint_matches_the_committed_photos() -> None:
+    """Every committed photo's hash is the one in the fingerprint file."""
+    entries = read_sums(SUMS)
+    for name, digest in sorted(entries.items()):
+        path = GOLDEN / name
+        assert path.is_file(), f"{name}: the fingerprint names a missing photo"
+        on_disk = hashlib.sha256(path.read_bytes()).hexdigest()
+        assert digest == on_disk, f"{name}: the fingerprint does not match the photo"
+
+
+def test_the_harness_writes_the_fingerprint_of_what_it_captures(tmp_path) -> None:
+    """The harness leaves a fingerprint next to the frames it wrote.
+
+    This is the half of the guarantee that the committed file cannot
+    prove: that the fingerprint is WRITTEN at all. A capture that wrote
+    the photos and no fingerprint would leave the committed proof without
+    a way to be regenerated on purpose.
+    """
+    proc = subprocess.run(
+        [sys.executable, str(HARNESS), "--out", str(tmp_path), "--only", "hud"],
+        capture_output=True,
+        text=True,
+        cwd=str(ROOT),
+        timeout=300,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    written = tmp_path / "SHA256SUMS"
+    assert written.is_file(), (
+        f"the harness wrote the frames and no {written.name}: a capture that "
+        "leaves no fingerprint is a capture nobody can tell apart from an "
+        "accidental one"
+    )
+    entries = read_sums(written)
+    assert "hud.png" in entries, entries
+    on_disk = hashlib.sha256((tmp_path / "hud.png").read_bytes()).hexdigest()
+    assert entries["hud.png"] == on_disk
+
+
+def test_the_fingerprint_file_is_lf() -> None:
+    """The committed fingerprint is LF, so it does not depend on the
+    machine that wrote it."""
+    raw = SUMS.read_bytes()
+    assert b"\r\n" not in raw, "the SHA256SUMS has CRLF line endings"
 
 
 # ---------------------------------------------------------------------------
