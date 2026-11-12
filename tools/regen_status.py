@@ -157,6 +157,26 @@ def parse_pytest_failures(output: str) -> list[str]:
     return re.findall(r"^(?:FAILED|ERROR) (\S+)", output, flags=re.MULTILINE)
 
 
+def parse_pytest_skips(output: str) -> list[str]:
+    """The DISTINCT reasons the suite skipped, in order.
+
+    BLOQUE 75 (follow-up 7.6): the row used to say "6 skipped" and
+    nothing else. Those 6 are the video-export tests, which skip when
+    `release/videos/` is not extracted -- so the number was the number
+    of the MACHINE, and a reader could not tell a test that was skipped
+    on purpose from a test that stopped running. Naming the reasons says
+    WHICH, and the row then declares its own condition.
+    """
+    reasons = re.findall(
+        r"^SKIPPED \[\d+\] \S+:\d+: (.+)$", output, flags=re.MULTILINE
+    )
+    distinct: list[str] = []
+    for reason in reasons:
+        if reason not in distinct:
+            distinct.append(reason)
+    return distinct
+
+
 def run(cmd: list[str], cwd: Path = ROOT) -> str:
     proc = subprocess.run(
         cmd,
@@ -169,8 +189,15 @@ def run(cmd: list[str], cwd: Path = ROOT) -> str:
     return proc.stdout.strip()
 
 
-def loc(folder: str) -> str:
-    """Lines of code under `folder`."""
+def loc(folder: Path) -> str:
+    """Lines of code under `folder`.
+
+    BLOQUE 75 (follow-up 7.a): the folder is an ABSOLUTE Path, not a
+    name relative to the cwd. The generator used to measure the tree it
+    LIVES in, which is not a thing a caller can ask about: the rows have
+    to be computable for ANY tree, or there is no way to check the
+    committed block against what the generator would say.
+    """
     # BLOQUE 76: the folder travels as an ARGUMENT, not inside the code
     # string. Interpolating it meant a folder name could become code.
     code = (
@@ -178,17 +205,17 @@ def loc(folder: str) -> str:
         "print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) "
         "for p in pathlib.Path(sys.argv[1]).rglob('*.py')))"
     )
-    return run([PY, "-c", code, folder])
+    return run([PY, "-c", code, str(folder)], cwd=folder)
 
 
-def pyfiles(folder: str) -> int:
+def pyfiles(folder: Path) -> int:
     """Number of .py files under `folder`."""
     # BLOQUE 76: the same argument rule as `loc`, and the same count --
     # the PowerShell pipeline it replaces (`Get-ChildItem -Recurse
     # -Filter *.py`) counted the same files, but reached the folder
     # through a command string.
     code = "import pathlib, sys; print(sum(1 for p in pathlib.Path(sys.argv[1]).rglob('*.py')))"
-    return int(run([PY, "-c", code, folder]))
+    return int(run([PY, "-c", code, str(folder)], cwd=folder))
 
 
 def _sha256(path: Path) -> str:
@@ -298,56 +325,23 @@ def _build_row(exe: Path, exe_mb: float) -> str:
     )
 
 
-def main() -> int:
-    text = CLAUDE.read_text(encoding="utf-8")
+def _tests_row(summary: str, output: str) -> str:
+    """The "Tests (tests/)" row, from the pytest summary and its output.
 
-    src_loc = loc("src")
-    tests_loc = loc("tests")
-    src_files = pyfiles("src")
-    n_silos = len([p for p in (ROOT / "docs").iterdir() if p.is_dir()])
-    budget = measure_budget(ROOT)
-
-    exe = REPO_ROOT / BINARY_REL
-    exe_mb = round(exe.stat().st_size / 1024 / 1024, 1) if exe.is_file() else 0
-
-    branch = run(["git", "branch", "--show-current"])
-    if branch != RELEASE_BRANCH:
-        # The block is a Spanish document: the value stays in Spanish.
-        branch = (
-            f"{branch} (en curso; la línea de release es {RELEASE_BRANCH})"
-        )
-
-    pytest = subprocess.run(
-        [PY, "-m", "pytest", "tests/", "--tb=no"],
-        cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    output = pytest.stdout.strip()
-    tail = output.splitlines()[-1] if output else ""
-    failed, passed, skipped = parse_pytest_summary(tail)
-    xfailed = parse_pytest_xfailed(tail)
+    BLOQUE 75 (follow-up 7.6): the skips are NAMED. The count alone was
+    the count of the machine -- the six video-export tests skip when
+    `release/videos/` is not extracted -- and a reader could not tell a
+    test that was skipped on purpose from a test that stopped running.
+    """
+    failed, passed, skipped = parse_pytest_summary(summary)
+    xfailed = parse_pytest_xfailed(summary)
     # The xfailed tests ARE part of the suite: the row's TEXT names them
     # ("+ N xfail (fallo conocido)"), so the total has to count them too.
     # Without this the parts of the row did not add up to its own total
     # -- 3.123 + 1 + 6 is 3.130, and the row used to say 3.129.
     total = failed + passed + skipped + xfailed
-    if total == 0:
-        print(f"could not read the pytest summary: {tail}")
-        return 1
     failure_ids = parse_pytest_failures(output)
     unknown = [f for f in failure_ids if f not in KNOWN_PREEXISTING_FAILURES]
-
-    print(f"src LOC={src_loc} files={src_files} | tests LOC={tests_loc}")
-    print(
-        f"suite: {passed} pass / {failed} fail / {skipped} skipped "
-        f"/ {xfailed} xfailed ({total})"
-    )
-    print(f"silos={n_silos} exe={exe_mb}MB branch={branch}")
-    if failure_ids:
-        print(f"failing: {', '.join(failure_ids)}")
 
     # The label says whether the failures are the KNOWN ones. A number
     # alone cannot tell a known failure from a new one, so the names are
@@ -361,35 +355,37 @@ def main() -> int:
     else:
         fail_label = f"{failed} fail pre-existente"
 
-    rows = {
-        "Líneas de código (src/)": f"{src_loc}",
-        "Archivos Python (src/)": f"{src_files}",
-        "Tests (tests/)": (
-            f"{passed:,} pass + {fail_label} + {skipped} skipped "
-            f"({total:,} total)"
-        ).replace(",", "."),
-        "LOC tests/": f"{tests_loc}",
-        "Silos SF+SM": f"{n_silos} (Lite)",
-        "Peso del arbol trackeado": f"{budget.tracked_mb:.1f} MB",
-        "Salida de build (dist/)": f"{budget.dist_mb:.1f} MB",
-        "Historia (.git/)": f"{budget.git_mb:.1f} MB",
-        # The version is a CONSTANT of this file, so the row is written
-        # from that constant. The row used to be written by hand and it
-        # contradicted its own anchor: it said v1.8.0 and named
-        # `git log --oneline -1`, which measures a COMMIT SUBJECT.
-        "Versión": f"{VERSION} ({RELEASE_NOTE})",
-        "Rama": branch,
-        "Build .exe": _build_row(exe, exe_mb),
-    }
+    skip_reasons = parse_pytest_skips(output)
+    skipped_label = f"{skipped} skipped"
+    if skip_reasons:
+        skipped_label += " (" + "; ".join(skip_reasons) + ")"
 
-    # The SOURCE column of a row is usually the command that measures the
-    # value, and it is preserved from the block. When the thing being
-    # measured MOVES, the source moves with it -- so the generator owns
-    # both columns for the rows whose subject moved.
-    sources = {
+    # The numbers are dotted ONE BY ONE: the whole-string replace used
+    # to do it also mangled the commas of a failure name.
+    return (
+        f"{passed:,} pass + {fail_label} + {skipped_label} ({total:,} total)"
+    ).replace(",", ".")
+
+
+def row_sources() -> dict[str, str]:
+    """The "Fuente" column: the command that measures each row.
+
+    BLOQUE 75 (follow-up 7.7): the anchor of the build row has to WORK
+    from the tree that carries the block -- and the block lives in a
+    worktree, where `Get-Item dist/...` resolves to a `dist/` that does
+    not exist. The anchor now asks the generator where the canonical
+    binary is, which is the same thing the "Versión" row does, and it
+    resolves from wherever the block is.
+    """
+    return {
         # RELATIVE to the repository root: an absolute path names one
         # machine and resolves nowhere else (the CI included).
-        "Build .exe": f"`Get-Item {BINARY_REL}` (raiz del repo)",
+        "Build .exe": (
+            "`python -c \"import sys; sys.path.insert(0,'tools'); "
+            "from regen_status import REPO_ROOT, BINARY_REL; "
+            "print(REPO_ROOT / BINARY_REL)\"` "
+            f"(`{BINARY_REL}`, en la raiz del repo)"
+        ),
         "Peso del arbol trackeado": "`python tools/repo_budget.py`",
         "Salida de build (dist/)": "`python tools/repo_budget.py`",
         "Historia (.git/)": "`python tools/repo_budget.py`",
@@ -403,7 +399,129 @@ def main() -> int:
             "`python -c \"import sys; sys.path.insert(0,'tools'); "
             "from regen_status import VERSION; print(VERSION)\"`"
         ),
+        # The row names the reasons the tests skipped: the count alone
+        # was the count of the machine.
+        "Tests (tests/)": "`python -m pytest tests/ --tb=no -rs`",
     }
+
+
+def rows_for(root: Path, summary: str | None = None) -> dict[str, str]:
+    """The rows of the STATUS block, computed from a tree.
+
+    PURE: it reads and it computes; it NEVER writes.
+
+    BLOQUE 75 (follow-up 7.a): the rows used to be computed inside
+    `main()`, which also WROTE the block. There was therefore no way to
+    ask "what would the generator say today?" without writing to the
+    repository -- and L7 forbids a test from writing there. A block that
+    is auto-generated and cannot be checked can lie with all the green
+    in the world.
+
+    `summary` is the pytest summary line the "Tests (tests/)" row is
+    built from, and `output` the whole pytest output (the skip reasons
+    come from it). None means the row is NOT computed: the caller that
+    wants it runs the suite. The freshness check does not run the suite
+    -- it compares that row against the COLLECTED count, which is fast
+    and executes nothing.
+    """
+    src_loc = loc(root / "src")
+    tests_loc = loc(root / "tests")
+    src_files = pyfiles(root / "src")
+    n_silos = len([p for p in (root / "docs").iterdir() if p.is_dir()])
+    budget = measure_budget(root)
+
+    exe = repo_root(root) / BINARY_REL
+    exe_mb = round(exe.stat().st_size / 1024 / 1024, 1) if exe.is_file() else 0
+
+    branch = run(["git", "branch", "--show-current"], cwd=root)
+    if branch != RELEASE_BRANCH:
+        # The block is a Spanish document: the value stays in Spanish.
+        branch = (
+            f"{branch} (en curso; la línea de release es {RELEASE_BRANCH})"
+        )
+
+    rows = {
+        "Líneas de código (src/)": f"{src_loc}",
+        "Archivos Python (src/)": f"{src_files}",
+        "LOC tests/": f"{tests_loc}",
+        "Silos SF+SM": f"{n_silos} (Lite)",
+        "Peso del arbol trackeado": f"{budget.tracked_mb:.1f} MB",
+        "Salida de build (dist/)": f"{budget.dist_mb:.1f} MB",
+        "Historia (.git/)": f"{budget.git_mb:.1f} MB",
+        # The version is a CONSTANT of this file, so the row is written
+        # from that constant. The row used to be written by hand and it
+        # contradicted its own anchor: it said v1.8.0 and named
+        # `git log --oneline -1`, which measures a COMMIT SUBJECT.
+        "Versión": f"{VERSION} ({RELEASE_NOTE})",
+        "Rama": branch,
+        "Build .exe": _build_row(exe, exe_mb),
+    }
+    return rows
+
+
+def _validate_target(root: Path) -> None:
+    """The tree the generator is about to WRITE has to be ours.
+
+    BLOQUE 75 (follow-up 4.6): `VH_WT` says WHICH tree to write, and
+    before this the tool believed it. A runner (or a mistyped variable)
+    could point the generator at a directory that has nothing to do
+    with this repository, and the tool would have written a STATUS block
+    into it.
+
+    The target has to be a TREE OF THIS REPOSITORY: a git checkout with
+    its own `CLAUDE.md`. That is what the override is FOR -- the other
+    worktree of the same repo -- and it is what makes the write safe.
+    """
+    if (root / "CLAUDE.md").is_file() and (root / ".git").exists():
+        return
+    raise SystemExit(
+        f"VH_WT={root} does not look like a tree of this repository: it "
+        "has no CLAUDE.md and no .git. The generator refuses to write a "
+        "STATUS block into a directory it does not own. Unset VH_WT to "
+        "write into the tree this tool lives in."
+    )
+
+
+def main() -> int:
+    _validate_target(ROOT)
+    text = CLAUDE.read_text(encoding="utf-8")
+
+    pytest = subprocess.run(
+        [PY, "-m", "pytest", "tests/", "--tb=no", "-rs"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    output = pytest.stdout.strip()
+    tail = output.splitlines()[-1] if output else ""
+    failed, passed, skipped = parse_pytest_summary(tail)
+    total = failed + passed + skipped + parse_pytest_xfailed(tail)
+    if total == 0:
+        print(f"could not read the pytest summary: {tail}")
+        return 1
+    failure_ids = parse_pytest_failures(output)
+
+    rows = rows_for(ROOT)
+    rows["Tests (tests/)"] = _tests_row(tail, output)
+
+    print(f"src LOC={rows['Líneas de código (src/)']} "
+          f"files={rows['Archivos Python (src/)']} | "
+          f"tests LOC={rows['LOC tests/']}")
+    print(
+        f"suite: {passed} pass / {failed} fail / {skipped} skipped "
+        f"/ {parse_pytest_xfailed(tail)} xfailed ({total})"
+    )
+    print(f"silos={rows['Silos SF+SM']} branch={rows['Rama']}")
+    if failure_ids:
+        print(f"failing: {', '.join(failure_ids)}")
+
+    # The SOURCE column of a row is usually the command that measures the
+    # value, and it is preserved from the block. When the thing being
+    # measured MOVES, the source moves with it -- so the generator owns
+    # both columns for the rows whose subject moved.
+    sources = row_sources()
 
     out: list[str] = []
     changed = 0

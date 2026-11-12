@@ -41,7 +41,36 @@ a = Analysis(
         # folder so the .exe stays small (~180 MB instead of ~230 MB).
         # The runtime needs: backgrounds, sprites, music .wav files.
         (str(PROJECT_ROOT / "Assets" / "background"), "Assets/background"),
-        (str(PROJECT_ROOT / "Assets" / "sprites"), "Assets/sprites"),
+        # BLOQUE 75 (follow-up 3.6): the sprites tree travels BY SUBTREE,
+        # and the STAGING area does not travel at all.
+        #
+        # `Assets/sprites/redesign/` holds 465 files (7.3 MB) of AI
+        # generation output: the sources that the dev tools under
+        # `tools/redesign_*/` post-process into the LIVE art. Nothing in
+        # `src/` opens it -- the game reads the post-processed frames --
+        # and it was 3.3% of every download of the .exe.
+        #
+        # The tree is taken BY SUBTREE so that the exclusion is DECLARED
+        # and not implicit, and `tests/test_build_spec_assets.py` proves
+        # that not one file of the tree is left behind: a subtree that
+        # somebody adds and forgets turns that test RED.
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "asteroids"), "Assets/sprites/asteroids"),
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "bosses"), "Assets/sprites/bosses"),
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "enemies"), "Assets/sprites/enemies"),
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "player_rotation"), "Assets/sprites/player_rotation"),
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "player_ships"), "Assets/sprites/player_ships"),
+        # The loose files of the sprites root: the player and the sub-boss.
+        # They are named one by one, and the coverage test is what says
+        # when a NEW one has to be added here.
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "player_charge_1.png"), "Assets/sprites"),
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "player_charge_2.png"), "Assets/sprites"),
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "player_charge_3.png"), "Assets/sprites"),
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "player_idle.png"), "Assets/sprites"),
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "player_propulsion.png"), "Assets/sprites"),
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "sub_boss_down.png"), "Assets/sprites"),
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "sub_boss_left.png"), "Assets/sprites"),
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "sub_boss_right.png"), "Assets/sprites"),
+        (str(PROJECT_ROOT / "Assets" / "sprites" / "sub_boss_up.png"), "Assets/sprites"),
         # BLOQUE 67: TODOS los archivos sueltos de la raiz de Assets/,
         # menos el cache del lowpass (*_lp*.wav), que se regenera solo en
         # runtime. Asi no se puede volver a colar un asset de la raiz sin
@@ -60,9 +89,11 @@ a = Analysis(
             for p in sorted((PROJECT_ROOT / "Assets").glob("*"))
             if p.is_file() and "_lp" not in p.name
         ],
-        # BLOQUE 59: per-frame enemy animation sprites (new layout
-        # Assets/sprites/enemies/<kind>/<animation>/frame_NN.png)
-        (str(PROJECT_ROOT / "Assets" / "sprites" / "enemies"), "Assets/sprites/enemies"),
+        # BLOQUE 59: the per-frame enemy animation sprites
+        # (Assets/sprites/enemies/<kind>/<animation>/frame_NN.png) are
+        # carried by the "enemies" subtree entry above. The entry this
+        # comment used to introduce is GONE: it was the same directory
+        # twice, and a duplicate is a second thing to forget.
         # BLOQUE 75: the lowpass-filtered BGM is NOT bundled. It is a
         # CACHE, not an asset: the game rebuilds it in a few seconds and
         # keeps it next to the executable (src/audio/lowpass_cache.py),

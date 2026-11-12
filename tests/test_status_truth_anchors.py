@@ -22,6 +22,7 @@ code.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -138,3 +139,41 @@ def test_the_build_artifact_is_there_when_this_machine_has_it():
     if not path.is_file():
         pytest.skip("this machine has no build artifact")
     assert path.stat().st_size > 0
+
+
+def _anchor_code(source: str) -> str:
+    """The python code of a `python -c "..."` anchor."""
+    match = re.search(r"`python -c \"(.*?)\"`", source)
+    assert match, f"the anchor is not a python command: {source!r}"
+    return match.group(1)
+
+
+def test_the_build_anchor_runs_from_the_tree_that_carries_the_block():
+    """The anchor has to WORK from where the block lives.
+
+    BLOQUE 75 (follow-up 7.7): the block lives in a WORKTREE, and the
+    anchor used to say `Get-Item dist/void-hunter-v1.9.0.exe` -- which
+    resolves to the WORKTREE's `dist/`, a directory that does not
+    exist there. The parenthetical "(raiz del repo)" said WHICH root,
+    but the command still did not run.
+
+    The anchor now asks the generator where the canonical binary is --
+    the same thing the "Versión" row does -- and it resolves from
+    wherever the block is.
+    """
+    rows = dict((metric, source) for metric, _, source in _status_rows())
+    code = _anchor_code(rows["Build .exe"])
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    printed = proc.stdout.strip()
+    assert printed, "the anchor printed nothing"
+    assert Path(printed).name == BINARY_REL.rsplit("/", 1)[-1], (
+        f"the anchor printed {printed!r}, which is not the canonical binary"
+    )

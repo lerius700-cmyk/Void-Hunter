@@ -204,7 +204,7 @@ def _cmd_check() -> int:
     return 0
 
 
-def _ensure_frame_display() -> None:
+def _ensure_frame_display() -> str | None:
     """A video surface, so the frames can actually be READ.
 
     `ClipPlayer.surface()` converts every frame with `convert_alpha()`,
@@ -216,13 +216,23 @@ def _ensure_frame_display() -> None:
     check must never open a window. `setdefault` RESPECTS a driver the
     caller already chose, so the headless guarantee is the DEFAULT, not
     an override -- a caller that set `SDL_VIDEODRIVER` keeps it.
+
+    BLOQUE 75 (follow-up 2.4): it returns the FAILURE, it does not raise.
+    None means the surface is ready; a string is the reason it could not
+    be created. A check that dies with a traceback does not exit with a
+    code anybody can act on, and the traceback says where the code died
+    instead of saying what the build is missing.
     """
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     import pygame
-    if not pygame.display.get_init():
-        pygame.display.init()
-    if pygame.display.get_surface() is None:
-        pygame.display.set_mode((1, 1))
+    try:
+        if not pygame.display.get_init():
+            pygame.display.init()
+        if pygame.display.get_surface() is None:
+            pygame.display.set_mode((1, 1))
+    except pygame.error as exc:
+        return f"the video surface could not be created: {exc}"
+    return None
 
 
 def _missing_frames(player: ClipPlayer) -> list[str]:
@@ -268,7 +278,13 @@ def _pipeline_report(root: Path | None = None) -> tuple[int, list[str]]:
     # falls back for a missing PNG exactly like it does for a missing
     # manifest, and a check that only reads the `.toml` files would say
     # OK about a build that quietly draws the old way.
-    _ensure_frame_display()
+    #
+    # BLOQUE 75 (follow-up 2.4): the surface is a PRECONDITION of the
+    # check, and a precondition that fails is a FAILURE with a reason --
+    # not a traceback that leaves the command without an exit code.
+    display_error = _ensure_frame_display()
+    if display_error:
+        return 1, [display_error]
     failures: list[str] = []
     print("VOID HUNTER pipeline check")
     for kind in kinds:

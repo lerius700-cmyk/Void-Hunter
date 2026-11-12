@@ -23,6 +23,7 @@ ran zero checks.
 """
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 from enum import Enum
@@ -138,10 +139,52 @@ def run_gate(
     return runner(["--phase", str(phase), "--base", resolved])
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+    """The CLI of the runner.
+
+    `--phase` names the phases to run (repeatable) and `--base` names the
+    commit the phase range starts at. Without either, the runner does
+    what the CI does: every phase, from the base of each one.
+    """
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--phase",
+        type=int,
+        action="append",
+        choices=PHASES,
+        help="run only this phase (repeatable); the default is every phase",
+    )
+    parser.add_argument(
+        "--base",
+        default=None,
+        help=(
+            "the commit the phase range starts at; the default is the base "
+            "of each phase (PHASE<n>_BASE, or the gate's own constant)"
+        ),
+    )
+    return parser.parse_args(argv)
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    repo: Path | None = None,
+    runner: Callable[[list[str]], int] | None = None,
+) -> int:
+    """Run the gates that apply to this branch.
+
+    `argv` is USED, not accepted and dropped. Before this, `main` took
+    arguments and ignored them: it ran every phase with the default base
+    whatever the caller asked for. A function whose arguments are a lie
+    is not a function -- and this one decides WHICH GATES RUN in the CI.
+
+    `repo` and `runner` exist for the test: the test drives the decision
+    without running the real gate.
+    """
+    args = _parse_args(argv)
+    target = ROOT if repo is None else repo
     code = 0
-    for phase in PHASES:
-        result = run_gate(phase, ROOT)
+    for phase in args.phase or PHASES:
+        result = run_gate(phase, target, runner=runner, base=args.base)
         if result != 0:
             code = result
     return code

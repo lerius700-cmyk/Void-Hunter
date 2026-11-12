@@ -266,19 +266,19 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 
 | Métrica | Valor | Fuente (Truth Anchor) |
 |---------|-------|------------------------|
-| Líneas de código (src/) | 30493 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
+| Líneas de código (src/) | 30505 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
 | Archivos Python (src/) | 97 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
-| Tests (tests/) | 3.179 pass + 0 fail + 1 xfail (fallo conocido) + 6 skipped (3.186 total) | `python -m pytest tests/ --tb=no` |
-| LOC tests/ | 32146 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
+| Tests (tests/) | 3.198 pass + 0 fail + 1 xfail (fallo conocido) + 6 skipped (release/videos/ not found) (3.205 total) | `python -m pytest tests/ --tb=no -rs` |
+| LOC tests/ | 32789 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
 | Silos SF+SM | 9 (Lite) | `Get-ChildItem docs -Directory \| Measure-Object` |
 | Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
 | Versión | v1.9.0 (BLOQUE 75 — pipeline de sprites + motor de capas del frame) | `python -c "import sys; sys.path.insert(0,'tools'); from regen_status import VERSION; print(VERSION)"` |
 | Rama | bloquec-76-contenido (en curso; la línea de release es bloquec-67-goliath-port) | `git branch --show-current` |
 | Remote | github.com/lerius700-cmyk/Void-Hunter | `git remote -v` |
-| Build .exe | **reconstruido** para v1.9.0 (220.2 MB) en `dist/void-hunter-v1.9.0.exe` — el path congelado (`<_MEIPASS>/Assets/sprites`) verificado con los 9 sets (GOLIATH + 8 enemigos), manifest y anchors dentro del bundle; SHA256 `C64CAD63D5107F8331BC112AB08B4FE1261ADF58939603916745AB9AD641617B` | `Get-Item dist/void-hunter-v1.9.0.exe` (raiz del repo) |
-| Peso del arbol trackeado | 205.0 MB | `python tools/repo_budget.py` |
+| Build .exe | **reconstruido** para v1.9.0 (220.2 MB) en `dist/void-hunter-v1.9.0.exe` — el path congelado (`<_MEIPASS>/Assets/sprites`) verificado con los 9 sets (GOLIATH + 8 enemigos), manifest y anchors dentro del bundle; SHA256 `C64CAD63D5107F8331BC112AB08B4FE1261ADF58939603916745AB9AD641617B` | `python -c "import sys; sys.path.insert(0,'tools'); from regen_status import REPO_ROOT, BINARY_REL; print(REPO_ROOT / BINARY_REL)"` (`dist/void-hunter-v1.9.0.exe`, en la raiz del repo) |
+| Peso del arbol trackeado | 205.1 MB | `python tools/repo_budget.py` |
 | Salida de build (dist/) | 720.1 MB | `python tools/repo_budget.py` |
-| Historia (.git/) | 351.1 MB | `python tools/repo_budget.py` |
+| Historia (.git/) | 351.3 MB | `python tools/repo_budget.py` |
 | Tiles Asteroid Approach | 6 PNG (320×480) en `Assets/background/tiles/act1/` | `Get-ChildItem Assets/background/tiles/act1/*.png` |
 | Frames GOLIATH | 60 PNG (6 anim × 10) en `Assets/sprites/bosses/goliath/` | `Get-ChildItem Assets/sprites/bosses/goliath/*/frame_*.png` |
 | Manifiesto + anclas de GOLIATH | 1 `manifest.toml` (spec) + 1 `anchors.toml` (horneado) | `Get-ChildItem Assets/sprites/bosses/goliath/*.toml` |
@@ -372,3 +372,16 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
   - **Suite**: 3.186 tests, 0 fallos (3.179 pass + 6 skipped + 1 xfail) y los dos gates `GATE OK`. **R1**: 0 PNGs modificados. `audit_sf_sm` 7/7.
   - **Handoff**: `docs/handoffs/HANDOFF-BLOQUE-76-CONTENIDO-PRIMERA-CLASE-2026-11-10.md`. **Spec**: `docs/superpowers/specs/2026-11-10-bloque-76-contenido-de-primera-clase-design.md`.
   - STATUS:GENERATED regenerado: 30,493 LOC / 97 files en `src/`, 32,146 LOC en `tests/`, 3,186 tests, 9 silos. (La fila de `Historia (.git/)` bajó de 507,0 a 351,1 MB: la cifra commiteada estaba **vieja**, y el generador la midió contra el `.git` real.)
+- **2026-11-11 (follow-ups del BLOQUE 75 — las puertas que no medían)** — Sobre la misma rama `bloquec-76-contenido`. 10 ítems del plan de las 22 follow-ups (`docs/superpowers/plans/2026-11-08-bloque-75-followups.md`), cada uno con su contraposición ejecutada.
+  - **2.1** — `gate_ci.main(argv)` **usaba** sus argumentos: acepta `--phase` y `--base` y tiene seam (`repo`, `runner`). Antes los aceptaba y los tiraba a la basura: quien decidía QUÉ GATES CORREN en el CI no podía decirlo.
+  - **2.4** — `_ensure_frame_display()` **devuelve el motivo** del fallo en vez de morir con un traceback; `_pipeline_report` lo convierte en exit 1 con mensaje.
+  - **3.2 / 3.3** — la regla de destino de `datas` ya no rechaza la entrada legítima `("Assets", "Assets")`, y los 3 tests de mutación **invocan la función principal** en vez de assertar sobre el predicado compartido.
+  - **3.6** — el bundle llevaba **7,3 MB** de archivos que nadie lee: `Assets/sprites/redesign/`, el staging area del pipeline (465 archivos, salidas de AI que post-procesan `tools/redesign_*/`; **nada en `src/` lo abre**). El árbol de sprites se toma ahora **por subárbol** y el staging no viaja. El agujero que eso abre (un subárbol nuevo sin declarar) lo cierra `test_every_sprite_file_is_carried_by_some_entry`: **cada archivo** del árbol tiene que estar cubierto por alguna entrada.
+  - **7.a** — el cálculo de las filas del STATUS salió a `rows_for(root)`, **puro** (lee y calcula; nunca escribe): así un test puede preguntar *"¿qué diría el generador hoy?"* sin escribir en el repo (L7). `tests/test_status_block_is_fresh.py` compara el bloque commiteado contra eso.
+  - **7.6** — la fila `Tests` **nombra los skips** (`+ 6 skipped (release/videos/ not found)`): el número era el de la máquina y no se distinguía un test salteado de uno que dejó de correr.
+  - **7.7** — el anchor de `Build .exe` **corre desde el árbol que lleva el bloque** (pregunta al generador dónde está el binario, como la fila `Versión`); antes decía `Get-Item dist/...`, que en un worktree resuelve a un `dist/` que no existe.
+  - **1.13** — el runtime **no tiene ninguna ruta absoluta**: el log del sub-boss se resuelve desde `Path(__file__)`. Antes caía en `D:/AI/void-hunter/logs/...`, la máquina de otro BLOQUE.
+  - **4.6** — el generador **se niega** a escribir si `VH_WT` no apunta a un árbol de este repo.
+  - **Suite**: 3.205 tests, 0 fallos (3.198 pass + 6 skipped + 1 xfail) y los dos gates `GATE OK`. **R1**: 0 PNGs modificados. `audit_sf_sm` 7/7.
+  - **Pendientes de tu OK** (tocan el repo compartido): 2.9 (el job `gates` es un no-op verde en `master`), 1.10 (borrar las ramas viejas) y 1.11 (`target_commitish` del release). **Pendientes con motivo escrito**: los 90 KB de 3.6 (excluirlos abriría un agujero en el bundle del jefe por el 0,04% de la descarga), 4.2, 4.3, 4.8 y la tanda 6.
+  - **Handoff**: `docs/handoffs/HANDOFF-BLOQUE-75-FOLLOWUPS-PUERTAS-2026-11-11.md`.

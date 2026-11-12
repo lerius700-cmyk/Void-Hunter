@@ -1698,17 +1698,29 @@ class GameplayRuntime:
         # With the 4-5s warning scene, the player has time to look up
         # and see the full dart before it descends.
         e = self._enemies.spawn(EnemyKind.SUB_BOSS, rand_x, 20.0)
-        import os
+        # BLOQUE 75 (follow-up 1.13): the log path is resolved from THIS
+        # module, not from an absolute path of another machine. The
+        # fallback used to be `D:/AI/void-hunter/logs/...`: a drive that
+        # does not exist on most machines, and on the machine where it
+        # DOES exist it points at a DIFFERENT project -- so the log of a
+        # sub-boss spawn landed in somebody else's tree. The log of this
+        # tree belongs to this tree.
         try:
-            log_path = os.path.join(os.getcwd(), "logs", "_sub_boss.log")
-            with open(log_path, "a", encoding="utf-8") as _f:
-                _f.write(f"spawned SUB_BOSS at ({rand_x:.1f}, 20.0) chain.elapsed={self._level1_chain.elapsed_s if self._level1_chain else -1:.1f}s cwd={os.getcwd()}\n")
-        except Exception as exc:
-            try:
-                with open("D:/AI/void-hunter/logs/_sub_boss.log", "a", encoding="utf-8") as _f:
-                    _f.write(f"FALLBACK spawn exc={exc}\n")
-            except Exception:
-                pass
+            log_dir = Path(__file__).resolve().parent.parent.parent / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = log_dir / "_sub_boss.log"
+            with log_path.open("a", encoding="utf-8") as _f:
+                _f.write(
+                    f"spawned SUB_BOSS at ({rand_x:.1f}, 20.0) "
+                    f"chain.elapsed="
+                    f"{self._level1_chain.elapsed_s if self._level1_chain else -1:.1f}s "
+                    f"log={log_path}\n"
+                )
+        except OSError:
+            # The game does not die for a log line. If THIS tree is not
+            # writable there is nowhere else to write it -- and writing it
+            # somewhere else is what the absolute path did.
+            pass
         if e is not None:
             self._sub_boss_alive = True
             self._sub_boss_intro_done = True

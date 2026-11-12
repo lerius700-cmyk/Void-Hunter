@@ -113,6 +113,40 @@ def test_the_command_fails_when_a_frame_is_missing(
     assert "frames=39/40" in out
 
 
+def test_the_command_fails_cleanly_when_the_display_cannot_be_created(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A video surface that cannot be created is a FAIL, not a traceback.
+
+    BLOQUE 75 (follow-up 2.4): `_ensure_frame_display()` had no guard, so
+    a failure there produced a traceback and the command died without an
+    exit code anybody could act on. The reader of a CI log needs to know
+    WHAT is wrong -- and a traceback says where the code died, not what
+    the build is missing.
+
+    The check has to be able to READ the frames: `ClipPlayer.surface()`
+    converts every frame with `convert_alpha()`, pygame refuses that
+    without a display, and the loader swallows the error and returns
+    None. So without a surface every frame looks missing and the check
+    would report a lie about a perfectly good build.
+    """
+    import pygame
+
+    def boom(*args, **kwargs):
+        raise pygame.error("no video mode available")
+
+    # The surface is forced to be missing, so `set_mode` is the call that
+    # fails -- whichever way the display was initialised before.
+    monkeypatch.setattr(pygame.display, "get_surface", lambda: None)
+    monkeypatch.setattr(pygame.display, "set_mode", boom)
+
+    code, failures = main._pipeline_report(root=tmp_path)
+    assert code == 1
+    joined = "\n".join(failures)
+    assert "video surface" in joined, failures
+    assert "no video mode available" in joined, failures
+
+
 def test_the_command_exits_with_one_when_the_pipeline_is_broken(
     monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:

@@ -210,3 +210,77 @@ def test_the_runner_honours_the_phase_base_environment_variable(
     capsys.readouterr()
     assert code == 0
     assert ran == [["--phase", "1", "--base", base]]
+
+
+# ---------------------------------------------------------------------------
+# BLOQUE 75 (follow-up 2.1): `main(argv)` IGNORED its argv.
+#
+# The runner accepted arguments and dropped them: `main` ran every phase
+# with the default base, whatever the caller asked for. A function that
+# takes arguments and ignores them is a function whose arguments are a
+# lie -- and this one decides WHICH GATES RUN in the CI.
+#
+# The two tests below are the proof that it now USES them. The mutation
+# that puts them back in red is documented in the handoff.
+# ---------------------------------------------------------------------------
+
+
+def test_main_uses_its_arguments(tmp_path: Path, capsys) -> None:
+    """`main(argv)` runs the gate that `argv` names -- and nothing else.
+
+    Before this, `main` ignored `argv` completely: it ran BOTH phases
+    with the default base, and a caller could not narrow it down.
+    """
+    repo = _repo(tmp_path)
+    base = _head(repo)
+    ran: list[list[str]] = []
+
+    def runner(argv: list[str]) -> int:
+        ran.append(argv)
+        return 0
+
+    code = gate_ci.main(
+        ["--phase", "1", "--base", base], repo=repo, runner=runner
+    )
+    capsys.readouterr()
+    assert code == 0
+    assert ran == [["--phase", "1", "--base", base]], (
+        f"main ran {ran}: it did not use the arguments it was given"
+    )
+
+
+def test_main_propagates_the_failure_of_a_gate_that_fails(
+    tmp_path: Path, capsys
+) -> None:
+    """A gate that fails has to fail the runner.
+
+    This is the half that matters in the CI: the exit code is what the
+    job reports, and a runner that swallowed it would turn a red gate
+    into a green job.
+    """
+    repo = _repo(tmp_path)
+    base = _head(repo)
+    code = gate_ci.main(
+        ["--phase", "1", "--base", base], repo=repo, runner=lambda argv: 3
+    )
+    capsys.readouterr()
+    assert code == 3, "the failure of the gate did not reach the exit code"
+
+
+def test_main_runs_every_phase_when_none_is_named(tmp_path: Path, capsys) -> None:
+    """Without a `--phase`, the runner runs the phases it knows.
+
+    This is what the CI does, and it must not change.
+    """
+    repo = _repo(tmp_path)
+    base = _head(repo)
+    ran: list[list[str]] = []
+
+    def runner(argv: list[str]) -> int:
+        ran.append(argv)
+        return 0
+
+    code = gate_ci.main(["--base", base], repo=repo, runner=runner)
+    capsys.readouterr()
+    assert code == 0
+    assert [argv[1] for argv in ran] == ["1", "2"], ran
