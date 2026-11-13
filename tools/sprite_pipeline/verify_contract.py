@@ -42,27 +42,27 @@ from sprite_pipeline.audit import FAIL_STATES, audit_set, render_anchors_toml  #
 
 # The contract of the shipped GOLIATH set, measured on the real pixels.
 #
-# Seven frames have no credible plate in the art (the AI generator drew the
-# character turned around, or the baked beam IS the contour), so their
-# ellipse is reconstructed by interpolation. Three more have the brass probe
-# and the shape measurement disagreeing, which is what a crouching or
-# collapsing boss looks like.
+# BLOQUE 77. The measurement now happens on the REGISTERED sprite -- the
+# art as it will be drawn, with the registration correction applied -- so
+# a frame whose art is authored SHIFTED inside its canvas is measured
+# against the same rules as every other frame. Before, seven frames
+# could not be measured (the rule's window is absolute and the art had
+# moved) and their ellipse was reconstructed by interpolation: the oval
+# landed on the boss's belly instead of on the shield, and the shield
+# laser came out of the wrong place.
 #
-# The FAIL column is the important one: it is EMPTY. Two frames used to be
-# FAIL (javelin/frame_03 and purple_bullet/frame_06, the ones drawn
-# turned around); the repair mirrored them and now they are reconstructed
-# like the rest.
+# Three frames still cannot be measured, and the reason is the ART:
+# `laser` frames 04 and 05 are the ones where the boss fires, and the
+# BAKED beam crosses the plate -- the outline that identifies the plate
+# is merged with the beam, so the shape rule measures both. `death`
+# frame 02 is the boss collapsing: the brass probe and the shape
+# measurement disagree about where the plate is.
+#
+# The FAIL column is the important one: it is EMPTY.
 GOLIATH_CONTRACT: dict[tuple[str, int], list[str]] = {
-    ("javelin", 3): ["FUERA_DE_RANGO"],
-    ("javelin", 4): ["FUERA_DE_RANGO"],
-    ("javelin", 7): ["FUERA_DE_RANGO"],
     ("laser", 4): ["FUERA_DE_RANGO"],
-    ("laser", 5): ["FIRMA_AMBIGUA"],
-    ("laser", 7): ["FUERA_DE_RANGO"],
-    ("purple_bullet", 6): ["FUERA_DE_RANGO"],
-    ("purple_bullet", 8): ["FUERA_DE_RANGO"],
+    ("laser", 5): ["FUERA_DE_RANGO"],
     ("death", 2): ["FIRMA_AMBIGUA"],
-    ("death", 7): ["FIRMA_AMBIGUA"],
 }
 
 KNOWN_CONTRACTS = {"goliath": GOLIATH_CONTRACT}

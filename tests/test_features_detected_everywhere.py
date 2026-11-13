@@ -105,16 +105,18 @@ def test_every_feature_says_where_it_came_from(audit):
     `out_of_range` mean UNRESOLVED -- the guards above would have failed
     on those.
 
-    NOTE: these counters are the ground truth of the shipped art. They
-    were re-validated after Task 6 mirrored javelin/frame_03 and
-    purple_bullet/frame_06: the counts did NOT move (53/7 and 59/1),
-    because the shape rule still measures the BODY in those two frames --
-    they stay FUERA_DE_RANGO and keep being interpolated.
+    BLOQUE 77: the counts MOVED, and that is the point. They were
+    53/7 (shields) and are now 58/2. The seven frames that could not be
+    measured were the ones whose ART IS AUTHORED SHIFTED inside its
+    canvas: the rule has absolute columns, the plate fell outside the
+    window, and the ellipse was reconstructed from the neighbours -- onto
+    the boss's belly. Measuring on the REGISTERED sprite (the art as it
+    will be drawn) fixed five of them.
     """
     _, measurements = audit
     shield_sources = Counter(m.shield_source for m in measurements)
     eye_sources = Counter(m.eye_source for m in measurements)
-    assert shield_sources == {"measured": 53, "interpolated": 7}, dict(
+    assert shield_sources == {"measured": 58, "interpolated": 2}, dict(
         shield_sources
     )
     assert eye_sources == {"measured": 59, "interpolated": 1}, dict(eye_sources)
@@ -126,9 +128,13 @@ def test_the_eye_and_the_shield_are_resolved_independently(audit):
     death/frame_09 has no eye left to find -- by the last frame of the
     death clip the boss is a heap of wreckage -- so its eye is
     interpolated from death/frame_08 while its shield is measured in that
-    very frame. javelin/frame_03 is the other way round: the plate was
-    painted on the wrong side, so the shield is interpolated while the
-    eye is measured.
+    very frame. laser/frame_04 is the other way round: the baked beam
+    crosses the plate, so the shield is interpolated while the eye is
+    measured.
+
+    BLOQUE 77: the example used to be javelin/frame_03, and it is not
+    any more -- that frame is MEASURED now, because its art is authored
+    shifted and the measurement happens on the registered sprite.
     """
     _, measurements = audit
     by_frame = {(m.clip, m.frame): m for m in measurements}
@@ -137,9 +143,9 @@ def test_the_eye_and_the_shield_are_resolved_independently(audit):
     assert wreck.eye_source == "interpolated"
     assert wreck.shield_source == "measured"
 
-    javelin = by_frame[("javelin", 3)]
-    assert javelin.shield_source == "interpolated"
-    assert javelin.eye_source == "measured"
+    beam = by_frame[("laser", 4)]
+    assert beam.shield_source == "interpolated"
+    assert beam.eye_source == "measured"
 
 
 def test_the_report_still_documents_the_art_problem(audit):
@@ -148,15 +154,15 @@ def test_the_report_still_documents_the_art_problem(audit):
     The findings must keep reporting the frames whose plate is missing
     from the drawing, otherwise the report lies about the source art.
 
-    NOTE: these three frames are hard-coded and were re-validated after
-    Task 6 mirrored javelin/frame_03 and purple_bullet/frame_06. The
-    mirroring moved the clip's probe median, and with it the set of frames
-    the auditor flags -- but these three are still reported: the two
-    mirrored frames keep their FUERA_DE_RANGO finding (the shape rule
-    measures the body, not the plate, in them).
+    BLOQUE 77: the three frames are now the ones the CONTRACT names --
+    the two where the baked beam crosses the plate, and the one where
+    the boss is collapsing and the two detectors disagree. The five
+    frames that USED to be reported are no longer: they were not an art
+    problem, they were a measurement that did not know the sprite can
+    be authored shifted.
     """
     findings, _ = audit
     reported = {f"{f.clip}/frame_{f.frame:02d}" for f in findings}
-    assert "javelin/frame_04" in reported
+    assert "laser/frame_04" in reported
     assert "laser/frame_05" in reported
-    assert "purple_bullet/frame_08" in reported
+    assert "death/frame_02" in reported

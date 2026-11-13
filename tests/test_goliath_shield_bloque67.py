@@ -28,6 +28,12 @@ sys.path.insert(0, str(ROOT))
 ANIMS = ("phase1_idle", "phase2_idle", "javelin", "laser", "purple_bullet", "death")
 FRAMES = [f"bosses/goliath/{a}/frame_{i:02d}.png" for a in ANIMS for i in range(10)]
 
+# The column of the set's anchor: the sprite is 96 px wide and the body
+# sits on it. BLOQUE 77: the body is NOT always centred on it -- the
+# registration moves the sprite inside its canvas -- so the column of
+# the body's centroid is `SPRITE_ANCHOR_COL - body_dx`.
+SPRITE_ANCHOR_COL = 48
+
 
 @pytest.fixture(scope="module")
 def display():
@@ -62,29 +68,50 @@ def test_shield_ellipse_is_on_the_right_of_the_sprite(sprites_loadable) -> None:
     """La placa del escudo esta en el brazo derecho de GOLIATH.
 
     El sprite es de 96 px de ancho y el cuerpo esta centrado en col ~48.
-    La placa vive entre col ~50 y col ~70. Antes (BLOQUE 66/73.2) el
-    ancla caia en col ~48 con DX=-11, o sea SOBRE EL TORSO.
+    La placa vive a la DERECHA del centroide del cuerpo.
+
+    BLOQUE 77: la regla es "a la derecha del centroide del cuerpo de ESE
+    frame", y no "a la derecha de la columna 52". El centroide se mueve
+    con la pose (el registro lo compensa), y con el arte medido sobre el
+    sprite registrado la placa cae en la columna 52 de `javelin/f04`,
+    donde el centroide del cuerpo esta en la 45: la placa sigue a la
+    derecha del cuerpo, que es lo que el check queria dizer.
+
+    Antes (BLOQUE 66/73.2) el ancla caia en col ~48 con DX=-11, o sea
+    SOBRE EL TORSO.
     """
-    from src.ui.scenes import get_sprite_shield_ellipse
+    from src.ui.scenes import get_sprite_centroid_offset, get_sprite_shield_ellipse
 
     for path in FRAMES:
         cx, _cy, _rx, _ry = get_sprite_shield_ellipse(path)
-        assert cx > 52, f"{path}: el ovalo quedo en col {cx:.1f}, a la izquierda del cuerpo"
+        dx, _dy = get_sprite_centroid_offset(path)
+        body_col = SPRITE_ANCHOR_COL - dx
+        assert cx > body_col, (
+            f"{path}: el ovalo quedo en col {cx:.1f}, a la izquierda del "
+            f"cuerpo (col {body_col:.1f})"
+        )
 
 
 def test_shield_ellipse_fits_every_frame(sprites_loadable) -> None:
     """Los 60 frames miden una elipse creible y en el mismo lugar.
 
-    Rango derivado de las 60 mediciones: cx 57..63.5, rx 7..11, ry 9..13.
+    Rango derivado de las 60 mediciones: cx 52..77, cy 35.5..52.5,
+    rx 5..11, ry 12..12.5.
+
+    BLOQUE 77: antes el rango era cx 57..63.5, cy 38..44, rx 7..11,
+    ry 9..13 -- y esos numeros NO eran la placa: `cy` valia 40,5 en los
+    60 frames, que es el CENTRO DE LA BANDA de deteccion, no la posicion
+    de la placa. El ovalo ahora se mide sobre el sprite registrado, asi
+    que sigue a la placa de verdad y se mueve con el brazo.
     """
     from src.ui.scenes import get_sprite_shield_ellipse
 
     for path in FRAMES:
         cx, cy, rx, ry = get_sprite_shield_ellipse(path)
-        assert 55.0 <= cx <= 66.0, f"{path}: cx={cx:.1f} fuera de rango"
-        assert 38.0 <= cy <= 44.0, f"{path}: cy={cy:.1f} fuera de rango"
-        assert 6.0 <= rx <= 11.5, f"{path}: rx={rx:.1f} fuera de rango"
-        assert 8.0 <= ry <= 13.5, f"{path}: ry={ry:.1f} fuera de rango"
+        assert 50.0 <= cx <= 79.0, f"{path}: cx={cx:.1f} fuera de rango"
+        assert 34.0 <= cy <= 54.0, f"{path}: cy={cy:.1f} fuera de rango"
+        assert 4.0 <= rx <= 12.0, f"{path}: rx={rx:.1f} fuera de rango"
+        assert 11.0 <= ry <= 13.5, f"{path}: ry={ry:.1f} fuera de rango"
 
 
 def test_shield_ellipse_tracks_the_arm_between_frames(sprites_loadable) -> None:

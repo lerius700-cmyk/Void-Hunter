@@ -46,8 +46,10 @@ from src.anim.measure import (  # noqa: E402
     interpolate,
     is_cut_off,
     plate_ellipse,
+    registered_surface,
     silhouette_height,
     silhouette_margins,
+    to_canvas,
 )
 from sprite_pipeline import ensure_display  # noqa: E402
 from sprite_pipeline.sets import resolve_set  # noqa: E402
@@ -144,6 +146,36 @@ def _md5(path: Path) -> str:
     return hashlib.md5(path.read_bytes()).hexdigest()
 
 
+def _registration(
+    anim_set: AnimSet, clip: Clip, surf: pygame.Surface
+) -> tuple[int, int]:
+    """The correction that puts the silhouette's centroid on the anchor.
+
+    This is the REGISTRATION of the frame: the amount the sprite is
+    shifted inside its own canvas, and the amount the runtime shifts it
+    back when it draws it.
+
+    BLOQUE 77: it is computed BEFORE the features are measured, because
+    the features are measured on the REGISTERED sprite. A frame whose
+    art is authored shifted would otherwise be measured against rules
+    that assume a centred body.
+    """
+    centre = alpha_centroid(surf)
+    if centre is None:
+        return (0, 0)
+    # The correction is measured against the CLIP's own canvas.
+    # A clip that overrides the canvas (the mine's death art is
+    # 32x32 inside a 64x64 set) has its own centre: measuring
+    # it against the SET's anchor would record the canvas
+    # offset as a registration error.
+    anchor = (
+        anim_set.anchor
+        if clip.canvas is None
+        else (clip.canvas[0] // 2, clip.canvas[1] // 2)
+    )
+    return (int(round(anchor[0] - centre[0])), int(round(anchor[1] - centre[1])))
+
+
 def _clip_probe_columns(
     anim_set: AnimSet, surfaces: list[pygame.Surface]
 ) -> list[float | None]:
@@ -152,6 +184,10 @@ def _clip_probe_columns(
     The probe inherits the parent's warm rule: the brass signature also
     matches two of the beam's colours, so without the warm filter the
     probe latches onto the beam.
+
+    BLOQUE 77: the surfaces are the REGISTERED ones, so the probe looks
+    for the signature where the body is, and the column it returns is
+    converted back to the canvas's coordinates.
     """
     shield_part = anim_set.part_or_none("shield_plate")
     rule = shield_part.detect if shield_part is not None else None
@@ -232,7 +268,28 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                     )
                 )
 
-        probe_cols = _clip_probe_columns(anim_set, surfaces)
+        # --- BLOQUE 77: the REGISTRATION comes first --------------------
+        # The features are measured on the sprite as it WILL be drawn, so
+        # a frame whose art is authored shifted is measured against the
+        # same rules as every other frame.
+        registrations = [
+            _registration(anim_set, clip, surf) for surf in surfaces
+        ]
+        registered = [
+            registered_surface(surf, dx, dy)
+            for surf, (dx, dy) in zip(surfaces, registrations)
+        ]
+        origins = [origin for _surf, origin in registered]
+
+        probe_cols = _clip_probe_columns(
+            anim_set, [surf for surf, _origin in registered]
+        )
+        # The probe's column is a coordinate of the REGISTERED sprite:
+        # back to the canvas the runtime draws on.
+        probe_cols = [
+            None if col is None else col + origins[i][0]
+            for i, col in enumerate(probe_cols)
+        ]
         good_cols = sorted(c for c in probe_cols if c is not None)
         # The TRUE median -- the average of the two middle values. The
         # upper-middle element would shift the threshold by up to 0.2 px and
@@ -281,30 +338,21 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                     )
 
             # --- body centroid: the registration correction -------------
-            centre = alpha_centroid(surf)
-            if centre is None:
-                body_dx = body_dy = 0
-            else:
-                # The correction is measured against the CLIP's own canvas.
-                # A clip that overrides the canvas (the mine's death art is
-                # 32x32 inside a 64x64 set) has its own centre: measuring
-                # it against the SET's anchor would record the canvas
-                # offset as a registration error.
-                anchor = (
-                    anim_set.anchor
-                    if clip.canvas is None
-                    else (clip.canvas[0] // 2, clip.canvas[1] // 2)
-                )
-                body_dx = int(round(anchor[0] - centre[0]))
-                body_dy = int(round(anchor[1] - centre[1]))
+            # (computed BEFORE the features: see the registration pass)
+            body_dx, body_dy = registrations[i]
+            reg_surf = registered[i][0]
+            origin = origins[i]
 
             # --- eye ------------------------------------------------------
             eye = None
             eye_source = "missing"
             if eye_part is not None and eye_part.detect is not None:
-                found = color_centroid(surf, eye_part.detect)
+                found = color_centroid(reg_surf, eye_part.detect)
                 if found is not None:
-                    eye = (int(round(found[0])), int(round(found[1])))
+                    # Measured on the REGISTERED sprite: back to the
+                    # canvas the runtime draws on.
+                    canvas_x, canvas_y = to_canvas(found, origin)
+                    eye = (int(round(canvas_x)), int(round(canvas_y)))
                     eye_source = "measured"
                 # else: the feature is absent from the art. The source
                 # stays "missing" -- UNRESOLVED, never "measured" at (0, 0).
@@ -314,12 +362,12 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
             shield = None
             shield_source = "missing"
             if rule is not None:
-                ellipse = credible_ellipse(surf, rule)
+                ellipse = credible_ellipse(reg_surf, rule)
                 if ellipse is None:
                     # Neither pass gave a credible ellipse. The plain
                     # measurement tells us whether the plate is absent
                     # entirely or merely implausible.
-                    plain = plate_ellipse(surf, rule, drop_warm=False)
+                    plain = plate_ellipse(reg_surf, rule, drop_warm=False)
                     if plain is None:
                         shield_source = "missing"
                         findings.append(
@@ -369,7 +417,11 @@ def audit_set(anim_set: AnimSet) -> tuple[list[Finding], list[FrameMeasurement]]
                             )
                         )
                 else:
-                    shield = ellipse
+                    # Measured on the REGISTERED sprite: the centre goes
+                    # back to the canvas the runtime draws on. The radii
+                    # do not change -- a translation does not resize.
+                    canvas_x, canvas_y = to_canvas((ellipse[0], ellipse[1]), origin)
+                    shield = (canvas_x, canvas_y, ellipse[2], ellipse[3])
                     shield_source = "measured"
 
                 if probe_col is not None:

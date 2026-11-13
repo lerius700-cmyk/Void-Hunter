@@ -216,9 +216,12 @@ def test_the_shipped_set_reconstructs_what_it_could_not_measure():
 
     death/frame_09 is a heap of wreckage with no eye left to find: its eye
     comes from death/frame_08 while its plate is measured in that very
-    frame. javelin/frame_03 is the other way round: the plate was painted
-    on the wrong side, so the plate is interpolated while the eye is
-    measured.
+    frame. laser/frame_04 is the other way round: the baked beam crosses
+    the plate, so the plate is interpolated while the eye is measured.
+
+    BLOQUE 77: the example used to be javelin/frame_03, and it is not any
+    more -- that frame is MEASURED now (its art is authored shifted, and
+    the measurement happens on the registered sprite).
     """
     from src.anim.anchors import load_anchors
     from src.anim.manifest import load_set
@@ -233,12 +236,12 @@ def test_the_shipped_set_reconstructs_what_it_could_not_measure():
     assert wreck.shield_source == "measured"
     assert wreck.shield is not None
 
-    javelin = anchors.get("javelin", 3)
-    assert javelin is not None
-    assert javelin.shield_source == "interpolated"
-    assert javelin.shield is not None
-    assert javelin.eye_source == "measured"
-    assert javelin.eye is not None
+    beam = anchors.get("laser", 4)
+    assert beam is not None
+    assert beam.shield_source == "interpolated"
+    assert beam.shield is not None
+    assert beam.eye_source == "measured"
+    assert beam.eye is not None
 
 
 def test_every_frame_of_the_shipped_set_is_resolved():

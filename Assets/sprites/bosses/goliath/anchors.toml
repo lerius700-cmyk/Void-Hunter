@@ -4,16 +4,16 @@
 
 [meta]
 generated_by = "tools/sprite_pipeline/audit.py"
-manifest_sha256 = "ed58541dfce0cc5b5017f32a8263decf050fc4475415d5d487017d4312773dca"
+manifest_sha256 = "86f86b13de1add64b8f0e265fbb249b747b2ff9df4ce60405fd5e12f221ba53a"
 
 [[anchors]]
 clip = "death"
 frame = 0
 body_dx = -3
 body_dy = 3
-eye = [51, 19]
+eye = [52, 18]
 eye_source = "measured"
-shield = [59, 40.5, 9, 12.5]
+shield = [60.5, 37.5, 7.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -23,7 +23,7 @@ body_dx = -3
 body_dy = -1
 eye = [36, 17]
 eye_source = "measured"
-shield = [59.5, 40.5, 9.5, 12.5]
+shield = [61, 41.5, 8, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -31,9 +31,9 @@ clip = "death"
 frame = 2
 body_dx = 0
 body_dy = 3
-eye = [43, 24]
+eye = [41, 21]
 eye_source = "measured"
-shield = [57.5, 40.5, 7.5, 12.5]
+shield = [57.5, 37.5, 7.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -41,9 +41,9 @@ clip = "death"
 frame = 3
 body_dx = -5
 body_dy = -1
-eye = [53, 22]
+eye = [52, 26]
 eye_source = "measured"
-shield = [61, 40.5, 11, 12.5]
+shield = [63.5, 41.5, 8.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -53,7 +53,7 @@ body_dx = -1
 body_dy = 1
 eye = [36, 13]
 eye_source = "measured"
-shield = [60, 40.5, 10, 12.5]
+shield = [60.5, 39.5, 9.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -63,7 +63,7 @@ body_dx = 0
 body_dy = 5
 eye = [53, 19]
 eye_source = "measured"
-shield = [60.5, 39.5, 10.5, 11.5]
+shield = [60.5, 35.5, 10.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -73,7 +73,7 @@ body_dx = 3
 body_dy = 0
 eye = [53, 23]
 eye_source = "measured"
-shield = [59.5, 40.5, 9.5, 12.5]
+shield = [58, 40.5, 11, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -81,9 +81,9 @@ clip = "death"
 frame = 7
 body_dx = 1
 body_dy = -6
-eye = [48, 23]
+eye = [48, 24]
 eye_source = "measured"
-shield = [60, 40.5, 10, 12.5]
+shield = [59.5, 46.5, 10.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -91,9 +91,9 @@ clip = "death"
 frame = 8
 body_dx = -1
 body_dy = -4
-eye = [52, 28]
+eye = [61, 30]
 eye_source = "measured"
-shield = [60.5, 40.5, 10.5, 12.5]
+shield = [61, 44, 10, 12]
 shield_source = "measured"
 
 [[anchors]]
@@ -101,9 +101,9 @@ clip = "death"
 frame = 9
 body_dx = -4
 body_dy = -12
-eye = [52, 28]
+eye = [61, 30]
 eye_source = "interpolated"
-shield = [59.5, 42.5, 9.5, 10.5]
+shield = [61.5, 52.5, 7.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -111,9 +111,9 @@ clip = "javelin"
 frame = 0
 body_dx = 1
 body_dy = 4
-eye = [50, 21]
+eye = [50, 20]
 eye_source = "measured"
-shield = [57.5, 40.5, 7.5, 12.5]
+shield = [57, 36.5, 8, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -121,9 +121,9 @@ clip = "javelin"
 frame = 1
 body_dx = -2
 body_dy = 3
-eye = [44, 22]
+eye = [45, 21]
 eye_source = "measured"
-shield = [58, 40.5, 8, 12.5]
+shield = [59, 37.5, 7, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -131,9 +131,9 @@ clip = "javelin"
 frame = 2
 body_dx = 0
 body_dy = 3
-eye = [49, 24]
+eye = [48, 23]
 eye_source = "measured"
-shield = [57, 40.5, 7, 12.5]
+shield = [57, 37.5, 7, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -141,10 +141,10 @@ clip = "javelin"
 frame = 3
 body_dx = -19
 body_dy = 4
-eye = [62, 21]
+eye = [65, 20]
 eye_source = "measured"
-shield = [57.4, 40.5, 7.4, 12.5]
-shield_source = "interpolated"
+shield = [77, 36.5, 8, 12.5]
+shield_source = "measured"
 
 [[anchors]]
 clip = "javelin"
@@ -153,17 +153,17 @@ body_dx = 3
 body_dy = 3
 eye = [45, 24]
 eye_source = "measured"
-shield = [58, 40.5, 8, 12.5]
-shield_source = "interpolated"
+shield = [52, 37.5, 5, 12.5]
+shield_source = "measured"
 
 [[anchors]]
 clip = "javelin"
 frame = 5
 body_dx = -1
 body_dy = 5
-eye = [49, 19]
+eye = [49, 18]
 eye_source = "measured"
-shield = [58.5, 40.5, 8.5, 12.5]
+shield = [59, 35.5, 8, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -173,7 +173,7 @@ body_dx = -3
 body_dy = 1
 eye = [50, 24]
 eye_source = "measured"
-shield = [59, 40.5, 9, 12.5]
+shield = [60.5, 39.5, 7.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -181,19 +181,19 @@ clip = "javelin"
 frame = 7
 body_dx = 1
 body_dy = 2
-eye = [47, 20]
+eye = [47, 19]
 eye_source = "measured"
-shield = [58.5, 40.5, 8.5, 12.5]
-shield_source = "interpolated"
+shield = [54.5, 38.5, 5.5, 12.5]
+shield_source = "measured"
 
 [[anchors]]
 clip = "javelin"
 frame = 8
 body_dx = 0
 body_dy = 4
-eye = [47, 20]
+eye = [47, 19]
 eye_source = "measured"
-shield = [58, 40.5, 8, 12.5]
+shield = [58, 36.5, 8, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -201,9 +201,9 @@ clip = "javelin"
 frame = 9
 body_dx = -2
 body_dy = 3
-eye = [48, 21]
+eye = [49, 19]
 eye_source = "measured"
-shield = [59, 40.5, 9, 12.5]
+shield = [60, 37.5, 8, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -213,7 +213,7 @@ body_dx = -1
 body_dy = 2
 eye = [48, 21]
 eye_source = "measured"
-shield = [60, 40.5, 10, 12.5]
+shield = [60, 38.5, 9, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -223,7 +223,7 @@ body_dx = -1
 body_dy = 1
 eye = [45, 21]
 eye_source = "measured"
-shield = [59, 40.5, 9, 12.5]
+shield = [59.5, 39.5, 8.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -233,7 +233,7 @@ body_dx = -1
 body_dy = 2
 eye = [42, 17]
 eye_source = "measured"
-shield = [59, 40.5, 9, 12.5]
+shield = [59.5, 38.5, 8.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -241,9 +241,9 @@ clip = "laser"
 frame = 3
 body_dx = 1
 body_dy = 2
-eye = [58, 22]
+eye = [58, 21]
 eye_source = "measured"
-shield = [58, 40.5, 8, 12.5]
+shield = [57.5, 38.5, 8.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -253,7 +253,7 @@ body_dx = -6
 body_dy = 0
 eye = [52, 25]
 eye_source = "measured"
-shield = [59.2, 40.5, 9.2, 12.5]
+shield = [58.5, 39.4, 8.1, 12.5]
 shield_source = "interpolated"
 
 [[anchors]]
@@ -263,17 +263,17 @@ body_dx = 3
 body_dy = 0
 eye = [41, 26]
 eye_source = "measured"
-shield = [60.5, 40.5, 10.5, 12.5]
-shield_source = "measured"
+shield = [60.1, 40.7, 7.6, 12.5]
+shield_source = "interpolated"
 
 [[anchors]]
 clip = "laser"
 frame = 6
 body_dx = -4
 body_dy = -1
-eye = [48, 25]
+eye = [48, 26]
 eye_source = "measured"
-shield = [59.5, 40.5, 9.5, 12.5]
+shield = [61.5, 41.5, 7.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -283,8 +283,8 @@ body_dx = -3
 body_dy = 0
 eye = [46, 23]
 eye_source = "measured"
-shield = [59.2, 40.5, 9.2, 12.5]
-shield_source = "interpolated"
+shield = [63, 40.5, 10, 12.5]
+shield_source = "measured"
 
 [[anchors]]
 clip = "laser"
@@ -293,7 +293,7 @@ body_dx = -1
 body_dy = 2
 eye = [44, 19]
 eye_source = "measured"
-shield = [59, 40.5, 9, 12.5]
+shield = [59.5, 38.5, 8.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -303,7 +303,7 @@ body_dx = -1
 body_dy = 3
 eye = [47, 19]
 eye_source = "measured"
-shield = [59.5, 40.5, 9.5, 12.5]
+shield = [59.5, 37.5, 8.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -313,7 +313,7 @@ body_dx = -1
 body_dy = 2
 eye = [46, 20]
 eye_source = "measured"
-shield = [59.5, 40.5, 9.5, 12.5]
+shield = [60, 38.5, 9, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -323,7 +323,7 @@ body_dx = -1
 body_dy = 3
 eye = [45, 19]
 eye_source = "measured"
-shield = [58.5, 40.5, 8.5, 12.5]
+shield = [59, 37.5, 8, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -333,7 +333,7 @@ body_dx = -1
 body_dy = 2
 eye = [42, 19]
 eye_source = "measured"
-shield = [59.5, 40.5, 9.5, 12.5]
+shield = [60, 38.5, 9, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -343,7 +343,7 @@ body_dx = -1
 body_dy = 2
 eye = [42, 18]
 eye_source = "measured"
-shield = [60, 40.5, 10, 12.5]
+shield = [60, 38.5, 9, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -353,7 +353,7 @@ body_dx = -1
 body_dy = 2
 eye = [42, 19]
 eye_source = "measured"
-shield = [60, 40.5, 10, 12.5]
+shield = [60.5, 38.5, 9.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -363,7 +363,7 @@ body_dx = -1
 body_dy = 2
 eye = [42, 17]
 eye_source = "measured"
-shield = [59, 40.5, 9, 12.5]
+shield = [59.5, 38.5, 8.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -373,7 +373,7 @@ body_dx = -1
 body_dy = 2
 eye = [45, 18]
 eye_source = "measured"
-shield = [60, 40.5, 10, 12.5]
+shield = [60.5, 38.5, 9.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -383,7 +383,7 @@ body_dx = -1
 body_dy = 2
 eye = [40, 15]
 eye_source = "measured"
-shield = [60, 40.5, 10, 12.5]
+shield = [60.5, 38.5, 9.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -393,7 +393,7 @@ body_dx = -1
 body_dy = 3
 eye = [45, 19]
 eye_source = "measured"
-shield = [59.5, 40.5, 9.5, 12.5]
+shield = [60, 37.5, 9, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -403,7 +403,7 @@ body_dx = -1
 body_dy = 2
 eye = [46, 20]
 eye_source = "measured"
-shield = [58.5, 40.5, 8.5, 12.5]
+shield = [59, 38.5, 8, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -411,9 +411,9 @@ clip = "phase2_idle"
 frame = 0
 body_dx = 1
 body_dy = 2
-eye = [54, 22]
+eye = [54, 21]
 eye_source = "measured"
-shield = [57.5, 40.5, 7.5, 12.5]
+shield = [57, 38.5, 8, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -423,7 +423,7 @@ body_dx = -1
 body_dy = 2
 eye = [44, 17]
 eye_source = "measured"
-shield = [60, 40.5, 10, 12.5]
+shield = [60.5, 38.5, 9.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -433,7 +433,7 @@ body_dx = -1
 body_dy = 2
 eye = [43, 17]
 eye_source = "measured"
-shield = [60, 40.5, 10, 12.5]
+shield = [60, 38.5, 9, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -441,9 +441,9 @@ clip = "phase2_idle"
 frame = 3
 body_dx = -1
 body_dy = 1
-eye = [48, 22]
+eye = [49, 21]
 eye_source = "measured"
-shield = [57.5, 40.5, 7.5, 12.5]
+shield = [58, 39.5, 7, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -453,7 +453,7 @@ body_dx = -1
 body_dy = 1
 eye = [48, 18]
 eye_source = "measured"
-shield = [60, 40.5, 10, 12.5]
+shield = [60, 39.5, 9, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -463,7 +463,7 @@ body_dx = -2
 body_dy = 2
 eye = [49, 23]
 eye_source = "measured"
-shield = [58.5, 40.5, 8.5, 12.5]
+shield = [59.5, 38.5, 7.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -471,9 +471,9 @@ clip = "phase2_idle"
 frame = 6
 body_dx = -1
 body_dy = 2
-eye = [47, 19]
+eye = [46, 19]
 eye_source = "measured"
-shield = [60, 40.5, 10, 12.5]
+shield = [60.5, 38.5, 9.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -483,7 +483,7 @@ body_dx = -1
 body_dy = 2
 eye = [42, 19]
 eye_source = "measured"
-shield = [60, 40.5, 10, 12.5]
+shield = [60, 38.5, 9, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -493,7 +493,7 @@ body_dx = -1
 body_dy = 1
 eye = [46, 17]
 eye_source = "measured"
-shield = [59, 40.5, 9, 12.5]
+shield = [59.5, 39.5, 8.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -501,9 +501,9 @@ clip = "phase2_idle"
 frame = 9
 body_dx = -1
 body_dy = 2
-eye = [45, 19]
+eye = [44, 18]
 eye_source = "measured"
-shield = [59.5, 40.5, 9.5, 12.5]
+shield = [60, 38.5, 9, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -513,7 +513,7 @@ body_dx = 0
 body_dy = 4
 eye = [30, 14]
 eye_source = "measured"
-shield = [58, 40.5, 8, 12.5]
+shield = [58, 36.5, 8, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -523,7 +523,7 @@ body_dx = 0
 body_dy = 3
 eye = [44, 17]
 eye_source = "measured"
-shield = [59, 40.5, 9, 12.5]
+shield = [59, 37.5, 9, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -531,9 +531,9 @@ clip = "purple_bullet"
 frame = 2
 body_dx = -1
 body_dy = 3
-eye = [41, 20]
+eye = [40, 19]
 eye_source = "measured"
-shield = [59.5, 40.5, 9.5, 12.5]
+shield = [59.5, 37.5, 8.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -543,7 +543,7 @@ body_dx = 0
 body_dy = 4
 eye = [43, 17]
 eye_source = "measured"
-shield = [59.5, 40.5, 9.5, 12.5]
+shield = [59, 36.5, 9, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -553,7 +553,7 @@ body_dx = 0
 body_dy = 4
 eye = [44, 23]
 eye_source = "measured"
-shield = [58, 40.5, 8, 12.5]
+shield = [58, 36.5, 8, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -561,9 +561,9 @@ clip = "purple_bullet"
 frame = 5
 body_dx = -8
 body_dy = 5
-eye = [61, 23]
+eye = [61, 20]
 eye_source = "measured"
-shield = [63.5, 40.5, 8.5, 12.5]
+shield = [65, 35.5, 7, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -571,10 +571,10 @@ clip = "purple_bullet"
 frame = 6
 body_dx = -14
 body_dy = 4
-eye = [62, 18]
+eye = [66, 16]
 eye_source = "measured"
-shield = [62.2, 40.5, 9.4, 12.5]
-shield_source = "interpolated"
+shield = [71.5, 36.5, 7.5, 12.5]
+shield_source = "measured"
 
 [[anchors]]
 clip = "purple_bullet"
@@ -583,7 +583,7 @@ body_dx = -9
 body_dy = 2
 eye = [61, 23]
 eye_source = "measured"
-shield = [60, 40.5, 10, 12.5]
+shield = [64.5, 38.5, 5.5, 12.5]
 shield_source = "measured"
 
 [[anchors]]
@@ -591,17 +591,17 @@ clip = "purple_bullet"
 frame = 8
 body_dx = -16
 body_dy = 2
-eye = [62, 21]
+eye = [64, 22]
 eye_source = "measured"
-shield = [58.8, 40.5, 9.1, 12.5]
-shield_source = "interpolated"
+shield = [74, 38.5, 8, 12.5]
+shield_source = "measured"
 
 [[anchors]]
 clip = "purple_bullet"
 frame = 9
 body_dx = -3
 body_dy = 3
-eye = [58, 21]
+eye = [58, 20]
 eye_source = "measured"
-shield = [58, 40.5, 8, 12.5]
+shield = [59.5, 37.5, 6.5, 12.5]
 shield_source = "measured"

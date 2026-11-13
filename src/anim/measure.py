@@ -323,6 +323,48 @@ def _credible(
     )
 
 
+def registered_surface(
+    surf: pygame.Surface, dx: int, dy: int
+) -> tuple[pygame.Surface, tuple[int, int]]:
+    """The sprite as it WILL BE DRAWN, and the origin of that drawing.
+
+    BLOQUE 77. A frame's art is not always centred in its canvas: some
+    frames of GOLIATH are authored with the whole sprite shifted, and the
+    registration correction (`body_dx`/`body_dy`) is what puts it back.
+
+    The DETECTION rules, though, are about the BODY: the plate is at the
+    right of the arm, the eye is in the head. They are not about where
+    the body happens to sit inside the canvas. A rule with absolute
+    columns (`min_col = 50`) therefore measures the WRONG thing in a
+    shifted frame: the plate ends up outside the window, the blob
+    merges with the arm, and the measurement is discarded -- the ellipse
+    falls back to an interpolation and lands on the boss's belly instead
+    of on the shield.
+
+    Measuring on the REGISTERED sprite makes the rule mean the same
+    thing in every frame.
+
+    The surface is NOT padded, and that is deliberate: the rules have
+    ABSOLUTE windows (the plate's left edge is at column 50 of the
+    image), so a padded image would move the window with it and the
+    rule would keep measuring the same wrong thing. The shift moves the
+    BODY inside the same canvas, and what the shift can clip is the
+    edge of the silhouette -- never the plate, which is where the rule
+    is looking anyway.
+    """
+    if dx == 0 and dy == 0:
+        return surf, (0, 0)
+    width, height = surf.get_size()
+    registered = pygame.Surface((width, height), pygame.SRCALPHA)
+    registered.blit(surf, (dx, dy))
+    return registered, (-dx, -dy)
+
+
+def to_canvas(point: tuple[float, float], origin: tuple[int, int]) -> tuple[float, float]:
+    """A point of the REGISTERED sprite, back in the canvas's coordinates."""
+    return (point[0] + origin[0], point[1] + origin[1])
+
+
 def interpolate(values: list[float | None], index: int) -> float | None:
     """Fill a missing measurement from its neighbours.
 

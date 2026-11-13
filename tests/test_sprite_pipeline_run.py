@@ -176,16 +176,26 @@ def test_the_json_summary_counts_frames(goliath_copy: Path):
 
     A frame can carry two findings, so a finding count and a frame count
     are different numbers. The summary says which one it is.
+
+    BLOQUE 77: the number of flagged frames is NOT hardcoded any more --
+    it is derived from the CONTRACT (`verify_contract.GOLIATH_CONTRACT`),
+    which is the list of the frames the shipped set is allowed to flag.
+    Before, the 10 was a literal: the moment the measurement improved
+    (7 frames stopped being reconstructed) the test went red, and it
+    said nothing about WHY.
     """
+    from sprite_pipeline.verify_contract import GOLIATH_CONTRACT
+
     report = json.loads(
         _run_cli_on(goliath_copy.parent, "goliath", "--json").stdout.decode("utf-8")
     )
     summary = report["summary"]
+    flagged = len(GOLIATH_CONTRACT)
 
     assert summary["frames_total"] == 60
-    assert summary["frames_with_findings"] == 10
+    assert summary["frames_with_findings"] == flagged
     assert summary["frames_failing"] == 0
-    assert summary["frames_warning"] == 10
+    assert summary["frames_warning"] == flagged
     # Every flagged frame carries exactly one finding in the repaired set.
     assert summary["findings_total"] == len(report["warnings"]) + len(
         report["failures"]

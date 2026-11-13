@@ -111,7 +111,7 @@ radii  = [11, 11, 17]    # GOLIATH_SHIELD_R / _RX / _RY: the canonical
 # It is a FALLBACK, not an always-on filter: the auditor measures the plain
 # silhouette first and only retries with the warm pixels dropped when the
 # plain measurement is not credible.
-detect = { method = "shape", band = [28, 54], side = "right", min_col = 50, ranges = { rx = [6.5, 11.0], ry = [9.0, 13.0] }, warm_fallback = { r_min = 235, b_max = 140, g_min = 130, r_minus_b_min = 190 }, probe = { method = "color", r_min = 185, g_min = 145, b_max = 130, r_minus_b_min = 70 } }
+detect = { method = "shape", band = [28, 54], side = "right", min_col = 50, ranges = { rx = [3.0, 11.0], ry = [9.0, 13.0] }, warm_fallback = { r_min = 235, b_max = 140, g_min = 130, r_minus_b_min = 190 }, probe = { method = "color", r_min = 185, g_min = 145, b_max = 130, r_minus_b_min = 70 } }
 on_missing = "interpolate"
 
 [[parts]]
