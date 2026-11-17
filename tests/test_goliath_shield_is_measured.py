@@ -123,6 +123,130 @@ def test_no_shield_is_unresolved(measurements):
     assert not unresolved, f"the shield is unresolved in {sorted(unresolved)}"
 
 
+def test_the_shield_stays_on_the_arm_in_every_frame(measurements):
+    """EL ESCUDO TIENE QUE ESTAR SIEMPRE EN EL BRAZO. En los 60 frames.
+
+    Esta es la invariante del escudo, y es MEDIBLE: la placa es parte
+    del CUERPO, y el cuerpo esta registrado. Medida contra el centroide
+    del cuerpo, la posicion de la placa apenas se mueve: la columna va
+    de 55 a 61 y la fila de 40 a 40,5 en los 60 frames.
+
+    Ese es el rango que el ovalo tiene que respetar.
+
+    Lo que fallaba: la interpolacion se hacia en el espacio del CANVAS,
+    que mezcla frames con el sprite corrido (la columna va de 52 a 77) y
+    frames con el sprite centrado. El ovalo reconstruido acababa en la
+    panza. La interpolacion en el espacio REGISTRADO lo deja en el
+    brazo.
+    """
+    registered_x = [
+        m.shield[0] + m.body_dx for m in measurements if m.shield is not None
+    ]
+    registered_y = [
+        m.shield[1] + m.body_dy for m in measurements if m.shield is not None
+    ]
+    assert len(registered_x) == 60, (
+        f"only {len(registered_x)} of the 60 frames have a shield"
+    )
+    assert min(registered_x) >= 54.0, (
+        f"the oval goes to column {min(registered_x):.1f}, off the arm "
+        f"(the arm is between 55 and 61)"
+    )
+    assert max(registered_x) <= 62.0, (
+        f"the oval goes to column {max(registered_x):.1f}, off the arm "
+        f"(the arm is between 55 and 61)"
+    )
+    assert min(registered_y) >= 39.0, (
+        f"the oval goes to row {min(registered_y):.1f}, off the arm"
+    )
+    assert max(registered_y) <= 42.0, (
+        f"the oval goes to row {max(registered_y):.1f}, off the arm"
+    )
+
+
+def _registered(m, feature: str) -> tuple[float, float]:
+    """Where a feature sits RELATIVE TO THE BODY (the registered space).
+
+    The canvas moves from frame to frame: the art of `death/frame_09` is
+    authored 12 px lower inside its canvas. The registration correction is
+    what puts the body back, so `canvas + body_d` is the position that does
+    not move with the pose.
+    """
+    value = getattr(m, feature)
+    assert value is not None
+    return (value[0] + m.body_dx, value[1] + m.body_dy)
+
+
+def test_a_reconstructed_anchor_keeps_its_place_relative_to_the_body(measurements):
+    """UNA ANCLA RECONSTRUIDA SE QUEDA EN SU LUGAR RELATIVO AL CUERPO.
+
+    Una pieza que no se pudo medir se RECONSTRUYE a partir de sus
+    vecinos. La reconstruccion tiene que respetar la posicion de la pieza
+    RELATIVA AL CUERPO (el espacio registrado), porque el cuerpo se mueve
+    dentro de su canvas de un frame a otro: el arte de `death/frame_09`
+    esta 12 px mas abajo en su canvas, y un ancla reconstruida en el
+    espacio del canvas se queda 8 px por encima de donde esta la cabeza.
+
+    Con un solo vecino medido, la reconstruccion tiene que COPIAR su
+    posicion; con dos, tiene que quedar ENTRE las dos.
+
+    LA CONTRAPOSICION esta ejecutada: con la interpolacion en el espacio
+    del canvas, `laser/f04` caia en la columna 52,5 (el brazo esta entre
+    55 y 61) y el ojo de `death/f09` caia en (57,18) en vez de (60,26).
+    """
+    by_clip: dict[str, list] = {}
+    for m in measurements:
+        by_clip.setdefault(m.clip, []).append(m)
+
+    checked = 0
+    for clip, items in by_clip.items():
+        items.sort(key=lambda m: m.frame)
+        for index, m in enumerate(items):
+            for feature in ("shield", "eye"):
+                if getattr(m, f"{feature}_source") != "interpolated":
+                    continue
+                here = _registered(m, feature)
+
+                left = next(
+                    (
+                        other
+                        for other in reversed(items[:index])
+                        if getattr(other, f"{feature}_source") == "measured"
+                    ),
+                    None,
+                )
+                right = next(
+                    (
+                        other
+                        for other in items[index + 1:]
+                        if getattr(other, f"{feature}_source") == "measured"
+                    ),
+                    None,
+                )
+                neighbours = [n for n in (left, right) if n is not None]
+                assert neighbours, (
+                    f"{clip}/f{m.frame:02d}: the {feature} was reconstructed "
+                    "with no measured neighbour to reconstruct it from"
+                )
+
+                for axis, label in ((0, "column"), (1, "row")):
+                    values = [_registered(n, feature)[axis] for n in neighbours]
+                    lo, hi = min(values), max(values)
+                    assert lo - 1.0 <= here[axis] <= hi + 1.0, (
+                        f"{clip}/f{m.frame:02d}: the reconstructed {feature} is "
+                        f"at {label} {here[axis]:.1f} relative to the body, and "
+                        f"its measured neighbours are at {values}: the "
+                        "reconstruction left the piece's place"
+                    )
+                checked += 1
+
+    assert checked == 3, (
+        f"only {checked} anchors were reconstructed: the set has 3 (laser/04, "
+        "laser/05 and death/09). If that number changed, this check is not "
+        "looking at the frames it thinks it is"
+    )
+
+
 def test_the_measured_shield_sits_where_the_plate_is(measurements):
     """Donde el escudo se MIDE, tiene que coincidir con la firma.
 
@@ -130,6 +254,11 @@ def test_the_measured_shield_sits_where_the_plate_is(measurements):
     la encuentra. La elipse del escudo es el CONTORNO. Si los dos no
     coinciden, la elipse no esta sobre la placa -- y eso es
     exactamente lo que pasaba cuando la elipse se interpolaba.
+
+    La firma es una señal GRUESA: también reconoce los brillos dorados
+    del torso, así que la tolerancia es ancha (los 14 px que usa el
+    auditor). El check fuerte es el de arriba: el ovalo dentro de la
+    banda del brazo.
     """
     anim_set = load_set(SET, root=ENEMIES_ROOT)
     part = anim_set.part_or_none("shield_plate")
@@ -147,7 +276,7 @@ def test_the_measured_shield_sits_where_the_plate_is(measurements):
             measured = next(
                 m for m in measurements if m.clip == clip.id and m.frame == index
             )
-            if measured.shield_source != "measured" or measured.shield is None:
+            if measured.shield is None:
                 continue
             if (clip.id, index) in KNOWN_OFF_THE_PLATE:
                 continue

@@ -163,13 +163,29 @@ def test_eye_anchor_varies_with_pose() -> None:
 
 
 def test_eye_anchor_sits_in_the_head_band() -> None:
-    """The eye is in the head; a row past ~30 means we latched onto armour."""
-    from src.ui.scenes import get_sprite_eye_anchor
+    """The eye is in the head; a row past ~30 means we latched onto armour.
+
+    BLOQUE 77: the band is checked in the REGISTERED space -- the row the
+    anchor has RELATIVE TO THE BODY -- because the head band is a property
+    of the BODY, not of where the art happens to sit inside its canvas.
+
+    `death/frame_09` is authored 12 px lower inside its canvas (its
+    `body_dy` is -12), so its head IS at row 38 there. The old anchor put
+    it at row 30: two rows ABOVE the silhouette, in the air, where the eye
+    laser would have spawned with nothing under it.
+    """
+    from src.ui.scenes import get_sprite_centroid_offset, get_sprite_eye_anchor
 
     for a in ANIMS:
         for i in range(10):
-            _, row = get_sprite_eye_anchor(f"bosses/goliath/{a}/frame_{i:02d}.png")
-            assert 8 <= row <= 30, f"{a}/frame_{i:02d}: eye row {row} outside the head band"
+            path = f"bosses/goliath/{a}/frame_{i:02d}.png"
+            _, row = get_sprite_eye_anchor(path)
+            _, cdy = get_sprite_centroid_offset(path)
+            registered = row + cdy
+            assert 8 <= registered <= 30, (
+                f"{a}/frame_{i:02d}: eye row {row} (registered {registered}) "
+                f"outside the head band"
+            )
 
 
 def test_eye_laser_spawns_at_the_eye_not_the_body(runtime) -> None:

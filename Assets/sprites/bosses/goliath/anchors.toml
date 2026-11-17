@@ -101,7 +101,7 @@ clip = "death"
 frame = 9
 body_dx = -4
 body_dy = -12
-eye = [61, 30]
+eye = [64, 38]
 eye_source = "interpolated"
 shield = [61.5, 52.5, 7.5, 12.5]
 shield_source = "measured"
@@ -253,7 +253,7 @@ body_dx = -6
 body_dy = 0
 eye = [52, 25]
 eye_source = "measured"
-shield = [58.5, 39.4, 8.1, 12.5]
+shield = [64.1, 40.5, 8.1, 12.5]
 shield_source = "interpolated"
 
 [[anchors]]
@@ -263,7 +263,7 @@ body_dx = 3
 body_dy = 0
 eye = [41, 26]
 eye_source = "measured"
-shield = [60.1, 40.7, 7.6, 12.5]
+shield = [54.6, 40.5, 7.6, 12.5]
 shield_source = "interpolated"
 
 [[anchors]]

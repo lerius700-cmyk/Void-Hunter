@@ -76,9 +76,13 @@ from sprite_pipeline.sets import discover_sets  # noqa: E402
 
 # The base commit of Phase 1: the HEAD of the base branch when the phase
 # started, already merged into this branch. The gate measures the RANGE
-# base..HEAD, because the phase's promise is about the PHASE and not only
-# about the working tree: a PNG committed inside the phase is exactly the
-# failure the gate exists to catch.
+# base..<the end of the phase>, because the phase's promise is about the
+# PHASE and not only about the working tree: a PNG committed inside the
+# phase is exactly the failure the gate exists to catch.
+#
+# BLOQUE 77: the range does not end at HEAD. It ends where the NEXT phase
+# started -- see the long note below. While the phase is in progress that
+# end IS HEAD, so nothing changes for the phase that is running.
 #
 # It can be pointed elsewhere WITHOUT editing this file: the PHASE1_BASE
 # environment variable, or the --base argument. See resolve_base.
@@ -111,6 +115,55 @@ GOLIATH_ASSETS_PATHSPEC = (
     "Assets/sprites/bosses/",
     ":!Assets/sprites/bosses/goliath/anchors.toml",
 )
+
+# BLOQUE 77: A PHASE'S PROMISE IS ABOUT THE PHASE'S WORK.
+#
+# The range checks (G5's and G11's) diff `base..HEAD`. While the phase was
+# IN PROGRESS, HEAD was the phase's tip, so the range WAS the phase. But
+# the range keeps growing with every commit that lands on the branch AFTER
+# the phase, and the PROMISE does not: Phase 1 promised that the enemy
+# pipeline would not touch GOLIATH, and that promise is about Phase 1's
+# work -- which ended where Phase 2 started (e619527 is the HEAD of the
+# release line when Phase 2 began, and Phase 1 was already merged there).
+#
+# BLOQUE 77 changed GOLIATH's manifest ON PURPOSE: the detection rule
+# rejected the plate seen edge-on, so the ellipse had to be MEASURED
+# instead of invented. Measured over `base..HEAD`, the Phase 1 gate
+# called that a violation of a promise made by a phase that had been
+# closed for a long time. The gate was measuring a range that no longer
+# WAS the phase.
+#
+# So a phase's range ENDS where the next phase starts: Phase 1's range is
+# 773cf08..e619527, and Phase 2's is e619527..HEAD -- Phase 2 is the last
+# phase, and its promise (not one PNG byte moved, the goldens are
+# identical, the contract holds) still covers everything that came after
+# it. That is why Phase 2 needed no change: its range was already the
+# right one.
+#
+# WHAT IS NOT LOST.
+#
+# * The ART: Phase 2's P2-G5 diffs EVERY PNG of the tree over
+#   e619527..HEAD, so a GOLIATH frame that moved after Phase 1 still
+#   turns the gate red -- through the other phase.
+# * The SPEC (the manifest): the contract of `verify_contract.py` asserts
+#   that the findings match EXACTLY, so a manifest that changes the
+#   measurement breaks the contract, and the contract is checked by G5's
+#   second half.
+# * The MEASUREMENT (the anchors): it is checked by FRESHNESS.
+#
+# So the manifest is still guarded after Phase 1 -- by the contract and by
+# the tests of the block that changed it -- and the PNGs are still guarded
+# by P2-G5. What stops being checked is only the thing that was never true
+# as a promise: that a LATER block may not touch GOLIATH's spec.
+#
+# The base of the NEXT phase is read at CALL TIME (not captured in a
+# constant at import time), so a test can point it at a commit of its own
+# temporary repository.
+def _next_phase_base(phase: int) -> str | None:
+    """The base of the phase that comes after `phase`, if there is one."""
+    if phase == 1:
+        return PHASE_2_BASE
+    return None
 
 # The guards the enemy sets must pass. G13 runs them: a green gate means the
 # art was not touched, the hitbox is not the canvas, the declared semantics
@@ -264,7 +317,43 @@ def _git(
     return _run(["git", *args], GIT_TIMEOUT_S, cwd=cwd)
 
 
-def _range_commit_count(base: str, repo: Path | None = None) -> int | None:
+def _is_ancestor(candidate: str, descendant: str, repo: Path | None = None) -> bool:
+    """Is `candidate` an ancestor of `descendant`?
+
+    git answers this with the exit code, not with the output: `--is-ancestor`
+    prints nothing and exits 0 when it IS an ancestor, and exits 1 when it is
+    not. A commit that does not exist at all also exits non-zero, which is the
+    answer we want here: a base that cannot be resolved is not a base that
+    ends the phase.
+    """
+    return _git(["merge-base", "--is-ancestor", candidate, descendant], cwd=repo).returncode == 0
+
+
+def phase_range_end(phase: int, head: str = "HEAD", repo: Path | None = None) -> str:
+    """The commit where the phase's promise stops.
+
+    A phase's range ends where the NEXT phase started: Phase 1's work ended
+    where Phase 2 began. While a phase is still in progress the next phase's
+    base is not an ancestor of HEAD yet, and the range ends at HEAD -- which
+    is the phase's tip.
+
+    See the long note next to `_next_phase_base` for WHY: a range that grows
+    with every later commit stops being the phase, and then the gate measures
+    a promise nobody made.
+    """
+    next_base = _next_phase_base(phase)
+    if next_base is None:
+        return head
+    if _is_ancestor(next_base, head, repo=repo):
+        return next_base
+    return head
+
+
+def _range_commit_count(
+    base: str,
+    end: str = "HEAD",
+    repo: Path | None = None,
+) -> int | None:
     """How many commits the phase range holds, or None if git cannot say.
 
     The range is the gate's promise: "not one PNG byte changed inside the
@@ -276,7 +365,7 @@ def _range_commit_count(base: str, repo: Path | None = None) -> int | None:
     clone). That is NOT an empty range: the phase reports an unresolvable
     base itself, with a better message than this one could give.
     """
-    proc = _git(["rev-list", "--count", f"{base}..HEAD"], cwd=repo)
+    proc = _git(["rev-list", "--count", f"{base}..{end}"], cwd=repo)
     if proc.returncode != 0:
         return None
     try:
@@ -287,6 +376,7 @@ def _range_commit_count(base: str, repo: Path | None = None) -> int | None:
 
 def _goliath_assets_diff(
     base: str,
+    end: str = "HEAD",
     repo: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """The stat of GOLIATH's assets that changed inside the phase range.
@@ -297,7 +387,7 @@ def _goliath_assets_diff(
     exercises the gate's OWN pathspec instead of a copy of it.
     """
     return _git(
-        ["diff", "--stat", f"{base}..HEAD", "--", *GOLIATH_ASSETS_PATHSPEC],
+        ["diff", "--stat", f"{base}..{end}", "--", *GOLIATH_ASSETS_PATHSPEC],
         cwd=repo,
     )
 
@@ -492,11 +582,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     base = resolve_base(args.base, args.phase)
 
+    # BLOQUE 77: the phase's range ends where the next phase started. While
+    # the phase is in progress that end is HEAD, which is what it always was.
+    phase_end = phase_range_end(args.phase)
+
     # BLOQUE 76: an EMPTY range measures NOTHING.
     #
     # The range is how the gate sees a PNG committed INSIDE the phase:
     # the working-tree check (`git diff HEAD`) is blind to it, and only
-    # `git diff base..HEAD` is not. With an empty range every range check
+    # `git diff base..end` is not. With an empty range every range check
     # has zero commits to look at, finds nothing to complain about, and
     # the gate prints "GATE OK" for a phase it never looked at. The
     # promise ("not one PNG byte changed inside the phase") would be
@@ -505,12 +599,12 @@ def main(argv: list[str] | None = None) -> int:
     # This is checked FIRST, before any other check, because a gate that
     # has to run everything before it can admit it looked at nothing is a
     # gate that wastes the CI budget to learn it is blind.
-    count = _range_commit_count(base)
+    count = _range_commit_count(base, phase_end)
     if count == 0:
         return _print_verdict(
             args.phase,
             [
-                f"the phase range ({base}..HEAD) is EMPTY: it holds 0 "
+                f"the phase range ({base}..{phase_end}) is EMPTY: it holds 0 "
                 "commits, so the range checks would measure NOTHING and the "
                 "gate would report OK without having checked the phase's "
                 "promise. Either the base constant is wrong, or the "
@@ -521,10 +615,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.phase == 2:
         return _run_phase_2(base)
-    return _run_phase_1(base)
+    return _run_phase_1(base, phase_end)
 
 
-def _run_phase_1(base: str) -> int:
+def _run_phase_1(base: str, phase_end: str = "HEAD") -> int:
     """The Phase 1 gate: the enemy sets are ready for Phase 2."""
     pygame.init()
     ensure_display()
@@ -664,8 +758,11 @@ def _run_phase_1(base: str) -> int:
     # The range half of G5 needs the base commit. When the base is missing,
     # G11 has already said why and the gate is already failing, so the
     # check is reported as "did not run" instead of as a cryptic git error.
+    #
+    # BLOQUE 77: the range is the PHASE's range -- it ends where Phase 2
+    # started, not at HEAD. See the long note next to PHASE_ENDS.
     if not base_missing:
-        bosses = _goliath_assets_diff(base)
+        bosses = _goliath_assets_diff(base, phase_end)
         if bosses.returncode != 0:
             failures.append(
                 f"G5 goliath: the git command failed (exit {bosses.returncode}): "
@@ -674,7 +771,7 @@ def _run_phase_1(base: str) -> int:
         elif bosses.stdout.strip():
             failures.append(
                 f"G5 goliath: the boss assets changed inside the phase "
-                f"({base}..HEAD):\n{bosses.stdout.strip()}"
+                f"({base}..{phase_end}):\n{bosses.stdout.strip()}"
             )
 
     # verify_contract is imported HERE, on purpose: the module sets
@@ -739,9 +836,21 @@ def _run_phase_1(base: str) -> int:
     # is untouched: `Assets/sprites/` is not excluded, and the WORKING TREE
     # check below keeps the strict `*.png` pathspec, so a golden frame
     # edited by hand on disk still turns the gate red.
+    #
+    # BLOQUE 77: the RANGE is the phase's range (it ends where Phase 2
+    # started). The PNGs are guarded after that point by Phase 2's P2-G5,
+    # which diffs every PNG of the tree over e619527..HEAD. See the long
+    # note next to PHASE_ENDS.
     if not base_missing:
         png_range = _git(
-            ["diff", "--stat", f"{base}..HEAD", "--", "*.png", ":!tools/golden/"]
+            [
+                "diff",
+                "--stat",
+                f"{base}..{phase_end}",
+                "--",
+                "*.png",
+                ":!tools/golden/",
+            ]
         )
         if png_range.returncode != 0:
             failures.append(
@@ -750,8 +859,8 @@ def _run_phase_1(base: str) -> int:
             )
         elif png_range.stdout.strip():
             failures.append(
-                f"G11: PNG files changed inside the phase ({base}..HEAD):\n"
-                f"{png_range.stdout.strip()}"
+                f"G11: PNG files changed inside the phase "
+                f"({base}..{phase_end}):\n{png_range.stdout.strip()}"
             )
 
     png_tree = _git(["diff", "--stat", "HEAD", "--", "*.png"])

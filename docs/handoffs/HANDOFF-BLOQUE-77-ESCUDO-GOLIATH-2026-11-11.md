@@ -59,6 +59,48 @@ una ventana que recortaba la placa por arriba y por abajo.
 La lancha roja que se ve en `javelin/f03` es el **haz horneado** del frame, no
 un corte: no toca el borde del canvas.
 
+### 1.4 Y la interpolación mezclaba dos sistemas de coordenadas
+
+El óvalo interpolado salía mal por una segunda razón, independiente de la
+medición: **la interpolación se hacía en el espacio del CANVAS**, que mezcla
+frames con el sprite corrido y frames con el sprite centrado.
+
+La placa es parte del CUERPO, y el cuerpo está registrado: medida contra el
+centroide del cuerpo, la placa **apenas se mueve** (columna 55-61, fila
+40-40,5 en los 60 frames). Pero dentro del canvas la columna salta de 52 a
+77, porque hay frames cuyo arte está corrido.
+
+Interpolando los valores del canvas, el óvalo se inventaba una posición que
+no era de ningún frame. **Interpolando en el espacio registrado** (y
+volviendo al canvas al final), el óvalo reconstruido queda donde debe: en
+el brazo.
+
+| Frame | Antes (canvas) | Ahora (registro → canvas) |
+|---|---|---|
+| `laser/f04` | brazo en col **52,5** ✗ | brazo en col **58,1** ✓ |
+| `laser/f05` | brazo en col **63,1** ✗ | brazo en col **57,6** ✓ |
+
+Lo que cambió en `anchors.toml` son **3 filas de 60** (el resto es byte a byte
+igual):
+
+| Ancla | Antes | Ahora | Por qué |
+|---|---|---|---|
+| `laser/f04` · escudo | `58.5` | `64.1` | el óvalo reconstruido cae en el brazo, no en la panza |
+| `laser/f05` · escudo | `60.1` | `54.6` | ídem |
+| `death/f09` · **ojo** | `[61, 30]` | `[64, 38]` | el ojo estaba **2 filas por encima de la silueta** (en el aire) |
+
+### 1.5 El OJO tenía el mismo bug, y su ancla apuntaba al vacío
+
+`death/f09` es el jefe **derrumbandose**: su arte está 12 px más abajo dentro
+de su canvas (`body_dy = -12`), así que **su cabeza está en la fila 38** de ese
+frame. El ojo no se puede medir ahí (el jefe ya está apagado: **0 píxeles** con
+la firma del ojo en los 96×80 del frame), así que se reconstruye.
+
+Reconstruido en el espacio del canvas, el ojo quedaba en la fila **30**: dos
+filas **por encima de la silueta**, en el aire, donde el láser del ojo
+habría nacido sin nada debajo. Reconstruido en el espacio registrado, queda en
+la fila **38**: sobre la cabeza, que es donde está.
+
 ---
 
 ## 2. El fix
@@ -75,6 +117,11 @@ un corte: no toca el borde del canvas.
 registrado**, y el resultado se vuelve a coords de canvas. El ojo también: se
 mide registrado (antes se medía en el canvas, y por eso fallaba en 1 frame).
 
+**Y la interpolación también** (`_interpolate_missing`): una pieza que no se
+pudo medir se reconstruye **en el espacio registrado** — su posición respecto
+al cuerpo — y se vuelve al canvas al final. Es el mismo espacio en el que se
+mide, así que las dos mitades hablan el mismo idioma.
+
 **`Assets/sprites/bosses/goliath/manifest.toml`** — un solo cambio: el rango
 de `rx` pasa de `(6.5, 11.0)` a `(3.0, 11.0)`. Motivo: **la placa de canto**
 —cuando el brazo baja, el óvalo se ve estrecho (rx 3,5-6) y el rango viejo
@@ -89,17 +136,88 @@ lo rechazaba por ser "implausible", aunque sea una placa legítima.
 | | Antes | Ahora |
 |---|---|---|
 | Escudos **interpolados** (inventados) | **7** | **2** (`laser/f04`, `laser/f05`) |
-| Ojos interpolados | 1 | 1 (`death/f02`) |
+| Ojos interpolados | 1 | 1 (`death/f09`) |
 | Hallazgos del auditor | 10 | **3** (0 FAIL) |
 | `cy` de la elipse | 40,5 en los 60 (recortado) | **el real**, varía por pose |
+| **El óvalo en el espacio del brazo** | salía a **col 52,5** (fuera) | **col 55,0-61,0 en los 60** ✓ |
+
+**LA INVARIANTE DEL ESCUDO, CUMPLIDA:** el óvalo está **siempre sobre la
+placa**, en los 60 frames. Se mide en el espacio registrado (la posición
+respecto al centroide del cuerpo), donde la placa vive entre la columna 55 y
+la 61 — y los 60 óvalos caen ahí, los medidos y los reconstruidos.
 
 **Los 5 arreglados, verificados a ojo** (el óvalo verde cae exacto sobre la
 placa; antes caía sobre la panza): `javelin/f03`, `javelin/f04`, `javelin/f07`,
-`purple_bullet/f06`, `purple_bullet/f08`.
+`purple_bullet/f06`, `purple_bullet/f08`. Y los 2 reconstruidos
+(`laser/f04`, `laser/f05`) también quedan sobre el brazo.
 
 ---
 
-## 3. Los 3 frames que quedan (y por qué NO se tocan)
+## 3. Dos puertas que NO medían lo que prometían
+
+Al commitar la parte anterior del BLOQUE 77, la suite se puso **roja en 2
+tests**. Los dos eran **puertas mal encaminadas**, no el escudo:
+
+### 3.1 La banda de la cabeza del ojo: estaba en el espacio equivocado
+
+`tests/test_goliath_anchor_coincidence.py::test_eye_anchor_sits_in_the_head_band`
+exigía que la fila del ancla del ojo esté entre 8 y 30 — **en el canvas**. Pero
+la banda de la cabeza es una propiedad del **CUERPO**, y el cuerpo se mueve
+dentro de su canvas: `death/f09` tiene la cabeza en la fila 38, y su ancla
+(medida, 38) estaba "fuera de banda" según un test que mide en el espacio
+equivocado.
+
+**El fix**: el test mide la fila **registrada** (`fila + body_dy`), que es el
+espacio en el que la regla de detección del manifiesto (`head_band = [0, 30]`)
+ya opera. Los 60 frames quedan dentro (14-26).
+
+> **Y el ojo viejo apuntaba al vacío** (§1.5): la fila 30 de `death/f09` está
+> 2 filas por encima de la silueta. El test nuevo no lo dice solo: el otro
+> test nuevo (`test_a_reconstructed_anchor_keeps_its_place_relative_to_the_body`)
+> lo atrapa, porque con la interpolación vieja el ojo caía en (57, 18) en vez
+> de (60, 26) — el sitio del vecino medido.
+
+### 3.2 El gate de la Fase 1 medía un range que ya no era la fase
+
+`G5 goliath: the boss assets changed inside the phase (773cf08..HEAD)` — el
+gate de la Fase 1 ponía rojo el cambio **deliberado** del manifiesto de
+GOLIATH.
+
+**La causa**: el range de la fase es `base..HEAD`, y `HEAD` crece con cada
+commit que aterriza en la rama **después** de la fase. Mientras la fase
+estaba en curso, `HEAD` **era** la punta de la fase; pero la Fase 1 se cerró
+hace tiempo y su promesa ("el pipeline de enemigos no toca a GOLIATH") es
+sobre **el trabajo de la Fase 1**, que terminó donde empezó la Fase 2
+(`e619527` es el HEAD de la línea de release cuando la Fase 2 arrancó).
+
+**El fix** (`tools/sprite_pipeline/gate.py`): **el range de una fase termina
+donde empieza la siguiente**. La Fase 1 mide `773cf08..e619527`; la Fase 2
+mide `e619527..HEAD` (no cambia: su promesa —ningún byte de PNG se movió, los
+goldens son idénticos, el contrato se cumple— sigue cubriendo todo lo que
+vino después).
+
+**Lo que NO se pierde** (está escrito en el módulo, junto a la constante):
+
+| Qué | Quién lo sigue guarding después de `e619527` |
+|---|---|
+| El **arte** (los PNG) | El **P2-G5** de la Fase 2: diffea *todos* los PNG del árbol sobre `e619527..HEAD` |
+| La **especie** (el manifiesto) | El **contrato**: las comprobaciones tienen que coincidir **EXACTAMENTE**, así que un manifiesto que cambia la medición rompe el contrato (y G5 lo ejecuta en su segunda mitad) |
+| La **medición** (los anchors) | La **frescura** de los anchors |
+
+Lo único que deja de comprobarse es lo que nunca fue una promesa: que un
+bloque posterior **no pueda** tocar la especie de GOLIATH.
+
+**Contraposición ejecutada** (el range sin acotar → el gate en rojo, con el
+mensaje exacto que se arregló):
+```
+PHASE 1 GATE FAILED:
+  - G5 goliath: the boss assets changed inside the phase (773cf08..HEAD):
+Assets/sprites/bosses/goliath/manifest.toml | 2 +-
+```
+
+---
+
+## 4. Los 3 frames que quedan (y por qué NO se tocan)
 
 | Frame | Qué pasa | Por qué no se arregla |
 |---|---|---|
@@ -112,9 +230,9 @@ medir, el contrato se rompe y el gate se pone rojo.
 
 ---
 
-## 4. Los tests (con contraposición)
+## 5. Los tests (con contraposición)
 
-`tests/test_goliath_shield_is_measured.py` — 5 tests:
+`tests/test_goliath_shield_is_measured.py` — **7 tests**:
 
 1. `test_the_shield_is_measured_in_every_frame_but_the_documented_ones` — el
    **conteo** de interpolados tiene que ser exactamente `{laser/4, laser/5}`.
@@ -122,16 +240,31 @@ medir, el contrato se rompe y el gate se pone rojo.
    se pone rojo.
 2. `test_no_shield_is_unresolved` — ningún escudo sin elipse (el láser no
    saldría de ningún sitio).
-3. `test_the_measured_shield_sits_where_the_plate_is` — donde el escudo se
+3. `test_the_shield_stays_on_the_arm_in_every_frame` — **LA INVARIANTE**: en
+   los 60 frames, el óvalo cae entre la columna 55 y la 61 del espacio
+   registrado (la banda del brazo).
+4. `test_a_reconstructed_anchor_keeps_its_place_relative_to_the_body` — **el
+   nuevo**: una ancla reconstruida se queda en su lugar **relativo al cuerpo**.
+   Con un vecino medido tiene que copiarse; con dos, tiene que quedar entre
+   las dos. Cubre el escudo **y** el ojo (los 3 anclas reconstruidas).
+5. `test_the_measured_shield_sits_where_the_plate_is` — donde el escudo se
    **mide**, la elipse tiene que coincidir con la firma de color de la placa.
    Este es el test que **no existía** y que habría detectado el bug: la
    firma (el `probe`) encuentra la placa esté donde esté, y el óvalo
    interpolado no coincidía con ella.
-4. `test_no_piece_of_goliath_is_cut_when_animated` — el arte de cada frame
+6. `test_no_piece_of_goliath_is_cut_when_animated` — el arte de cada frame
    dentro de su canvas con el margen del manifiesto, y el registro mueve el
    canvas entero (que es lo que hace que nada pueda salirse al animarse).
-5. `test_the_registration_is_what_makes_the_measurement_work` — el
+7. `test_the_registration_is_what_makes_the_measurement_work` — el
    mecanismo del fix, medido.
+
+`tests/test_sprite_pipeline_gate_phase_range.py` — **4 tests** (nuevo): el
+range de la fase termina donde empieza la siguiente; una fase en curso sigue
+midiendo hasta `HEAD`; un cambio **dentro** de la fase se sigue reportando; un
+cambio **después** de la fase no lo reporta esa fase.
+
+`tests/test_goliath_anchor_coincidence.py::test_eye_anchor_sits_in_the_head_band`
+— actualizado a la banda **registrada** (motivo en §3.1).
 
 ### Las contraposiciones (ejecutadas)
 
@@ -151,18 +284,31 @@ E   AssertionError: phase1_idle/f00: the art touches the edge of the canvas
     (margins L26 T2 R26 B3) -- the piece is CUT
 ```
 
+**Con la interpolación en el espacio del canvas** (la que había):
+```
+FAILED test_the_shield_stays_on_the_arm_in_every_frame
+E   AssertionError: the oval goes to column 46.5, off the arm (the arm is
+    between 55 and 61)
+FAILED test_a_reconstructed_anchor_keeps_its_place_relative_to_the_body
+E   AssertionError: laser/f04: the reconstructed shield is at column 46.5
+    relative to the body, and its measured neighbours are at [58.5, 57.5]:
+    the reconstruction left the piece's place
+```
+
+**Con el range de la fase sin acotar** (el gate en rojo, §3.2).
+
 ---
 
-## 5. Verificado
+## 6. Verificado
 
 | Métrica | Resultado |
 |---|---|
-| Suite | **3203 pass + 6 skip + 1 xfail = 3210, 0 fallos** |
+| Suite | **3209 pass + 6 skip + 1 xfail = 3216, 0 fallos** |
 | Gate | `PHASE 1 GATE OK` / `PHASE 2 GATE OK` (exit 0) |
 | `--check-pipeline` | 8 sets, `layers: 30`, exit 0 |
 | `audit_sf_sm --perfil=lite` | 7/7 |
 | **R1: PNGs modificados** | **0** (`git diff --stat a0c6f6f -- '*.png'` vacío) |
-| **Goldens** | **los 6 byte a byte iguales** (14/14 tests del golden en verde) |
+| **Goldens** | **los 6 byte a byte iguales** (`--check` → `GOLDENS MATCH`) |
 | Arte | **ni un byte** (sólo cambian `manifest.toml`, `anchors.toml` y el código) |
 
 ### Los tests que pineaban la aproximación vieja (y ahora pinean la real)
@@ -206,8 +352,22 @@ actualizaron **con el motivo escrito** (no para que passaran):
 
 ## 7. Los archivos
 
-**Nuevos:** `tests/test_goliath_shield_is_measured.py`
-**Modificados:** `src/anim/measure.py` · `tools/sprite_pipeline/audit.py` ·
-`tools/sprite_pipeline/verify_contract.py` ·
-`Assets/sprites/bosses/goliath/manifest.toml` ·
-`Assets/sprites/bosses/goliath/anchors.toml` (generado)
+**Nuevos:**
+- `tests/test_goliath_shield_is_measured.py` (7 tests)
+- `tests/test_sprite_pipeline_gate_phase_range.py` (4 tests)
+
+**Modificados:**
+- `src/anim/measure.py` — `registered_surface()`, `to_canvas()`
+- `tools/sprite_pipeline/audit.py` — el registro antes de medir; la
+  interpolación en el espacio registrado
+- `tools/sprite_pipeline/gate.py` — `phase_range_end()`, `_next_phase_base()`,
+  `_is_ancestor()`; G5 y G11 con `base..end`
+- `tools/sprite_pipeline/verify_contract.py` — el motivo de la reconstrucción
+  en el espacio registrado
+- `Assets/sprites/bosses/goliath/manifest.toml` — el rango de `rx`
+- `Assets/sprites/bosses/goliath/anchors.toml` (generado) — **3 filas**
+- `tests/test_goliath_anchor_coincidence.py` — la banda del ojo, en el espacio
+  registrado
+- `tests/test_gate_range_must_not_be_empty.py` — el mensaje nombra el range
+  medido
+- `CLAUDE.md` (STATUS regenerado), `CONTEXT.md` (historial), `.synapse`

@@ -7,6 +7,11 @@ commits -- every range check has nothing to look at, finds nothing to
 complain about, and the gate prints "PHASE 1 GATE OK" for a phase it
 never looked at.
 
+BLOQUE 77: the range of a phase ends where the NEXT phase started (the
+promise is about the phase's work), so the range is `base..end` and not
+always `base..HEAD`. The empty range is still empty, and the message
+still names the range that was measured.
+
 The phase's central promise ("not one PNG byte changed inside the phase")
 was UNCHECKED, and the gate was green anyway. Nothing pinned the base
 constants, so a base that stopped being the phase's start was invisible.
@@ -80,7 +85,13 @@ def test_the_gate_fails_on_an_empty_range(
 def test_the_gate_says_the_range_is_what_it_measured(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The failure names the range, so the reader knows what to fix."""
+    """The failure names the range, so the reader knows what to fix.
+
+    BLOQUE 77: the range the gate measures is the PHASE's range, and it
+    ends where the next phase started -- so the name it prints is not
+    always `base..HEAD`, but always the range it ACTUALLY measured.
+    """
     gate.main(["--phase", "1", "--base", "HEAD"])
     out = capsys.readouterr().out
-    assert "HEAD..HEAD" in out, out
+    measured = f"HEAD..{gate.phase_range_end(1)}"
+    assert measured in out, out

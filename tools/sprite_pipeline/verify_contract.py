@@ -58,6 +58,11 @@ from sprite_pipeline.audit import FAIL_STATES, audit_set, render_anchors_toml  #
 # frame 02 is the boss collapsing: the brass probe and the shape
 # measurement disagree about where the plate is.
 #
+# Their ellipse is RECONSTRUCTED, and the reconstruction happens in the
+# REGISTERED space (the position relative to the body's centroid), so
+# the oval stays on the arm: the arm is at column 55..61 in that space
+# and the 60 frames' ovals all land there.
+#
 # The FAIL column is the important one: it is EMPTY.
 GOLIATH_CONTRACT: dict[tuple[str, int], list[str]] = {
     ("laser", 4): ["FUERA_DE_RANGO"],

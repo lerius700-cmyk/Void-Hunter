@@ -268,8 +268,8 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 |---------|-------|------------------------|
 | Líneas de código (src/) | 30547 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('src').rglob('*.py')))"` |
 | Archivos Python (src/) | 97 | `Get-ChildItem -Recurse -Filter *.py src/ \| Measure-Object` |
-| Tests (tests/) | 3.203 pass + 0 fail + 1 xfail (fallo conocido) + 6 skipped (release/videos/ not found) (3.210 total) | `python -m pytest tests/ --tb=no -rs` |
-| LOC tests/ | 33052 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
+| Tests (tests/) | 3.209 pass + 0 fail + 1 xfail (fallo conocido) + 6 skipped (release/videos/ not found) (3.216 total) | `python -m pytest tests/ --tb=no -rs` |
+| LOC tests/ | 33342 | `python -c "import pathlib; print(sum(len(p.read_text(encoding='utf-8',errors='ignore').splitlines()) for p in pathlib.Path('tests').rglob('*.py')))"` |
 | Silos SF+SM | 9 (Lite) | `Get-ChildItem docs -Directory \| Measure-Object` |
 | Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
 | Versión | v1.9.0 (BLOQUE 75 — pipeline de sprites + motor de capas del frame) | `python -c "import sys; sys.path.insert(0,'tools'); from regen_status import VERSION; print(VERSION)"` |

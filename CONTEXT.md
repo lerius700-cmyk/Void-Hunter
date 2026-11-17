@@ -159,6 +159,29 @@ Target: `7/7` compliance Lite. Si baja, correr remediación.
 
 ## Historial de cambios estructurales
 
+- **2026-11-13 (BLOQUES 76 y 77)** — El contenido como clase primera + el escudo de GOLIATH:
+  - La lista canónica de los 8 sets de enemigos vive en `src/anim/sets.py`:
+    `ENEMY_SETS` es la **EXPECTATIVA** (hardcodeada a propósito: si se derivara
+    del disco, la puerta del gate sería tautológica) y `discover_enemy_sets()`
+    es el **DESCUBRIMIENTO** (memoizado). 10 archivos de test dejaron de
+    hardcodear la lista.
+  - Puerta **G0** en el gate: la expectativa y el descubrimiento tienen que
+    coincidir, y el gate nombra el set culpable; el gate audita la **unión**
+    de ambos, así ningún set queda sin auditar.
+  - `tools/golden/layerstack/SHA256SUMS`: las 6 fotos de referencia con su
+    huella (6 líneas, formato `sha256sum`, LF). Lo escribe el harness
+    (`tools/capture/layerstack_frames.py`).
+  - La interpolación de los anclas se hace en el **espacio REGISTRADO** (la
+    posición respecto al centroide del cuerpo), no en el del canvas: el óvalo
+    del escudo de GOLIATH cae **sobre la placa en los 60 frames** (antes caía
+    en la panza en 7 de ellos, y el ancla del ojo de `death/f09` apuntaba al
+    vacío, 2 filas por encima de la silueta).
+  - El **range de una fase** en el gate **termina donde empieza la siguiente**
+    (`773cf08..e619527` para la Fase 1): la promesa es sobre el trabajo de la
+    fase, no sobre cada commit que aterrice después.
+  - Rutas: `docs/handoffs/HANDOFF-BLOQUE-76-CONTENIDO-PRIMERA-CLASE-2026-11-10.md`,
+    `docs/handoffs/HANDOFF-BLOQUE-75-FOLLOWUPS-PUERTAS-2026-11-11.md`,
+    `docs/handoffs/HANDOFF-BLOQUE-77-ESCUDO-GOLIATH-2026-11-11.md`.
 - **2026-10-27 (BLOQUE 74)** — Pipeline de sprites (el runtime deja de medir el arte):
   - Nuevo subsistema `src/anim/` (manifiesto + medición + compositor) y nuevo tool
     `tools/sprite_pipeline/` (auditor + reparación + pipeline).

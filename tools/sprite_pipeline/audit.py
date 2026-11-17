@@ -512,6 +512,21 @@ def _interpolate_missing(
     "measured" even when the OTHER feature had to be reconstructed, and a
     feature that could be neither measured nor reconstructed stays
     unresolved (None) with its original source.
+
+    BLOQUE 77: THE RECONSTRUCTION HAPPENS IN THE REGISTERED SPACE.
+
+    The plate is part of the BODY, and the body is registered: the
+    plate's column, measured against the body's centroid, barely moves
+    (55..58 across the whole set). But the sprite's position INSIDE its
+    canvas swings with the pose (the column goes from 52 to 77), because
+    some frames are authored shifted and the registration correction is
+    what puts them back.
+
+    Interpolating the CANVAS values therefore mixes two different
+    coordinate systems, and the result is an oval that is on the arm of
+    one frame and on the belly of the next. Interpolating the REGISTERED
+    values -- and converting the result back to the canvas -- keeps the
+    oval on the arm.
     """
     by_clip: dict[str, list[FrameMeasurement]] = {}
     for m in measurements:
@@ -520,12 +535,24 @@ def _interpolate_missing(
     out: list[FrameMeasurement] = []
     for items in by_clip.values():
         items.sort(key=lambda m: m.frame)
-        cxs = [m.shield[0] if m.shield else None for m in items]
-        cys = [m.shield[1] if m.shield else None for m in items]
+        # The REGISTERED value of a feature: the canvas value plus the
+        # registration correction. It is the feature's position relative
+        # to the body's centroid, which is what does not move with the
+        # pose.
+        cxs = [
+            (m.shield[0] + m.body_dx) if m.shield else None for m in items
+        ]
+        cys = [
+            (m.shield[1] + m.body_dy) if m.shield else None for m in items
+        ]
         rxs = [m.shield[2] if m.shield else None for m in items]
         rys = [m.shield[3] if m.shield else None for m in items]
-        eye_cols = [float(m.eye[0]) if m.eye else None for m in items]
-        eye_rows = [float(m.eye[1]) if m.eye else None for m in items]
+        eye_cols = [
+            (float(m.eye[0]) + m.body_dx) if m.eye else None for m in items
+        ]
+        eye_rows = [
+            (float(m.eye[1]) + m.body_dy) if m.eye else None for m in items
+        ]
         for i, m in enumerate(items):
             # --- the eye: measured, reconstructed, or unresolved --------
             eye = m.eye
@@ -534,7 +561,11 @@ def _interpolate_missing(
                 ex = interpolate(eye_cols, i)
                 ey = interpolate(eye_rows, i)
                 if ex is not None and ey is not None:
-                    eye = (int(round(ex)), int(round(ey)))
+                    # Back to the canvas the runtime draws on.
+                    eye = (
+                        int(round(ex - m.body_dx)),
+                        int(round(ey - m.body_dy)),
+                    )
                     eye_source = "interpolated"
                 # else: no neighbour to interpolate from -- the eye stays
                 # unresolved and keeps its original source.
@@ -553,7 +584,8 @@ def _interpolate_missing(
                     and rx is not None
                     and ry is not None
                 ):
-                    shield = (cx, cy, rx, ry)
+                    # Back to the canvas the runtime draws on.
+                    shield = (cx - m.body_dx, cy - m.body_dy, rx, ry)
                     shield_source = "interpolated"
                 # else: no neighbour to interpolate from -- the shield
                 # stays unresolved and keeps its original source.
