@@ -273,12 +273,12 @@ Pasos del **P.N.D. (Protocolo de Navegación Determinista)**:
 | Silos SF+SM | 9 (Lite) | `Get-ChildItem docs -Directory \| Measure-Object` |
 | Compliance SF | 7/7 (Lite perfil) | `audit_sf_sm.py --perfil=lite` (exit 0) |
 | Versión | v1.9.0 (BLOQUE 75 — pipeline de sprites + motor de capas del frame) | `python -c "import sys; sys.path.insert(0,'tools'); from regen_status import VERSION; print(VERSION)"` |
-| Rama | bloquec-77-escudo-goliath (en curso; la línea de release es bloquec-67-goliath-port) | `git branch --show-current` |
+| Rama | bloquec-67-goliath-port | `git branch --show-current` |
 | Remote | github.com/lerius700-cmyk/Void-Hunter | `git remote -v` |
 | Build .exe | **reconstruido** para v1.9.0 (220.2 MB) en `dist/void-hunter-v1.9.0.exe` — el path congelado (`<_MEIPASS>/Assets/sprites`) verificado con los 9 sets (GOLIATH + 8 enemigos), manifest y anchors dentro del bundle; SHA256 `C64CAD63D5107F8331BC112AB08B4FE1261ADF58939603916745AB9AD641617B` | `python -c "import sys; sys.path.insert(0,'tools'); from regen_status import REPO_ROOT, BINARY_REL; print(REPO_ROOT / BINARY_REL)"` (`dist/void-hunter-v1.9.0.exe`, en la raiz del repo) |
-| Peso del arbol trackeado | 205.1 MB | `python tools/repo_budget.py` |
+| Peso del arbol trackeado | 205.2 MB | `python tools/repo_budget.py` |
 | Salida de build (dist/) | 720.1 MB | `python tools/repo_budget.py` |
-| Historia (.git/) | 351.8 MB | `python tools/repo_budget.py` |
+| Historia (.git/) | 351.9 MB | `python tools/repo_budget.py` |
 | Tiles Asteroid Approach | 6 PNG (320×480) en `Assets/background/tiles/act1/` | `Get-ChildItem Assets/background/tiles/act1/*.png` |
 | Frames GOLIATH | 60 PNG (6 anim × 10) en `Assets/sprites/bosses/goliath/` | `Get-ChildItem Assets/sprites/bosses/goliath/*/frame_*.png` |
 | Manifiesto + anclas de GOLIATH | 1 `manifest.toml` (spec) + 1 `anchors.toml` (horneado) | `Get-ChildItem Assets/sprites/bosses/goliath/*.toml` |
