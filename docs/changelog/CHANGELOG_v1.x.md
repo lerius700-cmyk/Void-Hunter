@@ -2673,3 +2673,102 @@ Esta ola **sí bumpea la versión** y **sí reconstruye el `.exe`**:
 
 Handoff: `docs/handoffs/HANDOFF-SPRITE-PIPELINE-2026-10-27.md`.
 Session report: `docs/session-reports/SESSION_REPORT_BLOQUE_74.md`.
+
+
+---
+
+## BLOQUES 76 y 77 — El contenido como clase primera y el escudo de GOLIATH sobre su placa (2026-11-17)
+
+Rama `bloquec-67-goliath-port` (la línea v1.4.0), publicada como **v1.10.0**.
+
+### Qué es
+
+Tres cosas, y sólo una se nota jugando.
+
+**1. El escudo de GOLIATH (BLOQUE 77).** El láser naranja salía del sitio
+equivocado: en 7 de los 60 frames el óvalo caía sobre la panza del jefe. La
+causa no era el arte (ni un byte de los 60 PNGs cambió) sino la medición: la
+regla de detección tiene columnas ABSOLUTAS (la placa vive a la derecha de la
+columna 50) y hay frames cuyo arte está CORRIDO dentro de su canvas, corrido
+que el registro compensa recién al dibujar. En esos frames la placa se salía
+de la ventana, el contorno se fundía con el brazo, la medición se descartaba y
+el óvalo se INVENTABA interpolando vecinos que están en otra pose.
+
+El fix: medir sobre el sprite REGISTRADO (el arte como se va a dibujar) y,
+cuando hay que reconstruir, reconstruir en ese mismo espacio. Además el ojo
+tenía el mismo bug y era peor porque no se veía: en `death/frame_09` el ancla
+apuntaba a la fila 30, dos filas POR ENCIMA de la silueta, en el aire; ahora
+apunta a la fila 38, sobre la cabeza. Resultado: el óvalo cae sobre la placa
+en los 60 frames, medidos y reconstruidos. Los 2 que siguen reconstruidos
+(`laser/f04`, `laser/f05`) son los frames donde el HAZ ROJO HORNEADO cruza la
+placa: es el arte, y el arte no se toca.
+
+**2. El contenido como clase primera (BLOQUE 76).** La lista de los ocho
+sets de enemigos vivía hardcodeada en diez archivos distintos, tests
+incluidos, y cada copia podía quedar vieja en silencio. Ahora hay UNA lista
+canónica (`src/anim/sets.py`): la EXPECTATIVA (los ocho nombres, escritos a
+propósito: si se derivaran del disco, la puerta del gate sería tautológica) y
+el DESCUBRIMIENTO (lo que hay en la máquina). El gate compara las dos, nombra
+al set culpable y audita la UNIÓN de ambos, para que ningún set quede sin
+auditar. Además las seis fotos de referencia del golden llevan ahora huella
+SHA256 (`tools/golden/layerstack/SHA256SUMS`): "las fotos no cambiaron" pasa
+de ser una promesa a ser verificable.
+
+**3. Las puertas que no median lo que prometen (follow-ups de BLOQUE 75).**
+22 pendientes, de los que este release cierra el grupo de las que median:
+
+- El gate de la Fase 1 medía su range sobre `base..HEAD`, un rango que crece
+  con cada commit posterior, y la promesa ("el pipeline de enemigos no toca a
+  GOLIATH") es sobre el TRABAJO de la fase, que terminó donde empezó la Fase
+  2. Ahora el range de una fase TERMINA donde empieza la siguiente
+  (`773cf08..e619527` para la Fase 1). Lo que de verdad protege al arte sigue
+  protegido: el gate de la Fase 2 diffea todos los PNG del árbol.
+- La banda de la cabeza del ojo se comprobaba en el canvas, pero la banda es
+  una propiedad del CUERPO, y el cuerpo se mueve dentro de su canvas. El check
+  mide ahora la posición REGISTRADA, que es donde la propia regla del
+  manifiesto ya opera.
+- El resto: el gate acepta `--phase`/`--base` con seam, la display devuelve el
+  MOTIVO del fallo en vez de morir con traceback, el bundle no arrastra los
+  7,3 MB del área de staging (465 archivos que sólo leen los tools de
+  generación), el STATUS se regenera con una función PURA (`rows_for`) que
+  nunca escribe, la fila Tests nombra los skips, el log del sub-boss se
+  resuelve desde `Path(__file__)` (el runtime no tiene ninguna ruta
+  absoluta) y el generador se niega a escribir si el destino no es un árbol
+  de este repo.
+
+### Verificación
+
+- Suite completa: **3209 pass + 6 skipped + 1 xfailed = 3216, 0 fallos**.
+- `python tools/sprite_pipeline/gate.py` → `PHASE 1 GATE OK`;
+  `gate.py --phase 2` → `PHASE 2 GATE OK`.
+- `python main.py --check-pipeline` → exit 0, los 8 sets en
+  `pivot=fixed scale=(1.05, 1.05)` y `layers: 30`.
+- `audit_sf_sm.py . --perfil=lite` → 7/7.
+- **R1**: `git diff --stat a0c6f6f -- '*.png'` VACÍO — ni un byte de arte.
+- Los 6 goldens byte a byte iguales (`tools/capture/layerstack_frames.py
+  --check` → `GOLDENS MATCH`).
+- Contraposiciones EJECUTADAS (una garantía que el check no puede ver no es
+  una garantía): sin el registro → 3 tests en rojo ("the ellipse is NOT on
+  the plate"); con el umbral de corte inalcanzable → el check del corte en
+  rojo; con la interpolación en el espacio del canvas → 2 tests en rojo; con
+  el range de la fase sin acotar → el gate en rojo con G5.
+- El binario: `void-hunter-v1.10.0.exe --check` → 15 scenes / 18 waves /
+  4 bosses; `--check-pipeline` → exit 0. El bundle se verificó LEYENDO el
+  archivo PyInstaller: los 9 sets con manifest+anchors, y el `anchors.toml`
+  de GOLIATH dentro del binario tiene el mismo SHA256 que el del disco
+  (`cdd84598...6297`), o sea, lleva la medición ARREGLADA.
+- El usuario probó el juego (3 partidas contra GOLIATH) y confirmó que la
+  hitbox del láser naranja grueso quedó bien.
+
+### Assets
+
+- `void-hunter-v1.10.0.exe` — 214,1 MB — SHA256
+  `3EF3ACFB14A898A4DF32F993F25D8A4704EBC4DFA16EEEAC52EC224CF1D1C5C0`
+- `VoidHunter-v1.10.0-win64.zip` — 213,3 MB — SHA256
+  `DD83E1508B0CDE5A564EC1D878AEFF8A6995E57CA8AEF11BB5DAEAEC91DB7A00`
+
+Construido desde `cfc28d8` (la línea de release con los cuatro commits de
+BLOQUE 76, los follow-ups de BLOQUE 75 y el BLOQUE 77).
+
+Handoff: `docs/handoffs/HANDOFF-BLOQUE-77-ESCUDO-GOLIATH-2026-11-11.md`.
+Notas: `docs/changelog/release-notes-v1.10.0.md`.

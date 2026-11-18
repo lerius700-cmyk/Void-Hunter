@@ -91,7 +91,7 @@ CLAUDE = ROOT / "CLAUDE.md"
 # too. A block that lies and a generator that agrees with the lie is
 # worse than either alone: the next regeneration puts the broken anchor
 # back.
-VERSION = "v1.9.0"
+VERSION = "v1.10.0"
 # The path of the .exe the build row names. It is DERIVED from VERSION:
 # writing it out meant two places to bump, while the comment below
 # claimed there was only one. Bumping VERSION alone used to leave the row
@@ -102,7 +102,7 @@ BINARY_REL = f"dist/void-hunter-{VERSION}.exe"
 # It lives next to VERSION so that a bump is ONE place and not two. A
 # row whose text is written by hand NEXT to the constant that measures
 # it is exactly how the version drifted in the first place.
-RELEASE_NOTE = "BLOQUE 75 — pipeline de sprites + motor de capas del frame"
+RELEASE_NOTE = "BLOQUES 76 y 77 — el contenido como clase primera y el escudo de GOLIATH sobre su placa"
 
 # The failures this project KNOWS about, by test id. The block says
 # whether the failures are the known pre-existing ones, and that claim
