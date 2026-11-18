@@ -2,11 +2,18 @@
 
 **Rama:** `bloquec-67-goliath-port` · **Alcance:** la exposición de una credencial de Aliyun en el historial de git, y la postura de seguridad del repo tras la revisión `gstack-review` de BLOQUE 75.
 
+> **CERRADO — 2026-11-18: el usuario decidió NO rotar la clave y aceptarlo
+> como riesgo.** Los hechos están verificados (abajo): el *secret* nunca estuvo
+> en el repo, las URLs prefirmadas están muertas y el árbol está limpio. El
+> riesgo residual es **bajo** y compound: sólo se vuelve real si ese *secret*
+> se filtra en el futuro **y** la clave sigue activa en una cuenta con algo que
+> importe. §4 queda como el runbook, por si algún día se decide hacerlo.
+
 ---
 
 ## 1. El incidente, en una línea
 
-Una **AccessKey ID de Aliyun** quedó escrita dentro de un archivo commiteado, y por lo tanto **publicada** (el repo es público) en el historial de git. La mitad secreta **nunca** estuvo en el repo, y las URLs prefirmadas que la usaban **vencieron hace meses**; lo que queda por hacer es **rotar la clave** para que la exposición sea inerte por completo.
+Una **AccessKey ID de Aliyun** quedó escrita dentro de un archivo commiteado, y por lo tanto **publicada** (el repo es público) en el historial de git. La mitad secreta **nunca** estuvo en el repo, y las URLs prefirmadas que la usaban **vencieron hace meses**; lo que quedaba por hacer era **rotar la clave** para que la exposición fuera inerte por completo, y **el usuario decidió el 2026-11-18 aceptarlo como riesgo en lugar de rotarla** (§6).
 
 ---
 
@@ -21,6 +28,7 @@ Una **AccessKey ID de Aliyun** quedó escrita dentro de un archivo commiteado, y
 | ¿Viven? | **No.** Un `HEAD` a la URL devuelve **HTTP 403 Forbidden** | Verificado contra el endpoint |
 | ¿El secret está? | **No.** 0 coincidencias en todo el repo | `git grep` |
 | ¿La clave sigue viva en la cuenta? | **No se puede saber desde acá** — eso lo ves vos en la consola de RAM | Sin CLI ni credenciales en esta máquina |
+| **Re-verificado 2026-11-18** | El **árbol** sigue limpio (0 hits de `LTAI\|x-oss-credential\|AccessKeySecret`) y la URL prefirmada del historial sigue devolviendo **HTTP 403** | `git grep` sobre HEAD + un `HEAD` a la URL de `7d315aa` |
 
 **Por qué igual hay que rotarla**, aunque hoy no sea explotable:
 
@@ -39,9 +47,28 @@ Una **AccessKey ID de Aliyun** quedó escrita dentro de un archivo commiteado, y
 
 ---
 
-## 4. LO QUE FALTA: rotar la clave (acción tuya)
+## 4. LO QUE QUEDABA: rotar la clave — **DECIDIDO: NO (riesgo aceptado, 2026-11-18)**
 
-**No puedo hacerlo desde acá.** En esta máquina no hay CLI de Aliyun, ni credenciales en el entorno, ni configuración de RAM (`aliyun` no está en el PATH; `ALIBABA_CLOUD_ACCESS_KEY_ID`, `ALICLOUD_ACCESS_KEY` y compañía están ausentes; no existe `~/.aliyun/config.json`). La rotación es una operación de la **consola de tu cuenta**, y la consola es tuya.
+**El usuario decidió no rotarla.** El runbook queda escrito igual, por si
+algún día se cambia de idea (son 2 minutos), pero **ya no es un pendiente**.
+
+El razonamiento que sostiene la decisión:
+
+1. Lo que se filtró fue **el ID**, nunca el *secret*: el *secret* es la mitad
+   que autentica, y hay **0 coincidencias** en todo el repo.
+2. Las **URLs prefirmadas están muertas** desde el 2026-09-09 (y re-verificadas
+   el 2026-11-18: **HTTP 403**). No hay ninguna vía de acceso expuesta.
+3. El árbol está **limpio**: el archivo commiteado ya no lleva la URL, y la
+   URL de una corrida nueva va a `_batch_args.local.json`, que está en
+   `.gitignore`.
+4. El riesgo residual es **compuesto**: sólo se vuelve real si el *secret* de
+   esa misma clave se filtra **en el futuro** (un log, un `.env` compartido, un
+   backup) **y** la clave sigue activa **y** la cuenta tiene algo que importe.
+5. **Nada del juego, del CI ni de la release usa Aliyun.** La clave sólo se
+   usó para subir los tiles del fondo con IA.
+
+> Si algún día la cuenta de Aliyun vuelve a estar en uso con permisos que
+> importen, la decisión se revierte en 2 minutos con este runbook.
 
 ### Runbook (5 pasos, ~2 minutos)
 
@@ -86,7 +113,7 @@ git filter-repo --replace-text replacements.txt
 | Fecha | Quién | Qué |
 |---|---|---|
 | 2026-11-08 | sesión | Expuesta en el árbol y **sacada** (`f4680a1`); runbook escrito; ID redactado de la documentación |
-| — | **PENDIENTE** | **Rotar en la consola de RAM** (§4) y anotar acá la fecha |
+| **2026-11-18** | **usuario** | **NO se rota: riesgo ACEPTADO.** Re-verificado el 2026-11-18: árbol limpio (0 hits) y la URL del historial sigue en **HTTP 403**. El riesgo residual es compuesto y bajo (§4). **Este tema queda CERRADO y no vuelve a la lista de pendientes** |
 
 ---
 
@@ -99,7 +126,7 @@ Los 8 hallazgos del especialista de seguridad de la revisión `gstack-review` (d
 | 1 | El CI corría código de la rama con el `GITHUB_TOKEN` persistido en `.git/config` y sin `permissions:` | INFO | **CORREGIDO** (`f4680a1`): `permissions: contents: read` + `persist-credentials: false` en los dos checkouts |
 | 2 | Las actions no están pineadas por SHA (`@v4`, `@v5` se mueven) | INFO | **ABIERTO** → plan, tanda D |
 | 3 | Las dependencias no están pineadas (`pillow>=10.0` es la nueva) | INFO | **ABIERTO** → plan, tanda D |
-| 4 | AccessKey ID de Aliyun en el historial | INFO | **PARCIAL**: fuera del árbol; falta la rotación (§4) |
+| 4 | AccessKey ID de Aliyun en el historial | INFO | **CERRADO** (2026-11-18): fuera del árbol desde `f4680a1`; el usuario decidió **no rotar** y aceptarlo como riesgo (§4 y §6). Re-verificado: árbol limpio y URL en 403 |
 | 5 | `clip.dir` del manifest se concatenaba a la ruta sin sanear: un `dir = "../../.."` sacaba la lectura **y la escritura** de los frames fuera del set | INFO | **CORREGIDO** (`f4680a1`): `_validate_clip_dir()` en `src/anim/manifest.py` |
 | 6 | `VH_WT` decide dónde escribe `regen_status.py`: un runner con esa variable reescribe el `CLAUDE.md` de otro árbol | INFO | **ABIERTO** (override documentado y explícito) → plan, tanda D |
 | 7 | `loc()` y `pyfiles()` interpolaban el folder en el código de Python y en un `-Command` de PowerShell | INFO | **CORREGIDO** (`f4680a1`): ahora viaja como argumento |

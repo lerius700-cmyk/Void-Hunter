@@ -262,9 +262,10 @@ las fotos y 1 de la cobertura del bundle.
   `death` de la mina, y si el `.exe` se reconstruye en cada fase.
 - **NO commitea los 22 follow-ups** del plan de las 7 tandas (este spec cubre
   las tandas 2 parcial y 5).
-- **NO rota la AccessKey de Aliyun** (runbook en
-  `docs/handoffs/HANDOFF-SECURITY-2026-11-08.md` §4 — es de la consola del
-  usuario).
+- **NO rota la AccessKey de Aliyun**: el usuario decidió el **2026-11-18**
+  **no rotarla** y aceptarla como riesgo — tema **cerrado**, con los hechos
+  re-verificados ese día (árbol limpio, URL del historial en 403). Ver
+  `docs/handoffs/HANDOFF-SECURITY-2026-11-08.md` §4 y §6.
 
 ---
 

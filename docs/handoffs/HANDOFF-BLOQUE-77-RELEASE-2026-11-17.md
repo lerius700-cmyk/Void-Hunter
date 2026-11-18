@@ -96,9 +96,9 @@ hitbox del laser naranja grueso que se carga con disparos quedo bien".
   excluirlos abriría un agujero en el bundle del jefe por el 0,04 % de la
   descarga. Se hizo la exclusión de los **7,3 MB** del staging area, que era
   el problema real (80× más grande de lo que decía el plan).
-- **La AccessKey de Aliyun** no se puede rotar desde esta máquina: el runbook
-  está en `docs/handoffs/HANDOFF-SECURITY-2026-11-08.md` §4 y se ejecuta desde
-  la consola del usuario.
+- **La AccessKey de Aliyun** — el usuario decidió el 2026-11-18 **no rotarla**
+  y aceptarla como riesgo; el tema está **cerrado** en
+  `docs/handoffs/HANDOFF-SECURITY-2026-11-08.md` (§4 y §6). No es un pendiente.
 - **El push directo a la línea de release** entró con el bypass de admin de
   GitHub (los status checks todavía no habían corrido). Si se quiere que la
   rama quede protegida de verdad, la línea de release tiene que pasar por un
@@ -108,8 +108,11 @@ hitbox del laser naranja grueso que se carga con disparos quedo bien".
 
 ## 5. Lo que le pertenece al usuario
 
-1. **La AccessKey de Aliyun** (runbook en el handoff de seguridad, §4).
-2. **Las 3 preguntas de alcance de la Fase 3** (`docs/bloques/BLOQUE_75_CHECKLIST.md` §P4).
-3. **La tanda 6** (código muerto: `DrawContext`, `Part.on_missing`, `AnimSet.sided`).
-4. **Si se commitean los 22 follow-ups** del BLOQUE 75.
-5. **Si la línea de release pasa a PR** en vez de push directo.
+1. **Las 3 preguntas de alcance de la Fase 3** (`docs/bloques/BLOQUE_75_CHECKLIST.md` §P4).
+2. **La tanda 6** (código muerto: `DrawContext`, `Part.on_missing`, `AnimSet.sided`).
+3. **Si se commitean los 22 follow-ups** del BLOQUE 75.
+4. **Si la línea de release pasa a PR** en vez de push directo.
+
+> La AccessKey de Aliyun **ya no está en esta lista**: el 2026-11-18 el usuario
+> decidió no rotarla y aceptarla como riesgo (ver
+> `docs/handoffs/HANDOFF-SECURITY-2026-11-08.md` §6).

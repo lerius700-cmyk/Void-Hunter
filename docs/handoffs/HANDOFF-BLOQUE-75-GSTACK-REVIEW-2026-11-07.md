@@ -190,12 +190,19 @@ acotado a un archivo temporal por cutoff.
 Contraposición probada: con la generación de vuelta en el hilo principal,
 2 tests se ponen rojos (`play_gameplay_music took 1.50s`).
 
-### 5.3 La AccessKey de Aliyun — PENDIENTE DEL USUERO
+### 5.3 La AccessKey de Aliyun - CERRADO (2026-11-18): riesgo aceptado
 El AccessKey **ID** `LTAI5t9d…fiFZ` quedó publicado en el
 historial de git (commit `7d315aa`) de un repo **público**. El *secret* no
 está en el repo y las URLs prefirmadas vencieron (403 verificado), así que
 no es explotable hoy — pero si esa clave sigue viva, hay que **rotarla**.
 Sacar la URL del árbol (hecho) no la saca del historial.
+
+> **ACTUALIZACION 2026-11-18: el usuario decidio NO rotarla y aceptarla
+> como riesgo.** Los hechos se re-verificaron ese dia (arbol limpio, URL del
+> historial en 403) y el riesgo residual es compuesto y bajo. El tema
+> **sale de la lista de pendientes**; el runbook queda escrito por si algun
+> dia se cambia de idea. Ver
+> `docs/handoffs/HANDOFF-SECURITY-2026-11-08.md` secciones 4 y 6.
 
 > **El detalle completo —el incidente, los hechos verificados, el runbook de
 > rotación de 5 pasos, por qué NO hay que reescribir el historial, y la
